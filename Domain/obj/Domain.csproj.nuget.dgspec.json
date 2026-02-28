@@ -10,11 +10,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
         "projectName": "Domain",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
-        "packagesPath": "/home/agony/.nuget/packages/",
+        "packagesPath": "/tmp/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Domain/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/agony/.nuget/NuGet/NuGet.Config"
+          "/tmp/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
