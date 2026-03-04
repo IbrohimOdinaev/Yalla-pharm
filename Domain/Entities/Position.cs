@@ -1,79 +1,138 @@
 using Yalla.Domain.Exceptions;
+using Yalla.Domain.ValueObjects;
 
 namespace Yalla.Domain.Entities;
 
 public class Position
 {
-  public Guid Id { get; private set; }
+    public Guid Id { get; private set; }
 
-  public Guid? OrderId { get; private set; } = null;
+    public Guid? OrderId { get; private set; } = null;
 
-  public Offer Offer { get; private set; } = null!;
+    public Guid ClientId { get; private set; }
 
-  public Guid MedicineId { get; private set; }
+    public OfferSnapshot CapturedOffer { get; private set; } = null!;
 
-  public Medicine? Medicine { get; private set; }
+    public Guid MedicineId { get; private set; }
 
-  public int Quantity { get; private set; }
+    public Medicine? Medicine { get; private set; }
+
+    public int Quantity { get; private set; }
 
 
-  private Position() { }
+    private Position() { }
 
-  public Position(Guid? orderId, Offer? offer, Guid medicineId, Medicine? medicine, int quantity)
-  {
-    if (offer is null)
-      throw new DomainArgumentException("Offer can't be null.");
+    public Position(
+      Guid? orderId,
+      Guid clientId,
+      PharmacyOffer? pharmacyOffer,
+      Guid medicineId,
+      Medicine? medicine,
+      int quantity)
+    {
+        if (pharmacyOffer is null)
+            throw new DomainArgumentException("PharmacyOffer can't be null.");
 
-    if (medicineId == Guid.Empty)
-      throw new DomainArgumentException("MedicineId can't be empty.");
+        if (clientId == Guid.Empty)
+            throw new DomainArgumentException("ClientId can't be empty.");
 
-    if (quantity <= 0)
-      throw new DomainArgumentException("Quantity must be greater than zero.");
+        if (medicineId == Guid.Empty)
+            throw new DomainArgumentException("MedicineId can't be empty.");
 
-    if (quantity > offer.StockQuantity)
-      throw new DomainArgumentException("Quantity can't be greater than Offer.StockQuantity.");
+        if (quantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
 
-    OrderId = orderId;
-    Offer = offer;
-    MedicineId = medicineId;
-    Medicine = medicine;
-    Quantity = quantity;
-  }
+        if (quantity > pharmacyOffer.StockQuantity)
+            throw new DomainArgumentException("Quantity can't be greater than PharmacyOffer.StockQuantity.");
 
-  public Position(Guid id, Guid? orderId, Offer offer, Guid medicineId, Medicine? medicine, int quantity)
-  {
-    Id = id;
-    Offer = offer;
-    OrderId = orderId;
-    MedicineId = medicineId;
-    Medicine = medicine;
-    Quantity = quantity;
-  }
+        OrderId = orderId;
+        ClientId = clientId;
+        CapturedOffer = new OfferSnapshot(pharmacyOffer.PharmacyId, pharmacyOffer.Price);
+        MedicineId = medicineId;
+        Medicine = medicine;
+        Quantity = quantity;
+    }
 
-  public void AttachOrderId(Guid orderId)
-  {
-    if (orderId == Guid.Empty)
-      throw new DomainArgumentException("OrderId can't be empty.");
+    public Position(
+      Guid id,
+      Guid? orderId,
+      Guid clientId,
+      OfferSnapshot capturedOffer,
+      Guid medicineId,
+      Medicine? medicine,
+      int quantity)
+    {
+        if (id == Guid.Empty)
+            throw new DomainArgumentException("Id can't be empty.");
 
-    OrderId = orderId;
-  }
+        if (capturedOffer is null)
+            throw new DomainArgumentException("CapturedOffer can't be null.");
 
-  public void AttachMedicine(Medicine? medicine)
-  {
-    if (medicine is null)
-      throw new DomainArgumentException("Medicine can't be null.");
+        if (clientId == Guid.Empty)
+            throw new DomainArgumentException("ClientId can't be empty.");
 
-    Medicine = medicine;
-  }
+        if (medicineId == Guid.Empty)
+            throw new DomainArgumentException("MedicineId can't be empty.");
 
-  public void SetQuantity(int newQuantity)
-  {
-    if (newQuantity <= 0)
-      throw new DomainArgumentException("Quantity must be greater than zero.");
+        if (quantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
 
-    if (newQuantity > Offer.StockQuantity)
-      throw new DomainArgumentException("Quantity can't be greater than Offer.StockQuantity.");
+        Id = id;
+        ClientId = clientId;
+        CapturedOffer = capturedOffer;
+        OrderId = orderId;
+        MedicineId = medicineId;
+        Medicine = medicine;
+        Quantity = quantity;
+    }
 
-    Quantity = newQuantity;
-  }
+    public void AttachOrderId(Guid orderId)
+    {
+        if (orderId == Guid.Empty)
+            throw new DomainArgumentException("OrderId can't be empty.");
+
+        OrderId = orderId;
+    }
+
+    public void AttachMedicine(Medicine? medicine)
+    {
+        if (medicine is null)
+            throw new DomainArgumentException("Medicine can't be null.");
+
+        Medicine = medicine;
+    }
+
+    public void SetQuantity(int newQuantity, PharmacyOffer? pharmacyOffer)
+    {
+        if (pharmacyOffer is null)
+            throw new DomainArgumentException("PharmacyOffer can't be null.");
+
+        if (pharmacyOffer.MedicineId != MedicineId)
+            throw new DomainArgumentException("PharmacyOffer.MedicineId must match Position.MedicineId.");
+
+        if (pharmacyOffer.PharmacyId != CapturedOffer.PharmacyId)
+            throw new DomainArgumentException("PharmacyOffer.PharmacyId must match Position.CapturedOffer.PharmacyId.");
+
+        if (newQuantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
+
+        if (newQuantity > pharmacyOffer.StockQuantity)
+            throw new DomainArgumentException("Quantity can't be greater than PharmacyOffer.StockQuantity.");
+
+        Quantity = newQuantity;
+    }
+
+    public void RefreshCapturedOffer(PharmacyOffer? pharmacyOffer)
+    {
+        if (pharmacyOffer is null)
+            throw new DomainArgumentException("PharmacyOffer can't be null.");
+
+        if (pharmacyOffer.MedicineId != MedicineId)
+            throw new DomainArgumentException("PharmacyOffer.MedicineId must match Position.MedicineId.");
+
+        if (pharmacyOffer.PharmacyId != CapturedOffer.PharmacyId)
+            throw new DomainArgumentException("PharmacyOffer.PharmacyId must match Position.CapturedOffer.PharmacyId.");
+
+        CapturedOffer = new OfferSnapshot(pharmacyOffer.PharmacyId, pharmacyOffer.Price);
+    }
 }

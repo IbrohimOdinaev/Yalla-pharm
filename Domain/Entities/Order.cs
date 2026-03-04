@@ -54,14 +54,14 @@ public class Order
 
   private void CalculateCost()
   {
-    if (_positions.Any(p => p.Offer is null))
-      throw new DomainArgumentException("All positions must have Offer before calculating Cost.");
+    if (_positions.Any(p => p.CapturedOffer is null))
+      throw new DomainArgumentException("All positions must have CapturedOffer before calculating Cost.");
 
     var confirmed = _positions.Where(p => !_rejectedPositions.Contains(p)).ToList();
 
     decimal result = 0;
 
-    confirmed.ForEach(p => result += p.Offer!.Price * p.Quantity);
+    confirmed.ForEach(p => result += p.CapturedOffer.Price * p.Quantity);
     
 
     Cost = result;
@@ -69,12 +69,12 @@ public class Order
 
   private void CalculateReturnCost()
   {
-    if (_rejectedPositions.Any(p => p.Offer is null))
-      throw new DomainArgumentException("Return cost can be calculated only in Ready status and rejected positions must have Offer.");
+    if (_rejectedPositions.Any(p => p.CapturedOffer is null))
+      throw new DomainArgumentException("Return cost can be calculated only in Ready status and rejected positions must have CapturedOffer.");
 
     decimal result = 0;
 
-    _rejectedPositions.ForEach(p => result += p.Offer!.Price * p.Quantity);
+    _rejectedPositions.ForEach(p => result += p.CapturedOffer.Price * p.Quantity);
 
     ReturnCost = result;
   }
@@ -123,10 +123,10 @@ public class Order
 
   private void DistinctToPharmacyOrders()
   {
-    if (_positions.Any(p => p.Offer is null))
-      throw new DomainArgumentException("DistinctToPharmacyOrders requires Preparing status and positions with Offer.");
+    if (_positions.Any(p => p.CapturedOffer is null))
+      throw new DomainArgumentException("DistinctToPharmacyOrders requires Preparing status and positions with CapturedOffer.");
 
-    var groupedPositions = _positions.GroupBy(p => p.Offer.PharmacyId);
+    var groupedPositions = _positions.GroupBy(p => p.CapturedOffer.PharmacyId);
 
     List<PharmacyOrder> pharmacyOrders = new();
 

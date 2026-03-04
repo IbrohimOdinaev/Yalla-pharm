@@ -6,109 +6,125 @@ namespace Yalla.Domain.Entities;
 
 public class Medicine
 {
-  public Guid Id { get; private set; }
+    public Guid Id { get; private set; }
 
-  public string? Url { get; private set; }
+    public string? Url { get; private set; }
 
-  public string Title { get; private set; } = string.Empty;
+    public string Title { get; private set; } = string.Empty;
 
-  public string Articul { get; private set; } = string.Empty;
+    public string Articul { get; private set; } = string.Empty;
 
-
-  private readonly List<Atribute> _atributes = new();
-
-  private readonly List<Offer> _offers = new();
-
-  public IReadOnlyCollection<Atribute> Atributes => _atributes.AsReadOnly();
-
-  public IReadOnlyCollection<Offer> Offers => _offers.AsReadOnly();
+    public bool IsActive { get; private set; } = true;
 
 
-  private Medicine() { }
+    private readonly List<Atribute> _atributes = new();
 
-  public Medicine(string title, string articul, List<Atribute> atributes)
-  {
-    if (string.IsNullOrWhiteSpace(title))
-      throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
+    private readonly List<PharmacyOffer> _offers = new();
 
-    if (string.IsNullOrWhiteSpace(articul))
-      throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
+    public IReadOnlyCollection<Atribute> Atributes => _atributes.AsReadOnly();
 
-    Id = Guid.NewGuid();
-    Title = title;
-    Articul = articul;
-    _atributes.AddRange(atributes);
-  }
+    public IReadOnlyCollection<PharmacyOffer> Offers => _offers.AsReadOnly();
 
-  public Medicine(Guid id, string? url, string title, string articul, List<Atribute> atributes, List<Offer> offers)
-  {
-    Id = id;
-    Url = url;
-    Title = title;
-    Articul = articul;
-    _atributes = atributes;
-    _offers.AddRange(offers);
-  }
 
-  public void SetUrl(string? url)
-  {
-    if (string.IsNullOrWhiteSpace(url))
-      throw new DomainArgumentException("Medicine.Url can't be null or whitespace.");
+    private Medicine() { }
 
-    Url = url;
-  }
+    public Medicine(string title, string articul, List<Atribute> atributes)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
 
-  public void SetTitle(string title)
-  {
-    if (string.IsNullOrWhiteSpace(title))
-      throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
+        if (string.IsNullOrWhiteSpace(articul))
+            throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
 
-    Title = title;
-  }
+        Id = Guid.NewGuid();
+        Title = title;
+        Articul = articul;
+        IsActive = true;
+        _atributes.AddRange(atributes);
+    }
 
-  public void SetArticul(string articul)
-  {
-    if (string.IsNullOrWhiteSpace(articul))
-      throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
+    public Medicine(
+      Guid id,
+      string? url,
+      string title,
+      string articul,
+      List<Atribute> atributes,
+      List<PharmacyOffer> offers,
+      bool isActive = true)
+    {
+        Id = id;
+        Url = url;
+        Title = title;
+        Articul = articul;
+        IsActive = isActive;
+        _atributes = atributes;
+        _offers.AddRange(offers);
+    }
 
-    Articul = articul;
-  }
+    public void SetUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            throw new DomainArgumentException("Medicine.Url can't be null or whitespace.");
 
-  public void AddAtribute(Atribute? atribute)
-  {
-    if (atribute is null)
-      throw new DomainArgumentException("Atribute can't be null.");
+        Url = url;
+    }
 
-    _atributes.Add(atribute);
-  }
+    public void SetTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
 
-  public void RemoveAtribute(Atribute? atribute)
-  {
-    if (atribute is null)
-      throw new DomainArgumentException("Atribute can't be null.");
+        Title = title;
+    }
 
-    _atributes.Remove(atribute);
-  }
+    public void SetArticul(string articul)
+    {
+        if (string.IsNullOrWhiteSpace(articul))
+            throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
 
-  public void AddOffer(Offer? offer)
-  {
-    if (offer is null)
-      throw new DomainArgumentException("Offer can't be null.");
+        Articul = articul;
+    }
 
-    _offers.Add(offer);
-  }
+    public void SetIsActive(bool isActive)
+    {
+        IsActive = isActive;
+    }
 
-  public void RemoveOffer(Offer? offer)
-  {
-    if (offer is null)
-      throw new DomainArgumentException("Offer can't be null.");
+    public void AddAtribute(Atribute? atribute)
+    {
+        if (atribute is null)
+            throw new DomainArgumentException("Atribute can't be null.");
 
-    _offers.Remove(offer);
-  }
+        _atributes.Add(atribute);
+    }
 
-  public void UpdateOffers(List<Offer> offers)
-  {
-    _offers.Clear();
-    _offers.AddRange(offers);
-  }
+    public void RemoveAtribute(Atribute? atribute)
+    {
+        if (atribute is null)
+            throw new DomainArgumentException("Atribute can't be null.");
+
+        _atributes.Remove(atribute);
+    }
+
+    public void AddOffer(PharmacyOffer? offer)
+    {
+        if (offer is null)
+            throw new DomainArgumentException("Offer can't be null.");
+
+        _offers.Add(offer);
+    }
+
+    public void RemoveOffer(PharmacyOffer? offer)
+    {
+        if (offer is null)
+            throw new DomainArgumentException("Offer can't be null.");
+
+        _offers.Remove(offer);
+    }
+
+    public void UpdateOffers(List<PharmacyOffer> offers)
+    {
+        _offers.Clear();
+        _offers.AddRange(offers);
+    }
 }

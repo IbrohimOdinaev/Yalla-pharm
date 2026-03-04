@@ -10,7 +10,6 @@ public class PharmacyOrder
 
   public Guid OrderId { get; private set; }
 
-
   private readonly List<Position> _positions = new();
 
   private readonly List<Position> _rejectedPositions = new();

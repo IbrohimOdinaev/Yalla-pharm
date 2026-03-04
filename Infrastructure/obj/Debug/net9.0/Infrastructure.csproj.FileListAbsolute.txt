@@ -1,4 +1,5 @@
 /home/agony/Documents/work/yalla-farm/Infrastructure/bin/Debug/net9.0/Infrastructure.deps.json
+/home/agony/Documents/work/yalla-farm/Infrastructure/bin/Debug/net9.0/Infrastructure.runtimeconfig.json
 /home/agony/Documents/work/yalla-farm/Infrastructure/bin/Debug/net9.0/Infrastructure.dll
 /home/agony/Documents/work/yalla-farm/Infrastructure/bin/Debug/net9.0/Infrastructure.pdb
 /home/agony/Documents/work/yalla-farm/Infrastructure/bin/Debug/net9.0/Application.dll
@@ -14,4 +15,5 @@
 /home/agony/Documents/work/yalla-farm/Infrastructure/obj/Debug/net9.0/Infrastructure.dll
 /home/agony/Documents/work/yalla-farm/Infrastructure/obj/Debug/net9.0/refint/Infrastructure.dll
 /home/agony/Documents/work/yalla-farm/Infrastructure/obj/Debug/net9.0/Infrastructure.pdb
+/home/agony/Documents/work/yalla-farm/Infrastructure/obj/Debug/net9.0/Infrastructure.genruntimeconfig.cache
 /home/agony/Documents/work/yalla-farm/Infrastructure/obj/Debug/net9.0/ref/Infrastructure.dll

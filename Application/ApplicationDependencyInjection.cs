@@ -1,0 +1,16 @@
+using Microsoft.Extensions.DependencyInjection;
+using Yalla.Application.Services;
+
+namespace Yalla.Application;
+
+public static class DependencyInjection
+{
+  public static IServiceCollection AddApplication(this IServiceCollection services)
+  {
+    services.AddScoped<IClientService, ClientService>();
+    services.AddScoped<IMedicineService, MedicineService>();
+    services.AddScoped<IPharmacyWorkerService, PharmacyWorkerService>();
+
+    return services;
+  }
+}

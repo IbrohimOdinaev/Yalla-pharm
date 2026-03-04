@@ -1,0 +1,7 @@
+namespace Yalla.Application.DTO.Request;
+
+public sealed class CheckoutBasketRequest
+{
+  public Guid ClientId { get; init; }
+  public string DeliveryAddress { get; init; } = string.Empty;
+}

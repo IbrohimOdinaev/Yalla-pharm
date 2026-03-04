@@ -1,0 +1,9 @@
+namespace Yalla.Application.DTO.Request;
+
+public sealed class AddProductToBasketRequest
+{
+  public Guid ClientId { get; init; }
+  public Guid MedicineId { get; init; }
+  public Guid PharmacyId { get; init; }
+  public int Quantity { get; init; }
+}

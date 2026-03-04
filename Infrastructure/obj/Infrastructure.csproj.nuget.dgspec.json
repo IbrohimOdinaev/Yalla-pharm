@@ -10,11 +10,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Application/Application.csproj",
         "projectName": "Application",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Application/Application.csproj",
-        "packagesPath": "/home/agony/.nuget/packages/",
+        "packagesPath": "/tmp/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Application/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/agony/.nuget/NuGet/NuGet.Config"
+          "/tmp/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -48,6 +48,12 @@
       "frameworks": {
         "net9.0": {
           "targetAlias": "net9.0",
+          "dependencies": {
+            "Microsoft.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[9.0.11, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
@@ -74,11 +80,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
         "projectName": "Domain",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
-        "packagesPath": "/home/agony/.nuget/packages/",
+        "packagesPath": "/tmp/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Domain/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/agony/.nuget/NuGet/NuGet.Config"
+          "/tmp/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -134,11 +140,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
         "projectName": "Infrastructure",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
-        "packagesPath": "/home/agony/.nuget/packages/",
+        "packagesPath": "/tmp/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/agony/.nuget/NuGet/NuGet.Config"
+          "/tmp/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -175,6 +181,22 @@
       "frameworks": {
         "net9.0": {
           "targetAlias": "net9.0",
+          "dependencies": {
+            "Microsoft.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[9.0.11, )"
+            },
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[9.0.11, )"
+            },
+            "Npgsql.EntityFrameworkCore.PostgreSQL": {
+              "target": "Package",
+              "version": "[9.0.4, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
