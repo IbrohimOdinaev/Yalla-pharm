@@ -1,0 +1,19 @@
+using Microsoft.EntityFrameworkCore;
+using Yalla.Domain.Entities;
+
+namespace Yalla.Application.Abstractions;
+
+public interface IAppDbContext
+{
+    DbSet<Client> Clients { get; }
+    DbSet<PharmacyWorker> PharmacyWorkers { get; }
+    DbSet<Pharmacy> Pharmacies { get; }
+    DbSet<Medicine> Medicines { get; }
+    DbSet<Offer> Offers { get; }
+    DbSet<Order> Orders { get; }
+    DbSet<BasketPosition> BasketPositions { get; }
+    DbSet<OrderPosition> OrderPositions { get; }
+    DbSet<User> Users { get; }
+
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+}

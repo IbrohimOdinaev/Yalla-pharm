@@ -12,12 +12,15 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<User> Users => Set<User>();
   public DbSet<Client> Clients => Set<Client>();
   public DbSet<Medicine> Medicines => Set<Medicine>();
-  public DbSet<PharmacyOffer> PharmacyOffers => Set<PharmacyOffer>();
+  public DbSet<MedicineImage> MedicineImages => Set<MedicineImage>();
+  public DbSet<Offer> Offers => Set<Offer>();
   public DbSet<Order> Orders => Set<Order>();
   public DbSet<Pharmacy> Pharmacies => Set<Pharmacy>();
-  public DbSet<PharmacyOrder> PharmacyOrders => Set<PharmacyOrder>();
   public DbSet<PharmacyWorker> PharmacyWorkers => Set<PharmacyWorker>();
-  public DbSet<Position> Positions => Set<Position>();
+  public DbSet<BasketPosition> BasketPositions => Set<BasketPosition>();
+  public DbSet<OrderPosition> OrderPositions => Set<OrderPosition>();
+  public DbSet<CheckoutRequest> CheckoutRequests => Set<CheckoutRequest>();
+  public DbSet<RefundRequest> RefundRequests => Set<RefundRequest>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

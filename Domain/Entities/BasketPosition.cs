@@ -1,0 +1,85 @@
+using Yalla.Domain.Exceptions;
+
+namespace Yalla.Domain.Entities;
+
+public class BasketPosition
+{
+    public Guid Id { get; private set; }
+
+    public Guid ClientId { get; private set; }
+
+    public Guid MedicineId { get; private set; }
+
+    public Medicine? Medicine { get; private set; }
+
+    public int Quantity { get; private set; }
+
+    private BasketPosition() { }
+
+    public BasketPosition(
+      Guid clientId,
+      Guid medicineId,
+      Medicine? medicine,
+      int quantity)
+    {
+        if (clientId == Guid.Empty)
+            throw new DomainArgumentException("ClientId can't be empty.");
+
+        if (medicineId == Guid.Empty)
+            throw new DomainArgumentException("MedicineId can't be empty.");
+
+        if (quantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
+
+        Id = Guid.NewGuid();
+        ClientId = clientId;
+        MedicineId = medicineId;
+        Medicine = medicine;
+        Quantity = quantity;
+    }
+
+    public BasketPosition(
+      Guid id,
+      Guid clientId,
+      Guid medicineId,
+      Medicine? medicine,
+      int quantity)
+    {
+        if (id == Guid.Empty)
+            throw new DomainArgumentException("Id can't be empty.");
+
+        if (clientId == Guid.Empty)
+            throw new DomainArgumentException("ClientId can't be empty.");
+
+        if (medicineId == Guid.Empty)
+            throw new DomainArgumentException("MedicineId can't be empty.");
+
+        if (quantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
+
+        Id = id;
+        ClientId = clientId;
+        MedicineId = medicineId;
+        Medicine = medicine;
+        Quantity = quantity;
+    }
+
+    public void AttachMedicine(Medicine? medicine)
+    {
+        if (medicine is null)
+            throw new DomainArgumentException("Medicine can't be null.");
+
+        if (medicine.Id != MedicineId)
+            throw new DomainArgumentException("Medicine.Id must match BasketPosition.MedicineId.");
+
+        Medicine = medicine;
+    }
+
+    public void SetQuantity(int newQuantity)
+    {
+        if (newQuantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
+
+        Quantity = newQuantity;
+    }
+}

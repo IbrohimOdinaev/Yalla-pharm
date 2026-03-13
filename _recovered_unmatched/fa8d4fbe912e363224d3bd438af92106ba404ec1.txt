@@ -1,0 +1,275 @@
+using Microsoft.EntityFrameworkCore;
+using Yalla.Application.DTO.Request;
+using Yalla.Application.Services;
+using Yalla.Application.UnitTests.TestInfrastructure;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
+
+namespace Yalla.Application.UnitTests.Services;
+
+public class OrderServiceTests
+{
+  [Fact]
+  public async Task GetNewOrdersForWorkerAsync_ReturnsUnderReviewPreparingReady_OnlyOwnPharmacy()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var otherPharmacy = TestDbFactory.CreatePharmacy("Other", "Addr", Guid.NewGuid());
+    scope.Db.Pharmacies.Add(otherPharmacy);
+    await scope.Db.SaveChangesAsync();
+
+    var underReview = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.UnderReview);
+    var preparing = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Preparing);
+    var ready = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Ready);
+    _ = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.OnTheWay);
+    _ = await CreateOrderWithStatus(scope, setup.Client.Id, otherPharmacy.Id, setup.Medicine, Status.UnderReview);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.GetNewOrdersForWorkerAsync(new GetNewOrdersForWorkerRequest
+    {
+      WorkerId = setup.Worker.Id
+    });
+
+    Assert.Equal(3, response.Orders.Count);
+    Assert.Contains(response.Orders, x => x.OrderId == underReview.Id);
+    Assert.Contains(response.Orders, x => x.OrderId == preparing.Id);
+    Assert.Contains(response.Orders, x => x.OrderId == ready.Id);
+  }
+
+  [Fact]
+  public async Task StartOrderAssemblyAsync_MovesUnderReviewToPreparing()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.UnderReview);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.Preparing, response.Status);
+  }
+
+  [Fact]
+  public async Task StartOrderAssemblyAsync_ThrowsForWrongStatus()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Ready);
+
+    var service = new OrderService(scope.Db);
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id
+    }));
+  }
+
+  [Fact]
+  public async Task RejectOrderPositionsAsync_RecalculatesTotalsAndCreatesRefundStub()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var med2 = TestDbFactory.CreateMedicine("M2", "M-2");
+    scope.Db.Medicines.Add(med2);
+    await scope.Db.SaveChangesAsync();
+
+    var order = TestDbFactory.CreateOrder(
+      setup.Client.Id,
+      setup.Pharmacy.Id,
+      "Addr",
+      (setup.Medicine, 10m, 1, false),
+      (med2, 20m, 2, false));
+    order.NextStage(true);
+    order.NextStage(true);
+    scope.Db.Orders.Add(order);
+    await scope.Db.SaveChangesAsync();
+
+    var rejectPositionId = order.Positions.Last().Id;
+
+    var service = new OrderService(scope.Db);
+    var response = await service.RejectOrderPositionsAsync(new RejectOrderPositionsRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id,
+      PositionIds = [rejectPositionId]
+    });
+
+    Assert.Equal(40m, response.RefundRequest.Amount);
+    Assert.Equal(10m, response.Order.Cost);
+    Assert.Equal(40m, response.Order.ReturnCost);
+    Assert.Contains(response.Order.Positions, x => x.PositionId == rejectPositionId && x.IsRejected);
+  }
+
+  [Fact]
+  public async Task RejectOrderPositionsAsync_AutoCancelsWhenAllRejected()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Preparing);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.RejectOrderPositionsAsync(new RejectOrderPositionsRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id,
+      PositionIds = order.Positions.Select(x => x.Id).ToList()
+    });
+
+    Assert.Equal(Status.Cancelled, response.Order.Status);
+    Assert.Equal(response.Order.ReturnCost, response.RefundRequest.Amount);
+  }
+
+  [Fact]
+  public async Task MarkOrderReadyAsync_MovesPreparingToReady()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Preparing);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.MarkOrderReadyAsync(new MarkOrderReadyRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.Ready, response.Status);
+  }
+
+  [Fact]
+  public async Task MarkOrderOnTheWayAsync_MovesReadyToOnTheWay()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Ready);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.MarkOrderOnTheWayAsync(new MarkOrderOnTheWayRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.OnTheWay, response.Status);
+  }
+
+  [Fact]
+  public async Task MarkOrderDeliveredBySuperAdminAsync_MovesOnTheWayToDelivered()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var superAdmin = TestDbFactory.CreateUser("S", "992400010", Role.SuperAdmin);
+    scope.Db.Users.Add(superAdmin);
+    await scope.Db.SaveChangesAsync();
+
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.OnTheWay);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.MarkOrderDeliveredBySuperAdminAsync(new MarkOrderDeliveredBySuperAdminRequest
+    {
+      SuperAdminId = superAdmin.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.Delivered, response.Status);
+  }
+
+  [Fact]
+  public async Task MarkOrderDeliveredBySuperAdminAsync_ThrowsForNonSuperAdmin()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var admin = TestDbFactory.CreateUser("A", "992400011", Role.Admin);
+    scope.Db.Users.Add(admin);
+    await scope.Db.SaveChangesAsync();
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.OnTheWay);
+
+    var service = new OrderService(scope.Db);
+    await Assert.ThrowsAsync<InvalidOperationException>(() =>
+      service.MarkOrderDeliveredBySuperAdminAsync(new MarkOrderDeliveredBySuperAdminRequest
+      {
+        SuperAdminId = admin.Id,
+        OrderId = order.Id
+      }));
+  }
+
+  [Fact]
+  public async Task CancelOrderAsync_ClientCanCancelOnTheWay()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.OnTheWay);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.CancelOrderAsync(new CancelOrderRequest
+    {
+      ClientId = setup.Client.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.Cancelled, response.Status);
+    Assert.Equal(order.Cost, response.RefundRequest.Amount);
+  }
+
+  [Fact]
+  public async Task CancelOrderAsync_ThrowsWhenDelivered()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Delivered);
+
+    var service = new OrderService(scope.Db);
+
+    await Assert.ThrowsAsync<Yalla.Domain.Exceptions.DomainException>(() =>
+      service.CancelOrderAsync(new CancelOrderRequest
+      {
+        ClientId = setup.Client.Id,
+        OrderId = order.Id
+      }));
+  }
+
+  private static async Task<(Client Client, Pharmacy Pharmacy, PharmacyWorker Worker, Medicine Medicine)> SeedWorkerSetup(TestDbScope scope)
+  {
+    var admin = TestDbFactory.CreateUser("Admin", "992400001", Role.Admin);
+    var client = TestDbFactory.CreateClient("Client", "992400002");
+    scope.Db.Users.Add(admin);
+    scope.Db.Clients.Add(client);
+    await scope.Db.SaveChangesAsync();
+
+    var pharmacy = TestDbFactory.CreatePharmacy("Ph", "Addr", admin.Id);
+    var worker = TestDbFactory.CreateWorker("Worker", "992400003", pharmacy.Id, pharmacy);
+    var medicine = TestDbFactory.CreateMedicine("M", "M-1");
+
+    scope.Db.Pharmacies.Add(pharmacy);
+    scope.Db.PharmacyWorkers.Add(worker);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    return (client, pharmacy, worker, medicine);
+  }
+
+  private static async Task<Order> CreateOrderWithStatus(
+    TestDbScope scope,
+    Guid clientId,
+    Guid pharmacyId,
+    Medicine medicine,
+    Status status)
+  {
+    var order = TestDbFactory.CreateOrder(clientId, pharmacyId, "Address", (medicine, 10m, 1, false));
+
+    while (order.Status != status)
+    {
+      order.NextStage(true);
+      if ((int)order.Status > (int)status)
+        throw new InvalidOperationException("Cannot reach requested status with NextStage.");
+    }
+
+    scope.Db.Orders.Add(order);
+    await scope.Db.SaveChangesAsync();
+    return order;
+  }
+}

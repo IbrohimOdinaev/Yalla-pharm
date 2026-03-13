@@ -16,7 +16,7 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
 
         builder.HasMany(x => x.BasketPositions)
           .WithOne()
-          .HasForeignKey("basket_client_id");
+          .HasForeignKey(x => x.ClientId);
 
         builder.Metadata.FindNavigation(nameof(Client.Orders))?.SetField("_orders");
         builder.Metadata.FindNavigation(nameof(Client.Orders))?.SetPropertyAccessMode(PropertyAccessMode.Field);

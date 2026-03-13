@@ -1,0 +1,95 @@
+using Yalla.Application.DTO.Request;
+using Yalla.Application.Services;
+using Yalla.Application.UnitTests.TestInfrastructure;
+
+namespace Yalla.Application.UnitTests.Services;
+
+public class MedicineServiceTests
+{
+  [Fact]
+  public async Task CreateMedicineAsync_CreatesMedicine()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new MedicineService(scope.Db);
+
+    var response = await service.CreateMedicineAsync(new CreateMedicineRequest
+    {
+      Title = "Paracetamol",
+      Articul = "P-1",
+      Url = "https://img",
+      Atributes = [new MedicineAtributeRequest { Name = "form", Option = "tablet" }]
+    });
+
+    Assert.Equal("Paracetamol", response.Medicine.Title);
+    Assert.Equal("P-1", response.Medicine.Articul);
+    Assert.Single(scope.Db.Medicines);
+  }
+
+  [Fact]
+  public async Task CreateMedicineAsync_ThrowsForDuplicateArticul()
+  {
+    using var scope = TestDbFactory.Create();
+    var existing = TestDbFactory.CreateMedicine("M1", "DUP-1");
+    scope.Db.Medicines.Add(existing);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new MedicineService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateMedicineAsync(new CreateMedicineRequest
+    {
+      Title = "M2",
+      Articul = "DUP-1"
+    }));
+  }
+
+  [Fact]
+  public async Task UpdateMedicineAsync_ThrowsWhenNotFound()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new MedicineService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateMedicineAsync(new UpdateMedicineRequest
+    {
+      MedicineId = Guid.NewGuid(),
+      Title = "X",
+      Articul = "Y"
+    }));
+  }
+
+  [Fact]
+  public async Task DeleteMedicineAsync_SoftDeletesMedicine()
+  {
+    using var scope = TestDbFactory.Create();
+    var medicine = TestDbFactory.CreateMedicine("M", "M-1");
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new MedicineService(scope.Db);
+    var response = await service.DeleteMedicineAsync(new DeleteMedicineRequest { MedicineId = medicine.Id });
+
+    Assert.False(response.IsActive);
+  }
+
+  [Fact]
+  public async Task SearchMedicinesAsync_ReturnsOnlyActiveAndRespectsLimitAndRanking()
+  {
+    using var scope = TestDbFactory.Create();
+    var m1 = TestDbFactory.CreateMedicine("Aspirin Forte", "A-11");
+    var m2 = TestDbFactory.CreateMedicine("Cardio Aspirin", "C-22");
+    var m3 = TestDbFactory.CreateMedicine("Random", "ASP-33");
+    var m4 = TestDbFactory.CreateMedicine("Inactive Aspirin", "I-44", isActive: false);
+    scope.Db.Medicines.AddRange(m1, m2, m3, m4);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new MedicineService(scope.Db);
+    var response = await service.SearchMedicinesAsync(new SearchMedicinesRequest
+    {
+      Query = "asp",
+      Limit = 2
+    });
+
+    Assert.Equal(2, response.Medicines.Count);
+    Assert.Equal(m1.Id, response.Medicines.First().Id);
+    Assert.DoesNotContain(response.Medicines, x => x.Id == m4.Id);
+  }
+}

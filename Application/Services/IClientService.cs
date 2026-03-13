@@ -25,7 +25,23 @@ public interface IClientService
       RemoveProductFromBasketRequest request,
       CancellationToken cancellationToken = default);
 
+    Task<UpdateBasketPositionQuantityResponse> UpdateBasketPositionQuantityAsync(
+      UpdateBasketPositionQuantityRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<ClearBasketResponse> ClearBasketAsync(
+      ClearBasketRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<GetBasketResponse> GetBasketAsync(
+      GetBasketRequest request,
+      CancellationToken cancellationToken = default);
+
     Task<GetAllClientsResponse> GetAllClientsAsync(
+      GetAllClientsRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<GetAllClientsResponse> GetAllClientsWithBasketAsync(
       GetAllClientsRequest request,
       CancellationToken cancellationToken = default);
 
@@ -33,7 +49,15 @@ public interface IClientService
       GetClientByPhoneNumberRequest request,
       CancellationToken cancellationToken = default);
 
+    Task<GetClientByIdResponse> GetClientByIdAsync(
+      GetClientByIdRequest request,
+      CancellationToken cancellationToken = default);
+
     Task<CheckoutBasketResponse> CheckoutBasketAsync(
+      CheckoutBasketRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
       CheckoutBasketRequest request,
       CancellationToken cancellationToken = default);
 }

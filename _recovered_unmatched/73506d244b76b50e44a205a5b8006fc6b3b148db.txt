@@ -1,0 +1,119 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
+using Yalla.Domain.ValueObjects;
+using Yalla.Infrastructure;
+
+namespace Yalla.Application.UnitTests.TestInfrastructure;
+
+internal static class TestDbFactory
+{
+  public static TestDbScope Create()
+  {
+    var connection = new SqliteConnection("Data Source=:memory:");
+    connection.Open();
+
+    var options = new DbContextOptionsBuilder<AppDbContext>()
+      .UseSqlite(connection)
+      .EnableSensitiveDataLogging()
+      .Options;
+
+    var db = new AppDbContext(options);
+    db.Database.EnsureCreated();
+
+    return new TestDbScope(db, connection);
+  }
+
+  public static User CreateUser(string name, string phone, Role role)
+  {
+    return new User(name, phone, role);
+  }
+
+  public static Client CreateClient(string name, string phone)
+  {
+    return new Client(name, phone);
+  }
+
+  public static Pharmacy CreatePharmacy(string title, string address, Guid adminId, bool isActive = true)
+  {
+    var pharmacy = new Pharmacy(title, address);
+    pharmacy.SetAdminId(adminId);
+    if (!isActive)
+      pharmacy.ChangeActivity();
+
+    return pharmacy;
+  }
+
+  public static PharmacyWorker CreateWorker(
+    string name,
+    string phone,
+    Guid pharmacyId,
+    Pharmacy pharmacy)
+  {
+    return new PharmacyWorker(name, phone, pharmacyId, pharmacy);
+  }
+
+  public static Medicine CreateMedicine(
+    string title,
+    string articul,
+    bool isActive = true,
+    string? url = null)
+  {
+    var medicine = new Medicine(
+      title,
+      articul,
+      [new Atribute("dosage", "500mg")]);
+
+    if (!string.IsNullOrWhiteSpace(url))
+      medicine.SetUrl(url);
+
+    if (!isActive)
+      medicine.SetIsActive(false);
+
+    return medicine;
+  }
+
+  public static Offer CreateOffer(Guid medicineId, Guid pharmacyId, int stock, decimal price)
+  {
+    return new Offer(medicineId, pharmacyId, stock, price);
+  }
+
+  public static Order CreateOrder(
+    Guid clientId,
+    Guid pharmacyId,
+    string address,
+    params (Medicine medicine, decimal price, int quantity, bool isRejected)[] positions)
+  {
+    var orderId = Guid.NewGuid();
+    var orderPositions = positions
+      .Select(x => new OrderPosition(
+        orderId: orderId,
+        medicineId: x.medicine.Id,
+        medicine: x.medicine,
+        offerSnapshot: new OfferSnapshot(pharmacyId, x.price),
+        quantity: x.quantity,
+        isRejected: x.isRejected))
+      .ToList();
+
+    return new Order(orderId, clientId, pharmacyId, address, orderPositions);
+  }
+}
+
+internal sealed class TestDbScope : IDisposable
+{
+  public AppDbContext Db { get; }
+  private readonly SqliteConnection _connection;
+
+  public TestDbScope(AppDbContext db, SqliteConnection connection)
+  {
+    Db = db;
+    _connection = connection;
+  }
+
+  public void Dispose()
+  {
+    Db.Dispose();
+    _connection.Dispose();
+  }
+}

@@ -30,11 +30,6 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .HasMaxLength(128)
           .IsRequired();
 
-        builder.Property(x => x.Url)
-          .HasColumnName("url")
-          .HasColumnType("character varying(1024)")
-          .HasMaxLength(1024);
-
         builder.Property(x => x.IsActive)
           .HasColumnName("is_active")
           .HasColumnType("boolean")
@@ -75,5 +70,7 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
         builder.Metadata.FindNavigation(nameof(Medicine.Atributes))?.SetPropertyAccessMode(PropertyAccessMode.Field);
         builder.Metadata.FindNavigation(nameof(Medicine.Offers))?.SetField("_offers");
         builder.Metadata.FindNavigation(nameof(Medicine.Offers))?.SetPropertyAccessMode(PropertyAccessMode.Field);
+        builder.Metadata.FindNavigation(nameof(Medicine.Images))?.SetField("_images");
+        builder.Metadata.FindNavigation(nameof(Medicine.Images))?.SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

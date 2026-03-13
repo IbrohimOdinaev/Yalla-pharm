@@ -1,0 +1,487 @@
+using Microsoft.EntityFrameworkCore;
+using Yalla.Application.Abstractions;
+using Yalla.Application.DTO.Request;
+using Yalla.Application.DTO.Response;
+using Yalla.Application.Extensions;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Exceptions;
+
+namespace Yalla.Application.Services;
+
+public sealed class ClientService : IClientService
+{
+    private readonly IAppDbContext _dbContext;
+
+    public ClientService(IAppDbContext dbContext)
+    {
+        _dbContext = dbContext;
+    }
+
+    public async Task<RegisterClientResponse> RegisterClientAsync(
+      RegisterClientRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var normalizedPhoneNumber = NormalizePhoneNumber(request.PhoneNumber);
+
+        var phoneExists = await _dbContext.Users
+          .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber, cancellationToken);
+
+        if (phoneExists)
+            throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
+
+        var client = request.ToDomain(normalizedPhoneNumber);
+
+        _dbContext.Clients.Add(client);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new RegisterClientResponse
+        {
+            Client = client.ToResponse([], [])
+        };
+    }
+
+    public async Task<UpdateClientResponse> UpdateClientAsync(
+      UpdateClientRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var normalizedPhoneNumber = NormalizePhoneNumber(request.PhoneNumber);
+
+        var client = await _dbContext.Clients
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
+          ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
+
+        var phoneExists = await _dbContext.Users
+          .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber && x.Id != request.ClientId, cancellationToken);
+
+        if (phoneExists)
+            throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
+
+        request.ApplyToDomain(client, normalizedPhoneNumber);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var basketData = await LoadBasketByClientIdAsync(client.Id, cancellationToken);
+
+        return new UpdateClientResponse
+        {
+            Client = client.ToResponse(basketData.Positions, basketData.PharmacyOptions)
+        };
+    }
+
+    public async Task<DeleteClientResponse> DeleteClientAsync(
+      DeleteClientRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var client = await _dbContext.Clients
+          .AsTracking()
+          .Include(x => x.Orders)
+          .Include(x => x.BasketPositions)
+          .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
+          ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
+
+        if (client.Orders.Count > 0)
+            throw new InvalidOperationException(
+              $"Client '{request.ClientId}' has orders and cannot be deleted.");
+
+        if (client.BasketPositions.Count > 0)
+        {
+            var basketPositions = client.BasketPositions.ToList();
+
+            foreach (var basketPosition in basketPositions)
+                client.RemoveBasketPosition(basketPosition);
+
+            _dbContext.BasketPositions.RemoveRange(basketPositions);
+        }
+
+        _dbContext.Clients.Remove(client);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new DeleteClientResponse
+        {
+            DeletedClientId = request.ClientId
+        };
+    }
+
+    public async Task<AddProductToBasketResponse> AddProductToBasketAsync(
+      AddProductToBasketRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Quantity <= 0)
+            throw new DomainArgumentException("Quantity must be greater than zero.");
+
+        var client = await _dbContext.GetTrackedClientOrThrowAsync(request.ClientId, cancellationToken);
+
+        var medicine = await _dbContext.GetTrackedMedicineOrThrowAsync(request.MedicineId, cancellationToken);
+
+        if (!medicine.IsActive)
+            throw new InvalidOperationException(
+              $"Medicine '{request.MedicineId}' is inactive and cannot be added to basket.");
+
+        var existingPosition = await _dbContext.BasketPositions
+          .AsTracking()
+          .FirstOrDefaultAsync(
+            x => x.ClientId == request.ClientId
+              && x.MedicineId == request.MedicineId,
+            cancellationToken);
+
+        if (existingPosition is not null)
+        {
+            existingPosition.SetQuantity(existingPosition.Quantity + request.Quantity);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var basketData = await LoadBasketByClientIdAsync(request.ClientId, cancellationToken);
+
+            return new AddProductToBasketResponse
+            {
+                ClientId = request.ClientId,
+                BasketPosition = existingPosition.ToResponse(),
+                PharmacyOptions = basketData.PharmacyOptions,
+                BasketItemsCount = await CountBasketItemsAsync(request.ClientId, cancellationToken)
+            };
+        }
+
+        var newPosition = request.ToDomain(medicine);
+        client.AddBasketPosition(newPosition);
+
+        _dbContext.BasketPositions.Add(newPosition);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var newBasketData = await LoadBasketByClientIdAsync(request.ClientId, cancellationToken);
+
+        return new AddProductToBasketResponse
+        {
+            ClientId = request.ClientId,
+            BasketPosition = newPosition.ToResponse(),
+            PharmacyOptions = newBasketData.PharmacyOptions,
+            BasketItemsCount = await CountBasketItemsAsync(request.ClientId, cancellationToken)
+        };
+    }
+
+    public async Task<RemoveProductFromBasketResponse> RemoveProductFromBasketAsync(
+      RemoveProductFromBasketRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var client = await _dbContext.Clients
+          .AsTracking()
+          .Include(x => x.BasketPositions)
+          .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
+          ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
+
+        var basketPositionToRemove = client.BasketPositions
+          .FirstOrDefault(x => x.Id == request.PositionId);
+
+        if (basketPositionToRemove is null)
+            throw new InvalidOperationException(
+              $"Basket position '{request.PositionId}' was not found in client '{request.ClientId}' basket.");
+
+        client.RemoveBasketPosition(basketPositionToRemove);
+        _dbContext.BasketPositions.Remove(basketPositionToRemove);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new RemoveProductFromBasketResponse
+        {
+            ClientId = request.ClientId,
+            RemovedPositionId = request.PositionId,
+            BasketItemsCount = await CountBasketItemsAsync(request.ClientId, cancellationToken)
+        };
+    }
+
+    public async Task<GetAllClientsResponse> GetAllClientsAsync(
+      GetAllClientsRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var page = request.Page < 1 ? 1 : request.Page;
+        var pageSize = request.PageSize <= 0 ? 50 : request.PageSize;
+
+        var totalCount = await _dbContext.Clients.CountAsync(cancellationToken);
+
+        var clients = await _dbContext.Clients
+          .AsNoTracking()
+          .OrderBy(x => x.Name)
+          .Skip((page - 1) * pageSize)
+          .Take(pageSize)
+          .ToListAsync(cancellationToken);
+
+        var responseItems = new List<ClientResponse>(clients.Count);
+        foreach (var client in clients)
+        {
+            var basketData = await LoadBasketByClientIdAsync(client.Id, cancellationToken);
+            responseItems.Add(client.ToResponse(basketData.Positions, basketData.PharmacyOptions));
+        }
+
+        return new GetAllClientsResponse
+        {
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            Clients = responseItems
+        };
+    }
+
+    public async Task<GetClientByPhoneNumberResponse> GetClientByPhoneNumberAsync(
+      GetClientByPhoneNumberRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var normalizedPhoneNumber = NormalizePhoneNumber(request.PhoneNumber);
+
+        var client = await _dbContext.Clients
+          .AsNoTracking()
+          .FirstOrDefaultAsync(x => x.PhoneNumber == normalizedPhoneNumber, cancellationToken)
+          ?? throw new InvalidOperationException(
+            $"Client with phone number '{normalizedPhoneNumber}' was not found.");
+
+        var basketData = await LoadBasketByClientIdAsync(client.Id, cancellationToken);
+
+        return new GetClientByPhoneNumberResponse
+        {
+            Client = client.ToResponse(basketData.Positions, basketData.PharmacyOptions)
+        };
+    }
+
+    public async Task<CheckoutBasketResponse> CheckoutBasketAsync(
+      CheckoutBasketRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.PharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        if (string.IsNullOrWhiteSpace(request.DeliveryAddress))
+            throw new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
+
+        var client = await _dbContext.Clients
+          .AsTracking()
+          .Include(x => x.BasketPositions)
+          .ThenInclude(x => x.Medicine)
+          .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
+          ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
+
+        var basketPositions = client.BasketPositions.ToList();
+
+        if (basketPositions.Count == 0)
+            throw new InvalidOperationException($"Client '{request.ClientId}' basket is empty.");
+
+        var pharmacy = await _dbContext.GetTrackedPharmacyOrThrowAsync(request.PharmacyId, cancellationToken);
+
+        if (!pharmacy.IsActive)
+            throw new InvalidOperationException(
+              $"Pharmacy '{request.PharmacyId}' is inactive and cannot be used for checkout.");
+
+        var medicineIds = basketPositions
+          .Select(x => x.MedicineId)
+          .Distinct()
+          .ToList();
+
+        var liveOffers = await _dbContext.Offers
+          .AsTracking()
+          .Where(x => x.PharmacyId == request.PharmacyId && medicineIds.Contains(x.MedicineId))
+          .ToListAsync(cancellationToken);
+
+        var liveOffersByMedicineId = liveOffers.ToDictionary(x => x.MedicineId, x => x);
+
+        var orderId = Guid.NewGuid();
+        var orderPositions = new List<OrderPosition>(basketPositions.Count);
+
+        foreach (var basketPosition in basketPositions)
+        {
+            if (!liveOffersByMedicineId.TryGetValue(basketPosition.MedicineId, out var liveOffer))
+                throw new InvalidOperationException(
+                  $"Medicine '{basketPosition.MedicineId}' is not available in pharmacy '{request.PharmacyId}'.");
+
+            if (basketPosition.Quantity > liveOffer.StockQuantity)
+                throw new InvalidOperationException(
+                  $"Quantity '{basketPosition.Quantity}' exceeds stock '{liveOffer.StockQuantity}' for medicine '{basketPosition.MedicineId}' in pharmacy '{request.PharmacyId}'.");
+
+            orderPositions.Add(
+              basketPosition.ToOrderPositionUsingTrackedEntities(orderId, liveOffer));
+        }
+
+        var order = request.ToDomain(orderId, orderPositions);
+
+        foreach (var basketPosition in basketPositions)
+            client.RemoveBasketPosition(basketPosition);
+
+        _dbContext.BasketPositions.RemoveRange(basketPositions);
+
+        client.AddOrder(order);
+        _dbContext.Orders.Add(order);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return order.ToResponse();
+    }
+
+    private async Task<int> CountBasketItemsAsync(Guid clientId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.BasketPositions
+          .CountAsync(x => x.ClientId == clientId, cancellationToken);
+    }
+
+    private async Task<ClientBasketData> LoadBasketByClientIdAsync(
+      Guid clientId,
+      CancellationToken cancellationToken)
+    {
+        var basketPositions = await _dbContext.BasketPositions
+          .AsNoTracking()
+          .Where(x => x.ClientId == clientId)
+          .ToListAsync(cancellationToken);
+
+        var result = new ClientBasketData
+        {
+            Positions = basketPositions
+              .Select(x => x.ToResponse())
+              .ToList()
+        };
+
+        if (basketPositions.Count == 0)
+            return result;
+
+        var medicineIds = basketPositions
+          .Select(x => x.MedicineId)
+          .Distinct()
+          .ToList();
+
+        var pharmacies = await _dbContext.Pharmacies
+          .AsNoTracking()
+          .Select(x => new PharmacyProjection(x.Id, x.Title, x.IsActive))
+          .ToListAsync(cancellationToken);
+
+        if (pharmacies.Count == 0)
+            return result;
+
+        var offers = await _dbContext.Offers
+          .AsNoTracking()
+          .Where(x => medicineIds.Contains(x.MedicineId))
+          .Select(x => new PharmacyOfferProjection(
+            x.PharmacyId,
+            x.MedicineId,
+            x.Price,
+            x.StockQuantity))
+          .ToListAsync(cancellationToken);
+
+        var offerLookup = offers.ToDictionary(
+          x => (x.PharmacyId, x.MedicineId),
+          x => x);
+
+        var options = new List<BasketPharmacyOptionResponse>(pharmacies.Count);
+        var totalMedicinesCount = basketPositions.Count;
+
+        foreach (var pharmacy in pharmacies)
+        {
+            var foundMedicinesCount = 0;
+            var enoughQuantityMedicinesCount = 0;
+            var totalCost = 0m;
+            var items = new List<BasketPharmacyItemResponse>(basketPositions.Count);
+
+            foreach (var basketPosition in basketPositions)
+            {
+                if (!offerLookup.TryGetValue((pharmacy.PharmacyId, basketPosition.MedicineId), out var offer))
+                {
+                    items.Add(new BasketPharmacyItemResponse
+                    {
+                        MedicineId = basketPosition.MedicineId,
+                        RequestedQuantity = basketPosition.Quantity,
+                        IsFound = false,
+                        FoundQuantity = 0,
+                        HasEnoughQuantity = false,
+                        Price = null
+                    });
+
+                    continue;
+                }
+
+                foundMedicinesCount++;
+
+                var hasEnoughQuantity = offer.StockQuantity >= basketPosition.Quantity;
+                if (hasEnoughQuantity)
+                    enoughQuantityMedicinesCount++;
+
+                totalCost += offer.Price * basketPosition.Quantity;
+
+                items.Add(new BasketPharmacyItemResponse
+                {
+                    MedicineId = basketPosition.MedicineId,
+                    RequestedQuantity = basketPosition.Quantity,
+                    IsFound = true,
+                    FoundQuantity = offer.StockQuantity,
+                    HasEnoughQuantity = hasEnoughQuantity,
+                    Price = offer.Price
+                });
+            }
+
+            options.Add(new BasketPharmacyOptionResponse
+            {
+                PharmacyId = pharmacy.PharmacyId,
+                PharmacyTitle = pharmacy.PharmacyTitle,
+                PharmacyIsActive = pharmacy.IsActive,
+                FoundMedicinesCount = foundMedicinesCount,
+                TotalMedicinesCount = totalMedicinesCount,
+                FoundMedicinesRatio = $"{foundMedicinesCount}/{totalMedicinesCount}",
+                EnoughQuantityMedicinesCount = enoughQuantityMedicinesCount,
+                IsAvailable = pharmacy.IsActive && enoughQuantityMedicinesCount == totalMedicinesCount,
+                TotalCost = totalCost,
+                Items = items
+                  .OrderByDescending(x => x.HasEnoughQuantity)
+                  .ThenByDescending(x => x.IsFound)
+                  .ThenBy(x => x.MedicineId)
+                  .ToList()
+            });
+        }
+
+        result.PharmacyOptions = options
+          .OrderByDescending(x => x.FoundMedicinesCount)
+          .ThenByDescending(x => x.EnoughQuantityMedicinesCount)
+          .ThenByDescending(x => x.TotalCost)
+          .ThenBy(x => x.PharmacyTitle)
+          .ToList();
+
+        return result;
+    }
+
+    private static string NormalizePhoneNumber(string phoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            throw new DomainArgumentException("PhoneNumber can't be null or whitespace.");
+
+        var normalizedPhone = phoneNumber.Trim();
+
+        if (!normalizedPhone.All(char.IsDigit))
+            throw new DomainArgumentException("PhoneNumber must contain digits only.");
+
+        return normalizedPhone;
+    }
+
+    private sealed class ClientBasketData
+    {
+        public IReadOnlyCollection<BasketPositionResponse> Positions { get; set; } = [];
+        public IReadOnlyCollection<BasketPharmacyOptionResponse> PharmacyOptions { get; set; } = [];
+    }
+
+    private sealed record PharmacyProjection(
+      Guid PharmacyId,
+      string PharmacyTitle,
+      bool IsActive);
+
+    private sealed record PharmacyOfferProjection(
+      Guid PharmacyId,
+      Guid MedicineId,
+      decimal Price,
+      int StockQuantity);
+}

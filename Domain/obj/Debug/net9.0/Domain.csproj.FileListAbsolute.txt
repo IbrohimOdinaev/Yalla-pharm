@@ -9,3 +9,14 @@
 /home/agony/Documents/work/yalla-farm/Domain/obj/Debug/net9.0/refint/Domain.dll
 /home/agony/Documents/work/yalla-farm/Domain/obj/Debug/net9.0/Domain.pdb
 /home/agony/Documents/work/yalla-farm/Domain/obj/Debug/net9.0/ref/Domain.dll
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/bin/Debug/net9.0/Domain.deps.json
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/bin/Debug/net9.0/Domain.dll
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/bin/Debug/net9.0/Domain.pdb
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/Domain.GeneratedMSBuildEditorConfig.editorconfig
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/Domain.AssemblyInfoInputs.cache
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/Domain.AssemblyInfo.cs
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/Domain.csproj.CoreCompileInputs.cache
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/Domain.dll
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/refint/Domain.dll
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/Domain.pdb
+/home/agony/Documents/work/yalla-farm-recover-max/Domain/obj/Debug/net9.0/ref/Domain.dll

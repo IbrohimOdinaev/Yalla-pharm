@@ -1,0 +1,198 @@
+using Microsoft.EntityFrameworkCore;
+using Yalla.Application.Abstractions;
+using Yalla.Application.DTO.Request;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Exceptions;
+using Yalla.Domain.ValueObjects;
+
+namespace Yalla.Application.Extensions;
+
+public static class RequestMappingExtensions
+{
+    public static Medicine ToDomain(this CreateMedicineRequest request)
+    {
+        var normalizedTitle = request.Title.Trim();
+        var normalizedArticul = request.Articul.Trim();
+
+        var atributes = request.Atributes
+          .Select(x => new Atribute(x.Name, x.Option))
+          .ToList();
+
+        var medicine = new Medicine(normalizedTitle, normalizedArticul, atributes);
+
+        if (!string.IsNullOrWhiteSpace(request.Url))
+            medicine.SetUrl(request.Url.Trim());
+
+        return medicine;
+    }
+
+    public static Pharmacy ToDomain(this RegisterPharmacyRequest request)
+    {
+        var pharmacy = new Pharmacy(request.Title, request.Address);
+        pharmacy.SetAdminId(request.AdminId);
+
+        return pharmacy;
+    }
+
+    public static Client ToDomain(
+      this RegisterClientRequest request,
+      string normalizedPhoneNumber)
+    {
+        return new Client(
+          request.Name,
+          normalizedPhoneNumber);
+    }
+
+    public static PharmacyWorker ToDomain(
+      this RegisterPharmacyWorkerRequest request,
+      Pharmacy pharmacy,
+        string normalizedPhoneNumber)
+    {
+        return new PharmacyWorker(
+          request.Name,
+          normalizedPhoneNumber,
+          request.PharmacyId,
+          pharmacy);
+    }
+
+    public static void ApplyToDomain(
+      this UpdateClientRequest request,
+      Client client,
+      string normalizedPhoneNumber)
+    {
+        client.SetName(request.Name);
+        client.SetPhoneNumber(normalizedPhoneNumber);
+    }
+
+    public static void ApplyToDomain(
+      this UpdatePharmacyRequest request,
+      Pharmacy pharmacy)
+    {
+        pharmacy.SetTitle(request.Title);
+        pharmacy.SetAddress(request.Address);
+        pharmacy.SetAdminId(request.AdminId);
+
+        if (pharmacy.IsActive != request.IsActive)
+            pharmacy.ChangeActivity();
+    }
+
+    public static void ApplyToDomain(
+      this UpdateMedicineRequest request,
+      Medicine medicine)
+    {
+        medicine.SetTitle(request.Title.Trim());
+        medicine.SetArticul(request.Articul.Trim());
+
+        if (!string.IsNullOrWhiteSpace(request.Url))
+            medicine.SetUrl(request.Url.Trim());
+    }
+
+    public static BasketPosition ToDomain(
+      this AddProductToBasketRequest request,
+      Medicine medicine)
+    {
+        return new BasketPosition(
+          clientId: request.ClientId,
+          medicineId: request.MedicineId,
+          medicine: medicine,
+          quantity: request.Quantity);
+    }
+
+    public static Order ToDomain(
+      this CheckoutBasketRequest request,
+      Guid orderId,
+      List<OrderPosition> positions)
+    {
+        return new Order(orderId, request.ClientId, request.PharmacyId, request.DeliveryAddress, positions);
+    }
+
+    public static async Task<Client> GetTrackedClientOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid clientId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Clients.Local.FirstOrDefault(x => x.Id == clientId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Clients
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == clientId, cancellationToken)
+          ?? throw new InvalidOperationException($"Client with id '{clientId}' was not found.");
+    }
+
+    public static async Task<Medicine> GetTrackedMedicineOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid medicineId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Medicines.Local.FirstOrDefault(x => x.Id == medicineId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Medicines
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == medicineId, cancellationToken)
+          ?? throw new InvalidOperationException($"Medicine with id '{medicineId}' was not found.");
+    }
+
+    public static async Task<Pharmacy> GetTrackedPharmacyOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Pharmacies.Local.FirstOrDefault(x => x.Id == pharmacyId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Pharmacies
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == pharmacyId, cancellationToken)
+          ?? throw new InvalidOperationException($"Pharmacy with id '{pharmacyId}' was not found.");
+    }
+
+    public static async Task<Offer> GetTrackedOfferOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid medicineId,
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Offers.Local
+          .FirstOrDefault(x => x.MedicineId == medicineId && x.PharmacyId == pharmacyId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Offers
+          .AsTracking()
+          .FirstOrDefaultAsync(
+            x => x.MedicineId == medicineId && x.PharmacyId == pharmacyId,
+            cancellationToken)
+          ?? throw new InvalidOperationException(
+            $"Offer for medicine '{medicineId}' in pharmacy '{pharmacyId}' was not found.");
+    }
+
+    public static OrderPosition ToOrderPositionUsingTrackedEntities(
+      this BasketPosition basketPosition,
+      Guid orderId,
+      Offer liveOffer)
+    {
+        ArgumentNullException.ThrowIfNull(basketPosition);
+        ArgumentNullException.ThrowIfNull(liveOffer);
+
+        if (liveOffer.MedicineId != basketPosition.MedicineId)
+            throw new DomainArgumentException(
+              $"Offer '{liveOffer.Id}' medicine '{liveOffer.MedicineId}' does not match BasketPosition medicine '{basketPosition.MedicineId}'.");
+
+        if (basketPosition.Medicine is null || basketPosition.Medicine.Id != basketPosition.MedicineId)
+            throw new DomainArgumentException(
+              $"BasketPosition '{basketPosition.Id}' must have tracked Medicine for checkout mapping.");
+
+        return new OrderPosition(
+          orderId: orderId,
+          medicineId: basketPosition.MedicineId,
+          medicine: basketPosition.Medicine,
+          offerSnapshot: new OfferSnapshot(liveOffer.PharmacyId, liveOffer.Price),
+          quantity: basketPosition.Quantity,
+          isRejected: false);
+    }
+}

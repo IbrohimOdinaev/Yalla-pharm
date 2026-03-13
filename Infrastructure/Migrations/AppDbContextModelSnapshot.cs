@@ -17,10 +17,108 @@ namespace Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.4")
+                .HasAnnotation("ProductVersion", "9.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Yalla.Domain.Entities.BasketPosition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<Guid>("MedicineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medicine_id");
+
+                    b.Property<int>("Quantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("quantity");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_basket_positions_client_id");
+
+                    b.HasIndex("MedicineId")
+                        .HasDatabaseName("ix_basket_positions_medicine_id");
+
+                    b.ToTable("basket_positions", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.CheckoutRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("PaymentTransactionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("payment_transaction_id");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("request_hash");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_checkout_requests_order_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_checkout_requests_status");
+
+                    b.HasIndex("ClientId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_checkout_requests_client_idempotency_key");
+
+                    b.ToTable("checkout_requests", (string)null);
+                });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
                 {
@@ -47,11 +145,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("title");
 
-                    b.Property<string>("Url")
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)")
-                        .HasColumnName("url");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Articul")
@@ -61,92 +154,47 @@ namespace Infrastructure.Migrations
                     b.ToTable("medicines", (string)null);
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.Order", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.MedicineImage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("ClientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("client_id");
-
-                    b.Property<decimal>("Cost")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("cost");
-
-                    b.Property<string>("DeliveryAddress")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("delivery_address");
-
-                    b.Property<decimal>("ReturnCost")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("return_cost");
-
-                    b.Property<int>("Status")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("status");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientId")
-                        .HasDatabaseName("ix_orders_client_id");
-
-                    b.HasIndex("Status")
-                        .HasDatabaseName("ix_orders_status");
-
-                    b.ToTable("orders", (string)null);
-                });
-
-            modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Address")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("address");
-
-                    b.Property<Guid>("AdminId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("admin_id");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
+                    b.Property<bool>("IsMain")
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_active");
+                        .HasColumnName("is_main");
 
-                    b.Property<string>("Title")
+                    b.Property<bool>("IsMinimal")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_minimal");
+
+                    b.Property<string>("Key")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("title");
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("key");
+
+                    b.Property<Guid>("MedicineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medicine_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AdminId")
-                        .HasDatabaseName("ix_pharmacies_admin_id");
+                    b.HasIndex("MedicineId", "IsMain")
+                        .IsUnique()
+                        .HasDatabaseName("ux_medicine_images_medicine_main")
+                        .HasFilter("is_main");
 
-                    b.ToTable("pharmacies", (string)null);
+                    b.HasIndex("MedicineId", "IsMinimal")
+                        .IsUnique()
+                        .HasDatabaseName("ux_medicine_images_medicine_minimal")
+                        .HasFilter("is_minimal");
+
+                    b.ToTable("medicine_images", (string)null);
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.PharmacyOffer", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.Offer", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -186,33 +234,7 @@ namespace Infrastructure.Migrations
                     b.ToTable("offers", (string)null);
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.PharmacyOrder", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("order_id");
-
-                    b.Property<Guid>("PharmacyId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("pharmacy_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrderId")
-                        .HasDatabaseName("ix_pharmacy_orders_order_id");
-
-                    b.HasIndex("PharmacyId")
-                        .HasDatabaseName("ix_pharmacy_orders_pharmacy_id");
-
-                    b.ToTable("pharmacy_orders", (string)null);
-                });
-
-            modelBuilder.Entity("Yalla.Domain.Entities.Position", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.Order", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -223,11 +245,81 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
 
+                    b.Property<decimal>("Cost")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("cost");
+
+                    b.Property<string>("DeliveryAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("delivery_address");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<DateTime>("OrderPlacedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("order_placed_at");
+
+                    b.Property<Guid>("PharmacyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pharmacy_id");
+
+                    b.Property<decimal>("ReturnCost")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("return_cost");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_orders_client_id");
+
+                    b.HasIndex("PharmacyId")
+                        .HasDatabaseName("ix_orders_pharmacy_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_orders_status");
+
+                    b.HasIndex("ClientId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_orders_client_idempotency_key");
+
+                    b.ToTable("orders", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.OrderPosition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("IsRejected")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_rejected");
+
                     b.Property<Guid>("MedicineId")
                         .HasColumnType("uuid")
                         .HasColumnName("medicine_id");
 
-                    b.Property<Guid?>("OrderId")
+                    b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
 
@@ -237,22 +329,125 @@ namespace Infrastructure.Migrations
                         .HasDefaultValue(1)
                         .HasColumnName("quantity");
 
-                    b.Property<Guid?>("basket_client_id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("basket_client_id");
-
                     b.HasKey("Id");
 
                     b.HasIndex("MedicineId")
-                        .HasDatabaseName("ix_positions_medicine_id");
+                        .HasDatabaseName("ix_order_positions_medicine_id");
 
                     b.HasIndex("OrderId")
-                        .HasDatabaseName("ix_positions_order_id");
+                        .HasDatabaseName("ix_order_positions_order_id");
 
-                    b.HasIndex("basket_client_id")
-                        .HasDatabaseName("ix_positions_basket_client_id");
+                    b.ToTable("order_positions", (string)null);
+                });
 
-                    b.ToTable("positions", (string)null);
+            modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("address");
+
+                    b.Property<Guid>("AdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("admin_id");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdminId")
+                        .HasDatabaseName("ix_pharmacies_admin_id");
+
+                    b.ToTable("pharmacies", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("PaymentTransactionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("payment_transaction_id");
+
+                    b.Property<Guid>("PharmacyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pharmacy_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("reason");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("CreatedAtUtc")
+                        .HasDatabaseName("ix_refund_requests_created_at_utc");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_refund_requests_order_id");
+
+                    b.HasIndex("PharmacyId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_refund_requests_status");
+
+                    b.ToTable("refund_requests", (string)null);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.User", b =>
@@ -268,11 +463,21 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("password_hash");
+
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("phone_number");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer")
+                        .HasColumnName("Role");
 
                     b.Property<string>("user_type")
                         .IsRequired()
@@ -291,57 +496,17 @@ namespace Infrastructure.Migrations
                     b.HasDiscriminator<string>("user_type").HasValue("User");
 
                     b.UseTphMappingStrategy();
-                });
 
-            modelBuilder.Entity("Yalla.Infrastructure.Configurations.OrderRejectedPosition", b =>
-                {
-                    b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("order_id");
-
-                    b.Property<Guid>("PositionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("position_id");
-
-                    b.HasKey("OrderId", "PositionId");
-
-                    b.HasIndex("PositionId");
-
-                    b.ToTable("order_rejected_positions", (string)null);
-                });
-
-            modelBuilder.Entity("Yalla.Infrastructure.Configurations.PharmacyOrderPosition", b =>
-                {
-                    b.Property<Guid>("PharmacyOrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("pharmacy_order_id");
-
-                    b.Property<Guid>("PositionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("position_id");
-
-                    b.HasKey("PharmacyOrderId", "PositionId");
-
-                    b.HasIndex("PositionId");
-
-                    b.ToTable("pharmacy_order_positions", (string)null);
-                });
-
-            modelBuilder.Entity("Yalla.Infrastructure.Configurations.PharmacyOrderRejectedPosition", b =>
-                {
-                    b.Property<Guid>("PharmacyOrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("pharmacy_order_id");
-
-                    b.Property<Guid>("PositionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("position_id");
-
-                    b.HasKey("PharmacyOrderId", "PositionId");
-
-                    b.HasIndex("PositionId");
-
-                    b.ToTable("pharmacy_order_rejected_positions", (string)null);
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("3f9a5f72-3c3d-4d3b-a4d8-1c5fd2194d4a"),
+                            Name = "SuperAdmin",
+                            PasswordHash = "$2a$06$qFsTGnRwnIMyAk6g4Q6tBedOweqKHvlgZHjoy0eWYF19jgFj.7NM.",
+                            PhoneNumber = "919191919",
+                            Role = 2,
+                            user_type = "User"
+                        });
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Client", b =>
@@ -363,6 +528,37 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("ix_users_pharmacy_id");
 
                     b.HasDiscriminator().HasValue("pharmacy_worker");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.BasketPosition", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany("BasketPositions")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Yalla.Domain.Entities.Medicine", "Medicine")
+                        .WithMany()
+                        .HasForeignKey("MedicineId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Medicine");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.CheckoutRequest", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Yalla.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
@@ -404,16 +600,18 @@ namespace Infrastructure.Migrations
                     b.Navigation("Atributes");
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.Order", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.MedicineImage", b =>
                 {
-                    b.HasOne("Yalla.Domain.Entities.Client", null)
-                        .WithMany("Orders")
-                        .HasForeignKey("ClientId")
+                    b.HasOne("Yalla.Domain.Entities.Medicine", "Medicine")
+                        .WithMany("Images")
+                        .HasForeignKey("MedicineId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Medicine");
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.PharmacyOffer", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.Offer", b =>
                 {
                     b.HasOne("Yalla.Domain.Entities.Medicine", null)
                         .WithMany("Offers")
@@ -428,22 +626,22 @@ namespace Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.PharmacyOrder", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.Order", b =>
                 {
-                    b.HasOne("Yalla.Domain.Entities.Order", null)
-                        .WithMany("PharmacyOrders")
-                        .HasForeignKey("OrderId")
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany("Orders")
+                        .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Yalla.Domain.Entities.Pharmacy", null)
-                        .WithMany()
+                        .WithMany("Orders")
                         .HasForeignKey("PharmacyId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.Position", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.OrderPosition", b =>
                 {
                     b.HasOne("Yalla.Domain.Entities.Medicine", "Medicine")
                         .WithMany()
@@ -453,15 +651,13 @@ namespace Infrastructure.Migrations
 
                     b.HasOne("Yalla.Domain.Entities.Order", null)
                         .WithMany("Positions")
-                        .HasForeignKey("OrderId");
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                    b.HasOne("Yalla.Domain.Entities.Client", null)
-                        .WithMany("BasketPositions")
-                        .HasForeignKey("basket_client_id");
-
-                    b.OwnsOne("Yalla.Domain.ValueObjects.OfferSnapshot", "CapturedOffer", b1 =>
+                    b.OwnsOne("Yalla.Domain.ValueObjects.OfferSnapshot", "OfferSnapshot", b1 =>
                         {
-                            b1.Property<Guid>("PositionId")
+                            b1.Property<Guid>("OrderPositionId")
                                 .HasColumnType("uuid");
 
                             b1.Property<Guid>("PharmacyId")
@@ -473,69 +669,38 @@ namespace Infrastructure.Migrations
                                 .HasColumnType("numeric(18,2)")
                                 .HasColumnName("offer_price");
 
-                            b1.HasKey("PositionId");
+                            b1.HasKey("OrderPositionId");
 
-                            b1.ToTable("positions");
+                            b1.ToTable("order_positions");
 
                             b1.WithOwner()
-                                .HasForeignKey("PositionId");
+                                .HasForeignKey("OrderPositionId");
                         });
 
-                    b.Navigation("CapturedOffer")
-                        .IsRequired();
-
                     b.Navigation("Medicine");
+
+                    b.Navigation("OfferSnapshot")
+                        .IsRequired();
                 });
 
-            modelBuilder.Entity("Yalla.Infrastructure.Configurations.OrderRejectedPosition", b =>
+            modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>
                 {
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Yalla.Domain.Entities.Order", null)
                         .WithMany()
                         .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_order_rejected_positions_order_id");
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Yalla.Domain.Entities.Position", null)
+                    b.HasOne("Yalla.Domain.Entities.Pharmacy", null)
                         .WithMany()
-                        .HasForeignKey("PositionId")
+                        .HasForeignKey("PharmacyId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_order_rejected_positions_position_id");
-                });
-
-            modelBuilder.Entity("Yalla.Infrastructure.Configurations.PharmacyOrderPosition", b =>
-                {
-                    b.HasOne("Yalla.Domain.Entities.PharmacyOrder", null)
-                        .WithMany()
-                        .HasForeignKey("PharmacyOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_pharmacy_order_positions_pharmacy_order_id");
-
-                    b.HasOne("Yalla.Domain.Entities.Position", null)
-                        .WithMany()
-                        .HasForeignKey("PositionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_pharmacy_order_positions_position_id");
-                });
-
-            modelBuilder.Entity("Yalla.Infrastructure.Configurations.PharmacyOrderRejectedPosition", b =>
-                {
-                    b.HasOne("Yalla.Domain.Entities.PharmacyOrder", null)
-                        .WithMany()
-                        .HasForeignKey("PharmacyOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_pharmacy_order_rejected_positions_pharmacy_order_id");
-
-                    b.HasOne("Yalla.Domain.Entities.Position", null)
-                        .WithMany()
-                        .HasForeignKey("PositionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_pharmacy_order_rejected_positions_position_id");
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.PharmacyWorker", b =>
@@ -551,14 +716,19 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
                 {
+                    b.Navigation("Images");
+
                     b.Navigation("Offers");
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Order", b =>
                 {
-                    b.Navigation("PharmacyOrders");
-
                     b.Navigation("Positions");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
+                {
+                    b.Navigation("Orders");
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Client", b =>

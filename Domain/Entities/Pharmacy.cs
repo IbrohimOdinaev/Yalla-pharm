@@ -10,10 +10,12 @@ public class Pharmacy
 
     public string Address { get; private set; } = string.Empty;
 
-    public Guid AdminId { get; private set; }
+    public Guid AdminId { get; private set; } = Guid.Empty;
 
     public bool IsActive { get; private set; } = true;
 
+    private readonly List<Order> _orders = new();
+    public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
 
     private Pharmacy() { }
 
@@ -32,6 +34,18 @@ public class Pharmacy
 
     public Pharmacy(Guid id, string title, string address, Guid adminId, bool isActive)
     {
+        if (id == Guid.Empty)
+            throw new DomainArgumentException("Id can't be empty.");
+
+        if (string.IsNullOrWhiteSpace(title))
+            throw new DomainArgumentException("Pharmacy.Title can't be null or whitespace.");
+
+        if (string.IsNullOrWhiteSpace(address))
+            throw new DomainArgumentException("Pharmacy.Address can't be null or whitespace.");
+
+        if (adminId == Guid.Empty)
+            throw new DomainArgumentException("AdminId can't be empty.");
+
         Id = id;
         Title = title;
         Address = address;
@@ -66,5 +80,19 @@ public class Pharmacy
     public void ChangeActivity()
     {
         IsActive = !IsActive;
+    }
+
+    public void AddOrder(Order? order)
+    {
+        if (order is null) throw new DomainArgumentException("Cannot add null Order.");
+
+        _orders.Add(order);
+    }
+
+    public void RemoveOrder(Order? order)
+    {
+        if (order is null) throw new DomainArgumentException("Cannot remove null Order.");
+
+        _orders.Remove(order);
     }
 }

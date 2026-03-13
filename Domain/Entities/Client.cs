@@ -1,61 +1,71 @@
 using Yalla.Domain.Exceptions;
+using Yalla.Domain.Enums;
 
 namespace Yalla.Domain.Entities;
 
 public class Client : User
 {
-  private readonly List<Position> _basketPositions = new();
+    private readonly List<BasketPosition> _basketPositions = new();
 
-  private readonly List<Order> _orders = new();
+    private readonly List<Order> _orders = new();
 
-  public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
+    public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
 
-  public IReadOnlyCollection<Position> BasketPositions => _basketPositions.AsReadOnly();
-
-
-  private Client() : base() { }
-
-  public Client(string name, string phoneNumber)
-    : base(name, phoneNumber)
-  { }
-
-  public Client(Guid id, string name, string phoneNumber, List<Order> orders)
-    : base(name, phoneNumber)
-  {
-    Id = id;
-    _orders.AddRange(orders);
-  }
+    public IReadOnlyCollection<BasketPosition> BasketPositions => _basketPositions.AsReadOnly();
 
 
-  public void AddOrder(Order? order)
-  {
-    if (order is null)
-      throw new DomainArgumentException("Order can't be null.");
+    private Client() : base() { }
 
-    _orders.Add(order);
-  }
+    public Client(string name, string phoneNumber, string passwordHash)
+      : base(Guid.NewGuid(), name, phoneNumber, passwordHash, Role.Client)
+    {
+    }
 
-  public void RemoveOrder(Order? order)
-  {
-    if (order is null)
-      throw new DomainArgumentException("Order can't be null.");
+    public Client(
+      Guid id,
+      string name,
+      string phoneNumber,
+      string passwordHash,
+      Role role,
+      List<Order> orders)
+      : base(id, name, phoneNumber, passwordHash, role)
+    {
+        if (orders is null)
+            throw new DomainArgumentException("Orders can't be null.");
 
-    _orders.Remove(order);
-  }
+        _orders.AddRange(orders);
+    }
 
-  public void AddPosition(Position? position)
-  {
-    if (position is null)
-      throw new DomainArgumentException("Position can't be null.");
 
-    _basketPositions.Add(position);
-  }
+    public void AddOrder(Order? order)
+    {
+        if (order is null)
+            throw new DomainArgumentException("Order can't be null.");
 
-  public void RemovePosition(Position? position)
-  {
-    if (position is null)
-      throw new DomainArgumentException("Position can't be null.");
+        _orders.Add(order);
+    }
 
-    _basketPositions.Remove(position);
-  }
+    public void RemoveOrder(Order? order)
+    {
+        if (order is null)
+            throw new DomainArgumentException("Order can't be null.");
+
+        _orders.Remove(order);
+    }
+
+    public void AddBasketPosition(BasketPosition? basketPosition)
+    {
+        if (basketPosition is null)
+            throw new DomainArgumentException("BasketPosition can't be null.");
+
+        _basketPositions.Add(basketPosition);
+    }
+
+    public void RemoveBasketPosition(BasketPosition? basketPosition)
+    {
+        if (basketPosition is null)
+            throw new DomainArgumentException("BasketPosition can't be null.");
+
+        _basketPositions.Remove(basketPosition);
+    }
 }

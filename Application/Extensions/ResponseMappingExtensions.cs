@@ -15,16 +15,35 @@ public static class ResponseMappingExtensions
         };
     }
 
+    public static MedicineImageResponse ToResponse(this MedicineImage image)
+    {
+        return new MedicineImageResponse
+        {
+            Id = image.Id,
+            Key = image.Key,
+            IsMain = image.IsMain,
+            IsMinimal = image.IsMinimal
+        };
+    }
+
     public static MedicineResponse ToResponse(this Medicine medicine)
+    {
+        return medicine.ToResponse([]);
+    }
+
+    public static MedicineResponse ToResponse(
+      this Medicine medicine,
+      IReadOnlyCollection<MedicineOfferResponse> offers)
     {
         return new MedicineResponse
         {
             Id = medicine.Id,
-            Url = medicine.Url,
             Title = medicine.Title,
             Articul = medicine.Articul,
             IsActive = medicine.IsActive,
-            Atributes = medicine.Atributes.Select(x => x.ToResponse()).ToList()
+            Images = medicine.Images.Select(x => x.ToResponse()).ToList(),
+            Atributes = medicine.Atributes.Select(x => x.ToResponse()).ToList(),
+            Offers = offers
         };
     }
 
@@ -51,48 +70,73 @@ public static class ResponseMappingExtensions
         };
     }
 
-  public static BasketPositionResponse ToResponse(this Position position)
-  {
-    return position.ToResponse(position.CapturedOffer.Price);
-  }
-
-  public static BasketPositionResponse ToResponse(
-    this Position position,
-    decimal actualPrice)
-  {
-    return new BasketPositionResponse
+    public static BasketPositionResponse ToResponse(this BasketPosition basketPosition)
     {
-      PositionId = position.Id,
-      MedicineId = position.MedicineId,
-      PharmacyId = position.CapturedOffer.PharmacyId,
-      Quantity = position.Quantity,
-      Price = actualPrice
-    };
-  }
+        return new BasketPositionResponse
+        {
+            PositionId = basketPosition.Id,
+            MedicineId = basketPosition.MedicineId,
+            Quantity = basketPosition.Quantity
+        };
+    }
 
-  public static ClientResponse ToResponse(
-    this Client client,
-    IReadOnlyCollection<BasketPositionResponse> basketPositions)
-  {
-    return new ClientResponse
+    public static ClientOrderResponse ToClientOrderResponse(this Order order)
     {
-      Id = client.Id,
-      Name = client.Name,
-      PhoneNumber = client.PhoneNumber,
-      BasketPositions = basketPositions
-    };
-  }
+        return new ClientOrderResponse
+        {
+            OrderId = order.Id,
+            PharmacyId = order.PharmacyId,
+            OrderPlacedAt = order.OrderPlacedAt,
+            Status = order.Status,
+            Cost = order.Cost,
+            ReturnCost = order.ReturnCost
+        };
+    }
 
-  public static CheckoutBasketResponse ToResponse(this Order order)
-  {
-    return new CheckoutBasketResponse
+    public static ClientResponse ToResponse(
+      this Client client,
+      IReadOnlyCollection<BasketPositionResponse> basketPositions,
+      IReadOnlyCollection<ClientOrderResponse> orders)
     {
-      ClientId = order.ClientId,
-      OrderId = order.Id,
-      DeliveryAddress = order.DeliveryAddress,
-      Status = order.Status,
-      Cost = order.Cost,
-      ReturnCost = order.ReturnCost
-    };
-  }
+        return new ClientResponse
+        {
+            Id = client.Id,
+            Name = client.Name,
+            PhoneNumber = client.PhoneNumber,
+            BasketPositions = basketPositions,
+            Orders = orders,
+            PharmacyOptions = []
+        };
+    }
+
+    public static ClientResponse ToResponse(
+      this Client client,
+      IReadOnlyCollection<BasketPositionResponse> basketPositions,
+      IReadOnlyCollection<ClientOrderResponse> orders,
+      IReadOnlyCollection<BasketPharmacyOptionResponse> pharmacyOptions)
+    {
+        return new ClientResponse
+        {
+            Id = client.Id,
+            Name = client.Name,
+            PhoneNumber = client.PhoneNumber,
+            BasketPositions = basketPositions,
+            Orders = orders,
+            PharmacyOptions = pharmacyOptions
+        };
+    }
+
+    public static CheckoutBasketResponse ToResponse(this Order order)
+    {
+        return new CheckoutBasketResponse
+        {
+            ClientId = order.ClientId,
+            OrderId = order.Id,
+            OrderPlacedAt = order.OrderPlacedAt,
+            DeliveryAddress = order.DeliveryAddress,
+            Status = order.Status,
+            Cost = order.Cost,
+            ReturnCost = order.ReturnCost
+        };
+    }
 }

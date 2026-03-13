@@ -1,11 +1,17 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
 
 namespace Yalla.Infrastructure.Configurations;
 
 public class UserConfiguration : IEntityTypeConfiguration<User>
 {
+  public static readonly Guid DefaultSuperAdminId = Guid.Parse("3f9a5f72-3c3d-4d3b-a4d8-1c5fd2194d4a");
+  private const string DefaultSuperAdminName = "SuperAdmin";
+  private const string DefaultSuperAdminPhoneNumber = "919191919";
+  private const string DefaultSuperAdminPasswordHash = "$2a$06$qFsTGnRwnIMyAk6g4Q6tBedOweqKHvlgZHjoy0eWYF19jgFj.7NM.";
+
   public void Configure(EntityTypeBuilder<User> builder)
   {
     builder.ToTable("users");
@@ -30,11 +36,25 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .HasMaxLength(20)
       .IsRequired();
 
+    builder.Property(x => x.PasswordHash)
+      .HasColumnName("password_hash")
+      .HasColumnType("character varying(200)")
+      .HasMaxLength(200)
+      .IsRequired();
+
+    builder.Property(x => x.Role)
+      .HasColumnName("Role")
+      .HasColumnType("integer")
+      .HasConversion<int>()
+      .ValueGeneratedNever()
+      .IsRequired();
+
     builder.HasIndex(x => x.PhoneNumber)
       .IsUnique()
       .HasDatabaseName("ix_users_phone_number");
 
     builder.HasDiscriminator<string>("user_type")
+      .HasValue<User>("User")
       .HasValue<Client>("client")
       .HasValue<PharmacyWorker>("pharmacy_worker");
 
@@ -43,5 +63,15 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .HasColumnType("character varying(40)")
       .HasMaxLength(40)
       .IsRequired();
+
+    builder.HasData(new
+    {
+      Id = DefaultSuperAdminId,
+      Name = DefaultSuperAdminName,
+      PhoneNumber = DefaultSuperAdminPhoneNumber,
+      PasswordHash = DefaultSuperAdminPasswordHash,
+      Role = Role.SuperAdmin,
+      user_type = "User"
+    });
   }
 }

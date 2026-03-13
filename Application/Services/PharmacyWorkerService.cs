@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Yalla.Application.Abstractions;
+using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Application.Extensions;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
 using Yalla.Domain.Exceptions;
 
 namespace Yalla.Application.Services;
@@ -10,10 +13,17 @@ namespace Yalla.Application.Services;
 public sealed class PharmacyWorkerService : IPharmacyWorkerService
 {
     private readonly IAppDbContext _dbContext;
+    private readonly IPasswordHasher _passwordHasher;
 
-    public PharmacyWorkerService(IAppDbContext dbContext)
+    public PharmacyWorkerService(
+      IAppDbContext dbContext,
+      IPasswordHasher passwordHasher)
     {
+        ArgumentNullException.ThrowIfNull(dbContext);
+        ArgumentNullException.ThrowIfNull(passwordHasher);
+
         _dbContext = dbContext;
+        _passwordHasher = passwordHasher;
     }
 
     public async Task<RegisterPharmacyResponse> RegisterPharmacyAsync(
@@ -45,10 +55,9 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var pharmacy = await _dbContext.Pharmacies
-          .AsTracking()
-          .FirstOrDefaultAsync(x => x.Id == request.PharmacyId, cancellationToken)
-          ?? throw new InvalidOperationException($"Pharmacy with id '{request.PharmacyId}' was not found.");
+        var pharmacy = await _dbContext.GetTrackedPharmacyOrThrowAsync(
+          request.PharmacyId,
+          cancellationToken);
 
         var adminExists = await _dbContext.Users
           .AnyAsync(x => x.Id == request.AdminId, cancellationToken);
@@ -72,46 +81,158 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var pharmacy = await _dbContext.Pharmacies
-          .AsTracking()
-          .FirstOrDefaultAsync(x => x.Id == request.PharmacyId, cancellationToken)
-          ?? throw new InvalidOperationException($"Pharmacy with id '{request.PharmacyId}' was not found.");
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var pharmacy = await _dbContext.GetTrackedPharmacyOrThrowAsync(
+              request.PharmacyId,
+              cancellationToken);
 
-        var pharmacyWorkers = await _dbContext.PharmacyWorkers
-          .Where(x => x.PharmacyId == request.PharmacyId)
-          .ToListAsync(cancellationToken);
+            var pharmacyWorkers = await _dbContext.PharmacyWorkers
+              .Where(x => x.PharmacyId == request.PharmacyId)
+              .ToListAsync(cancellationToken);
 
-        if (pharmacyWorkers.Count > 0)
-            _dbContext.PharmacyWorkers.RemoveRange(pharmacyWorkers);
+            if (pharmacyWorkers.Count > 0)
+                _dbContext.PharmacyWorkers.RemoveRange(pharmacyWorkers);
 
-        var pharmacyOrders = await _dbContext.PharmacyOrders
-          .Where(x => x.PharmacyId == request.PharmacyId)
-          .ToListAsync(cancellationToken);
+            var pharmacyOffers = await _dbContext.Offers
+              .Where(x => x.PharmacyId == request.PharmacyId)
+              .ToListAsync(cancellationToken);
 
-        if (pharmacyOrders.Count > 0)
-            _dbContext.PharmacyOrders.RemoveRange(pharmacyOrders);
+            if (pharmacyOffers.Count > 0)
+                _dbContext.Offers.RemoveRange(pharmacyOffers);
 
-        var pharmacyOffers = await _dbContext.PharmacyOffers
-          .Where(x => x.PharmacyId == request.PharmacyId)
-          .ToListAsync(cancellationToken);
+            _dbContext.Pharmacies.Remove(pharmacy);
 
-        if (pharmacyOffers.Count > 0)
-            _dbContext.PharmacyOffers.RemoveRange(pharmacyOffers);
+            var adminUser = await _dbContext.Users
+              .AsTracking()
+              .FirstOrDefaultAsync(x => x.Id == pharmacy.AdminId, cancellationToken);
 
-        _dbContext.Pharmacies.Remove(pharmacy);
+            if (adminUser is not null)
+                _dbContext.Users.Remove(adminUser);
 
-        var adminUser = await _dbContext.Users
-          .AsTracking()
-          .FirstOrDefaultAsync(x => x.Id == pharmacy.AdminId, cancellationToken);
-
-        if (adminUser is not null)
-            _dbContext.Users.Remove(adminUser);
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
 
         return new DeletePharmacyResponse
         {
             DeletedPharmacyId = request.PharmacyId
+        };
+    }
+
+    public async Task<GetActivePharmaciesResponse> GetActivePharmaciesAsync(
+      CancellationToken cancellationToken = default)
+    {
+        var pharmacies = await _dbContext.Pharmacies
+          .AsNoTracking()
+          .Where(x => x.IsActive)
+          .OrderBy(x => x.Title)
+          .Select(x => x.ToResponse())
+          .ToListAsync(cancellationToken);
+
+        return new GetActivePharmaciesResponse
+        {
+            Pharmacies = pharmacies
+        };
+    }
+
+    public async Task<GetPharmaciesResponse> GetPharmaciesAsync(
+      GetPharmaciesRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var page = request.Page < 1 ? 1 : request.Page;
+        var pageSize = request.PageSize <= 0 ? 50 : request.PageSize;
+
+        var query = _dbContext.Pharmacies
+          .AsNoTracking()
+          .AsQueryable();
+
+        var queryText = request.Query?.Trim();
+        if (!string.IsNullOrWhiteSpace(queryText))
+        {
+            var pattern = $"%{queryText}%";
+            query = query.Where(x =>
+              EF.Functions.Like(x.Title, pattern) ||
+              EF.Functions.Like(x.Address, pattern));
+        }
+
+        if (request.IsActive.HasValue)
+            query = query.Where(x => x.IsActive == request.IsActive.Value);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var pharmacies = await query
+          .OrderBy(x => x.Title)
+          .Skip((page - 1) * pageSize)
+          .Take(pageSize)
+          .Select(x => x.ToResponse())
+          .ToListAsync(cancellationToken);
+
+        return new GetPharmaciesResponse
+        {
+            IsActive = request.IsActive,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            Pharmacies = pharmacies
+        };
+    }
+
+    public async Task<GetAdminsResponse> GetAdminsAsync(
+      GetAdminsRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var page = request.Page < 1 ? 1 : request.Page;
+        var pageSize = request.PageSize <= 0 ? 50 : request.PageSize;
+
+        var query = _dbContext.PharmacyWorkers
+          .AsNoTracking()
+          .Include(x => x.Pharmacy)
+          .AsQueryable();
+
+        var queryText = request.Query?.Trim();
+        if (!string.IsNullOrWhiteSpace(queryText))
+        {
+            var pattern = $"%{queryText}%";
+            query = query.Where(x =>
+              EF.Functions.Like(x.Name, pattern) ||
+              EF.Functions.Like(x.PhoneNumber, pattern) ||
+              (x.Pharmacy != null && EF.Functions.Like(x.Pharmacy.Title, pattern)));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var admins = await query
+          .OrderBy(x => x.Name)
+          .Skip((page - 1) * pageSize)
+          .Take(pageSize)
+          .ToListAsync(cancellationToken);
+
+        return new GetAdminsResponse
+        {
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            Admins = admins
+              .Select(x => new AdminListItemResponse
+              {
+                  AdminId = x.Id,
+                  Name = x.Name,
+                  PhoneNumber = x.PhoneNumber,
+                  PharmacyId = x.PharmacyId,
+                  PharmacyTitle = x.Pharmacy?.Title ?? string.Empty,
+                  PharmacyIsActive = x.Pharmacy?.IsActive ?? false
+              })
+              .ToList()
         };
     }
 
@@ -121,7 +242,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var normalizedPhoneNumber = NormalizePhoneNumber(request.PhoneNumber);
+        var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
 
         var pharmacy = await _dbContext.Pharmacies
           .AsTracking()
@@ -134,7 +255,12 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         if (phoneExists)
             throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
 
-        var worker = request.ToDomain(pharmacy, normalizedPhoneNumber);
+        UserInputPolicy.EnsureValidPassword(request.Password, nameof(request.Password));
+        var passwordHash = _passwordHasher.HashPassword(request.Password);
+        if (!_passwordHasher.VerifyPassword(request.Password, passwordHash))
+            throw new InvalidOperationException("Password hashing verification failed.");
+
+        var worker = request.ToDomain(pharmacy, normalizedPhoneNumber, passwordHash);
 
         _dbContext.PharmacyWorkers.Add(worker);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -151,11 +277,159 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        return await DeletePharmacyWorkerInternalAsync(
+          request,
+          expectedPharmacyId: null,
+          cancellationToken);
+    }
+
+    public async Task<RegisterAdminWithPharmacyResponse> RegisterAdminWithPharmacyAsync(
+      RegisterAdminWithPharmacyRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.AdminPhoneNumber);
+
+        var phoneExists = await _dbContext.Users
+          .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber, cancellationToken);
+
+        if (phoneExists)
+            throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
+
+        UserInputPolicy.EnsureValidPassword(request.AdminPassword, nameof(request.AdminPassword));
+        var passwordHash = _passwordHasher.HashPassword(request.AdminPassword);
+        if (!_passwordHasher.VerifyPassword(request.AdminPassword, passwordHash))
+            throw new InvalidOperationException("Password hashing verification failed.");
+
+        var adminId = Guid.NewGuid();
+        var pharmacyId = Guid.NewGuid();
+
+        var pharmacy = new Pharmacy(
+          pharmacyId,
+          request.PharmacyTitle.Trim(),
+          request.PharmacyAddress.Trim(),
+          adminId,
+          request.IsPharmacyActive);
+
+        var worker = new PharmacyWorker(
+          adminId,
+          request.AdminName.Trim(),
+          normalizedPhoneNumber,
+          passwordHash,
+          pharmacyId,
+          pharmacy,
+          Role.Admin);
+
+        _dbContext.Pharmacies.Add(pharmacy);
+        _dbContext.PharmacyWorkers.Add(worker);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new RegisterAdminWithPharmacyResponse
+        {
+            Pharmacy = pharmacy.ToResponse(),
+            PharmacyWorker = worker.ToResponse()
+        };
+    }
+
+    public async Task<UpsertOfferResponse> UpsertOfferAsync(
+      UpsertOfferRequest request,
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (pharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        if (request.MedicineId == Guid.Empty)
+            throw new DomainArgumentException("MedicineId can't be empty.");
+
+        if (request.StockQuantity < 0)
+            throw new DomainArgumentException("StockQuantity can't be negative.");
+
+        if (request.Price < 0)
+            throw new DomainArgumentException("Price can't be negative.");
+
+        var pharmacyExists = await _dbContext.Pharmacies
+          .AnyAsync(x => x.Id == pharmacyId, cancellationToken);
+
+        if (!pharmacyExists)
+            throw new InvalidOperationException($"Pharmacy with id '{pharmacyId}' was not found.");
+
+        var medicineExists = await _dbContext.Medicines
+          .AnyAsync(x => x.Id == request.MedicineId, cancellationToken);
+
+        if (!medicineExists)
+            throw new InvalidOperationException($"Medicine with id '{request.MedicineId}' was not found.");
+
+        var offer = await _dbContext.Offers
+          .AsTracking()
+          .FirstOrDefaultAsync(
+            x => x.MedicineId == request.MedicineId && x.PharmacyId == pharmacyId,
+            cancellationToken);
+
+        var created = false;
+        if (offer is null)
+        {
+            offer = new Offer(
+              request.MedicineId,
+              pharmacyId,
+              request.StockQuantity,
+              request.Price);
+
+            _dbContext.Offers.Add(offer);
+            created = true;
+        }
+        else
+        {
+            offer.SetStockQuantity(request.StockQuantity);
+            offer.SetPrice(request.Price);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new UpsertOfferResponse
+        {
+            OfferId = offer.Id,
+            MedicineId = offer.MedicineId,
+            PharmacyId = offer.PharmacyId,
+            StockQuantity = offer.StockQuantity,
+            Price = offer.Price,
+            Created = created
+        };
+    }
+
+    public async Task<DeletePharmacyWorkerResponse> DeletePharmacyWorkerInPharmacyAsync(
+      DeletePharmacyWorkerRequest request,
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (pharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        return await DeletePharmacyWorkerInternalAsync(
+          request,
+          expectedPharmacyId: pharmacyId,
+          cancellationToken);
+    }
+
+    private async Task<DeletePharmacyWorkerResponse> DeletePharmacyWorkerInternalAsync(
+      DeletePharmacyWorkerRequest request,
+      Guid? expectedPharmacyId,
+      CancellationToken cancellationToken)
+    {
         var pharmacyWorker = await _dbContext.PharmacyWorkers
           .AsTracking()
           .FirstOrDefaultAsync(x => x.Id == request.PharmacyWorkerId, cancellationToken)
           ?? throw new InvalidOperationException(
             $"PharmacyWorker with id '{request.PharmacyWorkerId}' was not found.");
+
+        if (expectedPharmacyId.HasValue && pharmacyWorker.PharmacyId != expectedPharmacyId.Value)
+            throw new InvalidOperationException(
+              $"PharmacyWorker '{request.PharmacyWorkerId}' does not belong to pharmacy '{expectedPharmacyId.Value}'.");
 
         _dbContext.PharmacyWorkers.Remove(pharmacyWorker);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -164,18 +438,5 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         {
             DeletedPharmacyWorkerId = request.PharmacyWorkerId
         };
-    }
-
-    private static string NormalizePhoneNumber(string phoneNumber)
-    {
-        if (string.IsNullOrWhiteSpace(phoneNumber))
-            throw new DomainArgumentException("PhoneNumber can't be null or whitespace.");
-
-        var normalizedPhone = phoneNumber.Trim();
-
-        if (!normalizedPhone.All(char.IsDigit))
-            throw new DomainArgumentException("PhoneNumber must contain digits only.");
-
-        return normalizedPhone;
     }
 }

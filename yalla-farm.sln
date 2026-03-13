@@ -11,6 +11,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure", "Infrastru
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "Api\Api.csproj", "{0543BA5A-C686-455B-84FB-0A132AC4386C}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D832E066-659F-4AFB-AC90-293AFC48C99D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yalla.Api.IntegrationTests", "tests\Yalla.Api.IntegrationTests\Yalla.Api.IntegrationTests.csproj", "{D4BAAE78-7787-45FE-83A1-7B6D2430D020}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yalla.Application.UnitTests", "tests\Yalla.Application.UnitTests\Yalla.Application.UnitTests.csproj", "{E06E69D6-A832-4DB5-ACC6-1CBEAF8D92DD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +42,17 @@ Global
 		{0543BA5A-C686-455B-84FB-0A132AC4386C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0543BA5A-C686-455B-84FB-0A132AC4386C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0543BA5A-C686-455B-84FB-0A132AC4386C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4BAAE78-7787-45FE-83A1-7B6D2430D020}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4BAAE78-7787-45FE-83A1-7B6D2430D020}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4BAAE78-7787-45FE-83A1-7B6D2430D020}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4BAAE78-7787-45FE-83A1-7B6D2430D020}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E06E69D6-A832-4DB5-ACC6-1CBEAF8D92DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E06E69D6-A832-4DB5-ACC6-1CBEAF8D92DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E06E69D6-A832-4DB5-ACC6-1CBEAF8D92DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E06E69D6-A832-4DB5-ACC6-1CBEAF8D92DD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D4BAAE78-7787-45FE-83A1-7B6D2430D020} = {D832E066-659F-4AFB-AC90-293AFC48C99D}
+		{E06E69D6-A832-4DB5-ACC6-1CBEAF8D92DD} = {D832E066-659F-4AFB-AC90-293AFC48C99D}
 	EndGlobalSection
 EndGlobal

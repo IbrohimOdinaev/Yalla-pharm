@@ -1,0 +1,715 @@
+using Microsoft.EntityFrameworkCore;
+using Yalla.Application.DTO.Request;
+using Yalla.Application.Services;
+using Yalla.Application.UnitTests.TestInfrastructure;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
+using Yalla.Domain.Exceptions;
+
+namespace Yalla.Application.UnitTests.Services;
+
+public class ClientServiceRequestDrivenTests
+{
+  [Fact]
+  public async Task RegisterClientAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterClientAsync(null!));
+  }
+
+  [Fact]
+  public async Task RegisterClientAsync_ThrowsForInvalidPhone()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<DomainArgumentException>(() => service.RegisterClientAsync(new RegisterClientRequest
+    {
+      Name = "Client",
+      PhoneNumber = "bad-phone"
+    }));
+  }
+
+  [Fact]
+  public async Task RegisterClientAsync_TrimsPhone()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    var response = await service.RegisterClientAsync(new RegisterClientRequest
+    {
+      Name = "Client",
+      PhoneNumber = " 994100001 "
+    });
+
+    Assert.Equal("994100001", response.Client.PhoneNumber);
+  }
+
+  [Fact]
+  public async Task UpdateClientAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.UpdateClientAsync(null!));
+  }
+
+  [Fact]
+  public async Task UpdateClientAsync_ThrowsWhenClientMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateClientAsync(new UpdateClientRequest
+    {
+      ClientId = Guid.NewGuid(),
+      Name = "Updated",
+      PhoneNumber = "994100002"
+    }));
+  }
+
+  [Fact]
+  public async Task UpdateClientAsync_ThrowsForDuplicatePhone()
+  {
+    using var scope = TestDbFactory.Create();
+    var target = TestDbFactory.CreateClient("Target", "994100003");
+    var existing = TestDbFactory.CreateClient("Existing", "994100004");
+    scope.Db.Clients.AddRange(target, existing);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateClientAsync(new UpdateClientRequest
+    {
+      ClientId = target.Id,
+      Name = "Updated",
+      PhoneNumber = "994100004"
+    }));
+  }
+
+  [Fact]
+  public async Task UpdateClientAsync_UpdatesFields()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("Old", "994100005");
+    scope.Db.Clients.Add(client);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    var response = await service.UpdateClientAsync(new UpdateClientRequest
+    {
+      ClientId = client.Id,
+      Name = "New",
+      PhoneNumber = " 994100006 "
+    });
+
+    Assert.Equal("New", response.Client.Name);
+    Assert.Equal("994100006", response.Client.PhoneNumber);
+  }
+
+  [Fact]
+  public async Task DeleteClientAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.DeleteClientAsync(null!));
+  }
+
+  [Fact]
+  public async Task DeleteClientAsync_ThrowsWhenClientMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteClientAsync(new DeleteClientRequest
+    {
+      ClientId = Guid.NewGuid()
+    }));
+  }
+
+  [Fact]
+  public async Task DeleteClientAsync_ThrowsWhenClientHasOrders()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("Client", "994100007");
+    var pharmacy = TestDbFactory.CreatePharmacy("P", "Addr", Guid.NewGuid());
+    var medicine = TestDbFactory.CreateMedicine("Med", "MED-1");
+    scope.Db.Clients.Add(client);
+    scope.Db.Pharmacies.Add(pharmacy);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    var order = TestDbFactory.CreateOrder(client.Id, pharmacy.Id, "Addr", (medicine, 10m, 1, false));
+    scope.Db.Orders.Add(order);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteClientAsync(new DeleteClientRequest
+    {
+      ClientId = client.Id
+    }));
+  }
+
+  [Fact]
+  public async Task DeleteClientAsync_RemovesClientAndBasketPositions_WhenNoOrders()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("Client", "994100008");
+    var medicine = TestDbFactory.CreateMedicine("Med", "MED-2");
+    scope.Db.Clients.Add(client);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    scope.Db.BasketPositions.Add(new BasketPosition(client.Id, medicine.Id, medicine, 2));
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    await service.DeleteClientAsync(new DeleteClientRequest { ClientId = client.Id });
+
+    Assert.False(await scope.Db.Clients.AnyAsync(x => x.Id == client.Id));
+    Assert.False(await scope.Db.BasketPositions.AnyAsync(x => x.ClientId == client.Id));
+  }
+
+  [Fact]
+  public async Task AddProductToBasketAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.AddProductToBasketAsync(null!));
+  }
+
+  [Fact]
+  public async Task AddProductToBasketAsync_ThrowsWhenClientMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-3");
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddProductToBasketAsync(new AddProductToBasketRequest
+    {
+      ClientId = Guid.NewGuid(),
+      MedicineId = medicine.Id,
+      Quantity = 1
+    }));
+  }
+
+  [Fact]
+  public async Task AddProductToBasketAsync_ThrowsWhenMedicineMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100009");
+    scope.Db.Clients.Add(client);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddProductToBasketAsync(new AddProductToBasketRequest
+    {
+      ClientId = client.Id,
+      MedicineId = Guid.NewGuid(),
+      Quantity = 1
+    }));
+  }
+
+  [Fact]
+  public async Task AddProductToBasketAsync_ThrowsWhenMedicineInactive()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100010");
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-4", isActive: false);
+    scope.Db.Clients.Add(client);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddProductToBasketAsync(new AddProductToBasketRequest
+    {
+      ClientId = client.Id,
+      MedicineId = medicine.Id,
+      Quantity = 1
+    }));
+  }
+
+  [Fact]
+  public async Task AddProductToBasketAsync_CreatesNewPosition()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100011");
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-5");
+    scope.Db.Clients.Add(client);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    var response = await service.AddProductToBasketAsync(new AddProductToBasketRequest
+    {
+      ClientId = client.Id,
+      MedicineId = medicine.Id,
+      Quantity = 2
+    });
+
+    Assert.Equal(2, response.BasketPosition.Quantity);
+    Assert.Equal(1, response.BasketItemsCount);
+  }
+
+  [Fact]
+  public async Task RemoveProductFromBasketAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.RemoveProductFromBasketAsync(null!));
+  }
+
+  [Fact]
+  public async Task RemoveProductFromBasketAsync_ThrowsWhenClientMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveProductFromBasketAsync(new RemoveProductFromBasketRequest
+    {
+      ClientId = Guid.NewGuid(),
+      PositionId = Guid.NewGuid()
+    }));
+  }
+
+  [Fact]
+  public async Task RemoveProductFromBasketAsync_ThrowsWhenPositionMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100012");
+    scope.Db.Clients.Add(client);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveProductFromBasketAsync(new RemoveProductFromBasketRequest
+    {
+      ClientId = client.Id,
+      PositionId = Guid.NewGuid()
+    }));
+  }
+
+  [Fact]
+  public async Task RemoveProductFromBasketAsync_RemovesPosition()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100013");
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-6");
+    scope.Db.Clients.Add(client);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+    var position = new BasketPosition(client.Id, medicine.Id, medicine, 1);
+    scope.Db.BasketPositions.Add(position);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    var response = await service.RemoveProductFromBasketAsync(new RemoveProductFromBasketRequest
+    {
+      ClientId = client.Id,
+      PositionId = position.Id
+    });
+
+    Assert.Equal(0, response.BasketItemsCount);
+    Assert.False(await scope.Db.BasketPositions.AnyAsync(x => x.Id == position.Id));
+  }
+
+  [Fact]
+  public async Task UpdateBasketPositionQuantityAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.UpdateBasketPositionQuantityAsync(null!));
+  }
+
+  [Fact]
+  public async Task UpdateBasketPositionQuantityAsync_ThrowsWhenClientMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateBasketPositionQuantityAsync(new UpdateBasketPositionQuantityRequest
+    {
+      ClientId = Guid.NewGuid(),
+      PositionId = Guid.NewGuid(),
+      Quantity = 1
+    }));
+  }
+
+  [Fact]
+  public async Task UpdateBasketPositionQuantityAsync_ThrowsWhenPositionMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100014");
+    scope.Db.Clients.Add(client);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateBasketPositionQuantityAsync(new UpdateBasketPositionQuantityRequest
+    {
+      ClientId = client.Id,
+      PositionId = Guid.NewGuid(),
+      Quantity = 1
+    }));
+  }
+
+  [Fact]
+  public async Task UpdateBasketPositionQuantityAsync_UpdatesQuantity()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100015");
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-7");
+    scope.Db.Clients.Add(client);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+    var position = new BasketPosition(client.Id, medicine.Id, medicine, 1);
+    scope.Db.BasketPositions.Add(position);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    var response = await service.UpdateBasketPositionQuantityAsync(new UpdateBasketPositionQuantityRequest
+    {
+      ClientId = client.Id,
+      PositionId = position.Id,
+      Quantity = 5
+    });
+
+    Assert.Equal(5, response.BasketPosition.Quantity);
+  }
+
+  [Fact]
+  public async Task ClearBasketAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.ClearBasketAsync(null!));
+  }
+
+  [Fact]
+  public async Task ClearBasketAsync_ThrowsWhenClientMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.ClearBasketAsync(new ClearBasketRequest
+    {
+      ClientId = Guid.NewGuid()
+    }));
+  }
+
+  [Fact]
+  public async Task ClearBasketAsync_EmptyBasket_ReturnsZero()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100016");
+    scope.Db.Clients.Add(client);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    var response = await service.ClearBasketAsync(new ClearBasketRequest
+    {
+      ClientId = client.Id
+    });
+
+    Assert.Equal(0, response.RemovedPositionsCount);
+    Assert.Equal(0, response.BasketItemsCount);
+  }
+
+  [Fact]
+  public async Task GetAllClientsAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.GetAllClientsAsync(null!));
+  }
+
+  [Fact]
+  public async Task GetAllClientsAsync_NormalizesPaging_AndReturnsSimpleClientData()
+  {
+    using var scope = TestDbFactory.Create();
+    var b = TestDbFactory.CreateClient("B", "994100018");
+    var a = TestDbFactory.CreateClient("A", "994100017");
+    scope.Db.Clients.AddRange(b, a);
+    await scope.Db.SaveChangesAsync();
+    var service = new ClientService(scope.Db);
+
+    var response = await service.GetAllClientsAsync(new GetAllClientsRequest
+    {
+      Page = 0,
+      PageSize = 0
+    });
+
+    Assert.Equal(1, response.Page);
+    Assert.Equal(50, response.PageSize);
+    Assert.Equal(2, response.TotalCount);
+    Assert.Equal("A", response.Clients.First().Name);
+    Assert.All(response.Clients, x => Assert.Empty(x.PharmacyOptions));
+  }
+
+  [Fact]
+  public async Task GetAllClientsWithBasketAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.GetAllClientsWithBasketAsync(null!));
+  }
+
+  [Fact]
+  public async Task GetAllClientsWithBasketAsync_ReturnsBasketPharmacyOptions()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100019");
+    var pharmacy = TestDbFactory.CreatePharmacy("P", "Addr", Guid.NewGuid());
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-8");
+    scope.Db.Clients.Add(client);
+    scope.Db.Pharmacies.Add(pharmacy);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+    scope.Db.BasketPositions.Add(new BasketPosition(client.Id, medicine.Id, medicine, 2));
+    scope.Db.Offers.Add(TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, 10, 3m));
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    var response = await service.GetAllClientsWithBasketAsync(new GetAllClientsRequest());
+
+    Assert.Single(response.Clients);
+    Assert.Single(response.Clients.Single().PharmacyOptions);
+  }
+
+  [Fact]
+  public async Task GetClientByPhoneNumberAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.GetClientByPhoneNumberAsync(null!));
+  }
+
+  [Fact]
+  public async Task GetClientByPhoneNumberAsync_ThrowsWhenMissing()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetClientByPhoneNumberAsync(new GetClientByPhoneNumberRequest
+    {
+      PhoneNumber = "994100020"
+    }));
+  }
+
+  [Fact]
+  public async Task GetClientByPhoneNumberAsync_ReturnsClientWithOrdersAndBasket()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100021");
+    var pharmacy = TestDbFactory.CreatePharmacy("P", "Addr", Guid.NewGuid());
+    var medicine = TestDbFactory.CreateMedicine("M", "MED-9");
+    scope.Db.Clients.Add(client);
+    scope.Db.Pharmacies.Add(pharmacy);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    scope.Db.BasketPositions.Add(new BasketPosition(client.Id, medicine.Id, medicine, 1));
+    scope.Db.Offers.Add(TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, 5, 8m));
+    scope.Db.Orders.Add(TestDbFactory.CreateOrder(client.Id, pharmacy.Id, "Addr", (medicine, 8m, 1, false)));
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    var response = await service.GetClientByPhoneNumberAsync(new GetClientByPhoneNumberRequest
+    {
+      PhoneNumber = " 994100021 "
+    });
+
+    Assert.Equal(client.Id, response.Client.Id);
+    Assert.Single(response.Client.BasketPositions);
+    Assert.Single(response.Client.Orders);
+    Assert.Single(response.Client.PharmacyOptions);
+  }
+
+  [Fact]
+  public async Task CheckoutBasketAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.CheckoutBasketAsync(null!));
+  }
+
+  [Fact]
+  public async Task CheckoutBasketAsync_ThrowsForMissingOffer()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedCheckoutBaseAsync(scope, "994100022", isMedicineActive: true, createOffer: false, stock: 0);
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckoutBasketAsync(new CheckoutBasketRequest
+    {
+      ClientId = setup.Client.Id,
+      PharmacyId = setup.Pharmacy.Id,
+      DeliveryAddress = "Home"
+    }));
+  }
+
+  [Fact]
+  public async Task CheckoutBasketAsync_ThrowsForInactiveMedicine()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedCheckoutBaseAsync(scope, "994100023", isMedicineActive: false, createOffer: true, stock: 10);
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckoutBasketAsync(new CheckoutBasketRequest
+    {
+      ClientId = setup.Client.Id,
+      PharmacyId = setup.Pharmacy.Id,
+      DeliveryAddress = "Home"
+    }));
+  }
+
+  [Fact]
+  public async Task CheckoutBasketAsync_ThrowsForInsufficientStock()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedCheckoutBaseAsync(scope, "994100024", isMedicineActive: true, createOffer: true, stock: 1);
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckoutBasketAsync(new CheckoutBasketRequest
+    {
+      ClientId = setup.Client.Id,
+      PharmacyId = setup.Pharmacy.Id,
+      DeliveryAddress = "Home"
+    }));
+  }
+
+  [Fact]
+  public async Task CheckoutBasketAsync_AllIgnored_Throws()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedCheckoutBaseAsync(scope, "994100025", isMedicineActive: true, createOffer: true, stock: 10);
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckoutBasketAsync(new CheckoutBasketRequest
+    {
+      ClientId = setup.Client.Id,
+      PharmacyId = setup.Pharmacy.Id,
+      DeliveryAddress = "Home",
+      IgnoredPositionIds = [setup.BasketPosition.Id]
+    }));
+  }
+
+  [Fact]
+  public async Task PreviewCheckoutAsync_ThrowsForNullRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var service = new ClientService(scope.Db);
+    await Assert.ThrowsAsync<ArgumentNullException>(() => service.PreviewCheckoutAsync(null!));
+  }
+
+  [Fact]
+  public async Task PreviewCheckoutAsync_EmptyBasket_ReturnsCannotCheckout()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100026");
+    var pharmacy = TestDbFactory.CreatePharmacy("P", "Addr", Guid.NewGuid());
+    scope.Db.Clients.Add(client);
+    scope.Db.Pharmacies.Add(pharmacy);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    var response = await service.PreviewCheckoutAsync(new CheckoutBasketRequest
+    {
+      ClientId = client.Id,
+      PharmacyId = pharmacy.Id,
+      DeliveryAddress = "Home"
+    });
+
+    Assert.False(response.CanCheckout);
+    Assert.Equal(0, response.TotalPositions);
+  }
+
+  [Fact]
+  public async Task PreviewCheckoutAsync_ThrowsForInvalidIgnoredPosition()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedCheckoutBaseAsync(scope, "994100027", isMedicineActive: true, createOffer: true, stock: 10);
+    var service = new ClientService(scope.Db);
+
+    await Assert.ThrowsAsync<InvalidOperationException>(() => service.PreviewCheckoutAsync(new CheckoutBasketRequest
+    {
+      ClientId = setup.Client.Id,
+      PharmacyId = setup.Pharmacy.Id,
+      DeliveryAddress = "Home",
+      IgnoredPositionIds = [Guid.NewGuid()]
+    }));
+  }
+
+  [Fact]
+  public async Task PreviewCheckoutAsync_ReturnsReasonsAndTotals()
+  {
+    using var scope = TestDbFactory.Create();
+    var client = TestDbFactory.CreateClient("C", "994100028");
+    var pharmacy = TestDbFactory.CreatePharmacy("P", "Addr", Guid.NewGuid(), isActive: false);
+    var availableMed = TestDbFactory.CreateMedicine("Available", "MED-10");
+    var lowStockMed = TestDbFactory.CreateMedicine("LowStock", "MED-11");
+    scope.Db.Clients.Add(client);
+    scope.Db.Pharmacies.Add(pharmacy);
+    scope.Db.Medicines.AddRange(availableMed, lowStockMed);
+    await scope.Db.SaveChangesAsync();
+
+    var acceptedPosition = new BasketPosition(client.Id, availableMed.Id, availableMed, 2);
+    var rejectedPosition = new BasketPosition(client.Id, lowStockMed.Id, lowStockMed, 5);
+    scope.Db.BasketPositions.AddRange(acceptedPosition, rejectedPosition);
+    scope.Db.Offers.AddRange(
+      TestDbFactory.CreateOffer(availableMed.Id, pharmacy.Id, 10, 3m),
+      TestDbFactory.CreateOffer(lowStockMed.Id, pharmacy.Id, 1, 4m));
+    await scope.Db.SaveChangesAsync();
+
+    var service = new ClientService(scope.Db);
+    var response = await service.PreviewCheckoutAsync(new CheckoutBasketRequest
+    {
+      ClientId = client.Id,
+      PharmacyId = pharmacy.Id,
+      DeliveryAddress = "Home"
+    });
+
+    Assert.False(response.CanCheckout);
+    Assert.Equal(2, response.TotalPositions);
+    Assert.Equal(1, response.AcceptedPositionsCount);
+    Assert.Equal(1, response.RejectedPositionsCount);
+    Assert.Equal(6m, response.Cost);
+    Assert.Equal(20m, response.ReturnCost);
+    Assert.Contains(response.Positions, x => x.PositionId == rejectedPosition.Id && x.Reason == "InsufficientStock");
+  }
+
+  private static async Task<(Client Client, Pharmacy Pharmacy, Medicine Medicine, BasketPosition BasketPosition)> SeedCheckoutBaseAsync(
+    TestDbScope scope,
+    string phone,
+    bool isMedicineActive,
+    bool createOffer,
+    int stock)
+  {
+    var client = TestDbFactory.CreateClient("Client", phone);
+    var pharmacy = TestDbFactory.CreatePharmacy("P", "Addr", Guid.NewGuid());
+    var medicine = TestDbFactory.CreateMedicine("M", $"ART-{phone}", isActive: isMedicineActive);
+    scope.Db.Clients.Add(client);
+    scope.Db.Pharmacies.Add(pharmacy);
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    if (createOffer)
+      scope.Db.Offers.Add(TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, stock, 5m));
+
+    var basketPosition = new BasketPosition(client.Id, medicine.Id, medicine, 2);
+    scope.Db.BasketPositions.Add(basketPosition);
+    await scope.Db.SaveChangesAsync();
+
+    return (client, pharmacy, medicine, basketPosition);
+  }
+}

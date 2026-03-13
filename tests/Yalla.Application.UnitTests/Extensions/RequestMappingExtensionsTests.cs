@@ -1,0 +1,102 @@
+using Yalla.Application.DTO.Request;
+using Yalla.Application.Extensions;
+using Yalla.Application.UnitTests.TestInfrastructure;
+using Yalla.Domain.Exceptions;
+
+namespace Yalla.Application.UnitTests.Extensions;
+
+public class RequestMappingExtensionsTests
+{
+    [Fact]
+    public void ToDomain_CreateMedicineRequest_MapsAndTrims()
+    {
+        var request = new CreateMedicineRequest
+        {
+            Title = "  Aspirin  ",
+            Articul = "  ART-1  ",
+            Atributes =
+          [
+            new MedicineAtributeRequest { Name = "form", Option = "pill" }
+          ]
+        };
+
+        var medicine = request.ToDomain();
+
+        Assert.Equal("Aspirin", medicine.Title);
+        Assert.Equal("ART-1", medicine.Articul);
+        Assert.Single(medicine.Atributes);
+    }
+
+    [Fact]
+    public void ToDomain_AddProductToBasketRequest_MapsFields()
+    {
+        var medicine = TestDbFactory.CreateMedicine("Ibuprofen", "IBU-10");
+        var request = new AddProductToBasketRequest
+        {
+            ClientId = Guid.NewGuid(),
+            MedicineId = medicine.Id,
+            Quantity = 3
+        };
+
+        var position = request.ToDomain(medicine);
+
+        Assert.Equal(request.ClientId, position.ClientId);
+        Assert.Equal(request.MedicineId, position.MedicineId);
+        Assert.Equal(3, position.Quantity);
+        Assert.Same(medicine, position.Medicine);
+    }
+
+    [Fact]
+    public async Task GetTrackedClientOrThrowAsync_ReturnsLocalTrackedEntity()
+    {
+        using var scope = TestDbFactory.Create();
+        var client = TestDbFactory.CreateClient("Ali", "992100001");
+        scope.Db.Clients.Add(client);
+        await scope.Db.SaveChangesAsync();
+
+        var loaded = await scope.Db.GetTrackedClientOrThrowAsync(client.Id);
+
+        Assert.Same(client, loaded);
+    }
+
+    [Fact]
+    public async Task GetTrackedMedicineOrThrowAsync_ThrowsForMissingMedicine()
+    {
+        using var scope = TestDbFactory.Create();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+          () => scope.Db.GetTrackedMedicineOrThrowAsync(Guid.NewGuid()));
+
+        Assert.Contains("Medicine with id", ex.Message);
+    }
+
+    [Fact]
+    public void ApplyToDomain_UpdateMedicineRequest_UpdatesFields()
+    {
+        var medicine = TestDbFactory.CreateMedicine("Old", "OLD");
+        var request = new UpdateMedicineRequest
+        {
+            MedicineId = medicine.Id,
+            Title = " New title ",
+            Articul = " NEW-1 "
+        };
+
+        request.ApplyToDomain(medicine);
+
+        Assert.Equal("New title", medicine.Title);
+        Assert.Equal("NEW-1", medicine.Articul);
+    }
+
+    [Fact]
+    public void ToDomain_RegisterPharmacyRequest_ThrowsWhenAdminIdEmpty()
+    {
+        var request = new RegisterPharmacyRequest
+        {
+            Title = "A",
+            Address = "B",
+            AdminId = Guid.Empty
+        };
+
+        Assert.Throws<DomainArgumentException>(() => request.ToDomain());
+    }
+}

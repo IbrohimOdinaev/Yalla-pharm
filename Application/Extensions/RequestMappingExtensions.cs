@@ -1,5 +1,8 @@
+using Microsoft.EntityFrameworkCore;
+using Yalla.Application.Abstractions;
 using Yalla.Application.DTO.Request;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Exceptions;
 using Yalla.Domain.ValueObjects;
 
 namespace Yalla.Application.Extensions;
@@ -17,9 +20,6 @@ public static class RequestMappingExtensions
 
         var medicine = new Medicine(normalizedTitle, normalizedArticul, atributes);
 
-        if (!string.IsNullOrWhiteSpace(request.Url))
-            medicine.SetUrl(request.Url.Trim());
-
         return medicine;
     }
 
@@ -33,21 +33,25 @@ public static class RequestMappingExtensions
 
     public static Client ToDomain(
       this RegisterClientRequest request,
-      string normalizedPhoneNumber)
+      string normalizedPhoneNumber,
+      string passwordHash)
     {
         return new Client(
           request.Name,
-          normalizedPhoneNumber);
+          normalizedPhoneNumber,
+          passwordHash);
     }
 
-  public static PharmacyWorker ToDomain(
-    this RegisterPharmacyWorkerRequest request,
-    Pharmacy pharmacy,
-      string normalizedPhoneNumber)
+    public static PharmacyWorker ToDomain(
+      this RegisterPharmacyWorkerRequest request,
+      Pharmacy pharmacy,
+      string normalizedPhoneNumber,
+      string passwordHash)
     {
         return new PharmacyWorker(
           request.Name,
           normalizedPhoneNumber,
+          passwordHash,
           request.PharmacyId,
           pharmacy);
     }
@@ -80,19 +84,14 @@ public static class RequestMappingExtensions
         medicine.SetTitle(request.Title.Trim());
         medicine.SetArticul(request.Articul.Trim());
 
-        if (!string.IsNullOrWhiteSpace(request.Url))
-            medicine.SetUrl(request.Url.Trim());
     }
 
-    public static Position ToDomain(
+    public static BasketPosition ToDomain(
       this AddProductToBasketRequest request,
-      Medicine medicine,
-      PharmacyOffer liveOffer)
+      Medicine medicine)
     {
-        return new Position(
-          orderId: null,
+        return new BasketPosition(
           clientId: request.ClientId,
-          pharmacyOffer: liveOffer,
           medicineId: request.MedicineId,
           medicine: medicine,
           quantity: request.Quantity);
@@ -100,8 +99,61 @@ public static class RequestMappingExtensions
 
     public static Order ToDomain(
       this CheckoutBasketRequest request,
-      List<Position> positions)
+      Guid orderId,
+      List<OrderPosition> positions)
     {
-        return new Order(request.ClientId, request.DeliveryAddress, positions);
+        return new Order(
+          orderId,
+          request.ClientId,
+          request.PharmacyId,
+          request.DeliveryAddress,
+          positions,
+          request.IdempotencyKey);
     }
+
+    public static async Task<Client> GetTrackedClientOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid clientId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Clients.Local.FirstOrDefault(x => x.Id == clientId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Clients
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == clientId, cancellationToken)
+          ?? throw new InvalidOperationException($"Client with id '{clientId}' was not found.");
+    }
+
+    public static async Task<Medicine> GetTrackedMedicineOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid medicineId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Medicines.Local.FirstOrDefault(x => x.Id == medicineId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Medicines
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == medicineId, cancellationToken)
+          ?? throw new InvalidOperationException($"Medicine with id '{medicineId}' was not found.");
+    }
+
+    public static async Task<Pharmacy> GetTrackedPharmacyOrThrowAsync(
+      this IAppDbContext dbContext,
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        var local = dbContext.Pharmacies.Local.FirstOrDefault(x => x.Id == pharmacyId);
+        if (local is not null)
+            return local;
+
+        return await dbContext.Pharmacies
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == pharmacyId, cancellationToken)
+          ?? throw new InvalidOperationException($"Pharmacy with id '{pharmacyId}' was not found.");
+    }
+
 }

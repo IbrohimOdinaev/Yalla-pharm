@@ -7,86 +7,94 @@ namespace Yalla.Infrastructure.Configurations;
 
 public class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
-  public void Configure(EntityTypeBuilder<Order> builder)
-  {
-    builder.ToTable("orders");
+    public void Configure(EntityTypeBuilder<Order> builder)
+    {
+        builder.ToTable("orders");
 
-    builder.HasKey(x => x.Id);
+        builder.HasKey(x => x.Id);
 
-    builder.Property(x => x.Id)
-      .HasColumnName("id")
-      .HasColumnType("uuid")
-      .ValueGeneratedOnAdd()
-      .IsRequired();
+        builder.Property(x => x.Id)
+          .HasColumnName("id")
+          .HasColumnType("uuid")
+          .ValueGeneratedOnAdd()
+          .IsRequired();
 
-    builder.Property(x => x.ClientId)
-      .HasColumnName("client_id")
-      .HasColumnType("uuid")
-      .IsRequired();
+        builder.Property(x => x.ClientId)
+          .HasColumnName("client_id")
+          .HasColumnType("uuid")
+          .IsRequired();
 
-    builder.Property(x => x.DeliveryAddress)
-      .HasColumnName("delivery_address")
-      .HasColumnType("character varying(500)")
-      .HasMaxLength(500)
-      .IsRequired();
+        builder.Property(x => x.PharmacyId)
+          .HasColumnName("pharmacy_id")
+          .HasColumnType("uuid")
+          .IsRequired();
 
-    builder.Property(x => x.Cost)
-      .HasColumnName("cost")
-      .HasColumnType("numeric(18,2)")
-      .HasPrecision(18, 2)
-      .HasDefaultValue(0m)
-      .IsRequired();
+        builder.Property(x => x.DeliveryAddress)
+          .HasColumnName("delivery_address")
+          .HasColumnType("character varying(500)")
+          .HasMaxLength(500)
+          .IsRequired();
 
-    builder.Property(x => x.ReturnCost)
-      .HasColumnName("return_cost")
-      .HasColumnType("numeric(18,2)")
-      .HasPrecision(18, 2)
-      .HasDefaultValue(0m)
-      .IsRequired();
+        builder.Property(x => x.IdempotencyKey)
+          .HasColumnName("idempotency_key")
+          .HasColumnType("character varying(128)")
+          .HasMaxLength(128);
 
-    builder.Property(x => x.Status)
-      .HasColumnName("status")
-      .HasColumnType("integer")
-      .HasConversion<int>()
-      .HasDefaultValue(Status.New)
-      .IsRequired();
+        builder.Property(x => x.OrderPlacedAt)
+          .HasColumnName("order_placed_at")
+          .HasColumnType("timestamp without time zone")
+          .IsRequired();
 
-    builder.HasIndex(x => x.ClientId)
-      .HasDatabaseName("ix_orders_client_id");
+        builder.Property(x => x.Cost)
+          .HasColumnName("cost")
+          .HasColumnType("numeric(18,2)")
+          .HasPrecision(18, 2)
+          .HasDefaultValue(0m)
+          .IsRequired();
 
-    builder.HasIndex(x => x.Status)
-      .HasDatabaseName("ix_orders_status");
+        builder.Property(x => x.ReturnCost)
+          .HasColumnName("return_cost")
+          .HasColumnType("numeric(18,2)")
+          .HasPrecision(18, 2)
+          .HasDefaultValue(0m)
+          .IsRequired();
 
-    builder.HasMany(x => x.Positions)
-      .WithOne()
-      .HasForeignKey(y => y.OrderId)
-      .IsRequired(false);
+        builder.Property(x => x.Status)
+          .HasColumnName("status")
+          .HasColumnType("integer")
+          .HasConversion<int>()
+          .HasDefaultValue(Status.New)
+          .IsRequired();
 
-    builder.HasMany(x => x.PharmacyOrders)
-      .WithOne()
-      .HasForeignKey(y => y.OrderId);
+        builder.HasIndex(x => x.ClientId)
+          .HasDatabaseName("ix_orders_client_id");
 
-    builder.HasMany(x => x.RejectedPositions)
-      .WithMany()
-      .UsingEntity<OrderRejectedPosition>(
-        right => right
-          .HasOne<Position>()
-          .WithMany()
-          .HasForeignKey(x => x.PositionId)
-          .OnDelete(DeleteBehavior.Cascade)
-          .HasConstraintName("fk_order_rejected_positions_position_id"),
-        left => left
-          .HasOne<Order>()
-          .WithMany()
+        builder.HasIndex(x => x.PharmacyId)
+          .HasDatabaseName("ix_orders_pharmacy_id");
+
+        builder.HasIndex(x => x.Status)
+          .HasDatabaseName("ix_orders_status");
+
+        builder.HasIndex(x => new { x.ClientId, x.IdempotencyKey })
+          .IsUnique()
+          .HasDatabaseName("ux_orders_client_idempotency_key");
+
+        builder.HasOne<Client>()
+          .WithMany(x => x.Orders)
+          .HasForeignKey(x => x.ClientId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Pharmacy>()
+          .WithMany(x => x.Orders)
+          .HasForeignKey(x => x.PharmacyId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.Positions)
+          .WithOne()
           .HasForeignKey(x => x.OrderId)
-          .OnDelete(DeleteBehavior.Cascade)
-          .HasConstraintName("fk_order_rejected_positions_order_id"));
+          .OnDelete(DeleteBehavior.Cascade);
 
-    builder.Metadata.FindNavigation(nameof(Order.Positions))?.SetField("_positions");
-    builder.Metadata.FindNavigation(nameof(Order.Positions))?.SetPropertyAccessMode(PropertyAccessMode.Field);
-    builder.Metadata.FindNavigation(nameof(Order.RejectedPositions))?.SetField("_rejectedPositions");
-    builder.Metadata.FindNavigation(nameof(Order.RejectedPositions))?.SetPropertyAccessMode(PropertyAccessMode.Field);
-    builder.Metadata.FindNavigation(nameof(Order.PharmacyOrders))?.SetField("_pharmacyOrders");
-    builder.Metadata.FindNavigation(nameof(Order.PharmacyOrders))?.SetPropertyAccessMode(PropertyAccessMode.Field);
-  }
+        builder.Metadata.FindNavigation(nameof(Order.Positions))?.SetField("_positions");
+        builder.Metadata.FindNavigation(nameof(Order.Positions))?.SetPropertyAccessMode(PropertyAccessMode.Field);
+    }
 }

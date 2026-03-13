@@ -44,5 +44,13 @@ public class PharmacyConfiguration : IEntityTypeConfiguration<Pharmacy>
         builder.HasIndex(x => x.AdminId)
           .HasDatabaseName("ix_pharmacies_admin_id");
 
+        builder.HasMany(x => x.Orders)
+          .WithOne()
+          .HasForeignKey(x => x.PharmacyId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Metadata.FindNavigation(nameof(Pharmacy.Orders))?.SetField("_orders");
+        builder.Metadata.FindNavigation(nameof(Pharmacy.Orders))?.SetPropertyAccessMode(PropertyAccessMode.Field);
+
     }
 }

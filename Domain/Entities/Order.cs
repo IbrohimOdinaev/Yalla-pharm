@@ -1,150 +1,181 @@
-using Yalla.Domain.Exceptions;
-
 using Yalla.Domain.Enums;
+using Yalla.Domain.Exceptions;
 
 namespace Yalla.Domain.Entities;
 
 public class Order
 {
-  public Guid Id { get; private set; }
+    private static readonly TimeSpan UtcPlus5Offset = TimeSpan.FromHours(5);
 
-  public Guid ClientId { get; private set; }
+    public Guid Id { get; private set; }
 
-  public string DeliveryAddress { get; private set; } = string.Empty;
+    public Guid ClientId { get; private set; }
 
-  public decimal Cost { get; private set; } = 0;
+    public Guid PharmacyId { get; private set; }
 
-  public decimal ReturnCost {get; private set;} = 0;
+    public string DeliveryAddress { get; private set; } = string.Empty;
 
-  public Status Status { get; private set; } = Status.New;
+    public string? IdempotencyKey { get; private set; }
 
-  private readonly List<Position> _positions = new();
+    public DateTime OrderPlacedAt { get; private set; }
 
-  private readonly List<Position> _rejectedPositions = new();
+    public decimal Cost { get; private set; }
 
-  private readonly List<PharmacyOrder> _pharmacyOrders = new();
+    public decimal ReturnCost { get; private set; }
 
-  public IReadOnlyCollection<Position> Positions => _positions.AsReadOnly();
+    public Status Status { get; private set; } = Status.New;
 
-  public IReadOnlyCollection<Position> RejectedPositions => _rejectedPositions.AsReadOnly();
+    private readonly List<OrderPosition> _positions = new();
 
-  public IReadOnlyCollection<PharmacyOrder> PharmacyOrders => _pharmacyOrders.AsReadOnly();
+    public IReadOnlyCollection<OrderPosition> Positions => _positions.AsReadOnly();
 
+    private Order() { }
 
-  private Order() {}
-
-  public Order(Guid clientId, string deliveryAddress, List<Position> positions)
-  {
-    if (clientId == Guid.Empty)
-      throw new DomainArgumentException("ClientId can't be empty.");
-
-    if (string.IsNullOrWhiteSpace(deliveryAddress))
-      throw new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
-
-    if (positions.Any(p => p.Medicine is null))
-      throw new DomainArgumentException("Position.Medicine can't be null.");
-
-    Id = Guid.NewGuid();
-    ClientId = clientId;
-    DeliveryAddress = deliveryAddress;
-    _positions.AddRange(positions);
-  }
-
-
-
-  private void CalculateCost()
-  {
-    if (_positions.Any(p => p.CapturedOffer is null))
-      throw new DomainArgumentException("All positions must have CapturedOffer before calculating Cost.");
-
-    var confirmed = _positions.Where(p => !_rejectedPositions.Contains(p)).ToList();
-
-    decimal result = 0;
-
-    confirmed.ForEach(p => result += p.CapturedOffer.Price * p.Quantity);
-    
-
-    Cost = result;
-  }
-
-  private void CalculateReturnCost()
-  {
-    if (_rejectedPositions.Any(p => p.CapturedOffer is null))
-      throw new DomainArgumentException("Return cost can be calculated only in Ready status and rejected positions must have CapturedOffer.");
-
-    decimal result = 0;
-
-    _rejectedPositions.ForEach(p => result += p.CapturedOffer.Price * p.Quantity);
-
-    ReturnCost = result;
-  }
-
-  public void NextStage(bool IsNotCancelled)
-  {
-    if (!IsNotCancelled)
+    public Order(
+      Guid id,
+      Guid clientId,
+      Guid pharmacyId,
+      string deliveryAddress,
+      List<OrderPosition> positions,
+      string? idempotencyKey = null,
+      DateTime? orderPlacedAt = null)
     {
-      if ((int)Status >= (int)Status.Ready)
-        throw new DomainException("Cannot cancel order the is already on the way or iz delivered");
+        if (id == Guid.Empty)
+            throw new DomainArgumentException("Id can't be empty.");
 
-      Status = Status.Cancelled;
-      return;
+        if (clientId == Guid.Empty)
+            throw new DomainArgumentException("ClientId can't be empty.");
+
+        if (pharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        if (string.IsNullOrWhiteSpace(deliveryAddress))
+            throw new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
+
+        if (positions is null || positions.Count == 0)
+            throw new DomainArgumentException("Order must contain at least one position.");
+
+        if (positions.Any(p => p.Medicine is null))
+            throw new DomainArgumentException("OrderPosition.Medicine can't be null.");
+
+        if (positions.Any(p => p.OfferSnapshot.PharmacyId != pharmacyId))
+            throw new DomainArgumentException("All positions must belong to Order.PharmacyId.");
+
+        if (positions.Any(p => p.OrderId != id))
+            throw new DomainArgumentException("All positions must belong to Order.Id.");
+
+        Id = id;
+        ClientId = clientId;
+        PharmacyId = pharmacyId;
+        DeliveryAddress = deliveryAddress;
+        IdempotencyKey = NormalizeIdempotencyKey(idempotencyKey);
+        OrderPlacedAt = orderPlacedAt.HasValue
+          ? NormalizeUtcPlus5ToSeconds(orderPlacedAt.Value)
+          : GetUtcPlus5NowToSeconds();
+
+        _positions.AddRange(positions);
+        RecalculateTotals();
     }
 
-    switch(Status)
+    public void RecalculateTotals()
     {
-      case Status.Cancelled:
-        throw new DomainArgumentException("Order can't transition from Cancelled status.");
-      case Status.Returned:
-        throw new DomainArgumentException("Order can't transition from Returned status.");
-      case Status.New:
-        Status = Status.UnderReview;
-        break;
-      case Status.UnderReview:
-        DistinctToPharmacyOrders();
-        Status = Status.Preparing;
-        break;
-      case Status.Preparing:
-        FillRejections();
-        CalculateCost();
-        CalculateReturnCost();
-        Status = Status.Ready;
-        break;
-      case Status.Ready:
-        Status = Status.OnTheWay;
-        break;
-      case Status.OnTheWay:
-        Status = Status.Delivered;
-        break;
-      case Status.Delivered:
-        Status = Status.Returned;
-        break;
-    }
-  }
+        Cost = _positions
+          .Where(x => !x.IsRejected)
+          .Sum(x => x.OfferSnapshot.Price * x.Quantity);
 
-  private void DistinctToPharmacyOrders()
-  {
-    if (_positions.Any(p => p.CapturedOffer is null))
-      throw new DomainArgumentException("DistinctToPharmacyOrders requires Preparing status and positions with CapturedOffer.");
-
-    var groupedPositions = _positions.GroupBy(p => p.CapturedOffer.PharmacyId);
-
-    List<PharmacyOrder> pharmacyOrders = new();
-
-    foreach (var x in groupedPositions)
-    {
-      pharmacyOrders.Add(new PharmacyOrder(x.Key, Id, x.ToList()));
+        ReturnCost = _positions
+          .Where(x => x.IsRejected)
+          .Sum(x => x.OfferSnapshot.Price * x.Quantity);
     }
 
-    _pharmacyOrders.Clear();
-    _pharmacyOrders.AddRange(pharmacyOrders);
-  }
-
-  private void FillRejections()
-  {
-    foreach(var pharmacyOrder in _pharmacyOrders)
+    public void NextStage(bool isNotCancelled)
     {
-      _rejectedPositions.AddRange(pharmacyOrder.RejectedPositions);
-    }
-  }
+        if (!isNotCancelled)
+        {
+            Cancel();
+            return;
+        }
 
+        switch (Status)
+        {
+            case Status.Cancelled:
+                throw new DomainArgumentException("Order can't transition from Cancelled status.");
+            case Status.Returned:
+                throw new DomainArgumentException("Order can't transition from Returned status.");
+            case Status.New:
+                Status = Status.UnderReview;
+                break;
+            case Status.UnderReview:
+                Status = Status.Preparing;
+                break;
+            case Status.Preparing:
+                RecalculateTotals();
+                Status = Status.Ready;
+                break;
+            case Status.Ready:
+                Status = Status.OnTheWay;
+                break;
+            case Status.OnTheWay:
+                Status = Status.Delivered;
+                break;
+            case Status.Delivered:
+                Status = Status.Returned;
+                break;
+        }
+    }
+
+    public void Cancel()
+    {
+        if (Status == Status.Cancelled)
+            throw new DomainException("Order is already cancelled.");
+
+        if ((int)Status >= (int)Status.Delivered)
+            throw new DomainException("Cannot cancel order that is already delivered or returned.");
+
+        Status = Status.Cancelled;
+    }
+
+    private static DateTime GetUtcPlus5NowToSeconds()
+    {
+        var now = DateTimeOffset.UtcNow.ToOffset(UtcPlus5Offset);
+        return new DateTime(
+          now.Year,
+          now.Month,
+          now.Day,
+          now.Hour,
+          now.Minute,
+          now.Second,
+          DateTimeKind.Unspecified);
+    }
+
+    private static DateTime NormalizeUtcPlus5ToSeconds(DateTime value)
+    {
+        var valueWithOffset = value.Kind == DateTimeKind.Unspecified
+          ? new DateTimeOffset(value, UtcPlus5Offset)
+          : new DateTimeOffset(value).ToOffset(UtcPlus5Offset);
+
+        return new DateTime(
+          valueWithOffset.Year,
+          valueWithOffset.Month,
+          valueWithOffset.Day,
+          valueWithOffset.Hour,
+          valueWithOffset.Minute,
+          valueWithOffset.Second,
+          DateTimeKind.Unspecified);
+    }
+
+    private static string? NormalizeIdempotencyKey(string? idempotencyKey)
+    {
+        if (idempotencyKey is null)
+            return null;
+
+        var normalized = idempotencyKey.Trim();
+        if (normalized.Length == 0)
+            throw new DomainArgumentException("IdempotencyKey can't be whitespace.");
+
+        if (normalized.Length > 128)
+            throw new DomainArgumentException("IdempotencyKey length can't exceed 128.");
+
+        return normalized;
+    }
 }
