@@ -20,7 +20,7 @@ public sealed class MedicinesController : ControllerBase
   }
 
   [HttpGet]
-  [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [AllowAnonymous]
   public async Task<IActionResult> GetCatalog(
     [FromQuery] GetMedicinesCatalogRequest request,
     CancellationToken cancellationToken)
@@ -40,12 +40,17 @@ public sealed class MedicinesController : ControllerBase
   }
 
   [HttpGet("{medicineId:guid}")]
-  [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [AllowAnonymous]
   public async Task<IActionResult> GetById(
     Guid medicineId,
     CancellationToken cancellationToken)
   {
-    var role = User.GetRequiredRole();
+    var role = Role.Client;
+    if (User.Identity?.IsAuthenticated == true)
+    {
+      role = User.GetRequiredRole();
+    }
+
     var response = await _medicineService.GetMedicineByIdAsync(new GetMedicineByIdRequest
     {
       MedicineId = medicineId,
@@ -86,7 +91,7 @@ public sealed class MedicinesController : ControllerBase
   }
 
   [HttpPost("search")]
-  [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [AllowAnonymous]
   public async Task<IActionResult> Search(
     [FromBody] SearchMedicinesRequest request,
     CancellationToken cancellationToken)
