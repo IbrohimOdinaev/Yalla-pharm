@@ -7,6 +7,7 @@ public sealed class OrderHistoryItemResponse
   public Guid OrderId { get; init; }
   public Guid PharmacyId { get; init; }
   public DateTime OrderPlacedAt { get; init; }
+  public bool IsPickup { get; init; }
   public string DeliveryAddress { get; init; } = string.Empty;
   public Status Status { get; init; }
   public decimal Cost { get; init; }

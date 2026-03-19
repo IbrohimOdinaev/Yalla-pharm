@@ -176,6 +176,50 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task MarkOrderOnTheWayAsync_ForPickup_MovesReadyToDelivered()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(
+      scope,
+      setup.Client.Id,
+      setup.Pharmacy.Id,
+      setup.Medicine,
+      Status.Ready,
+      isPickup: true);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.MarkOrderOnTheWayAsync(new MarkOrderOnTheWayRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.Delivered, response.Status);
+  }
+
+  [Fact]
+  public async Task MoveOrderToNextStatusBySuperAdminAsync_MovesNewToUnderReview()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var superAdmin = TestDbFactory.CreateUser("S", "992400009", Role.SuperAdmin);
+    scope.Db.Users.Add(superAdmin);
+    await scope.Db.SaveChangesAsync();
+
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.New);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.MoveOrderToNextStatusBySuperAdminAsync(new MarkOrderDeliveredBySuperAdminRequest
+    {
+      SuperAdminId = superAdmin.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.UnderReview, response.Status);
+  }
+
+  [Fact]
   public async Task MarkOrderDeliveredBySuperAdminAsync_MovesOnTheWayToDelivered()
   {
     using var scope = TestDbFactory.Create();
@@ -213,6 +257,45 @@ public class OrderServiceTests
         SuperAdminId = admin.Id,
         OrderId = order.Id
       }));
+  }
+
+  [Fact]
+  public async Task DeleteNewOrderByAdminAsync_RemovesOrderAndRestoresStock()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.New);
+
+    var offer = await scope.Db.Offers
+      .AsTracking()
+      .FirstAsync(x => x.PharmacyId == setup.Pharmacy.Id && x.MedicineId == setup.Medicine.Id);
+
+    var reservedQuantity = order.Positions
+      .Where(x => !x.IsRejected)
+      .Sum(x => x.Quantity);
+
+    offer.SetStockQuantity(offer.StockQuantity - reservedQuantity);
+    await scope.Db.SaveChangesAsync();
+    var stockAfterReservation = offer.StockQuantity;
+
+    var service = new OrderService(scope.Db);
+    var response = await service.DeleteNewOrderByAdminAsync(new DeleteNewOrderByAdminRequest
+    {
+      WorkerId = setup.Worker.Id,
+      PharmacyId = setup.Pharmacy.Id,
+      OrderId = order.Id
+    });
+
+    Assert.True(response.IsDeleted);
+    Assert.False(await scope.Db.Orders.AsNoTracking().AnyAsync(x => x.Id == order.Id));
+
+    var stockAfterDelete = await scope.Db.Offers
+      .AsNoTracking()
+      .Where(x => x.PharmacyId == setup.Pharmacy.Id && x.MedicineId == setup.Medicine.Id)
+      .Select(x => x.StockQuantity)
+      .FirstAsync();
+
+    Assert.Equal(stockAfterReservation + reservedQuantity, stockAfterDelete);
   }
 
   [Fact]
@@ -288,9 +371,10 @@ public class OrderServiceTests
     Guid clientId,
     Guid pharmacyId,
     Medicine medicine,
-    Status status)
+    Status status,
+    bool isPickup = false)
   {
-    var order = TestDbFactory.CreateOrder(clientId, pharmacyId, "Address", (medicine, 10m, 1, false));
+    var order = TestDbFactory.CreateOrder(clientId, pharmacyId, "Address", isPickup, (medicine, 10m, 1, false));
 
     while (order.Status != status)
     {

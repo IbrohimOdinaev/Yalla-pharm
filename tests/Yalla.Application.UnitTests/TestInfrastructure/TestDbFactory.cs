@@ -82,6 +82,16 @@ internal static class TestDbFactory
     string address,
     params (Medicine medicine, decimal price, int quantity, bool isRejected)[] positions)
   {
+    return CreateOrder(clientId, pharmacyId, address, isPickup: false, positions);
+  }
+
+  public static Order CreateOrder(
+    Guid clientId,
+    Guid pharmacyId,
+    string address,
+    bool isPickup,
+    params (Medicine medicine, decimal price, int quantity, bool isRejected)[] positions)
+  {
     var orderId = Guid.NewGuid();
     var orderPositions = positions
       .Select(x => new OrderPosition(
@@ -93,7 +103,7 @@ internal static class TestDbFactory
         isRejected: x.isRejected))
       .ToList();
 
-    return new Order(orderId, clientId, pharmacyId, address, orderPositions);
+    return new Order(orderId, clientId, pharmacyId, address, orderPositions, isPickup: isPickup);
   }
 }
 

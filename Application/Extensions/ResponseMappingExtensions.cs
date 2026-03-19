@@ -87,6 +87,7 @@ public static class ResponseMappingExtensions
             OrderId = order.Id,
             PharmacyId = order.PharmacyId,
             OrderPlacedAt = order.OrderPlacedAt,
+            IsPickup = order.IsPickup,
             Status = order.Status,
             Cost = order.Cost,
             ReturnCost = order.ReturnCost
@@ -133,6 +134,7 @@ public static class ResponseMappingExtensions
             ClientId = order.ClientId,
             OrderId = order.Id,
             OrderPlacedAt = order.OrderPlacedAt,
+            IsPickup = order.IsPickup,
             DeliveryAddress = order.DeliveryAddress,
             Status = order.Status,
             Cost = order.Cost,

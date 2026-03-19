@@ -7,6 +7,7 @@ public sealed class CheckoutBasketResponse
   public Guid ClientId { get; init; }
   public Guid OrderId { get; init; }
   public DateTime OrderPlacedAt { get; init; }
+  public bool IsPickup { get; init; }
   public string DeliveryAddress { get; init; } = string.Empty;
   public Status Status { get; init; }
   public decimal Cost { get; init; }

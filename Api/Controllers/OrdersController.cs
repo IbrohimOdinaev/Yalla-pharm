@@ -89,15 +89,50 @@ public sealed class OrdersController : ControllerBase
     [FromQuery] GetPharmacyOrdersRequest request,
     CancellationToken cancellationToken)
   {
-    var response = await _orderService.GetPharmacyOrdersAsync(new GetPharmacyOrdersRequest
+    var response = await GetScopedPharmacyHistoryAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpGet("worker/history")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> GetHistoryForWorkerPharmacy(
+    [FromQuery] GetPharmacyOrdersRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await GetScopedPharmacyHistoryAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("admin/new/delete")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> DeleteNewAsAdmin(
+    [FromBody] DeleteNewOrderByAdminRequest request,
+    CancellationToken cancellationToken)
+  {
+    var scopedRequest = new DeleteNewOrderByAdminRequest
     {
       WorkerId = User.GetRequiredUserId(),
       PharmacyId = User.GetRequiredPharmacyId(),
-      Status = request.Status,
-      Page = request.Page,
-      PageSize = request.PageSize
-    }, cancellationToken);
+      OrderId = request.OrderId
+    };
 
+    var response = await _orderService.DeleteNewOrderByAdminAsync(scopedRequest, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("superadmin/next-status")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> MoveToNextStatusBySuperAdmin(
+    [FromBody] MarkOrderDeliveredBySuperAdminRequest request,
+    CancellationToken cancellationToken)
+  {
+    var scopedRequest = new MarkOrderDeliveredBySuperAdminRequest
+    {
+      SuperAdminId = User.GetRequiredUserId(),
+      OrderId = request.OrderId
+    };
+
+    var response = await _orderService.MoveOrderToNextStatusBySuperAdminAsync(scopedRequest, cancellationToken);
     return Ok(response);
   }
 
@@ -211,6 +246,20 @@ public sealed class OrdersController : ControllerBase
       WorkerId = User.GetRequiredUserId(),
       PharmacyId = User.GetRequiredPharmacyId(),
       Take = take
+    }, cancellationToken);
+  }
+
+  private async Task<Yalla.Application.DTO.Response.GetPharmacyOrdersResponse> GetScopedPharmacyHistoryAsync(
+    GetPharmacyOrdersRequest request,
+    CancellationToken cancellationToken)
+  {
+    return await _orderService.GetPharmacyOrdersAsync(new GetPharmacyOrdersRequest
+    {
+      WorkerId = User.GetRequiredUserId(),
+      PharmacyId = User.GetRequiredPharmacyId(),
+      Status = request.Status,
+      Page = request.Page,
+      PageSize = request.PageSize
     }, cancellationToken);
   }
 }

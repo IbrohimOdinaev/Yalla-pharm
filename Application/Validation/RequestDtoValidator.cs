@@ -45,6 +45,9 @@ public static class RequestDtoValidator
       case DeleteMedicineRequest request:
         RequireNotEmpty(request.MedicineId, nameof(request.MedicineId), errors);
         break;
+      case DeleteNewOrderByAdminRequest request:
+        RequireNotEmpty(request.OrderId, nameof(request.OrderId), errors);
+        break;
       case DeletePharmacyRequest request:
         RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
         break;
@@ -167,7 +170,8 @@ public static class RequestDtoValidator
     List<ValidationError> errors)
   {
     RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
-    RequireNotWhiteSpace(request.DeliveryAddress, nameof(request.DeliveryAddress), errors);
+    if (!request.IsPickup)
+      RequireNotWhiteSpace(request.DeliveryAddress, nameof(request.DeliveryAddress), errors);
     RequireNoEmptyGuids(request.IgnoredPositionIds, nameof(request.IgnoredPositionIds), errors);
   }
 

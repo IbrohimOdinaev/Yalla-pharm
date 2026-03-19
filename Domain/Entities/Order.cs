@@ -15,6 +15,8 @@ public class Order
 
     public string DeliveryAddress { get; private set; } = string.Empty;
 
+    public bool IsPickup { get; private set; }
+
     public string? IdempotencyKey { get; private set; }
 
     public DateTime OrderPlacedAt { get; private set; }
@@ -38,7 +40,8 @@ public class Order
       string deliveryAddress,
       List<OrderPosition> positions,
       string? idempotencyKey = null,
-      DateTime? orderPlacedAt = null)
+      DateTime? orderPlacedAt = null,
+      bool isPickup = false)
     {
         if (id == Guid.Empty)
             throw new DomainArgumentException("Id can't be empty.");
@@ -68,6 +71,7 @@ public class Order
         ClientId = clientId;
         PharmacyId = pharmacyId;
         DeliveryAddress = deliveryAddress;
+        IsPickup = isPickup;
         IdempotencyKey = NormalizeIdempotencyKey(idempotencyKey);
         OrderPlacedAt = orderPlacedAt.HasValue
           ? NormalizeUtcPlus5ToSeconds(orderPlacedAt.Value)
@@ -113,7 +117,9 @@ public class Order
                 Status = Status.Ready;
                 break;
             case Status.Ready:
-                Status = Status.OnTheWay;
+                Status = IsPickup
+                  ? Status.Delivered
+                  : Status.OnTheWay;
                 break;
             case Status.OnTheWay:
                 Status = Status.Delivered;

@@ -223,6 +223,65 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
   }
 
   [Fact]
+  public async Task Orders_SuperAdminNextStatus_ForNew_ShouldMoveToUnderReview()
+  {
+    using var clientActor = await CreateAuthorizedClientAsync(TestActor.Client1);
+    using var superAdminActor = await CreateAuthorizedClientAsync(TestActor.SuperAdmin);
+
+    var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
+    {
+      PharmacyId = ApiTestData.Pharmacy1Id,
+      DeliveryAddress = "Dushanbe, superadmin next status",
+      IdempotencyKey = Guid.NewGuid().ToString("N")
+    });
+    Assert.Equal(HttpStatusCode.OK, checkoutResponse.StatusCode);
+
+    var checkoutPayload = await ReadJsonAsync(checkoutResponse);
+    var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
+    Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
+
+    var nextStatusResponse = await superAdminActor.PostAsJsonAsync("/api/orders/superadmin/next-status", new
+    {
+      OrderId = orderId
+    });
+
+    Assert.Equal(HttpStatusCode.OK, nextStatusResponse.StatusCode);
+    var payload = await ReadJsonAsync(nextStatusResponse);
+    Assert.Equal((int)Status.UnderReview, payload.GetProperty("status").GetInt32());
+  }
+
+  [Fact]
+  public async Task Orders_DeleteNew_AsAdmin_ShouldDeleteOrder()
+  {
+    using var clientActor = await CreateAuthorizedClientAsync(TestActor.Client1);
+    using var adminActor = await CreateAuthorizedClientAsync(TestActor.Admin1);
+
+    var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
+    {
+      PharmacyId = ApiTestData.Pharmacy1Id,
+      DeliveryAddress = "Dushanbe, delete new order",
+      IdempotencyKey = Guid.NewGuid().ToString("N")
+    });
+    Assert.Equal(HttpStatusCode.OK, checkoutResponse.StatusCode);
+
+    var checkoutPayload = await ReadJsonAsync(checkoutResponse);
+    var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
+    Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
+
+    var deleteResponse = await adminActor.PostAsJsonAsync("/api/orders/admin/new/delete", new
+    {
+      OrderId = orderId
+    });
+
+    Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+
+    using var scope = Factory.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var exists = await dbContext.Orders.AsNoTracking().AnyAsync(x => x.Id == orderId);
+    Assert.False(exists);
+  }
+
+  [Fact]
   public async Task Orders_Checkout_ThenClientHistory_ShouldContainNonZeroCost()
   {
     using var client = await CreateAuthorizedClientAsync(TestActor.Client1);
@@ -240,6 +299,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var checkoutPayload = await ReadJsonAsync(checkoutResponse);
     var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
     var checkoutCost = checkoutPayload.GetProperty("cost").GetDecimal();
+    Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
     Assert.True(checkoutCost > 0m);
 
     var historyResponse = await client.GetAsync("/api/orders/client-history");

@@ -108,7 +108,8 @@ public static class RequestMappingExtensions
           request.PharmacyId,
           request.DeliveryAddress,
           positions,
-          request.IdempotencyKey);
+          request.IdempotencyKey,
+          isPickup: request.IsPickup);
     }
 
     public static async Task<Client> GetTrackedClientOrThrowAsync(

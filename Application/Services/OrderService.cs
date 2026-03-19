@@ -97,6 +97,7 @@ public sealed class OrderService : IOrderService
           OrderId = x.Id,
           PharmacyId = x.PharmacyId,
           OrderPlacedAt = x.OrderPlacedAt,
+          IsPickup = x.IsPickup,
           DeliveryAddress = x.DeliveryAddress,
           Status = x.Status,
           Cost = x.Cost,
@@ -134,6 +135,7 @@ public sealed class OrderService : IOrderService
       OrderId = order.Id,
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
+      IsPickup = order.IsPickup,
       DeliveryAddress = order.DeliveryAddress,
       Status = order.Status,
       Cost = order.Cost,
@@ -444,37 +446,80 @@ public sealed class OrderService : IOrderService
     MarkOrderDeliveredBySuperAdminRequest request,
     CancellationToken cancellationToken = default)
   {
+    return await MoveOrderBySuperAdminInternalAsync(
+      request,
+      [Status.OnTheWay],
+      "MarkOrderDeliveredBySuperAdmin",
+      cancellationToken);
+  }
+
+  public async Task<MarkOrderDeliveredBySuperAdminResponse> MoveOrderToNextStatusBySuperAdminAsync(
+    MarkOrderDeliveredBySuperAdminRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    return await MoveOrderBySuperAdminInternalAsync(
+      request,
+      [Status.New, Status.OnTheWay],
+      "MoveOrderToNextStatusBySuperAdmin",
+      cancellationToken);
+  }
+
+  public async Task<DeleteNewOrderByAdminResponse> DeleteNewOrderByAdminAsync(
+    DeleteNewOrderByAdminRequest request,
+    CancellationToken cancellationToken = default)
+  {
     ArgumentNullException.ThrowIfNull(request);
 
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var superAdmin = await GetSuperAdminOrThrowAsync(
-        request.SuperAdminId,
-        asTracking: true,
-        cancellationToken);
+      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
+
+      if (request.PharmacyId != Guid.Empty && request.PharmacyId != worker.PharmacyId)
+        throw new InvalidOperationException(
+          $"Worker '{worker.Id}' is not linked to pharmacy '{request.PharmacyId}'.");
 
       var order = await _dbContext.Orders
         .AsTracking()
+        .Include(x => x.Positions)
         .FirstOrDefaultAsync(x => x.Id == request.OrderId, cancellationToken)
         ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
 
-      if (order.Status != Status.OnTheWay)
+      if (order.PharmacyId != worker.PharmacyId)
         throw new InvalidOperationException(
-          $"Order '{order.Id}' must be in status '{Status.OnTheWay}' to mark as delivered.");
+          $"Order '{order.Id}' does not belong to worker pharmacy '{worker.PharmacyId}'.");
 
-      var oldStatus = order.Status;
-      order.NextStage(true);
-      LogStatusTransition(order.Id, oldStatus, order.Status, "MarkOrderDeliveredBySuperAdmin", superAdmin.Id);
+      if (order.Status != Status.New)
+        throw new InvalidOperationException(
+          $"Order '{order.Id}' must be in status '{Status.New}' to be deleted.");
+
+      var positionsToRestore = order.Positions
+        .Where(x => !x.IsRejected)
+        .ToList();
+
+      if (positionsToRestore.Count > 0)
+      {
+        await RestoreStockForPositionsAsync(
+          order.PharmacyId,
+          positionsToRestore,
+          cancellationToken);
+
+        _logger.LogInformation(
+          "Stock restored for deleted new order {OrderId}. Positions restored: {PositionsCount}.",
+          order.Id,
+          positionsToRestore.Count);
+      }
+
+      _dbContext.Orders.Remove(order);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
 
-      return new MarkOrderDeliveredBySuperAdminResponse
+      return new DeleteNewOrderByAdminResponse
       {
-        SuperAdminId = superAdmin.Id,
+        WorkerId = worker.Id,
         OrderId = order.Id,
-        Status = order.Status
+        IsDeleted = true
       };
     }
     catch (Exception)
@@ -594,6 +639,56 @@ public sealed class OrderService : IOrderService
     return superAdmin;
   }
 
+  private async Task<MarkOrderDeliveredBySuperAdminResponse> MoveOrderBySuperAdminInternalAsync(
+    MarkOrderDeliveredBySuperAdminRequest request,
+    IReadOnlyCollection<Status> allowedStatuses,
+    string action,
+    CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    ArgumentNullException.ThrowIfNull(allowedStatuses);
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      var superAdmin = await GetSuperAdminOrThrowAsync(
+        request.SuperAdminId,
+        asTracking: true,
+        cancellationToken);
+
+      var order = await _dbContext.Orders
+        .AsTracking()
+        .FirstOrDefaultAsync(x => x.Id == request.OrderId, cancellationToken)
+        ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
+
+      if (!allowedStatuses.Contains(order.Status))
+      {
+        var allowed = string.Join(", ", allowedStatuses);
+        throw new InvalidOperationException(
+          $"Order '{order.Id}' must be in one of statuses [{allowed}] for action '{action}'.");
+      }
+
+      var oldStatus = order.Status;
+      order.NextStage(true);
+      LogStatusTransition(order.Id, oldStatus, order.Status, action, superAdmin.Id);
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+
+      return new MarkOrderDeliveredBySuperAdminResponse
+      {
+        SuperAdminId = superAdmin.Id,
+        OrderId = order.Id,
+        Status = order.Status
+      };
+    }
+    catch (Exception)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      throw;
+    }
+  }
+
   private static WorkerOrderResponse ToWorkerOrderResponse(Order order)
   {
     return new WorkerOrderResponse
@@ -602,6 +697,7 @@ public sealed class OrderService : IOrderService
       ClientId = order.ClientId,
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
+      IsPickup = order.IsPickup,
       DeliveryAddress = order.DeliveryAddress,
       Status = order.Status,
       Cost = order.Cost,

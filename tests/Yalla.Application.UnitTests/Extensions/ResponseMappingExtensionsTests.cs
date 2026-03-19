@@ -39,12 +39,14 @@ public class ResponseMappingExtensionsTests
           medicine,
           new OfferSnapshot(pharmacyId, 15m),
           1)
-      ]);
+      ],
+      isPickup: true);
 
     var response = order.ToResponse();
 
     Assert.Equal(order.Id, response.OrderId);
     Assert.Equal(order.ClientId, response.ClientId);
+    Assert.True(response.IsPickup);
     Assert.Equal(order.Status, response.Status);
     Assert.Equal(order.Cost, response.Cost);
   }

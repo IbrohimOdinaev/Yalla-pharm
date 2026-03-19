@@ -1,51 +1,28 @@
-﻿using System;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Yalla.Infrastructure;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20260307104254_RemovePharmacyFromRefundRequest")]
     public partial class RemovePharmacyFromRefundRequest : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_refund_requests_pharmacies_pharmacy_id",
-                table: "refund_requests");
-
-            migrationBuilder.DropIndex(
-                name: "IX_refund_requests_pharmacy_id",
-                table: "refund_requests");
-
-            migrationBuilder.DropColumn(
-                name: "pharmacy_id",
-                table: "refund_requests");
+            // Intentionally left blank.
+            // This migration used to remove pharmacy_id from refund_requests,
+            // but the current model and later migrations require that column.
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<Guid>(
-                name: "pharmacy_id",
-                table: "refund_requests",
-                type: "uuid",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
-
-            migrationBuilder.CreateIndex(
-                name: "IX_refund_requests_pharmacy_id",
-                table: "refund_requests",
-                column: "pharmacy_id");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_refund_requests_pharmacies_pharmacy_id",
-                table: "refund_requests",
-                column: "pharmacy_id",
-                principalTable: "pharmacies",
-                principalColumn: "id",
-                onDelete: ReferentialAction.Cascade);
+            // Intentionally left blank.
         }
     }
 }

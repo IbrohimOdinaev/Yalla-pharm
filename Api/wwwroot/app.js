@@ -1,4 +1,7 @@
 const STORAGE_KEY = "yalla.apteka.session";
+const GUEST_BASKET_STORAGE_KEY = "yalla.guest.basket.v1";
+const GUEST_CHECKOUT_INTENT_KEY = "yalla.guest.checkout.intent.v1";
+const GUEST_POSITION_PREFIX = "guest:";
 const DEFAULT_BASE_URL = window.location.origin?.startsWith("http")
   ? window.location.origin
   : "https://localhost:5001";
@@ -7,6 +10,13 @@ const MAX_MEDICINE_IMAGE_SIZE_BYTES = 50 * 1024 * 1024;
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_ALLOWED_CHARS_REGEX = /^[A-Za-z0-9!@#$%^&*()\-_=.,?]+$/;
 const LIVE_SEARCH_DEBOUNCE_MS = 260;
+const MAIN_NAV_REGION = "main-nav";
+const BASKET_OVERVIEW_REGION = "basket-overview";
+const BASKET_POSITIONS_REGION = "basket-positions";
+const BASKET_PHARMACY_REGION = "basket-pharmacy-selection";
+const BASKET_CHECKOUT_REGION = "basket-checkout-panel";
+const ADMIN_INTERFACE_REGION = "admin-interface-content";
+const SUPERADMIN_MAIN_INTERFACE_REGION = "superadmin-main-interface";
 
 const ROLE = {
   CLIENT: "Client",
@@ -17,10 +27,7 @@ const ROLE = {
 const SUPERADMIN_INTERFACE = {
   PHARMACY_ADMIN: "pharmacy-admin",
   MEDICINE: "medicine",
-  CLIENT: "client"
-};
-
-const SUPERADMIN_OPERATIONS_INTERFACE = {
+  CLIENT: "client",
   ORDERS: "orders",
   REFUNDS: "refunds"
 };
@@ -33,10 +40,18 @@ const ADMIN_INTERFACE = {
 
 const app = document.querySelector("#app");
 let catalogLiveSearchTimer = 0;
+let workspaceLiveSearchTimer = 0;
 let adminMedicineLiveSearchTimer = 0;
 let superAdminMedicineLiveSearchTimer = 0;
 let catalogFetchRequestId = 0;
+let adminMedicineSearchRequestId = 0;
 let superAdminMedicineDetailsRequestId = 0;
+let superAdminMedicineSearchRequestId = 0;
+let adminWorkspaceRequestId = 0;
+let superAdminWorkspaceRequestId = 0;
+let superAdminPharmacyAdminSearchRequestId = 0;
+let superAdminClientSearchRequestId = 0;
+let superAdminOrdersSearchRequestId = 0;
 
 const state = {
   baseUrl: DEFAULT_BASE_URL,
@@ -69,13 +84,23 @@ const state = {
   },
   adminInterface: ADMIN_INTERFACE.PHARMACY,
   superAdminInterface: SUPERADMIN_INTERFACE.PHARMACY_ADMIN,
-  superAdminOperationsInterface: SUPERADMIN_OPERATIONS_INTERFACE.ORDERS,
   superAdminSelectedMedicineId: "",
   superAdminMedicineDetailsLoading: false,
   checkoutDraft: {
     pharmacyId: "",
-    deliveryAddress: ""
+    deliveryAddress: "",
+    isPickup: false
   },
+  checkoutInlineNotice: null,
+  expandedBasketPharmacyDetails: new Set(),
+  guestBasket: {
+    items: [],
+    pharmacyId: "",
+    deliveryAddress: "",
+    isPickup: false,
+    updatedAt: ""
+  },
+  pendingGuestCheckoutAfterLogin: false,
   medicineCache: new Map(),
   notice: null,
   loading: false,
@@ -95,20 +120,36 @@ function bindEvents() {
   app.addEventListener("submit", handleSubmit);
   app.addEventListener("click", handleClick);
   app.addEventListener("input", handleInput);
+  app.addEventListener("change", handleChange);
 }
 
 function restoreSession() {
   try {
+    state.guestBasket = loadGuestBasket();
+    state.pendingGuestCheckoutAfterLogin = hasGuestCheckoutIntent();
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
+    if (!raw) {
+      state.checkoutDraft.pharmacyId = state.guestBasket.pharmacyId || "";
+      state.checkoutDraft.deliveryAddress = state.guestBasket.deliveryAddress || "";
+      state.checkoutDraft.isPickup = Boolean(state.guestBasket.isPickup);
+      return;
+    }
 
     const parsed = JSON.parse(raw);
     state.baseUrl = normalizeBaseUrl(parsed.baseUrl || DEFAULT_BASE_URL);
     state.token = parsed.token || "";
     state.currentUser = parsed.currentUser || null;
     syncIdentityFromToken();
+
+    if (!state.token) {
+      state.checkoutDraft.pharmacyId = state.guestBasket.pharmacyId || "";
+      state.checkoutDraft.deliveryAddress = state.guestBasket.deliveryAddress || "";
+      state.checkoutDraft.isPickup = Boolean(state.guestBasket.isPickup);
+    }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
+    state.guestBasket = createEmptyGuestBasket();
+    state.pendingGuestCheckoutAfterLogin = false;
   }
 }
 
@@ -118,6 +159,175 @@ function persistSession() {
     token: state.token,
     currentUser: state.currentUser
   }));
+}
+
+function createEmptyGuestBasket() {
+  return {
+    items: [],
+    pharmacyId: "",
+    deliveryAddress: "",
+    isPickup: false,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function normalizeGuestBasket(rawValue) {
+  const source = rawValue && typeof rawValue === "object" ? rawValue : {};
+  const pickupRaw = source.isPickup;
+  const rawItems = Array.isArray(source.items) ? source.items : [];
+  const grouped = new Map();
+
+  for (const item of rawItems) {
+    const medicineId = String(item?.medicineId || "").trim();
+    if (!medicineId) continue;
+
+    const parsedQuantity = Number(item?.quantity ?? 0);
+    if (!Number.isFinite(parsedQuantity)) continue;
+    const quantity = Math.max(0, Math.floor(parsedQuantity));
+    if (quantity <= 0) continue;
+
+    const currentQuantity = grouped.get(medicineId) || 0;
+    grouped.set(medicineId, Math.min(999, currentQuantity + quantity));
+
+    if (grouped.size >= 100) {
+      break;
+    }
+  }
+
+  return {
+    items: [...grouped.entries()].map(([medicineId, quantity]) => ({
+      medicineId,
+      quantity
+    })),
+    pharmacyId: String(source.pharmacyId || "").trim(),
+    deliveryAddress: String(source.deliveryAddress || ""),
+    isPickup: pickupRaw === true || pickupRaw === "true" || pickupRaw === 1 || pickupRaw === "1",
+    updatedAt: typeof source.updatedAt === "string" && source.updatedAt
+      ? source.updatedAt
+      : new Date().toISOString()
+  };
+}
+
+function loadGuestBasket() {
+  try {
+    const raw = localStorage.getItem(GUEST_BASKET_STORAGE_KEY);
+    if (!raw) {
+      const empty = createEmptyGuestBasket();
+      state.guestBasket = empty;
+      return empty;
+    }
+
+    const parsed = JSON.parse(raw);
+    const normalized = normalizeGuestBasket(parsed);
+    state.guestBasket = normalized;
+    return normalized;
+  } catch {
+    localStorage.removeItem(GUEST_BASKET_STORAGE_KEY);
+    const empty = createEmptyGuestBasket();
+    state.guestBasket = empty;
+    return empty;
+  }
+}
+
+function saveGuestBasket(rawValue) {
+  const normalized = normalizeGuestBasket(rawValue);
+  normalized.updatedAt = new Date().toISOString();
+  state.guestBasket = normalized;
+  localStorage.setItem(GUEST_BASKET_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+function clearGuestBasket() {
+  localStorage.removeItem(GUEST_BASKET_STORAGE_KEY);
+  state.guestBasket = createEmptyGuestBasket();
+}
+
+function hasGuestCheckoutIntent() {
+  return sessionStorage.getItem(GUEST_CHECKOUT_INTENT_KEY) === "1";
+}
+
+function setGuestCheckoutIntent(value) {
+  if (value) {
+    sessionStorage.setItem(GUEST_CHECKOUT_INTENT_KEY, "1");
+    state.pendingGuestCheckoutAfterLogin = true;
+    return;
+  }
+
+  sessionStorage.removeItem(GUEST_CHECKOUT_INTENT_KEY);
+  state.pendingGuestCheckoutAfterLogin = false;
+}
+
+function consumeGuestCheckoutIntent() {
+  const hasIntent = hasGuestCheckoutIntent();
+  setGuestCheckoutIntent(false);
+  return hasIntent;
+}
+
+function createGuestPositionId(medicineId) {
+  return `${GUEST_POSITION_PREFIX}${String(medicineId || "").trim()}`;
+}
+
+function resolveGuestMedicineIdFromPosition(positionId) {
+  const value = String(positionId || "").trim();
+  if (!value) return "";
+  if (value.startsWith(GUEST_POSITION_PREFIX)) {
+    return value.slice(GUEST_POSITION_PREFIX.length);
+  }
+
+  return value;
+}
+
+function upsertGuestBasketItem(medicineId, quantity) {
+  const normalizedMedicineId = String(medicineId || "").trim();
+  const normalizedQuantity = Math.max(0, Math.floor(Number(quantity || 0)));
+  if (!normalizedMedicineId) return loadGuestBasket();
+
+  const basket = loadGuestBasket();
+  const existingItems = Array.isArray(basket.items) ? basket.items : [];
+  const nextItems = existingItems
+    .filter(item => String(item.medicineId) !== normalizedMedicineId);
+
+  if (normalizedQuantity > 0) {
+    nextItems.push({
+      medicineId: normalizedMedicineId,
+      quantity: normalizedQuantity
+    });
+  }
+
+  return saveGuestBasket({
+    ...basket,
+    items: nextItems
+  });
+}
+
+function addGuestBasketQuantity(medicineId, quantityToAdd) {
+  const normalizedMedicineId = String(medicineId || "").trim();
+  const increment = Math.max(1, Math.floor(Number(quantityToAdd || 1)));
+  if (!normalizedMedicineId) return loadGuestBasket();
+
+  const basket = loadGuestBasket();
+  const existing = (basket.items || []).find(item => String(item.medicineId) === normalizedMedicineId);
+  const nextQuantity = Math.min(999, Number(existing?.quantity || 0) + increment);
+  return upsertGuestBasketItem(normalizedMedicineId, nextQuantity);
+}
+
+function updateGuestCheckoutDraftStorage(
+  pharmacyId = state.checkoutDraft.pharmacyId,
+  deliveryAddress = state.checkoutDraft.deliveryAddress,
+  isPickup = state.checkoutDraft.isPickup
+) {
+  const basket = loadGuestBasket();
+  return saveGuestBasket({
+    ...basket,
+    pharmacyId: String(pharmacyId || "").trim(),
+    deliveryAddress: String(deliveryAddress || ""),
+    isPickup: Boolean(isPickup)
+  });
+}
+
+function getGuestBasketItemCount() {
+  const basket = state.guestBasket?.items ? state.guestBasket : loadGuestBasket();
+  return Number(basket.items?.length || 0);
 }
 
 function normalizeBaseUrl(value) {
@@ -294,10 +504,12 @@ async function handleRouteChange() {
 
 function canAccessRoute(routeName) {
   if (routeName === "login" || routeName === "register" || routeName === "catalog" || routeName === "product") return true;
+  if (routeName === "basket" && !state.token) return true;
   if (!state.token) return false;
 
   const role = getRole();
-  if (routeName === "profile" || routeName === "basket") return role === ROLE.CLIENT;
+  if (routeName === "profile") return role === ROLE.CLIENT;
+  if (routeName === "basket") return role === ROLE.CLIENT;
   if (routeName === "workspace") return role === ROLE.ADMIN || role === ROLE.SUPER_ADMIN;
   if (routeName === "workspace-order") return role === ROLE.ADMIN;
 
@@ -378,43 +590,64 @@ async function handleSubmit(event) {
 
     if (formType === "catalog-search") {
       state.pendingSearch = String(formData.get("query") || "").trim();
-      await fetchCatalog();
+      await fetchCatalog({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
     if (formType === "admin-medicine-search") {
       state.adminMedicineSearch = String(formData.get("query") || "").trim();
-      await fetchWorkspace({ silent: true });
+      await fetchAdminMedicineCatalog({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
     if (formType === "admin-order-filter") {
       state.adminOrderStatusFilter = String(formData.get("status") || "").trim();
-      await fetchWorkspace();
+      await fetchAdminOrders({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
     if (formType === "superadmin-order-filter") {
       state.superAdminOrderStatusFilter = String(formData.get("status") || "").trim();
-      await fetchWorkspace();
+      await fetchSuperAdminOrders({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
     if (formType === "superadmin-pharmacy-admin-search") {
       state.superAdminSearch.pharmacyAdmin = String(formData.get("query") || "").trim();
-      await fetchWorkspace();
+      await fetchSuperAdminPharmacyAdmin({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
     if (formType === "superadmin-medicine-search") {
       state.superAdminSearch.medicine = String(formData.get("query") || "").trim();
-      await fetchWorkspace();
+      await fetchSuperAdminMedicineCatalog({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
     if (formType === "superadmin-client-search") {
       state.superAdminSearch.client = String(formData.get("query") || "").trim();
-      await fetchWorkspace();
+      await fetchSuperAdminClients({
+        silent: true,
+        partial: true
+      });
       return;
     }
 
@@ -429,14 +662,17 @@ async function handleSubmit(event) {
     }
 
     if (formType === "add-to-basket") {
-      await addToBasket(formData);
+      await addToBasket(formData, form);
       return;
     }
 
     if (formType === "basket-quantity") {
       const positionId = String(formData.get("positionId") || "").trim();
       const quantity = Math.max(1, Number(formData.get("quantity") || "1"));
-      await updateBasketQuantity(positionId, quantity);
+      await updateBasketQuantity(positionId, quantity, {
+        showNotice: false,
+        silentFetch: true
+      });
       return;
     }
 
@@ -535,48 +771,173 @@ async function handleSubmit(event) {
 
 function handleInput(event) {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement)) return;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) {
+    return;
+  }
 
-  if (target.dataset.liveSearch === "catalog") {
-    state.pendingSearch = target.value.trim();
+  const form = target.closest("form[data-form]");
+  if (!(form instanceof HTMLFormElement)) return;
+
+  const formType = String(form.dataset.form || "").trim();
+
+  if (formType === "catalog-search" && target.name === "query") {
+    state.pendingSearch = String(target.value || "").trim();
     window.clearTimeout(catalogLiveSearchTimer);
-    catalogLiveSearchTimer = window.setTimeout(async () => {
-      if (state.route.name !== "catalog") return;
-      try {
-        await fetchCatalog({ silent: true });
-      } catch (error) {
-        handleError(error);
-      }
+    catalogLiveSearchTimer = window.setTimeout(() => {
+      void fetchCatalog({
+        silent: true,
+        partial: true
+      }).catch(handleError);
     }, LIVE_SEARCH_DEBOUNCE_MS);
     return;
   }
 
-  if (target.dataset.liveSearch === "admin-medicine") {
-    state.adminMedicineSearch = target.value.trim();
+  if (formType === "admin-medicine-search" && target.name === "query") {
+    state.adminMedicineSearch = String(target.value || "").trim();
     window.clearTimeout(adminMedicineLiveSearchTimer);
-    adminMedicineLiveSearchTimer = window.setTimeout(async () => {
-      if (state.route.name !== "workspace" || getRole() !== ROLE.ADMIN) return;
-      try {
-        await fetchWorkspace({ silent: true });
-      } catch (error) {
-        handleError(error);
-      }
+    adminMedicineLiveSearchTimer = window.setTimeout(() => {
+      void fetchAdminMedicineCatalog({
+        silent: true,
+        partial: true
+      }).catch(handleError);
     }, LIVE_SEARCH_DEBOUNCE_MS);
     return;
   }
 
-  if (target.dataset.liveSearch === "superadmin-medicine") {
-    state.superAdminSearch.medicine = target.value.trim();
+  if (formType === "superadmin-medicine-search" && target.name === "query") {
+    state.superAdminSearch.medicine = String(target.value || "").trim();
     window.clearTimeout(superAdminMedicineLiveSearchTimer);
-    superAdminMedicineLiveSearchTimer = window.setTimeout(async () => {
-      if (state.route.name !== "workspace" || getRole() !== ROLE.SUPER_ADMIN) return;
-      try {
-        await fetchWorkspace({ silent: true });
-      } catch (error) {
-        handleError(error);
-      }
+    superAdminMedicineLiveSearchTimer = window.setTimeout(() => {
+      void fetchSuperAdminMedicineCatalog({
+        silent: true,
+        partial: true
+      }).catch(handleError);
     }, LIVE_SEARCH_DEBOUNCE_MS);
+    return;
   }
+
+  if (formType === "superadmin-pharmacy-admin-search" && target.name === "query") {
+    state.superAdminSearch.pharmacyAdmin = String(target.value || "").trim();
+    window.clearTimeout(workspaceLiveSearchTimer);
+    workspaceLiveSearchTimer = window.setTimeout(() => {
+      void fetchSuperAdminPharmacyAdmin({
+        silent: true,
+        partial: true
+      }).catch(handleError);
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+    return;
+  }
+
+  if (formType === "superadmin-client-search" && target.name === "query") {
+    state.superAdminSearch.client = String(target.value || "").trim();
+    window.clearTimeout(workspaceLiveSearchTimer);
+    workspaceLiveSearchTimer = window.setTimeout(() => {
+      void fetchSuperAdminClients({
+        silent: true,
+        partial: true
+      }).catch(handleError);
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+    return;
+  }
+
+  if (formType === "admin-order-filter" && target.name === "status") {
+    state.adminOrderStatusFilter = String(target.value || "").trim();
+    window.clearTimeout(workspaceLiveSearchTimer);
+    workspaceLiveSearchTimer = window.setTimeout(() => {
+      void fetchAdminOrders({
+        silent: true,
+        partial: true
+      }).catch(handleError);
+    }, Math.max(80, LIVE_SEARCH_DEBOUNCE_MS / 2));
+    return;
+  }
+
+  if (formType === "superadmin-order-filter" && target.name === "status") {
+    state.superAdminOrderStatusFilter = String(target.value || "").trim();
+    window.clearTimeout(workspaceLiveSearchTimer);
+    workspaceLiveSearchTimer = window.setTimeout(() => {
+      void fetchSuperAdminOrders({
+        silent: true,
+        partial: true
+      }).catch(handleError);
+    }, Math.max(80, LIVE_SEARCH_DEBOUNCE_MS / 2));
+    return;
+  }
+
+  if (formType === "client-checkout" && target.name === "deliveryAddress") {
+    state.checkoutDraft.deliveryAddress = String(target.value || "");
+    if (state.checkoutInlineNotice) {
+      clearCheckoutInlineNotice();
+      renderBasketPharmacyCheckoutRegions({ pharmacy: false });
+      return;
+    }
+    if (!state.token) {
+      updateGuestCheckoutDraftStorage(
+        state.checkoutDraft.pharmacyId,
+        state.checkoutDraft.deliveryAddress,
+        state.checkoutDraft.isPickup
+      );
+    }
+    return;
+  }
+
+  if (formType === "client-checkout" && target.name === "pharmacyId") {
+    state.checkoutDraft.pharmacyId = String(target.value || "").trim();
+    clearCheckoutInlineNotice();
+    if (!state.token) {
+      updateGuestCheckoutDraftStorage(
+        state.checkoutDraft.pharmacyId,
+        state.checkoutDraft.deliveryAddress,
+        state.checkoutDraft.isPickup
+      );
+    }
+    renderBasketPharmacyCheckoutRegions();
+    return;
+  }
+
+  if (formType === "client-checkout" && target.name === "isPickup") {
+    const value = String(target.value || "").trim().toLowerCase();
+    state.checkoutDraft.isPickup = value === "true" || value === "1" || value === "pickup";
+    clearCheckoutInlineNotice();
+    if (!state.token) {
+      updateGuestCheckoutDraftStorage(
+        state.checkoutDraft.pharmacyId,
+        state.checkoutDraft.deliveryAddress,
+        state.checkoutDraft.isPickup
+      );
+    }
+    renderBasketPharmacyCheckoutRegions({ pharmacy: false });
+  }
+}
+
+function handleChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const form = target.closest("form[data-form]");
+  if (!(form instanceof HTMLFormElement)) return;
+
+  const formType = String(form.dataset.form || "").trim();
+  if (formType !== "basket-quantity" || target.name !== "quantity") {
+    return;
+  }
+
+  const positionId = String(form.querySelector("[name='positionId']")?.value || "").trim();
+  if (!positionId) return;
+
+  const parsed = Number(target.value || "1");
+  const normalizedQuantity = Number.isFinite(parsed)
+    ? Math.max(1, Math.floor(parsed))
+    : 1;
+
+  target.value = String(normalizedQuantity);
+
+  void updateBasketQuantity(positionId, normalizedQuantity, {
+    showNotice: false,
+    silentFetch: true
+  }).catch(handleError);
 }
 
 async function handleClick(event) {
@@ -598,7 +959,7 @@ async function handleClick(event) {
     }
 
     if (action === "require-auth") {
-      showNotice("Чтобы добавить товар в корзину, войдите или зарегистрируйтесь.", "warning");
+      showNotice("Для оформления и оплаты заказа войдите или зарегистрируйтесь.", "warning");
       setRoute("/login");
       return;
     }
@@ -642,7 +1003,7 @@ async function handleClick(event) {
       const nextInterface = String(actionTarget.dataset.interface || "").trim();
       if (Object.values(ADMIN_INTERFACE).includes(nextInterface)) {
         state.adminInterface = nextInterface;
-        render();
+        renderAdminInterfaceRegion();
       }
       return;
     }
@@ -676,16 +1037,7 @@ async function handleClick(event) {
       const nextInterface = String(actionTarget.dataset.interface || "").trim();
       if (Object.values(SUPERADMIN_INTERFACE).includes(nextInterface)) {
         state.superAdminInterface = nextInterface;
-        render();
-      }
-      return;
-    }
-
-    if (action === "superadmin-operations-interface") {
-      const nextInterface = String(actionTarget.dataset.interface || "").trim();
-      if (Object.values(SUPERADMIN_OPERATIONS_INTERFACE).includes(nextInterface)) {
-        state.superAdminOperationsInterface = nextInterface;
-        render();
+        renderSuperAdminMainInterfaceRegion();
       }
       return;
     }
@@ -695,8 +1047,8 @@ async function handleClick(event) {
       if (!medicineId) return;
 
       state.superAdminSelectedMedicineId = medicineId;
-      render();
-      await ensureSuperAdminMedicineDetails(medicineId);
+      renderSuperAdminMedicineManagerRegion();
+      await ensureSuperAdminMedicineDetails(medicineId, { partial: true });
       return;
     }
 
@@ -710,27 +1062,38 @@ async function handleClick(event) {
       return;
     }
 
-    if (action === "basket-step") {
-      const positionId = actionTarget.dataset.positionId;
-      const delta = Number(actionTarget.dataset.delta || "0");
-      const currentQuantity = Number(actionTarget.dataset.quantity || "0");
-      const nextQuantity = currentQuantity + delta;
-      if (nextQuantity <= 0) {
-        await removeFromBasket(positionId);
-        return;
+    if (action === "pharmacy-details-toggle") {
+      const pharmacyId = String(actionTarget.dataset.pharmacyId || "").trim();
+      if (!pharmacyId) return;
+
+      if (state.expandedBasketPharmacyDetails.has(pharmacyId)) {
+        state.expandedBasketPharmacyDetails.delete(pharmacyId);
+      } else {
+        state.expandedBasketPharmacyDetails.add(pharmacyId);
       }
 
-      await updateBasketQuantity(positionId, nextQuantity);
+      renderBasketPharmacyCheckoutRegions({ checkout: false });
       return;
     }
 
     if (action === "checkout-use-pharmacy") {
       const pharmacyId = String(actionTarget.dataset.pharmacyId || "").trim();
       if (!pharmacyId) return;
+      const isAvailable = String(actionTarget.dataset.pharmacyAvailable || "1") === "1";
+      if (!isAvailable) {
+        return;
+      }
 
       state.checkoutDraft.pharmacyId = pharmacyId;
-      showNotice("Аптека выбрана для оформления.", "success");
-      render();
+      clearCheckoutInlineNotice();
+      if (!state.token) {
+        updateGuestCheckoutDraftStorage(
+          state.checkoutDraft.pharmacyId,
+          state.checkoutDraft.deliveryAddress,
+          state.checkoutDraft.isPickup
+        );
+      }
+      renderBasketPharmacyCheckoutRegions();
       return;
     }
 
@@ -754,16 +1117,43 @@ async function handleClick(event) {
     }
 
     if (action === "order-on-the-way") {
-      const confirmed = window.confirm("Перевести заказ в статус OnTheWay (едет)?");
+      const isPickup = String(actionTarget.dataset.orderPickup || "") === "1";
+      const confirmed = window.confirm(
+        isPickup
+          ? "Подтвердить, что заказ выдан клиенту?"
+          : "Перевести заказ в статус OnTheWay (едет)?"
+      );
       if (!confirmed) return;
-      await performAdminOrderAction("/api/orders/on-the-way", actionTarget.dataset.orderId, "Заказ отмечен как отправленный.");
+      await performAdminOrderAction(
+        "/api/orders/on-the-way",
+        actionTarget.dataset.orderId,
+        isPickup ? "Заказ отмечен как выданный клиенту." : "Заказ отмечен как отправленный."
+      );
+      return;
+    }
+
+    if (action === "order-delete-new-admin") {
+      const confirmed = window.confirm("Удалить заказ в статусе New? Заказ будет удален из базы.");
+      if (!confirmed) return;
+      await deleteNewOrderAsAdmin(actionTarget.dataset.orderId);
+      return;
+    }
+
+    if (action === "order-superadmin-next") {
+      const currentStatus = String(actionTarget.dataset.currentStatus || "").trim();
+      const confirmationText = currentStatus === "New"
+        ? "Подтвердить заказ и перевести в статус UnderReview?"
+        : "Перевести заказ в следующий статус?";
+      const confirmed = window.confirm(confirmationText);
+      if (!confirmed) return;
+      await performSuperAdminOrderNextStatus(actionTarget.dataset.orderId, currentStatus);
       return;
     }
 
     if (action === "order-delivered") {
-      const confirmed = window.confirm("Перевести выбранный заказ в статус Delivered?");
+      const confirmed = window.confirm("Перевести выбранный заказ в статус «Получен клиентом»?");
       if (!confirmed) return;
-      await performSuperAdminOrderDelivered(actionTarget.dataset.orderId);
+      await performSuperAdminOrderNextStatus(actionTarget.dataset.orderId, "OnTheWay");
       return;
     }
 
@@ -783,10 +1173,18 @@ async function handleClick(event) {
 
 function clearSession() {
   window.clearTimeout(catalogLiveSearchTimer);
+  window.clearTimeout(workspaceLiveSearchTimer);
   window.clearTimeout(adminMedicineLiveSearchTimer);
   window.clearTimeout(superAdminMedicineLiveSearchTimer);
   catalogFetchRequestId = 0;
+  adminMedicineSearchRequestId = 0;
+  superAdminMedicineSearchRequestId = 0;
   superAdminMedicineDetailsRequestId = 0;
+  adminWorkspaceRequestId = 0;
+  superAdminWorkspaceRequestId = 0;
+  superAdminPharmacyAdminSearchRequestId = 0;
+  superAdminClientSearchRequestId = 0;
+  superAdminOrdersSearchRequestId = 0;
   state.token = "";
   state.currentUser = null;
   state.identity = null;
@@ -808,11 +1206,15 @@ function clearSession() {
   state.superAdminSearch.client = "";
   state.adminInterface = ADMIN_INTERFACE.PHARMACY;
   state.superAdminInterface = SUPERADMIN_INTERFACE.PHARMACY_ADMIN;
-  state.superAdminOperationsInterface = SUPERADMIN_OPERATIONS_INTERFACE.ORDERS;
   state.superAdminSelectedMedicineId = "";
   state.superAdminMedicineDetailsLoading = false;
-  state.checkoutDraft.pharmacyId = "";
-  state.checkoutDraft.deliveryAddress = "";
+  state.expandedBasketPharmacyDetails = new Set();
+  const guestBasket = loadGuestBasket();
+  state.checkoutDraft.pharmacyId = guestBasket.pharmacyId || "";
+  state.checkoutDraft.deliveryAddress = guestBasket.deliveryAddress || "";
+  state.checkoutDraft.isPickup = Boolean(guestBasket.isPickup);
+  state.guestBasket = guestBasket;
+  setGuestCheckoutIntent(false);
   persistSession();
   showNotice("Сессия очищена.", "success");
   render();
@@ -846,7 +1248,51 @@ async function login(formData) {
   state.token = response.accessToken || "";
   syncIdentityFromToken(response);
   persistSession();
-  showNotice("Вход выполнен.", "success");
+
+  const role = getRole();
+  const continueCheckoutAfterLogin = consumeGuestCheckoutIntent();
+  let mergeResult = {
+    mergedCount: 0,
+    failedCount: 0
+  };
+
+  if (role === ROLE.CLIENT) {
+    mergeResult = await mergeGuestBasketIntoClient({
+      silent: true
+    });
+  }
+
+  if (continueCheckoutAfterLogin) {
+    if (role !== ROLE.CLIENT) {
+      showNotice("Оформление заказа доступно только клиенту.", "warning");
+      setRoute(defaultAuthenticatedRoute());
+      return;
+    }
+
+    if (mergeResult.mergedCount > 0 && mergeResult.failedCount === 0) {
+      showNotice("Вход выполнен. Гостевая корзина перенесена, можно оплатить заказ.", "success");
+    } else if (mergeResult.failedCount > 0) {
+      showNotice("Вход выполнен. Часть гостевых позиций не удалось перенести в корзину.", "warning");
+    } else {
+      showNotice("Вход выполнен. Продолжайте оформление заказа.", "success");
+    }
+
+    setRoute("/basket");
+    return;
+  }
+
+  if (role === ROLE.CLIENT) {
+    if (mergeResult.mergedCount > 0 && mergeResult.failedCount === 0) {
+      showNotice("Вход выполнен. Гостевая корзина перенесена в ваш аккаунт.", "success");
+    } else if (mergeResult.failedCount > 0) {
+      showNotice("Вход выполнен. Часть гостевых позиций не удалось перенести.", "warning");
+    } else {
+      showNotice("Вход выполнен.", "success");
+    }
+  } else {
+    showNotice("Вход выполнен.", "success");
+  }
+
   setRoute(defaultAuthenticatedRoute());
 }
 
@@ -976,10 +1422,41 @@ async function changePassword(formData) {
   render();
 }
 
-async function addToBasket(formData) {
+function animateAddToBasketFeedback(form) {
+  if (!(form instanceof HTMLFormElement)) return;
+  const submitButton = form.querySelector("button[type='submit']");
+  if (!(submitButton instanceof HTMLButtonElement)) return;
+
+  submitButton.classList.remove("basket-add-success");
+  void submitButton.offsetWidth;
+  submitButton.classList.add("basket-add-success");
+  window.setTimeout(() => {
+    submitButton.classList.remove("basket-add-success");
+  }, 680);
+}
+
+async function addToBasket(formData, formElement = null) {
+  const medicineId = String(formData.get("medicineId") || "").trim();
+  const quantity = Math.max(1, Number(formData.get("quantity") || "1"));
+  if (!medicineId) {
+    showNotice("Не удалось определить товар для корзины.", "warning");
+    return;
+  }
+
   if (!state.token) {
-    showNotice("Чтобы добавить товар в корзину, войдите или зарегистрируйтесь.", "warning");
-    setRoute("/login");
+    addGuestBasketQuantity(medicineId, quantity);
+    await hydrateMedicineDetails([medicineId]);
+    animateAddToBasketFeedback(formElement);
+    await fetchBasket({
+      silent: true,
+      partial: true
+    });
+
+    if (state.route.name === "basket") {
+      renderBasketViewRegions();
+      return;
+    }
+
     return;
   }
 
@@ -991,38 +1468,81 @@ async function addToBasket(formData) {
   await withLoading("Добавляем товар в корзину...", () => apiFetch("/api/basket/items", {
     method: "POST",
     body: {
-      medicineId: String(formData.get("medicineId") || "").trim(),
-      quantity: Math.max(1, Number(formData.get("quantity") || "1"))
+      medicineId,
+      quantity
     }
   }));
 
-  showNotice("Товар добавлен в корзину.", "success");
-  await fetchBasket({ silent: true });
+  animateAddToBasketFeedback(formElement);
+  await fetchBasket({
+    silent: true,
+    partial: true
+  });
 }
 
 async function removeFromBasket(positionId) {
   if (!positionId) return;
+
+  if (!state.token) {
+    const medicineId = resolveGuestMedicineIdFromPosition(positionId);
+    upsertGuestBasketItem(medicineId, 0);
+    await fetchBasket({ silent: true, partial: true });
+    return;
+  }
 
   await withLoading("Удаляем товар из корзины...", () => apiFetch("/api/basket/items", {
     method: "DELETE",
     body: { positionId }
   }));
 
-  showNotice("Товар удален из корзины.", "success");
-  await fetchBasket();
+  await fetchBasket({ partial: true });
 }
 
 async function clearBasket() {
+  if (!state.token) {
+    clearGuestBasket();
+    state.expandedBasketPharmacyDetails = new Set();
+    clearCheckoutInlineNotice();
+    state.checkoutDraft.pharmacyId = "";
+    state.checkoutDraft.deliveryAddress = "";
+    state.checkoutDraft.isPickup = false;
+    state.basket = {
+      clientId: "",
+      basketItemsCount: 0,
+      basketPositions: [],
+      pharmacyOptions: []
+    };
+    updateMainNavRegion();
+    if (isBasketViewVisible()) {
+      renderBasketViewRegions();
+      return;
+    }
+
+    render();
+    return;
+  }
+
   await withLoading("Очищаем корзину...", () => apiFetch("/api/basket", {
     method: "DELETE",
     body: {}
   }));
 
-  showNotice("Корзина очищена.", "success");
-  await fetchBasket();
+  state.expandedBasketPharmacyDetails = new Set();
+  clearCheckoutInlineNotice();
+  await fetchBasket({ partial: true });
 }
 
-async function updateBasketQuantity(positionId, quantity) {
+async function updateBasketQuantity(positionId, quantity, options = {}) {
+  const silentFetch = Boolean(options.silentFetch);
+
+  if (!state.token) {
+    const medicineId = resolveGuestMedicineIdFromPosition(positionId);
+    const normalizedQuantity = Math.max(1, Math.floor(Number(quantity || 1)));
+    upsertGuestBasketItem(medicineId, normalizedQuantity);
+    await fetchBasket({ silent: true, partial: true });
+    return;
+  }
+
   await withLoading("Обновляем количество...", () => apiFetch("/api/basket/items/quantity", {
     method: "PATCH",
     body: {
@@ -1031,35 +1551,51 @@ async function updateBasketQuantity(positionId, quantity) {
     }
   }));
 
-  showNotice("Количество обновлено.", "success");
-  await fetchBasket();
+  await fetchBasket({ silent: silentFetch, partial: true });
 }
 
 async function checkoutBasket(formData) {
-  if (getRole() !== ROLE.CLIENT) {
-    showNotice("Оформление заказа доступно только клиенту.", "warning");
-    return;
-  }
+  const isGuest = !state.token;
 
-  const pharmacyId = String(formData.get("pharmacyId") || "").trim();
+  const pharmacyId = String(formData.get("pharmacyId") || state.checkoutDraft.pharmacyId || "").trim();
+  const isPickupValue = String(formData.get("isPickup") ?? state.checkoutDraft.isPickup).trim().toLowerCase();
+  const isPickup = isPickupValue === "true" || isPickupValue === "1" || isPickupValue === "pickup";
   const deliveryAddress = String(formData.get("deliveryAddress") || "").trim();
 
   if (!pharmacyId) {
-    showNotice("Выберите аптеку для оформления заказа.", "warning");
+    setCheckoutInlineNotice("Выберите аптеку для оформления заказа.", "warning");
+    renderBasketPharmacyCheckoutRegions();
     return;
   }
 
-  if (!deliveryAddress) {
-    showNotice("Укажите адрес доставки.", "warning");
+  if (!isPickup && !deliveryAddress) {
+    setCheckoutInlineNotice("Укажите адрес доставки.", "warning");
+    renderBasketPharmacyCheckoutRegions({ pharmacy: false });
     return;
   }
 
   state.checkoutDraft.pharmacyId = pharmacyId;
   state.checkoutDraft.deliveryAddress = deliveryAddress;
+  state.checkoutDraft.isPickup = isPickup;
+  clearCheckoutInlineNotice();
+
+  if (isGuest) {
+    updateGuestCheckoutDraftStorage(pharmacyId, deliveryAddress, isPickup);
+    setGuestCheckoutIntent(true);
+    showNotice("Для оплаты нужно войти. Гостевая корзина и адрес сохранены.", "warning");
+    setRoute("/login");
+    return;
+  }
+
+  if (getRole() !== ROLE.CLIENT) {
+    showNotice("Оформление заказа доступно только клиенту.", "warning");
+    return;
+  }
 
   const idempotencyKey = createCheckoutIdempotencyKey();
   const checkoutPayload = {
     pharmacyId,
+    isPickup,
     deliveryAddress,
     idempotencyKey,
     ignoredPositionIds: []
@@ -1071,8 +1607,9 @@ async function checkoutBasket(formData) {
   }));
 
   if (!preview.canCheckout) {
-    showNotice(formatCheckoutPreviewMessage(preview), "warning");
-    await fetchBasket({ silent: true });
+    setCheckoutInlineNotice(formatCheckoutPreviewMessage(preview), "warning");
+    await fetchBasket({ silent: true, partial: true });
+    renderBasketPharmacyCheckoutRegions({ pharmacy: false });
     return;
   }
 
@@ -1083,6 +1620,10 @@ async function checkoutBasket(formData) {
 
   state.checkoutDraft.pharmacyId = "";
   state.checkoutDraft.deliveryAddress = "";
+  state.checkoutDraft.isPickup = false;
+  clearCheckoutInlineNotice();
+  clearGuestBasket();
+  setGuestCheckoutIntent(false);
 
   const shortOrderId = String(checkoutResponse.orderId || "").slice(0, 8);
   showNotice(
@@ -1473,15 +2014,32 @@ async function performAdminOrderAction(endpoint, orderId, successMessage) {
   await fetchWorkspace();
 }
 
-async function performSuperAdminOrderDelivered(orderId) {
-  await withLoading("Отмечаем заказ доставленным...", () => apiFetch("/api/orders/delivered", {
+async function deleteNewOrderAsAdmin(orderId) {
+  await withLoading("Удаляем новый заказ...", () => apiFetch("/api/orders/admin/new/delete", {
     method: "POST",
     body: {
       orderId
     }
   }));
 
-  showNotice("Заказ отмечен как доставленный.", "success");
+  showNotice("Новый заказ удален.", "success");
+  await fetchWorkspace();
+}
+
+async function performSuperAdminOrderNextStatus(orderId, currentStatus = "") {
+  await withLoading("Переводим заказ в следующий статус...", () => apiFetch("/api/orders/superadmin/next-status", {
+    method: "POST",
+    body: {
+      orderId
+    }
+  }));
+
+  const status = String(currentStatus || "").trim();
+  const successMessage = status === "New"
+    ? "Заказ подтвержден и переведен в статус UnderReview."
+    : "Заказ переведен в следующий статус.";
+
+  showNotice(successMessage, "success");
   await fetchWorkspace();
 }
 
@@ -1568,6 +2126,40 @@ async function fetchWorkspaceOrCatalog() {
   await fetchCatalog();
 }
 
+function isCatalogViewVisible() {
+  return state.route.name === "catalog";
+}
+
+function replaceRegionOrFallback(regionName, markup) {
+  const regionNode = app.querySelector(`[data-region='${regionName}']`);
+  if (!(regionNode instanceof HTMLElement)) {
+    render();
+    return false;
+  }
+
+  regionNode.outerHTML = markup;
+  return true;
+}
+
+function renderCatalogResultsRegion() {
+  if (!isCatalogViewVisible()) {
+    render();
+    return;
+  }
+
+  const role = getRole();
+  const items = state.catalogItems || [];
+  const emptyMessage = state.catalogMeta.query
+    ? "По вашему запросу товаров нет."
+    : "Товаров нет.";
+  const totalItemsLabel = String(state.catalogMeta.totalCount || items.length);
+
+  replaceRegionOrFallback(
+    "catalog-results",
+    renderCatalogResultsSection(items, role, emptyMessage, totalItemsLabel)
+  );
+}
+
 async function fetchCatalog(options = {}) {
   const requestId = ++catalogFetchRequestId;
   const query = state.pendingSearch.trim();
@@ -1600,6 +2192,11 @@ async function fetchCatalog(options = {}) {
     pageSize: Number(response.pageSize ?? medicines.length ?? 24),
     query
   };
+
+  if (options.partial && isCatalogViewVisible()) {
+    renderCatalogResultsRegion();
+    return;
+  }
 
   render();
 }
@@ -1658,13 +2255,456 @@ async function ensureClientOrderDetails(orderId) {
   }
 }
 
+function getGuestMedicineOffersByPharmacy(medicineId) {
+  const normalizedMedicineId = String(medicineId || "").trim();
+  if (!normalizedMedicineId) return new Map();
+
+  const medicine = state.medicineCache.get(normalizedMedicineId);
+  const offers = Array.isArray(medicine?.offers) ? medicine.offers : [];
+  const byPharmacy = new Map();
+
+  offers.forEach(offer => {
+    const pharmacyId = String(offer?.pharmacyId || "").trim();
+    if (!pharmacyId) return;
+    byPharmacy.set(pharmacyId, offer);
+  });
+
+  return byPharmacy;
+}
+
+function buildGuestPharmacyOptions(positions) {
+  const basketPositions = Array.isArray(positions) ? positions : [];
+  if (!basketPositions.length) return [];
+
+  const offersByMedicine = new Map();
+  const pharmaciesById = new Map();
+
+  basketPositions.forEach(position => {
+    const medicineId = String(position.medicineId || "").trim();
+    const offersByPharmacy = getGuestMedicineOffersByPharmacy(medicineId);
+    offersByMedicine.set(medicineId, offersByPharmacy);
+
+    offersByPharmacy.forEach((offer, pharmacyId) => {
+      if (pharmaciesById.has(pharmacyId)) return;
+      pharmaciesById.set(pharmacyId, {
+        pharmacyId,
+        pharmacyTitle: String(offer?.pharmacyTitle || "Аптека"),
+        pharmacyIsActive: offer?.pharmacyIsActive !== false
+      });
+    });
+  });
+
+  const totalMedicinesCount = basketPositions.length;
+  const options = [];
+
+  pharmaciesById.forEach(pharmacy => {
+    const items = basketPositions.map(position => {
+      const medicineId = String(position.medicineId || "").trim();
+      const requestedQuantity = Math.max(1, Number(position.quantity || 1));
+      const offer = offersByMedicine.get(medicineId)?.get(pharmacy.pharmacyId);
+      const foundQuantity = Math.max(0, Number(offer?.stockQuantity || 0));
+      const isFound = Boolean(offer) && pharmacy.pharmacyIsActive;
+      const hasEnoughQuantity = isFound && foundQuantity >= requestedQuantity;
+      const parsedPrice = Number(offer?.price);
+      const price = Number.isFinite(parsedPrice) ? parsedPrice : null;
+
+      return {
+        medicineId,
+        requestedQuantity,
+        isFound,
+        foundQuantity,
+        hasEnoughQuantity,
+        price
+      };
+    });
+
+    const foundMedicinesCount = items.filter(item => item.isFound).length;
+    const enoughQuantityMedicinesCount = items.filter(item => item.hasEnoughQuantity).length;
+    const totalCost = items
+      .filter(item => item.price !== null)
+      .reduce((sum, item) => sum + Number(item.price || 0) * item.requestedQuantity, 0);
+
+    options.push({
+      pharmacyId: pharmacy.pharmacyId,
+      pharmacyTitle: pharmacy.pharmacyTitle,
+      pharmacyIsActive: pharmacy.pharmacyIsActive,
+      foundMedicinesCount,
+      totalMedicinesCount,
+      foundMedicinesRatio: `${foundMedicinesCount}/${totalMedicinesCount}`,
+      enoughQuantityMedicinesCount,
+      isAvailable: pharmacy.pharmacyIsActive
+        && enoughQuantityMedicinesCount === totalMedicinesCount
+        && totalMedicinesCount > 0,
+      totalCost: Number(totalCost.toFixed(2)),
+      items
+    });
+  });
+
+  return options.sort((a, b) => {
+    if (a.isAvailable !== b.isAvailable) return a.isAvailable ? -1 : 1;
+    return a.totalCost - b.totalCost;
+  });
+}
+
+function getVisiblePharmacyOptions(options, positions) {
+  const sourceOptions = Array.isArray(options) ? options : [];
+  const basketPositions = Array.isArray(positions) ? positions : [];
+  if (!sourceOptions.length) return [];
+
+  const totalPositions = basketPositions.length;
+  const isSingleItemBasket = totalPositions === 1;
+
+  return sourceOptions.filter(option => {
+    const foundCountRaw = Number(option?.foundMedicinesCount);
+    const foundCount = Number.isFinite(foundCountRaw)
+      ? foundCountRaw
+      : (Array.isArray(option?.items) ? option.items.filter(item => item?.isFound).length : 0);
+
+    if (foundCount <= 0) {
+      return false;
+    }
+
+    if (!isSingleItemBasket) {
+      return true;
+    }
+
+    const enoughCountRaw = Number(option?.enoughQuantityMedicinesCount);
+    const enoughCount = Number.isFinite(enoughCountRaw)
+      ? enoughCountRaw
+      : (Array.isArray(option?.items) ? option.items.filter(item => item?.hasEnoughQuantity).length : 0);
+
+    return enoughCount >= 1;
+  });
+}
+
+function isBasketViewVisible() {
+  return state.route.name === "basket";
+}
+
+function getBasketRenderContext() {
+  const basket = state.basket;
+  if (!basket) {
+    return {
+      basket: null,
+      positions: [],
+      options: [],
+      visibleOptions: []
+    };
+  }
+
+  const positions = Array.isArray(basket?.basketPositions) ? basket.basketPositions : [];
+  const options = Array.isArray(basket?.pharmacyOptions) ? basket.pharmacyOptions : [];
+  const visibleOptions = getVisiblePharmacyOptions(options, positions);
+  const visibleOptionIds = new Set(visibleOptions.map(option => String(option.pharmacyId || "")));
+  state.expandedBasketPharmacyDetails = new Set(
+    [...state.expandedBasketPharmacyDetails].filter(pharmacyId => visibleOptionIds.has(pharmacyId))
+  );
+
+  const availableOptions = visibleOptions.filter(option => option.isAvailable);
+  const selectedPharmacyId = String(state.checkoutDraft.pharmacyId || "").trim();
+  const hasSelectedAvailable = availableOptions.some(option => String(option.pharmacyId || "") === selectedPharmacyId);
+  const fallbackPharmacyId = hasSelectedAvailable
+    ? selectedPharmacyId
+    : String(availableOptions[0]?.pharmacyId || "").trim();
+
+  if (fallbackPharmacyId !== selectedPharmacyId) {
+    state.checkoutDraft.pharmacyId = fallbackPharmacyId;
+    if (!state.token) {
+      updateGuestCheckoutDraftStorage(
+        state.checkoutDraft.pharmacyId,
+        state.checkoutDraft.deliveryAddress,
+        state.checkoutDraft.isPickup
+      );
+    }
+  }
+
+  return {
+    basket,
+    positions,
+    options,
+    visibleOptions
+  };
+}
+
+function renderBasketPharmacySelectionRegion(positions, visibleOptions) {
+  const availableCount = visibleOptions.filter(option => option.isAvailable).length;
+  return `
+    <div class="panel basket-pharmacy-panel partial-region-enter" data-region="${BASKET_PHARMACY_REGION}">
+      <div class="basket-pharmacy-panel-head">
+        <div class="basket-pharmacy-title-wrap">
+          <h3>Выбор аптеки</h3>
+          <p class="muted">Сравните предложения и выберите аптеку для оформления.</p>
+        </div>
+        <div class="basket-pharmacy-stats">
+          <span class="status-badge success">Всего: ${escapeHtml(String(visibleOptions.length))}</span>
+          <span class="status-badge ${availableCount ? "success" : "warning"}">Подходят: ${escapeHtml(String(availableCount))}</span>
+        </div>
+      </div>
+      <p class="muted basket-pharmacy-panel-note">Аптека выбирается только здесь. В нижнем блоке настраивается доставка или самовывоз.</p>
+      <div class="pharmacy-option-list basket-pharmacy-option-list">
+        ${visibleOptions.length
+          ? visibleOptions.map(renderPharmacyOption).join("")
+          : (positions || []).length
+            ? `<p class="muted">Нет аптек с найденными позициями по вашей корзине.</p>`
+            : `<p class="muted">Данные по аптекам появятся, когда в корзине будут товары.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderBasketCheckoutPanelRegion(positions, visibleOptions) {
+  return `
+    <div class="partial-region-enter" data-region="${BASKET_CHECKOUT_REGION}">
+      ${renderCheckoutPanel(positions, visibleOptions)}
+    </div>
+  `;
+}
+
+function clearCheckoutInlineNotice() {
+  state.checkoutInlineNotice = null;
+}
+
+function setCheckoutInlineNotice(message, tone = "warning") {
+  state.checkoutInlineNotice = {
+    message: String(message || "").trim(),
+    tone: tone === "danger" ? "danger" : "warning"
+  };
+}
+
+function renderBasketOverviewRegion(context, isGuest) {
+  const basket = context.basket || {};
+  const positions = context.positions || [];
+  return `
+    <div class="panel intro-panel partial-region-enter" data-region="${BASKET_OVERVIEW_REGION}" style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <p class="eyebrow">Корзина</p>
+        <h1>Оформление заказа</h1>
+        <p class="muted">${isGuest
+          ? "Гостевой режим: добавляйте товары и адрес, вход потребуется только при оплате."
+          : "Проверьте состав заказа и выберите подходящую аптеку."}</p>
+      </div>
+      <div style="display: flex; gap: 1rem; align-items: center;">
+        <span class="status-badge success">Позиций: ${escapeHtml(String(basket.basketItemsCount || positions.length))}</span>
+        <button class="btn btn-secondary btn-small" type="button" data-action="basket-clear">Очистить</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderBasketPositionsRegion(positions) {
+  const list = Array.isArray(positions) ? positions : [];
+  return `
+    <div class="basket-list basket-card-grid partial-region-enter" data-region="${BASKET_POSITIONS_REGION}">
+      ${list.length
+        ? list.map(renderBasketItem).join("")
+        : `
+          <div class="panel empty-panel" style="padding: 4rem 2rem;">
+            <h3>Корзина пуста</h3>
+            <p class="muted">Перейдите в каталог и добавьте нужные товары.</p>
+            <button class="btn btn-primary" type="button" data-action="go-catalog" style="margin-top: 1.5rem;">В каталог</button>
+          </div>
+        `}
+    </div>
+  `;
+}
+
+function renderBasketViewRegions(options = {}) {
+  if (!isBasketViewVisible() || !state.basket) {
+    render();
+    return;
+  }
+
+  const context = getBasketRenderContext();
+  const isGuest = !state.token;
+  const shouldUpdateOverview = options.overview !== false;
+  const shouldUpdatePositions = options.positions !== false;
+  const shouldUpdatePharmacy = options.pharmacy !== false;
+  const shouldUpdateCheckout = options.checkout !== false;
+
+  if (shouldUpdateOverview) {
+    const replaced = replaceRegionOrFallback(
+      BASKET_OVERVIEW_REGION,
+      renderBasketOverviewRegion(context, isGuest)
+    );
+    if (!replaced) return;
+  }
+
+  if (shouldUpdatePositions) {
+    replaceRegionOrFallback(
+      BASKET_POSITIONS_REGION,
+      renderBasketPositionsRegion(context.positions)
+    );
+  }
+
+  renderBasketPharmacyCheckoutRegions({
+    pharmacy: shouldUpdatePharmacy,
+    checkout: shouldUpdateCheckout
+  });
+}
+
+function renderBasketPharmacyCheckoutRegions(options = {}) {
+  if (!isBasketViewVisible() || !state.basket) {
+    render();
+    return;
+  }
+
+  const context = getBasketRenderContext();
+  const shouldUpdatePharmacy = options.pharmacy !== false;
+  const shouldUpdateCheckout = options.checkout !== false;
+
+  if (shouldUpdatePharmacy) {
+    const replaced = replaceRegionOrFallback(
+      BASKET_PHARMACY_REGION,
+      renderBasketPharmacySelectionRegion(context.positions, context.visibleOptions)
+    );
+    if (!replaced) return;
+  }
+
+  if (shouldUpdateCheckout) {
+    replaceRegionOrFallback(
+      BASKET_CHECKOUT_REGION,
+      renderBasketCheckoutPanelRegion(context.positions, context.visibleOptions)
+    );
+  }
+}
+
+async function buildGuestBasketResponse(guestBasket) {
+  const normalizedGuestBasket = normalizeGuestBasket(guestBasket);
+  const basketPositions = normalizedGuestBasket.items.map(item => ({
+    positionId: createGuestPositionId(item.medicineId),
+    medicineId: item.medicineId,
+    quantity: item.quantity
+  }));
+
+  await hydrateMedicineDetails(basketPositions.map(item => item.medicineId));
+  const pharmacyOptions = buildGuestPharmacyOptions(basketPositions);
+
+  return {
+    clientId: "",
+    basketItemsCount: basketPositions.length,
+    basketPositions,
+    pharmacyOptions
+  };
+}
+
+async function mergeGuestBasketIntoClient(options = {}) {
+  if (!state.token || getRole() !== ROLE.CLIENT) {
+    return {
+      mergedCount: 0,
+      failedCount: 0
+    };
+  }
+
+  const guestBasket = loadGuestBasket();
+  const guestItems = Array.isArray(guestBasket.items) ? guestBasket.items : [];
+  if (!guestItems.length) {
+    return {
+      mergedCount: 0,
+      failedCount: 0
+    };
+  }
+
+  const failures = [];
+  let mergedCount = 0;
+
+  await withLoading(
+    options.silent ? "" : "Переносим гостевую корзину...",
+    async () => {
+      for (const item of guestItems) {
+        try {
+          await apiFetch("/api/basket/items", {
+            method: "POST",
+            body: {
+              medicineId: item.medicineId,
+              quantity: item.quantity
+            }
+          });
+
+          mergedCount += 1;
+        } catch (error) {
+          failures.push({
+            medicineId: item.medicineId,
+            quantity: item.quantity,
+            message: error?.message || "Не удалось перенести позицию."
+          });
+        }
+      }
+    },
+    { silent: Boolean(options.silent) }
+  );
+
+  const failedItems = failures.map(item => ({
+    medicineId: item.medicineId,
+    quantity: item.quantity
+  }));
+
+  if (failedItems.length) {
+    saveGuestBasket({
+      ...guestBasket,
+      items: failedItems
+    });
+  } else {
+    clearGuestBasket();
+  }
+
+  if (mergedCount > 0) {
+    await fetchBasket({
+      silent: true
+    });
+  }
+
+  if (guestBasket.pharmacyId || guestBasket.deliveryAddress || guestBasket.isPickup) {
+    state.checkoutDraft.pharmacyId = String(guestBasket.pharmacyId || "").trim();
+    state.checkoutDraft.deliveryAddress = String(guestBasket.deliveryAddress || "");
+    state.checkoutDraft.isPickup = Boolean(guestBasket.isPickup);
+  }
+
+  return {
+    mergedCount,
+    failedCount: failures.length
+  };
+}
+
 async function fetchBasket(options = {}) {
+  if (!state.token) {
+    const guestBasket = loadGuestBasket();
+    state.checkoutDraft.pharmacyId = String(guestBasket.pharmacyId || "").trim();
+    state.checkoutDraft.deliveryAddress = String(guestBasket.deliveryAddress || "");
+    state.checkoutDraft.isPickup = Boolean(guestBasket.isPickup);
+
+    const response = await withLoading(
+      options.silent ? "" : "Загружаем гостевую корзину...",
+      () => buildGuestBasketResponse(guestBasket),
+      { silent: Boolean(options.silent) }
+    );
+
+    state.basket = response;
+    if (options.partial) {
+      updateMainNavRegion();
+      if (isBasketViewVisible()) {
+        renderBasketViewRegions();
+      }
+      return;
+    }
+
+    render();
+    return;
+  }
+
   const response = await withLoading(options.silent ? "" : "Загружаем корзину...", () => apiFetch("/api/basket"), {
     silent: Boolean(options.silent)
   });
 
   state.basket = response;
   await hydrateMedicineDetails((state.basket?.basketPositions || []).map(item => item.medicineId));
+  if (options.partial) {
+    updateMainNavRegion();
+    if (isBasketViewVisible()) {
+      renderBasketViewRegions();
+    }
+    return;
+  }
+
   render();
 }
 
@@ -1684,11 +2724,15 @@ async function fetchWorkspace(options = {}) {
 }
 
 async function fetchAdminWorkspace(options = {}) {
+  const requestId = ++adminWorkspaceRequestId;
   const identity = getIdentity();
   const orderQuery = new URLSearchParams({
     page: "1",
     pageSize: "120"
   });
+  if (state.adminOrderStatusFilter) {
+    orderQuery.set("status", state.adminOrderStatusFilter);
+  }
   const medicineQuery = state.adminMedicineSearch.trim();
   const medicinesFetch = medicineQuery
     ? apiFetch("/api/medicines/search", {
@@ -1707,6 +2751,9 @@ async function fetchAdminWorkspace(options = {}) {
   ]), {
     silent: Boolean(options.silent)
   });
+
+  if (requestId !== adminWorkspaceRequestId) return;
+  if (state.route.name !== "workspace" && state.route.name !== "workspace-order") return;
 
   const orders = ordersResponse.orders || [];
   orders.forEach(order => {
@@ -1733,7 +2780,144 @@ async function fetchAdminWorkspace(options = {}) {
   render();
 }
 
+function isAdminMedicineCatalogVisible() {
+  return state.route.name === "workspace"
+    && getRole() === ROLE.ADMIN
+    && state.adminInterface === ADMIN_INTERFACE.OFFER;
+}
+
+function renderAdminMedicineCatalogRegion() {
+  if (!isAdminMedicineCatalogVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.admin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  const medicineList = Array.isArray(workspace.medicineList) ? workspace.medicineList : [];
+  replaceRegionOrFallback(
+    "admin-medicine-results",
+    renderAdminMedicineSearchSection(medicineList)
+  );
+}
+
+async function fetchAdminMedicineCatalog(options = {}) {
+  const workspace = state.workspace.admin;
+  if (!workspace) {
+    await fetchWorkspace(options);
+    return;
+  }
+
+  const requestId = ++adminMedicineSearchRequestId;
+  const query = state.adminMedicineSearch.trim();
+  const medicinesResponse = await withLoading(
+    options.silent ? "" : "Обновляем каталог лекарств...",
+    () => query
+      ? apiFetch("/api/medicines/search", {
+        method: "POST",
+        body: {
+          query,
+          limit: 80
+        }
+      })
+      : apiFetch("/api/medicines?page=1&pageSize=80"),
+    { silent: Boolean(options.silent) }
+  );
+
+  if (requestId !== adminMedicineSearchRequestId) return;
+  if (state.route.name !== "workspace" || getRole() !== ROLE.ADMIN) return;
+
+  const medicines = medicinesResponse.medicines || [];
+  medicines.forEach(rememberMedicine);
+  workspace.medicineList = medicines;
+
+  if (options.partial && isAdminMedicineCatalogVisible()) {
+    renderAdminMedicineCatalogRegion();
+    return;
+  }
+
+  render();
+}
+
+function isAdminOrdersBoardVisible() {
+  return state.route.name === "workspace"
+    && getRole() === ROLE.ADMIN
+    && state.adminInterface === ADMIN_INTERFACE.ORDERS;
+}
+
+function renderAdminOrdersBoardRegion() {
+  if (!isAdminOrdersBoardVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.admin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    "admin-orders-board",
+    renderAdminOrdersBoardSection(workspace.orders || [])
+  );
+}
+
+async function fetchAdminOrders(options = {}) {
+  const workspace = state.workspace.admin;
+  if (!workspace) {
+    await fetchWorkspace(options);
+    return;
+  }
+
+  const requestId = ++adminWorkspaceRequestId;
+  const orderQuery = new URLSearchParams({
+    page: "1",
+    pageSize: "120"
+  });
+
+  if (state.adminOrderStatusFilter) {
+    orderQuery.set("status", state.adminOrderStatusFilter);
+  }
+
+  const ordersResponse = await withLoading(
+    options.silent ? "" : "Обновляем список заказов...",
+    () => apiFetch(`/api/orders/admin/history?${orderQuery.toString()}`),
+    { silent: Boolean(options.silent) }
+  );
+
+  if (requestId !== adminWorkspaceRequestId) return;
+  if (state.route.name !== "workspace" && state.route.name !== "workspace-order") return;
+  if (getRole() !== ROLE.ADMIN) return;
+
+  const orders = ordersResponse.orders || [];
+  orders.forEach(order => {
+    (order.positions || []).forEach(position => rememberMedicine(position.medicine));
+  });
+
+  workspace.orders = orders;
+  workspace.totalOrders = Number(ordersResponse.totalCount ?? orders.length);
+  workspace.workerId = ordersResponse.workerId || workspace.workerId || getIdentity()?.userId || "";
+
+  const knownOrderIds = new Set(orders.map(order => String(order.orderId)));
+  state.expandedAdminOrders = new Set(
+    [...state.expandedAdminOrders].filter(orderId => knownOrderIds.has(orderId))
+  );
+
+  if (options.partial && isAdminOrdersBoardVisible()) {
+    renderAdminOrdersBoardRegion();
+    return;
+  }
+
+  render();
+}
+
 async function fetchSuperAdminWorkspace(options = {}) {
+  const requestId = ++superAdminWorkspaceRequestId;
   const pharmacyAdminQuery = state.superAdminSearch.pharmacyAdmin.trim();
   const medicineQuery = state.superAdminSearch.medicine.trim();
   const clientQuery = state.superAdminSearch.client.trim();
@@ -1776,6 +2960,9 @@ async function fetchSuperAdminWorkspace(options = {}) {
     }
   );
 
+  if (requestId !== superAdminWorkspaceRequestId) return;
+  if (state.route.name !== "workspace" && state.route.name !== "workspace-order") return;
+
   const medicines = catalogResponse.medicines || [];
   medicines.forEach(rememberMedicine);
   const knownMedicineIds = new Set(medicines.map(item => String(item.id || "")));
@@ -1817,7 +3004,290 @@ async function fetchSuperAdminWorkspace(options = {}) {
   render();
 }
 
-async function ensureSuperAdminMedicineDetails(medicineId) {
+function isSuperAdminMedicineManagerVisible() {
+  return state.route.name === "workspace"
+    && getRole() === ROLE.SUPER_ADMIN
+    && state.superAdminInterface === SUPERADMIN_INTERFACE.MEDICINE;
+}
+
+function renderSuperAdminMedicineManagerRegion() {
+  if (!isSuperAdminMedicineManagerVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    "superadmin-medicine-manager",
+    renderMedicineManager("superadmin", workspace.medicineList)
+  );
+}
+
+async function fetchSuperAdminMedicineCatalog(options = {}) {
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    await fetchWorkspace(options);
+    return;
+  }
+
+  const requestId = ++superAdminMedicineSearchRequestId;
+  const query = state.superAdminSearch.medicine.trim();
+  const medicinesParams = new URLSearchParams({ page: "1", pageSize: "50" });
+  if (query) {
+    medicinesParams.set("query", query);
+  }
+
+  const catalogResponse = await withLoading(
+    options.silent ? "" : "Обновляем каталог товаров...",
+    () => apiFetch(`/api/medicines/all?${medicinesParams.toString()}`),
+    { silent: Boolean(options.silent) }
+  );
+
+  if (requestId !== superAdminMedicineSearchRequestId) return;
+  if (state.route.name !== "workspace" || getRole() !== ROLE.SUPER_ADMIN) return;
+
+  const medicines = catalogResponse.medicines || [];
+  medicines.forEach(rememberMedicine);
+  workspace.medicineList = medicines;
+  workspace.stats = {
+    ...(workspace.stats || {}),
+    medicinesTotal: Number(catalogResponse.totalCount ?? medicines.length)
+  };
+
+  const knownMedicineIds = new Set(medicines.map(item => String(item.id || "")));
+  if (!options.partial && !knownMedicineIds.has(state.superAdminSelectedMedicineId)) {
+    state.superAdminSelectedMedicineId = medicines.length
+      ? String(medicines[0].id || "")
+      : "";
+  }
+
+  if (options.partial && isSuperAdminMedicineManagerVisible()) {
+    renderSuperAdminMedicineManagerRegion();
+  } else {
+    render();
+  }
+
+  if (options.partial) {
+    return;
+  }
+
+  if (state.superAdminSelectedMedicineId) {
+    await ensureSuperAdminMedicineDetails(state.superAdminSelectedMedicineId, {
+      partial: Boolean(options.partial)
+    });
+    return;
+  }
+
+  if (state.superAdminMedicineDetailsLoading) {
+    state.superAdminMedicineDetailsLoading = false;
+    if (options.partial && isSuperAdminMedicineManagerVisible()) {
+      renderSuperAdminMedicineManagerRegion();
+    } else {
+      render();
+    }
+  }
+}
+
+function isSuperAdminPharmacyAdminManagerVisible() {
+  return state.route.name === "workspace"
+    && getRole() === ROLE.SUPER_ADMIN
+    && state.superAdminInterface === SUPERADMIN_INTERFACE.PHARMACY_ADMIN;
+}
+
+function renderSuperAdminPharmacyAdminManagerRegion() {
+  if (!isSuperAdminPharmacyAdminManagerVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    "superadmin-pharmacy-admin-results",
+    renderSuperAdminPharmacyAdminSearchResultsRegion(workspace)
+  );
+}
+
+async function fetchSuperAdminPharmacyAdmin(options = {}) {
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    await fetchWorkspace(options);
+    return;
+  }
+
+  const requestId = ++superAdminPharmacyAdminSearchRequestId;
+  const query = state.superAdminSearch.pharmacyAdmin.trim();
+  const adminsParams = new URLSearchParams({ page: "1", pageSize: "50" });
+  const pharmaciesParams = new URLSearchParams({ page: "1", pageSize: "50" });
+  if (query) {
+    adminsParams.set("query", query);
+    pharmaciesParams.set("query", query);
+  }
+
+  const [adminsResponse, pharmaciesResponse] = await withLoading(
+    options.silent ? "" : "Обновляем список администраторов и аптек...",
+    () => Promise.all([
+      apiFetch(`/api/admins?${adminsParams.toString()}`),
+      apiFetch(`/api/pharmacies/all?${pharmaciesParams.toString()}`)
+    ]),
+    { silent: Boolean(options.silent) }
+  );
+
+  if (requestId !== superAdminPharmacyAdminSearchRequestId) return;
+  if (state.route.name !== "workspace" && state.route.name !== "workspace-order") return;
+  if (getRole() !== ROLE.SUPER_ADMIN) return;
+
+  workspace.admins = adminsResponse.admins || [];
+  workspace.pharmacies = pharmaciesResponse.pharmacies || [];
+  workspace.stats = {
+    ...(workspace.stats || {}),
+    adminsTotal: Number(adminsResponse.totalCount ?? workspace.admins.length),
+    pharmaciesTotal: Number(pharmaciesResponse.totalCount ?? workspace.pharmacies.length)
+  };
+
+  if (options.partial && isSuperAdminPharmacyAdminManagerVisible()) {
+    renderSuperAdminPharmacyAdminManagerRegion();
+    return;
+  }
+
+  render();
+}
+
+function isSuperAdminClientManagerVisible() {
+  return state.route.name === "workspace"
+    && getRole() === ROLE.SUPER_ADMIN
+    && state.superAdminInterface === SUPERADMIN_INTERFACE.CLIENT;
+}
+
+function renderSuperAdminClientManagerRegion() {
+  if (!isSuperAdminClientManagerVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    "superadmin-client-results",
+    renderSuperAdminClientSearchResultsRegion(workspace)
+  );
+}
+
+async function fetchSuperAdminClients(options = {}) {
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    await fetchWorkspace(options);
+    return;
+  }
+
+  const requestId = ++superAdminClientSearchRequestId;
+  const query = state.superAdminSearch.client.trim();
+  const clientsParams = new URLSearchParams({ page: "1", pageSize: "50" });
+  if (query) {
+    clientsParams.set("query", query);
+  }
+
+  const clientsResponse = await withLoading(
+    options.silent ? "" : "Обновляем список клиентов...",
+    () => apiFetch(`/api/clients?${clientsParams.toString()}`),
+    { silent: Boolean(options.silent) }
+  );
+
+  if (requestId !== superAdminClientSearchRequestId) return;
+  if (state.route.name !== "workspace" && state.route.name !== "workspace-order") return;
+  if (getRole() !== ROLE.SUPER_ADMIN) return;
+
+  workspace.clients = clientsResponse.clients || [];
+  workspace.stats = {
+    ...(workspace.stats || {}),
+    clientsTotal: Number(clientsResponse.totalCount ?? workspace.clients.length)
+  };
+
+  if (options.partial && isSuperAdminClientManagerVisible()) {
+    renderSuperAdminClientManagerRegion();
+    return;
+  }
+
+  render();
+}
+
+function isSuperAdminOrdersManagerVisible() {
+  return state.route.name === "workspace"
+    && getRole() === ROLE.SUPER_ADMIN
+    && state.superAdminInterface === SUPERADMIN_INTERFACE.ORDERS;
+}
+
+function renderSuperAdminOrdersManagerRegion() {
+  if (!isSuperAdminOrdersManagerVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    "superadmin-orders-results",
+    renderSuperAdminOrdersResultsRegion(workspace)
+  );
+}
+
+async function fetchSuperAdminOrders(options = {}) {
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    await fetchWorkspace(options);
+    return;
+  }
+
+  const requestId = ++superAdminOrdersSearchRequestId;
+  const ordersParams = new URLSearchParams({ page: "1", pageSize: "20" });
+  if (state.superAdminOrderStatusFilter) {
+    ordersParams.set("status", state.superAdminOrderStatusFilter);
+  }
+
+  const ordersResponse = await withLoading(
+    options.silent ? "" : "Обновляем список заказов...",
+    () => apiFetch(`/api/orders/all?${ordersParams.toString()}`),
+    { silent: Boolean(options.silent) }
+  );
+
+  if (requestId !== superAdminOrdersSearchRequestId) return;
+  if (state.route.name !== "workspace" && state.route.name !== "workspace-order") return;
+  if (getRole() !== ROLE.SUPER_ADMIN) return;
+
+  const orders = ordersResponse.orders || [];
+  orders.forEach(order => {
+    (order.positions || []).forEach(position => rememberMedicine(position.medicine));
+  });
+
+  workspace.orders = orders;
+  workspace.totalOrders = Number(ordersResponse.totalCount ?? orders.length);
+
+  if (options.partial && isSuperAdminOrdersManagerVisible()) {
+    renderSuperAdminOrdersManagerRegion();
+    return;
+  }
+
+  render();
+}
+
+async function ensureSuperAdminMedicineDetails(medicineId, options = {}) {
   const normalizedMedicineId = String(medicineId || "").trim();
   if (!normalizedMedicineId) return;
 
@@ -1828,7 +3298,11 @@ async function ensureSuperAdminMedicineDetails(medicineId) {
   if (hasDetails) {
     if (state.superAdminMedicineDetailsLoading) {
       state.superAdminMedicineDetailsLoading = false;
-      render();
+      if (options.partial && isSuperAdminMedicineManagerVisible()) {
+        renderSuperAdminMedicineManagerRegion();
+      } else {
+        render();
+      }
     }
 
     return;
@@ -1836,7 +3310,11 @@ async function ensureSuperAdminMedicineDetails(medicineId) {
 
   const requestId = ++superAdminMedicineDetailsRequestId;
   state.superAdminMedicineDetailsLoading = true;
-  render();
+  if (options.partial && isSuperAdminMedicineManagerVisible()) {
+    renderSuperAdminMedicineManagerRegion();
+  } else {
+    render();
+  }
 
   try {
     const response = await apiFetch(`/api/medicines/${normalizedMedicineId}`);
@@ -1855,7 +3333,11 @@ async function ensureSuperAdminMedicineDetails(medicineId) {
   } finally {
     if (requestId === superAdminMedicineDetailsRequestId) {
       state.superAdminMedicineDetailsLoading = false;
-      render();
+      if (options.partial && isSuperAdminMedicineManagerVisible()) {
+        renderSuperAdminMedicineManagerRegion();
+      } else {
+        render();
+      }
     }
   }
 }
@@ -2056,7 +3538,74 @@ function parseAttributesInput(value) {
     });
 }
 
+function captureActiveInputSnapshot() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement)) {
+    return null;
+  }
+
+  if (!app.contains(active)) {
+    return null;
+  }
+
+  const form = active.closest("form[data-form]");
+  if (!(form instanceof HTMLFormElement)) {
+    return null;
+  }
+
+  const formType = String(form.dataset.form || "").trim();
+  const fieldName = String(active.name || "").trim();
+  if (!formType || !fieldName) {
+    return null;
+  }
+
+  const isTextLike = active instanceof HTMLTextAreaElement
+    || (active instanceof HTMLInputElement && ["text", "search", "tel", "url", "email", "password"].includes(active.type));
+
+  return {
+    formType,
+    fieldName,
+    selectionStart: isTextLike ? Number(active.selectionStart ?? -1) : -1,
+    selectionEnd: isTextLike ? Number(active.selectionEnd ?? -1) : -1
+  };
+}
+
+function escapeSelectorValue(value) {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(String(value || ""));
+  }
+
+  return String(value || "").replace(/["\\]/g, "\\$&");
+}
+
+function restoreActiveInputSnapshot(snapshot) {
+  if (!snapshot) return;
+
+  const formSelector = `form[data-form="${escapeSelectorValue(snapshot.formType)}"]`;
+  const fieldSelector = `[name="${escapeSelectorValue(snapshot.fieldName)}"]`;
+  const target = app.querySelector(`${formSelector} ${fieldSelector}`);
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  target.focus({ preventScroll: true });
+
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  if (snapshot.selectionStart < 0 || snapshot.selectionEnd < 0 || typeof target.setSelectionRange !== "function") {
+    return;
+  }
+
+  const length = String(target.value || "").length;
+  const start = Math.max(0, Math.min(snapshot.selectionStart, length));
+  const end = Math.max(start, Math.min(snapshot.selectionEnd, length));
+  target.setSelectionRange(start, end);
+}
+
 function render() {
+  const activeInputSnapshot = captureActiveInputSnapshot();
   const role = getRole();
   const roleThemeClass = getRoleThemeClass(role);
   const interfaceLabel = getInterfaceLabel(role);
@@ -2076,14 +3625,7 @@ function render() {
           <span class="interface-chip">${escapeHtml(interfaceLabel)}</span>
         </a>
 
-        <nav class="main-nav">
-          ${state.token ? renderAuthenticatedNav(role) : `
-            ${renderNavLink("/catalog", "Каталог", state.route.name === "catalog" || state.route.name === "product")}
-            ${renderNavLink("/login", "Войти", state.route.name === "login")}
-            ${renderNavLink("/register", "Регистрация", state.route.name === "register")}
-          `}
-          ${state.token ? `<button class="nav-link ghost" type="button" data-action="logout">Выйти</button>` : ""}
-        </nav>
+        ${renderMainNavRegion()}
       </header>
 
       ${renderNotice()}
@@ -2102,6 +3644,27 @@ function render() {
       ` : ""}
     </div>
   `;
+
+  restoreActiveInputSnapshot(activeInputSnapshot);
+}
+
+function renderMainNavRegion() {
+  const role = getRole();
+  return `
+    <nav class="main-nav" data-region="${MAIN_NAV_REGION}">
+      ${state.token ? renderAuthenticatedNav(role) : `
+        ${renderNavLink("/catalog", "Каталог", state.route.name === "catalog" || state.route.name === "product")}
+        ${renderNavLink("/basket", `Корзина${basketBadge()}`, state.route.name === "basket")}
+        ${renderNavLink("/login", "Войти", state.route.name === "login")}
+        ${renderNavLink("/register", "Регистрация", state.route.name === "register")}
+      `}
+      ${state.token ? `<button class="nav-link ghost" type="button" data-action="logout">Выйти</button>` : ""}
+    </nav>
+  `;
+}
+
+function updateMainNavRegion() {
+  replaceRegionOrFallback(MAIN_NAV_REGION, renderMainNavRegion());
 }
 
 function renderAuthenticatedNav(role) {
@@ -2235,7 +3798,7 @@ function renderCatalogView() {
         <article class="panel catalog-side-card">
           <p class="eyebrow">Гостевой режим</p>
           <h3>Каталог открыт без авторизации</h3>
-          <p class="muted">Смотрите лекарства и карточки товаров. Чтобы собрать заказ, войдите в аккаунт.</p>
+          <p class="muted">Смотрите лекарства, добавляйте их в корзину и указывайте адрес. Вход потребуется только перед оплатой.</p>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#/login">Войти</a>
             <a class="btn btn-secondary" href="#/register">Регистрация</a>
@@ -2243,11 +3806,20 @@ function renderCatalogView() {
         </article>
 
         <article class="panel catalog-side-card">
+          <h3>Гостевая корзина</h3>
+          <div class="catalog-basket-count">
+            ${escapeHtml(String(getGuestBasketItemCount()))}
+            <span>позиций</span>
+          </div>
+          <a class="btn btn-primary btn-small" href="#/basket">Открыть корзину</a>
+        </article>
+
+        <article class="panel catalog-side-card">
           <h3>Как начать покупку</h3>
           <ol class="catalog-side-steps">
             <li>Выберите товар в сетке</li>
             <li>Откройте полную карточку</li>
-            <li>Войдите и добавьте в корзину</li>
+            <li>Добавьте в корзину и войдите только на шаге оплаты</li>
           </ol>
         </article>
       </aside>
@@ -2299,7 +3871,6 @@ function renderCatalogView() {
           <input
             name="query"
             type="search"
-            data-live-search="catalog"
             value="${escapeHtml(state.pendingSearch)}"
             placeholder="Название лекарства или артикул (например: Парацетамол)">
           <button class="btn btn-primary" type="submit">Найти</button>
@@ -2314,29 +3885,35 @@ function renderCatalogView() {
       </div>
 
       <div class="catalog-content-grid">
-        <div class="catalog-main">
-          <div class="catalog-grid-head">
-            <h2>${state.catalogMeta.query ? "Результаты поиска" : "Витрина товаров"}</h2>
-            <span class="muted">${escapeHtml(totalItemsLabel)} товаров найдено</span>
-          </div>
-
-          <div class="product-grid">
-            ${items.length
-              ? items.map(item => renderProductCard(item, role, {
-                superAdminManage: role === ROLE.SUPER_ADMIN
-              })).join("")
-              : `
-                <div class="panel empty-panel">
-                  <h3>${emptyMessage}</h3>
-                  <p class="muted">Попробуйте другой запрос или вернитесь к общей витрине.</p>
-                </div>
-              `}
-          </div>
-        </div>
+        ${renderCatalogResultsSection(items, role, emptyMessage, totalItemsLabel)}
 
         ${sidePanel}
       </div>
     </section>
+  `;
+}
+
+function renderCatalogResultsSection(items, role, emptyMessage, totalItemsLabel) {
+  return `
+    <div class="catalog-main" data-region="catalog-results">
+      <div class="catalog-grid-head">
+        <h2>${state.catalogMeta.query ? "Результаты поиска" : "Витрина товаров"}</h2>
+        <span class="muted">${escapeHtml(totalItemsLabel)} товаров найдено</span>
+      </div>
+
+      <div class="product-grid">
+        ${items.length
+          ? items.map(item => renderProductCard(item, role, {
+            superAdminManage: role === ROLE.SUPER_ADMIN
+          })).join("")
+          : `
+            <div class="panel empty-panel">
+              <h3>${emptyMessage}</h3>
+              <p class="muted">Попробуйте другой запрос или вернитесь к общей витрине.</p>
+            </div>
+          `}
+      </div>
+    </div>
   `;
 }
 
@@ -2418,11 +3995,12 @@ function renderProductView() {
                 <input type="hidden" name="medicineId" value="${escapeHtml(product.id)}">
                 <input name="quantity" type="number" min="1" value="1">
                 <button class="btn btn-primary" type="submit">
-                  ${isGuest ? "Войти и добавить в корзину" : "Добавить в корзину"}
+                  Добавить в корзину
                 </button>
               </form>
 
               ${isGuest ? `
+                <p class="muted" style="margin-top: 0.75rem;">Авторизация потребуется только при нажатии кнопки оплаты в корзине.</p>
                 <div class="guest-auth-inline">
                   <a class="btn btn-secondary btn-small" href="#/login">Войти</a>
                   <a class="btn btn-secondary btn-small" href="#/register">Регистрация</a>
@@ -2544,8 +4122,10 @@ function renderProfileView() {
 }
 
 function renderBasketView() {
-  if (getRole() !== ROLE.CLIENT) return renderAuthRequired("Корзина доступна только клиенту.");
-  const basket = state.basket;
+  const isGuest = !state.token;
+  if (!isGuest && getRole() !== ROLE.CLIENT) return renderAuthRequired("Корзина доступна только клиенту.");
+  const context = getBasketRenderContext();
+  const basket = context.basket;
   if (!basket) {
     return `
       <div class="panel empty-panel" style="margin: 2rem auto; max-width: 600px;">
@@ -2555,48 +4135,19 @@ function renderBasketView() {
     `;
   }
 
-  const positions = basket.basketPositions || [];
-  const options = basket.pharmacyOptions || [];
+  const positions = context.positions;
+  const visibleOptions = context.visibleOptions;
 
   return `
     <section class="view-area">
-      <div class="panel intro-panel" style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <p class="eyebrow">Корзина</p>
-          <h1>Оформление заказа</h1>
-          <p class="muted">Проверьте состав заказа и выберите подходящую аптеку.</p>
-        </div>
-        <div style="display: flex; gap: 1rem; align-items: center;">
-          <span class="status-badge success">Позиций: ${escapeHtml(String(basket.basketItemsCount || positions.length))}</span>
-          <button class="btn btn-secondary btn-small" type="button" data-action="basket-clear">Очистить</button>
-        </div>
-      </div>
+      ${renderBasketOverviewRegion(context, isGuest)}
 
       <div class="basket-grid">
-        <div class="basket-list basket-card-grid">
-          ${positions.length
-            ? positions.map(renderBasketItem).join("")
-            : `
-              <div class="panel empty-panel" style="padding: 4rem 2rem;">
-                <h3>Корзина пуста</h3>
-                <p class="muted">Перейдите в каталог и добавьте нужные товары.</p>
-                <button class="btn btn-primary" type="button" data-action="go-catalog" style="margin-top: 1.5rem;">В каталог</button>
-              </div>
-            `}
-        </div>
+        ${renderBasketPositionsRegion(positions)}
 
-        <aside style="display: flex; flex-direction: column; gap: 1.5rem;">
-          <div class="panel">
-            <h3>Доступные аптеки</h3>
-            <p class="muted" style="margin-bottom: 1.5rem;">Сравните цены и выберите удобный пункт выдачи.</p>
-            <div class="pharmacy-option-list">
-              ${options.length
-                ? options.map(renderPharmacyOption).join("")
-                : `<p class="muted">Данные по аптекам появятся, когда в корзине будут товары.</p>`}
-            </div>
-          </div>
-          
-          ${renderCheckoutPanel(positions, options)}
+        <aside class="basket-sidebar">
+          ${renderBasketPharmacySelectionRegion(positions, visibleOptions)}
+          ${renderBasketCheckoutPanelRegion(positions, visibleOptions)}
         </aside>
       </div>
     </section>
@@ -2629,46 +4180,61 @@ function renderAdminWorkspaceView() {
     `;
   }
 
-  const groupedOrders = groupOrdersByStatus(workspace.orders || []);
-  const statusOrder = ["UnderReview", "Preparing", "Ready", "OnTheWay"];
   const currentInterface = getCurrentAdminInterface();
 
   return `
-    <section class="view-area theme-admin">
-      <div class="panel intro-panel admin-hero-panel">
-        <p class="eyebrow">Admin Dashboard</p>
-        <h1>Кабинет администратора: ${escapeHtml(workspace.pharmacy?.title || "Аптека")}</h1>
+    <section class="view-area theme-admin admin-layout">
+      <div class="panel intro-panel admin-hero-panel admin-control-shell">
+        <div class="admin-control-head">
+          <div class="admin-control-copy">
+            <p class="eyebrow">Admin Dashboard</p>
+            <h1>Кабинет аптеки: ${escapeHtml(workspace.pharmacy?.title || "Аптека")}</h1>
+            <p class="muted">Управляйте профилем аптеки, предложениями товаров и потоком заказов в одном интерфейсе.</p>
+          </div>
+        </div>
 
-        <div class="workspace-stat-grid">
-          <div class="panel admin-stat-card">
+        <div class="workspace-stat-grid admin-stat-grid">
+          <div class="admin-stat-card">
+            <span class="muted">Заказы в ленте</span>
             <strong>${escapeHtml(String(workspace.orders.length))}</strong>
-            <p class="muted">Заказов в ленте</p>
           </div>
-          <div class="panel admin-stat-card">
+          <div class="admin-stat-card">
+            <span class="muted">Статус аптеки</span>
             <strong>${workspace.pharmacy?.isActive !== false ? "Активна" : "Отключена"}</strong>
-            <p class="muted">Статус аптеки</p>
           </div>
-          <div class="panel admin-stat-card">
+          <div class="admin-stat-card">
+            <span class="muted">Администратор</span>
             <strong>${escapeHtml(identity?.name || "Admin")}</strong>
-            <p class="muted">Администратор</p>
           </div>
         </div>
       </div>
 
-      <div class="main-nav admin-interface-tabs" style="justify-content: flex-start; margin-bottom: 0;">
+      ${renderAdminWorkspaceInterfaceContent(workspace, identity, currentInterface)}
+    </section>
+  `;
+}
+
+function isAdminWorkspaceVisible() {
+  return state.route.name === "workspace" && getRole() === ROLE.ADMIN;
+}
+
+function renderAdminWorkspaceInterfaceContent(workspace, identity, currentInterface = getCurrentAdminInterface()) {
+  return `
+    <div class="workspace-interface-region partial-region-enter admin-main-region" data-region="${ADMIN_INTERFACE_REGION}">
+      <div class="main-nav admin-interface-tabs admin-interface-nav">
         <button
           class="nav-link ${currentInterface === ADMIN_INTERFACE.PHARMACY ? "active" : ""}"
           type="button"
           data-action="admin-interface"
           data-interface="${ADMIN_INTERFACE.PHARMACY}">
-          Pharmacy
+          Аптека
         </button>
         <button
           class="nav-link ${currentInterface === ADMIN_INTERFACE.OFFER ? "active" : ""}"
           type="button"
           data-action="admin-interface"
           data-interface="${ADMIN_INTERFACE.OFFER}">
-          Medicine (Offer)
+          Предложения
         </button>
         <button
           class="nav-link ${currentInterface === ADMIN_INTERFACE.ORDERS ? "active" : ""}"
@@ -2681,10 +4247,12 @@ function renderAdminWorkspaceView() {
 
       ${currentInterface === ADMIN_INTERFACE.PHARMACY ? `
         <div class="admin-section-grid">
-          <article class="panel admin-section-panel">
-            <div class="section-headline">
-              <h3>Профиль администратора</h3>
-              <span class="muted">Ваши контактные данные</span>
+          <article class="panel admin-section-panel admin-profile-panel">
+            <div class="admin-section-head">
+              <div class="admin-section-copy">
+                <h3>Профиль администратора</h3>
+                <p class="muted">Ваши контактные данные и данные для входа.</p>
+              </div>
             </div>
             <form class="stack-form" data-form="admin-profile-update">
               <label>
@@ -2699,10 +4267,12 @@ function renderAdminWorkspaceView() {
             </form>
           </article>
 
-          <article class="panel admin-section-panel">
-            <div class="section-headline">
-              <h3>Управление Pharmacy</h3>
-              <span class="muted">Название, адрес и активность аптеки</span>
+          <article class="panel admin-section-panel admin-pharmacy-panel">
+            <div class="admin-section-head">
+              <div class="admin-section-copy">
+                <h3>Управление аптекой</h3>
+                <p class="muted">Название, адрес и статус видимости для клиентов.</p>
+              </div>
             </div>
             <form class="stack-form" data-form="pharmacy-update">
               <input type="hidden" name="pharmacyId" value="${escapeHtml(workspace.pharmacyId || "")}">
@@ -2727,48 +4297,65 @@ function renderAdminWorkspaceView() {
 
       ${currentInterface === ADMIN_INTERFACE.OFFER ? `
         <article class="panel admin-section-panel admin-catalog-panel">
-          <div class="section-headline">
-            <h3>Medicine каталог для Offer вашей аптеки</h3>
-            <span class="muted">${escapeHtml(String(workspace.medicineList.length))} товаров</span>
+          <div class="admin-section-head">
+            <div class="admin-section-copy">
+              <h3>Управление предложениями</h3>
+              <p class="muted">Найдите лекарство и задайте цену/остаток для вашей аптеки.</p>
+            </div>
           </div>
 
-          <form class="search-form" data-form="admin-medicine-search">
+          <form class="search-form admin-search-form" data-form="admin-medicine-search">
             <input
               name="query"
               type="search"
-              data-live-search="admin-medicine"
               value="${escapeHtml(state.adminMedicineSearch)}"
               placeholder="Поиск лекарства по названию или артикулу">
             <button class="btn btn-secondary" type="submit">Найти</button>
           </form>
 
-          <div class="admin-catalog-grid">
-            ${workspace.medicineList.length
-              ? workspace.medicineList.map(item => renderAdminCatalogCard(item)).join("")
-              : `
-                <div class="panel empty-panel">
-                  <h3>Товары не найдены</h3>
-                  <p class="muted">Измените поисковый запрос.</p>
-                </div>
-              `}
-          </div>
+          ${renderAdminMedicineSearchSection(workspace.medicineList)}
         </article>
       ` : ""}
 
       ${currentInterface === ADMIN_INTERFACE.ORDERS ? `
         <article class="panel admin-orders-panel admin-section-panel">
-          <div class="section-headline">
-            <h3>Полки заказов по статусам</h3>
-            <span class="muted">Отображаются только UnderReview, Preparing, Prepared, OnTheWay</span>
+          <div class="admin-section-head">
+            <div class="admin-section-copy">
+              <h3>Управление заказами</h3>
+              <p class="muted">Фильтр и доска заказов по текущим рабочим статусам.</p>
+            </div>
+            <form class="search-form admin-orders-filter" data-form="admin-order-filter">
+              <select name="status">
+                <option value="">Все статусы</option>
+                ${renderStatusOptions(state.adminOrderStatusFilter)}
+              </select>
+              <button class="btn btn-secondary btn-small" type="submit">Применить</button>
+            </form>
           </div>
-
-          <div class="admin-status-board admin-status-board-strong">
-            ${statusOrder.map(status => renderAdminOrderStatusColumn(status, groupedOrders[status] || [])).join("")}
-          </div>
+          ${renderAdminOrdersBoardSection(workspace.orders || [])}
         </article>
       ` : ""}
-    </section>
+    </div>
   `;
+}
+
+function renderAdminInterfaceRegion() {
+  if (!isAdminWorkspaceVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.admin;
+  const identity = getIdentity();
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    ADMIN_INTERFACE_REGION,
+    renderAdminWorkspaceInterfaceContent(workspace, identity, getCurrentAdminInterface())
+  );
 }
 
 function getCurrentAdminInterface() {
@@ -2778,6 +4365,56 @@ function getCurrentAdminInterface() {
 
   return state.adminInterface;
 }
+
+function renderAdminMedicineCardsRegion(medicineList) {
+  return `
+    <div class="partial-region-enter" data-region="admin-medicine-cards">
+      <div class="admin-catalog-grid">
+        ${medicineList.length
+          ? medicineList.map(item => renderAdminCatalogCard(item)).join("")
+          : `
+            <div class="panel empty-panel">
+              <h3>Товары не найдены</h3>
+              <p class="muted">Измените поисковый запрос.</p>
+            </div>
+          `}
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminMedicineSearchSection(medicineList) {
+  const list = Array.isArray(medicineList) ? medicineList : [];
+  return `
+    <div class="partial-region-enter" data-region="admin-medicine-results">
+      <div class="section-headline">
+        <h3>Каталог Medicine для вашей аптеки</h3>
+        <span class="muted">${escapeHtml(String(list.length))} товаров</span>
+      </div>
+      ${renderAdminMedicineCardsRegion(list)}
+    </div>
+  `;
+}
+
+function renderAdminOrdersBoardSection(orders) {
+  const orderList = Array.isArray(orders) ? orders : [];
+  const groupedOrders = groupOrdersByStatus(orderList);
+  const statusOrder = ["UnderReview", "Preparing", "Ready", "OnTheWay"];
+
+  return `
+    <div class="partial-region-enter" data-region="admin-orders-board">
+      <div class="section-headline">
+        <h3>Доска заказов по статусам</h3>
+        <span class="muted">Отображаются только UnderReview, Preparing, Prepared, OnTheWay</span>
+      </div>
+
+      <div class="admin-status-board admin-status-board-strong">
+        ${statusOrder.map(status => renderAdminOrderStatusColumn(status, groupedOrders[status] || [])).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderSuperAdminWorkspaceView() {
   const workspace = state.workspace.superAdmin;
 
@@ -2792,35 +4429,51 @@ function renderSuperAdminWorkspaceView() {
 
   const stats = workspace.stats || {};
   const currentInterface = getCurrentSuperAdminInterface();
-  const currentOperationsInterface = getCurrentSuperAdminOperationsInterface();
 
   return `
-    <section class="view-area theme-superadmin">
-      <div class="panel intro-panel" style="background-color: #fff7ed;">
-        <p class="eyebrow">SuperAdmin Control</p>
-        <h1>Глобальное управление системой</h1>
-        
-        <div class="workspace-stat-grid" style="margin-top: 1.5rem;">
-          <div class="panel" style="padding: 1rem;">
-            <strong style="font-size: 1.5rem; color: #f97316;">${escapeHtml(String(stats.adminsTotal ?? workspace.admins.length))}</strong>
-            <p class="muted">Администраторы</p>
+    <section class="view-area theme-superadmin superadmin-layout">
+      <div class="panel intro-panel superadmin-control-shell">
+        <div class="superadmin-control-head">
+          <div class="superadmin-control-copy">
+            <p class="eyebrow">SuperAdmin Control</p>
+            <h1>Глобальное управление системой</h1>
+            <p class="muted">Чётко разделённые интерфейсы: управление аптеками и администраторами, каталогом, клиентами, заказами и возвратами.</p>
           </div>
-          <div class="panel" style="padding: 1rem;">
-            <strong style="font-size: 1.5rem; color: #f97316;">${escapeHtml(String(stats.pharmaciesTotal ?? workspace.pharmacies.length))}</strong>
-            <p class="muted">Аптеки</p>
+        </div>
+
+        <div class="workspace-stat-grid superadmin-stat-grid">
+          <div class="superadmin-stat-card">
+            <span class="muted">Администраторы</span>
+            <strong>${escapeHtml(String(stats.adminsTotal ?? workspace.admins.length))}</strong>
           </div>
-          <div class="panel" style="padding: 1rem;">
-            <strong style="font-size: 1.5rem; color: #f97316;">${escapeHtml(String(stats.medicinesTotal ?? workspace.medicineList.length))}</strong>
-            <p class="muted">Товары</p>
+          <div class="superadmin-stat-card">
+            <span class="muted">Аптеки</span>
+            <strong>${escapeHtml(String(stats.pharmaciesTotal ?? workspace.pharmacies.length))}</strong>
           </div>
-          <div class="panel" style="padding: 1rem;">
-            <strong style="font-size: 1.5rem; color: #f97316;">${escapeHtml(String(stats.clientsTotal ?? workspace.clients.length))}</strong>
-            <p class="muted">Клиенты</p>
+          <div class="superadmin-stat-card">
+            <span class="muted">Товары</span>
+            <strong>${escapeHtml(String(stats.medicinesTotal ?? workspace.medicineList.length))}</strong>
+          </div>
+          <div class="superadmin-stat-card">
+            <span class="muted">Клиенты</span>
+            <strong>${escapeHtml(String(stats.clientsTotal ?? workspace.clients.length))}</strong>
           </div>
         </div>
       </div>
 
-      <div class="main-nav" style="justify-content: flex-start; margin-bottom: 0;">
+      ${renderSuperAdminMainInterfaceContent(workspace, currentInterface)}
+    </section>
+  `;
+}
+
+function isSuperAdminWorkspaceVisible() {
+  return state.route.name === "workspace" && getRole() === ROLE.SUPER_ADMIN;
+}
+
+function renderSuperAdminMainInterfaceContent(workspace, currentInterface = getCurrentSuperAdminInterface()) {
+  return `
+    <section class="workspace-interface-region partial-region-enter superadmin-main-region" data-region="${SUPERADMIN_MAIN_INTERFACE_REGION}">
+      <div class="main-nav superadmin-interface-nav">
         <button
           class="nav-link ${currentInterface === SUPERADMIN_INTERFACE.PHARMACY_ADMIN ? "active" : ""}"
           type="button"
@@ -2842,70 +4495,97 @@ function renderSuperAdminWorkspaceView() {
           data-interface="${SUPERADMIN_INTERFACE.CLIENT}">
           Клиенты
         </button>
+        <button
+          class="nav-link ${currentInterface === SUPERADMIN_INTERFACE.ORDERS ? "active" : ""}"
+          type="button"
+          data-action="superadmin-interface"
+          data-interface="${SUPERADMIN_INTERFACE.ORDERS}">
+          Заказы
+        </button>
+        <button
+          class="nav-link ${currentInterface === SUPERADMIN_INTERFACE.REFUNDS ? "active" : ""}"
+          type="button"
+          data-action="superadmin-interface"
+          data-interface="${SUPERADMIN_INTERFACE.REFUNDS}">
+          Возвраты
+        </button>
       </div>
 
-      <section style="display: flex; flex-direction: column; gap: 1.5rem;">
-        ${currentInterface === SUPERADMIN_INTERFACE.PHARMACY_ADMIN
-          ? renderSuperAdminPharmacyAdminManager(workspace)
-          : ""}
-        ${currentInterface === SUPERADMIN_INTERFACE.MEDICINE
-          ? renderMedicineManager("superadmin", workspace.medicineList)
-          : ""}
-        ${currentInterface === SUPERADMIN_INTERFACE.CLIENT
-          ? renderSuperAdminClientManager(workspace)
-          : ""}
-
-        <article class="panel superadmin-section-panel">
-          <div class="main-nav superadmin-ops-tabs" style="justify-content: flex-start; margin-bottom: 0.5rem;">
-            <button
-              class="nav-link ${currentOperationsInterface === SUPERADMIN_OPERATIONS_INTERFACE.ORDERS ? "active" : ""}"
-              type="button"
-              data-action="superadmin-operations-interface"
-              data-interface="${SUPERADMIN_OPERATIONS_INTERFACE.ORDERS}">
-              Заказы системы
-            </button>
-            <button
-              class="nav-link ${currentOperationsInterface === SUPERADMIN_OPERATIONS_INTERFACE.REFUNDS ? "active" : ""}"
-              type="button"
-              data-action="superadmin-operations-interface"
-              data-interface="${SUPERADMIN_OPERATIONS_INTERFACE.REFUNDS}">
-              Возвраты
-            </button>
-          </div>
-
-          ${currentOperationsInterface === SUPERADMIN_OPERATIONS_INTERFACE.ORDERS ? `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
-              <h3>Все заказы системы</h3>
-              <form class="search-form" data-form="superadmin-order-filter">
-                <select name="status" style="min-width: 200px;">
-                  <option value="">Все статусы</option>
-                  ${renderStatusOptions(state.superAdminOrderStatusFilter)}
-                </select>
-                <button class="btn btn-secondary btn-small" type="submit">Фильтр</button>
-              </form>
-            </div>
-            <div class="workspace-order-list superadmin-order-list-grid">
-              ${workspace.orders.length
-                ? workspace.orders.map(order => renderSuperAdminOrderCard(order)).join("")
-                : `<div class="panel empty-panel" style="grid-column: 1/-1; padding: 3rem;"><p class="muted">Заказов пока нет.</p></div>`}
-            </div>
-          ` : ""}
-
-          ${currentOperationsInterface === SUPERADMIN_OPERATIONS_INTERFACE.REFUNDS ? `
-            <div class="section-headline" style="margin-bottom: 1rem;">
-              <h3>Запросы на возврат</h3>
-              <span class="status-badge warning">${escapeHtml(String(workspace.refunds.length))} ожидают</span>
-            </div>
-            <div class="superadmin-refund-list">
-              ${workspace.refunds.length
-                ? workspace.refunds.map(refund => renderRefundCard(refund)).join("")
-                : `<p class="muted">Активных запросов на возврат нет.</p>`}
-            </div>
-          ` : ""}
-        </article>
-      </section>
+      ${currentInterface === SUPERADMIN_INTERFACE.PHARMACY_ADMIN
+        ? renderSuperAdminPharmacyAdminManager(workspace)
+        : ""}
+      ${currentInterface === SUPERADMIN_INTERFACE.MEDICINE
+        ? renderMedicineManager("superadmin", workspace.medicineList)
+        : ""}
+      ${currentInterface === SUPERADMIN_INTERFACE.CLIENT
+        ? renderSuperAdminClientManager(workspace)
+        : ""}
+      ${currentInterface === SUPERADMIN_INTERFACE.ORDERS
+        ? renderSuperAdminOrdersInterfacePanel(workspace)
+        : ""}
+      ${currentInterface === SUPERADMIN_INTERFACE.REFUNDS
+        ? renderSuperAdminRefundsInterfacePanel(workspace)
+        : ""}
     </section>
   `;
+}
+
+function renderSuperAdminOrdersInterfacePanel(workspace) {
+  return `
+    <article class="panel superadmin-section-panel superadmin-orders-shell">
+      <div class="superadmin-section-head">
+        <div class="superadmin-section-copy">
+          <h3>Управление заказами</h3>
+          <p class="muted">Отдельный интерфейс для контроля статусов и просмотра всех заказов системы.</p>
+        </div>
+        <form class="search-form superadmin-orders-filter" data-form="superadmin-order-filter">
+          <select name="status">
+            <option value="">Все статусы</option>
+            ${renderStatusOptions(state.superAdminOrderStatusFilter)}
+          </select>
+          <button class="btn btn-secondary btn-small" type="submit">Применить</button>
+        </form>
+      </div>
+      ${renderSuperAdminOrdersResultsRegion(workspace)}
+    </article>
+  `;
+}
+
+function renderSuperAdminRefundsInterfacePanel(workspace) {
+  return `
+    <article class="panel superadmin-section-panel superadmin-refunds-shell">
+      <div class="superadmin-section-head">
+        <div class="superadmin-section-copy">
+          <h3>Запросы на возврат</h3>
+          <p class="muted">Список заявок на возврат и быстрое инициирование операции.</p>
+        </div>
+        <span class="status-badge warning">${escapeHtml(String(workspace.refunds.length))} ожидают</span>
+      </div>
+      <div class="superadmin-refund-list">
+        ${workspace.refunds.length
+          ? workspace.refunds.map(refund => renderRefundCard(refund)).join("")
+          : `<p class="muted">Активных запросов на возврат нет.</p>`}
+      </div>
+    </article>
+  `;
+}
+
+function renderSuperAdminMainInterfaceRegion() {
+  if (!isSuperAdminWorkspaceVisible()) {
+    render();
+    return;
+  }
+
+  const workspace = state.workspace.superAdmin;
+  if (!workspace) {
+    render();
+    return;
+  }
+
+  replaceRegionOrFallback(
+    SUPERADMIN_MAIN_INTERFACE_REGION,
+    renderSuperAdminMainInterfaceContent(workspace, getCurrentSuperAdminInterface())
+  );
 }
 
 function getCurrentSuperAdminInterface() {
@@ -2916,20 +4596,23 @@ function getCurrentSuperAdminInterface() {
   return state.superAdminInterface;
 }
 
-function getCurrentSuperAdminOperationsInterface() {
-  if (!Object.values(SUPERADMIN_OPERATIONS_INTERFACE).includes(state.superAdminOperationsInterface)) {
-    state.superAdminOperationsInterface = SUPERADMIN_OPERATIONS_INTERFACE.ORDERS;
-  }
-
-  return state.superAdminOperationsInterface;
+function renderSuperAdminOrdersResultsRegion(workspace) {
+  const orders = Array.isArray(workspace?.orders) ? workspace.orders : [];
+  return `
+    <div class="workspace-order-list superadmin-order-list-grid partial-region-enter" data-region="superadmin-orders-results">
+      ${orders.length
+        ? orders.map(order => renderSuperAdminOrderCard(order)).join("")
+        : `<div class="panel empty-panel" style="grid-column: 1/-1; padding: 3rem;"><p class="muted">Заказов пока нет.</p></div>`}
+    </div>
+  `;
 }
 
 function renderSuperAdminPharmacyAdminManager(workspace) {
   return `
     <article class="panel workspace-panel workspace-panel-wide superadmin-manager-panel">
       <div class="section-headline">
-        <h3>Управление Pharmacy + Admin</h3>
-        <span class="muted">Разделены списки, создание и операции обновления/удаления</span>
+        <h3>Управление аптеками и администраторами</h3>
+        <span class="muted">Структурированный обзор списков, создание и изменения сущностей</span>
       </div>
       <form class="workspace-inline-filter superadmin-inline-search" data-form="superadmin-pharmacy-admin-search">
         <label>
@@ -2943,6 +4626,14 @@ function renderSuperAdminPharmacyAdminManager(workspace) {
         <button class="btn btn-secondary" type="submit">Найти</button>
       </form>
 
+      ${renderSuperAdminPharmacyAdminSearchResultsRegion(workspace)}
+    </article>
+  `;
+}
+
+function renderSuperAdminPharmacyAdminSearchResultsRegion(workspace) {
+  return `
+    <div class="partial-region-enter" data-region="superadmin-pharmacy-admin-results">
       <div class="superadmin-boundary-grid">
         <section class="superadmin-block">
           <div class="superadmin-block-head">
@@ -3114,18 +4805,20 @@ function renderSuperAdminPharmacyAdminManager(workspace) {
           </div>
         </section>
       </div>
-    </article>
+    </div>
   `;
 }
 
 function renderSuperAdminClientManager(workspace) {
   return `
-    <article class="panel workspace-panel workspace-panel-wide superadmin-manager-panel">
-      <div class="section-headline">
-        <h3>Просмотр Client</h3>
-        <span class="muted">SuperAdmin может только просматривать клиентов</span>
+    <article class="panel workspace-panel workspace-panel-wide superadmin-manager-panel superadmin-client-shell">
+      <div class="superadmin-section-head">
+        <div class="superadmin-section-copy">
+          <h3>Клиентский реестр</h3>
+          <p class="muted">Просмотр клиентов, корзин и последних заказов без редактирования данных.</p>
+        </div>
       </div>
-      <form class="workspace-inline-filter superadmin-inline-search" data-form="superadmin-client-search">
+      <form class="workspace-inline-filter superadmin-inline-search superadmin-search-form" data-form="superadmin-client-search">
         <label>
           Поиск по имени клиента
           <input
@@ -3137,20 +4830,76 @@ function renderSuperAdminClientManager(workspace) {
         <button class="btn btn-secondary" type="submit">Найти</button>
       </form>
 
-      <div class="superadmin-boundary-grid">
-        <section class="superadmin-block" style="grid-column: 1 / -1;">
-          <div class="superadmin-block-head">
-            <h4>Клиентский каталог</h4>
-            <span class="status-badge warning">${escapeHtml(String(workspace.clients.length))}</span>
-          </div>
-          <div class="workspace-list">
-            ${workspace.clients.length
-              ? workspace.clients.map(client => renderClientCard(client)).join("")
-              : `<p class="muted">По текущему фильтру клиенты не найдены.</p>`}
-          </div>
-        </section>
-      </div>
+      ${renderSuperAdminClientSearchResultsRegion(workspace)}
     </article>
+  `;
+}
+
+function renderSuperAdminClientSearchResultsRegion(workspace) {
+  return `
+    <div class="superadmin-boundary-grid partial-region-enter" data-region="superadmin-client-results">
+      <section class="superadmin-block" style="grid-column: 1 / -1;">
+        <div class="superadmin-block-head">
+          <h4>Клиентский каталог</h4>
+          <span class="status-badge warning">${escapeHtml(String(workspace.clients.length))}</span>
+        </div>
+        <div class="workspace-list">
+          ${workspace.clients.length
+            ? workspace.clients.map(client => renderClientCard(client)).join("")
+            : `<p class="muted">По текущему фильтру клиенты не найдены.</p>`}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderSuperAdminMedicineCardsRegion(medicineList, selectedMedicineId) {
+  return `
+    <div data-region="superadmin-medicine-cards">
+      ${medicineList.length
+        ? `
+          <div class="superadmin-medicine-grid">
+            ${medicineList.map(item => {
+              const cardImage = getMedicineImageSource(item.images);
+              const isSelected = String(item.id) === String(selectedMedicineId || "");
+              return `
+                <button
+                  class="superadmin-medicine-card ${isSelected ? "active" : ""}"
+                  type="button"
+                  data-action="superadmin-medicine-select"
+                  data-medicine-id="${escapeHtml(item.id)}">
+                  <span class="superadmin-medicine-card-media">
+                    ${cardImage
+                      ? `<img src="${escapeHtml(cardImage)}" alt="${escapeHtml(item.title || "Товар")}">`
+                      : `<span class="image-fallback">${escapeHtml(getInitials(item.title || "Товар"))}</span>`}
+                  </span>
+                  <span class="superadmin-medicine-card-body">
+                    <span class="product-articul">${escapeHtml(item.articul || "Без артикула")}</span>
+                    <strong>${escapeHtml(item.title || "Без названия")}</strong>
+                    <span class="status-badge ${item.isActive === false ? "danger" : "success"}">
+                      ${item.isActive === false ? "Скрыт" : "В каталоге"}
+                    </span>
+                  </span>
+                </button>
+              `;
+            }).join("")}
+          </div>
+        `
+        : `<p class="muted">Список товаров пока пуст.</p>`}
+    </div>
+  `;
+}
+
+function renderSuperAdminMedicineSearchResultsRegion(medicineList, selectedMedicineId) {
+  const list = Array.isArray(medicineList) ? medicineList : [];
+  return `
+    <div class="partial-region-enter" data-region="superadmin-medicine-search-results">
+      <div class="superadmin-block-head">
+        <h4>Каталог Medicine</h4>
+        <span class="status-badge warning">${escapeHtml(String(list.length))}</span>
+      </div>
+      ${renderSuperAdminMedicineCardsRegion(list, selectedMedicineId)}
+    </div>
   `;
 }
 
@@ -3201,13 +4950,16 @@ function renderMedicineManager(scope, medicines) {
   const detailsDisabled = selectedMedicine ? "" : "disabled";
 
   return `
-    <article class="panel workspace-panel workspace-panel-wide superadmin-manager-panel">
-      <div class="section-headline">
-        <h3>Управление Medicine</h3>
-        <span class="muted">Каталог + карточка товара: просмотр, редактирование, управление изображениями и статусом</span>
-      </div>
+    <div class="partial-region-enter" data-region="superadmin-medicine-manager">
+      <article class="panel workspace-panel workspace-panel-wide superadmin-manager-panel superadmin-medicine-shell">
+        <div class="superadmin-section-head">
+          <div class="superadmin-section-copy">
+            <h3>Управление Medicine</h3>
+            <p class="muted">Каталог, карточка товара, атрибуты, предложения аптек и управление изображениями.</p>
+          </div>
+        </div>
 
-      <div class="superadmin-medicine-layout">
+        <div class="superadmin-medicine-layout">
         <div class="superadmin-stack">
           <section class="superadmin-block">
             <div class="superadmin-block-head">
@@ -3232,53 +4984,19 @@ function renderMedicineManager(scope, medicines) {
           </section>
 
           <section class="superadmin-block">
-            <div class="superadmin-block-head">
-              <h4>Каталог Medicine</h4>
-              <span class="status-badge warning">${escapeHtml(String(medicineList.length))}</span>
-            </div>
-            <form class="workspace-inline-filter superadmin-inline-search" data-form="superadmin-medicine-search">
+            <form class="workspace-inline-filter superadmin-inline-search superadmin-search-form" data-form="superadmin-medicine-search">
               <label>
                 Поиск по названию товара
                 <input
                   name="query"
                   type="search"
-                  data-live-search="superadmin-medicine"
                   value="${escapeHtml(state.superAdminSearch.medicine)}"
                   placeholder="Например: Paracetamol">
               </label>
               <button class="btn btn-secondary" type="submit">Найти</button>
             </form>
 
-            ${medicineList.length
-              ? `
-                <div class="superadmin-medicine-grid">
-                  ${medicineList.map(item => {
-                    const cardImage = getMedicineImageSource(item.images);
-                    const isSelected = String(item.id) === selectedMedicineId;
-                    return `
-                      <button
-                        class="superadmin-medicine-card ${isSelected ? "active" : ""}"
-                        type="button"
-                        data-action="superadmin-medicine-select"
-                        data-medicine-id="${escapeHtml(item.id)}">
-                        <span class="superadmin-medicine-card-media">
-                          ${cardImage
-                            ? `<img src="${escapeHtml(cardImage)}" alt="${escapeHtml(item.title || "Товар")}">`
-                            : `<span class="image-fallback">${escapeHtml(getInitials(item.title || "Товар"))}</span>`}
-                        </span>
-                        <span class="superadmin-medicine-card-body">
-                          <span class="product-articul">${escapeHtml(item.articul || "Без артикула")}</span>
-                          <strong>${escapeHtml(item.title || "Без названия")}</strong>
-                          <span class="status-badge ${item.isActive === false ? "danger" : "success"}">
-                            ${item.isActive === false ? "Скрыт" : "В каталоге"}
-                          </span>
-                        </span>
-                      </button>
-                    `;
-                  }).join("")}
-                </div>
-              `
-              : `<p class="muted">Список товаров пока пуст.</p>`}
+            ${renderSuperAdminMedicineSearchResultsRegion(medicineList, selectedMedicineId)}
           </section>
         </div>
 
@@ -3385,8 +5103,9 @@ function renderMedicineManager(scope, medicines) {
             </form>
           </div>
         </section>
-      </div>
-    </article>
+        </div>
+      </article>
+    </div>
   `;
 }
 
@@ -3461,16 +5180,18 @@ function renderAdminOrderStatusColumn(status, orders) {
 
 function renderAdminOrderCard(order) {
   const statusLabel = formatAdminOrderStatusLabel(order.status);
+  const fulfillmentType = formatFulfillmentTypeLabel(order.isPickup);
+  const deliveryLineLabel = order.isPickup ? "Самовывоз" : "Доставка";
 
   return `
     <article class="workspace-order-card admin-order-card">
       <div class="workspace-order-head admin-order-head">
         <div>
           <strong>Заказ ${escapeHtml(String(order.orderId).slice(0, 8))}</strong>
-          <p class="muted">${escapeHtml(order.deliveryAddress || "Без адреса")}</p>
+          <p class="muted">${escapeHtml(`${deliveryLineLabel}: ${order.deliveryAddress || "Без адреса"}`)}</p>
         </div>
         <div class="admin-order-head-actions">
-          <span class="status-badge success">${escapeHtml(statusLabel)}</span>
+          <span class="status-badge success">${escapeHtml(formatStatusUiLabel(statusLabel))}</span>
           <button
             class="btn btn-secondary btn-small"
             type="button"
@@ -3484,6 +5205,7 @@ function renderAdminOrderCard(order) {
       <div class="workspace-order-meta">
         <span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>
         <span>Дата: ${escapeHtml(formatDate(order.orderPlacedAt))}</span>
+        <span>Тип: ${escapeHtml(fulfillmentType)}</span>
         <span>Позиций: ${escapeHtml(String((order.positions || []).length))}</span>
       </div>
     </article>
@@ -3519,16 +5241,21 @@ function renderAdminOrderDetailView() {
 
   const status = formatStatusLabel(order.status);
   const statusLabel = formatAdminOrderStatusLabel(order.status);
+  const canDeleteNew = status === "New";
   const canStartAssembly = status === "UnderReview";
   const canMarkReady = status === "Preparing";
   const canMarkOnTheWay = status === "Ready";
   const canRejectPositions = status === "Preparing";
-  const nextActionMarkup = canStartAssembly
-    ? `<button class="btn btn-secondary" type="button" data-action="order-start" data-order-id="${escapeHtml(order.orderId)}">В статус Preparing</button>`
+  const isPickup = Boolean(order.isPickup);
+  const deliveryLineLabel = isPickup ? "Самовывоз" : "Доставка";
+  const nextActionMarkup = canDeleteNew
+    ? `<button class="btn btn-secondary" type="button" data-action="order-delete-new-admin" data-order-id="${escapeHtml(order.orderId)}">Удалить заказ New</button>`
+    : canStartAssembly
+      ? `<button class="btn btn-secondary" type="button" data-action="order-start" data-order-id="${escapeHtml(order.orderId)}">В статус Preparing</button>`
     : canMarkReady
       ? `<button class="btn btn-secondary" type="button" data-action="order-ready" data-order-id="${escapeHtml(order.orderId)}">В статус Ready</button>`
-      : canMarkOnTheWay
-        ? `<button class="btn btn-secondary" type="button" data-action="order-on-the-way" data-order-id="${escapeHtml(order.orderId)}">В статус OnTheWay</button>`
+    : canMarkOnTheWay
+        ? `<button class="btn btn-secondary" type="button" data-action="order-on-the-way" data-order-id="${escapeHtml(order.orderId)}" data-order-pickup="${isPickup ? "1" : "0"}">${isPickup ? "Выдан клиенту" : "В статус OnTheWay"}</button>`
         : `<span class="muted">Следующий статус недоступен.</span>`;
 
   return `
@@ -3538,10 +5265,10 @@ function renderAdminOrderDetailView() {
           <div>
             <p class="eyebrow">Order details</p>
             <h2>Заказ ${escapeHtml(String(order.orderId).slice(0, 8))}</h2>
-            <p class="muted">${escapeHtml(order.deliveryAddress || "Без адреса доставки")}</p>
+            <p class="muted">${escapeHtml(`${deliveryLineLabel}: ${order.deliveryAddress || "Без адреса доставки"}`)}</p>
           </div>
           <div class="admin-order-detail-head-actions">
-            <span class="status-badge success">${escapeHtml(statusLabel)}</span>
+            <span class="status-badge success">${escapeHtml(formatStatusUiLabel(statusLabel))}</span>
             <button class="btn btn-secondary btn-small" type="button" data-action="go-workspace">К полкам заказов</button>
           </div>
         </div>
@@ -3551,6 +5278,7 @@ function renderAdminOrderDetailView() {
           <span>Дата: ${escapeHtml(formatDate(order.orderPlacedAt))}</span>
           <span>ClientId: ${escapeHtml(String(order.clientId || "").slice(0, 8) || "—")}</span>
           <span>PharmacyId: ${escapeHtml(String(order.pharmacyId || "").slice(0, 8) || "—")}</span>
+          <span>Тип: ${escapeHtml(formatFulfillmentTypeLabel(order.isPickup))}</span>
           <span>Возврат: ${escapeHtml(formatMoney(order.returnCost))}</span>
         </div>
       </article>
@@ -3611,25 +5339,40 @@ function renderAdminOrderDetailView() {
 
 function renderSuperAdminOrderCard(order) {
   const status = formatStatusLabel(order.status);
-  const canMarkDelivered = status === "OnTheWay";
+  const isPickup = Boolean(order.isPickup);
+  const deliveryLineLabel = isPickup ? "Самовывоз" : "Доставка";
+  const canMoveNext = status === "New" || status === "OnTheWay";
+  const nextLabel = status === "New"
+    ? "Подтвердить и в UnderReview"
+    : "Отметить полученным";
+  const unavailableHint = status === "New" || status === "OnTheWay"
+    ? ""
+    : "Следующий шаг доступен только для статусов New и OnTheWay.";
 
   return `
     <div class="workspace-order-card superadmin-order-card">
-      <div class="workspace-order-head">
-        <div>
+      <div class="superadmin-order-headline">
+        <div class="superadmin-order-title">
           <strong>Заказ ${escapeHtml(String(order.orderId).slice(0, 8))}</strong>
-          <p class="muted">${escapeHtml(order.deliveryAddress || "Без адреса")}</p>
+          <span class="mono-text">${escapeHtml(String(order.orderId || ""))}</span>
         </div>
-        <span class="status-badge success">${escapeHtml(formatStatusLabel(order.status))}</span>
+        <div class="superadmin-order-badges">
+          <span class="status-badge ${isPickup ? "warning" : "success"}">${escapeHtml(deliveryLineLabel)}</span>
+          <span class="status-badge success">${escapeHtml(formatStatusUiLabel(order.status))}</span>
+        </div>
       </div>
-      <div class="workspace-order-meta">
+
+      <div class="superadmin-order-meta-grid">
         <span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>
         <span>PharmacyId: ${escapeHtml(String(order.pharmacyId).slice(0, 8))}</span>
+        <span>${escapeHtml(`${deliveryLineLabel}: ${order.deliveryAddress || "без адреса"}`)}</span>
         <span>Дата: ${escapeHtml(formatDate(order.orderPlacedAt))}</span>
+        <span>Позиций: ${escapeHtml(String((order.positions || []).length))}</span>
       </div>
-      <div class="workspace-position-list">
+
+      <div class="workspace-position-list superadmin-order-position-list">
         ${(order.positions || []).map(position => `
-          <div class="workspace-position-item">
+          <div class="workspace-position-item superadmin-order-position-item">
             <span>${escapeHtml(position.medicine?.title || "Товар")}</span>
             <span>x${escapeHtml(String(position.quantity))}</span>
             <span>${escapeHtml(formatMoney(position.price))}</span>
@@ -3637,9 +5380,9 @@ function renderSuperAdminOrderCard(order) {
         `).join("")}
       </div>
       <div class="workspace-action-row">
-        ${canMarkDelivered
-          ? `<button class="btn btn-primary" type="button" data-action="order-delivered" data-order-id="${escapeHtml(order.orderId)}">Отметить доставленным</button>`
-          : `<span class="muted">Delivered доступен только для заказов в статусе OnTheWay.</span>`}
+        ${canMoveNext
+          ? `<button class="btn btn-primary" type="button" data-action="order-superadmin-next" data-order-id="${escapeHtml(order.orderId)}" data-current-status="${escapeHtml(status)}">${escapeHtml(nextLabel)}</button>`
+          : `<span class="muted">${escapeHtml(unavailableHint)}</span>`}
       </div>
     </div>
   `;
@@ -3663,17 +5406,17 @@ function renderRefundCard(refund) {
 
 function renderClientCard(client) {
   return `
-    <div class="workspace-list-item">
+    <div class="workspace-list-item superadmin-client-card">
       <strong>${escapeHtml(client.name)}</strong>
       <span>${escapeHtml(formatPhoneNumber(client.phoneNumber))}</span>
       <span>Позиций в корзине: ${escapeHtml(String((client.basketPositions || []).length))}</span>
       <span>Заказов: ${escapeHtml(String((client.orders || []).length))}</span>
       <span class="mono-text">${escapeHtml(client.id)}</span>
       ${(client.orders || []).length ? `
-        <div class="workspace-sublist">
+        <div class="workspace-sublist superadmin-client-orders-sublist">
           ${(client.orders || []).slice(0, 4).map(order => `
             <span>
-              ${escapeHtml(formatStatusLabel(order.status))} · ${escapeHtml(formatMoney(order.cost))} · ${escapeHtml(formatDate(order.orderPlacedAt))}
+              ${escapeHtml(formatStatusUiLabel(order.status))} · ${escapeHtml(formatMoney(order.cost))} · ${escapeHtml(formatDate(order.orderPlacedAt))}
             </span>
           `).join("")}
         </div>
@@ -3734,17 +5477,13 @@ function renderProductCard(item, role, options = {}) {
       </div>
       <div class="product-actions">
         <button class="btn btn-secondary btn-small" type="button" data-action="product-open" data-medicine-id="${escapeHtml(item.id)}">Подробнее</button>
-        ${canShop ? (
-          isGuest
-            ? `<button class="btn btn-primary btn-small" type="button" data-action="require-auth">В корзину</button>`
-            : `
+        ${canShop ? `
           <form data-form="add-to-basket" class="product-card-add-form">
             <input type="hidden" name="medicineId" value="${escapeHtml(item.id)}">
             <input type="hidden" name="quantity" value="1">
             <button class="btn btn-primary btn-small" type="submit">В корзину</button>
           </form>
-        `
-        ) : showSuperAdminManage ? `
+        ` : showSuperAdminManage ? `
           <button class="btn btn-secondary btn-small" type="button" data-action="medicine-card-deactivate" data-medicine-id="${escapeHtml(item.id)}">Скрыть</button>
         ` : `
           <button class="btn btn-secondary btn-small" type="button" data-action="go-workspace">Кабинет</button>
@@ -3788,47 +5527,174 @@ function renderBasketItem(item) {
             Количество
             <input name="quantity" type="number" min="1" value="${escapeHtml(String(Math.max(1, quantity)))}">
           </label>
-          <button class="btn btn-secondary btn-small" type="submit">Применить</button>
+          <p class="muted basket-qty-hint">Изменение сохраняется автоматически.</p>
         </form>
       </div>
       <div class="basket-item-actions">
-        <button class="btn btn-secondary btn-small" type="button" data-action="basket-step" data-position-id="${escapeHtml(item.positionId)}" data-quantity="${escapeHtml(String(quantity))}" data-delta="-1">−1</button>
-        <button class="btn btn-secondary btn-small" type="button" data-action="basket-step" data-position-id="${escapeHtml(item.positionId)}" data-quantity="${escapeHtml(String(quantity))}" data-delta="1">+1</button>
         <button class="btn btn-secondary btn-small" type="button" data-action="basket-remove" data-position-id="${escapeHtml(item.positionId)}" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.2);">Удалить</button>
       </div>
     </div>
   `;
 }
 
-function renderPharmacyOption(option) {
+function renderPharmacyOption(option, index, allOptions) {
   const items = option.items || [];
   const isSelected = state.checkoutDraft.pharmacyId === option.pharmacyId;
-  
-  return `
-    <div class="pharmacy-card ${option.isAvailable ? "available" : "limited"}" style="background-color: ${isSelected ? "var(--primary-soft)" : "white"}; border-color: ${isSelected ? "var(--primary)" : ""};">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div>
-          <strong style="font-size: 1.1rem; display: block;">${escapeHtml(option.pharmacyTitle || "Аптека")}</strong>
-          <p class="muted" style="margin-top: 0.25rem;">${escapeHtml(option.foundMedicinesRatio || "0/0")} найдено</p>
+  const isExpanded = state.expandedBasketPharmacyDetails.has(String(option.pharmacyId || ""));
+  const foundCount = Number(option.foundMedicinesCount ?? items.filter(item => item.isFound).length);
+  const totalCount = Number(option.totalMedicinesCount ?? items.length);
+  const enoughCount = Number(option.enoughQuantityMedicinesCount ?? items.filter(item => item.hasEnoughQuantity).length);
+  const availabilityLabel = option.isAvailable ? "Можно оформить" : "Частично доступно";
+  const pharmacyStateClass = option.isAvailable ? "available" : "limited";
+  const selectionClass = isSelected ? "selected" : "";
+  const optionList = Array.isArray(allOptions) ? allOptions : [option];
+  const costPool = optionList
+    .map(item => Number(item?.totalCost))
+    .filter(value => Number.isFinite(value));
+  const minCost = costPool.length ? Math.min(...costPool) : Number(option.totalCost || 0);
+  const currentCost = Number(option.totalCost || 0);
+  const isBestPrice = Number.isFinite(currentCost) && Math.abs(currentCost - minCost) < 0.0001;
+  const pharmacy = findPharmacyById(option.pharmacyId);
+  const pharmacyAddress = String(pharmacy?.address || "").trim();
+  const canSelect = Boolean(option.isAvailable);
+  const selectionStatusTitle = isSelected
+    ? "Аптека выбрана"
+    : canSelect
+      ? "Нажмите, чтобы выбрать"
+      : "Недостаточно для полного заказа";
+  const selectionStatusHint = canSelect
+    ? "Выбор влияет на нижний блок оформления"
+    : "Можно посмотреть цены, но оформить весь заказ нельзя";
+
+  const priceLines = items.map(item => {
+    const medicine = state.medicineCache.get(item.medicineId) || {};
+    const medicineTitle = medicine.title || item.medicineId || "Товар";
+    const requestedQuantity = Math.max(1, Number(item.requestedQuantity || 1));
+    const itemPrice = Number(item.price);
+    const hasPrice = Number.isFinite(itemPrice);
+    const lineClass = item.hasEnoughQuantity ? "ok" : (item.isFound ? "warn" : "miss");
+    const linePrice = hasPrice ? formatMoney(itemPrice * requestedQuantity) : "—";
+    const lineHint = hasPrice ? `${formatMoney(itemPrice)} x ${requestedQuantity}` : "Цена недоступна";
+
+    return `
+      <div class="pharmacy-line-item ${lineClass}">
+        <span class="pharmacy-line-copy">
+          <strong>${escapeHtml(medicineTitle)}</strong>
+          <small>${escapeHtml(lineHint)}</small>
+        </span>
+        <span class="pharmacy-line-price">${escapeHtml(linePrice)}</span>
+      </div>
+    `;
+  }).join("");
+
+  const detailsRows = items.map(item => {
+    const medicine = state.medicineCache.get(item.medicineId) || {};
+    const medicineTitle = medicine.title || item.medicineId || "Товар";
+    const foundLabel = item.isFound ? "Найдено" : "Не найдено";
+    const quantityLabel = item.hasEnoughQuantity ? "Хватает" : "Недостаточно";
+    const unitPrice = Number(item.price);
+    const hasUnitPrice = Number.isFinite(unitPrice);
+    const requestedQuantity = Math.max(1, Number(item.requestedQuantity || 1));
+    const priceLabel = hasUnitPrice ? formatMoney(unitPrice) : "—";
+    const lineTotalLabel = hasUnitPrice ? formatMoney(unitPrice * requestedQuantity) : "—";
+    const summaryClass = item.hasEnoughQuantity ? "success" : (item.isFound ? "warning" : "danger");
+    const imageSource = getMedicineImageSource(medicine.images);
+    const medicineId = String(item.medicineId || "");
+
+    return `
+      <a
+        class="pharmacy-detail-product"
+        href="#/product/${escapeHtml(medicineId)}"
+        data-action="product-open"
+        data-medicine-id="${escapeHtml(medicineId)}">
+        <div class="pharmacy-detail-thumb">
+          ${imageSource
+            ? `<img src="${escapeHtml(imageSource)}" alt="${escapeHtml(medicineTitle)}">`
+            : `<div class="image-fallback">${escapeHtml(getInitials(medicineTitle))}</div>`}
         </div>
-        <span class="status-badge ${option.isAvailable ? "success" : "warning"}">
-          ${option.isAvailable ? "В наличии" : "Частично"}
+        <div class="pharmacy-detail-body">
+          <div class="pharmacy-detail-main">
+            <strong>${escapeHtml(medicineTitle)}</strong>
+            <span class="muted">x${escapeHtml(String(requestedQuantity))}</span>
+          </div>
+          <div class="pharmacy-detail-price">
+            <span>Цена: <strong>${escapeHtml(priceLabel)}</strong></span>
+            <span>Сумма: <strong>${escapeHtml(lineTotalLabel)}</strong></span>
+          </div>
+          <div class="pharmacy-detail-meta">
+            <span class="status-badge ${summaryClass}">${escapeHtml(foundLabel)}</span>
+            <span class="status-badge ${item.hasEnoughQuantity ? "success" : "warning"}">${escapeHtml(quantityLabel)}</span>
+          </div>
+        </div>
+      </a>
+    `;
+  }).join("");
+
+  return `
+    <article
+      class="pharmacy-card pharmacy-market-card ${pharmacyStateClass} ${selectionClass} ${canSelect ? "" : "disabled"}"
+      data-action="checkout-use-pharmacy"
+      data-pharmacy-id="${escapeHtml(option.pharmacyId)}"
+      data-pharmacy-available="${canSelect ? "1" : "0"}">
+      <div class="pharmacy-card-top pharmacy-market-head">
+        <div class="pharmacy-market-head-main">
+          <strong class="pharmacy-card-title">${escapeHtml(option.pharmacyTitle || "Аптека")}</strong>
+          ${pharmacyAddress ? `<p class="pharmacy-card-address">${escapeHtml(pharmacyAddress)}</p>` : ""}
+          <div class="pharmacy-market-flags">
+            ${isBestPrice ? `<span class="pharmacy-flag best">Лучшая цена</span>` : ""}
+            ${isSelected ? `<span class="pharmacy-flag selected">Выбрано</span>` : ""}
+          </div>
+        </div>
+        <div class="pharmacy-market-price">
+          <span>Итог заказа</span>
+          <strong class="pharmacy-card-total">${escapeHtml(formatMoney(option.totalCost))}</strong>
+        </div>
+      </div>
+
+      <div class="pharmacy-market-meta">
+        <span class="pharmacy-chip ${option.isAvailable ? "success" : "warning"}">${escapeHtml(availabilityLabel)}</span>
+        <span class="pharmacy-chip neutral">${escapeHtml(`Найдено ${foundCount}/${totalCount}`)}</span>
+        <span class="pharmacy-chip neutral">${escapeHtml(`Хватает ${enoughCount}/${totalCount}`)}</span>
+      </div>
+
+      <div class="pharmacy-market-select">
+        <span class="pharmacy-select-dot ${isSelected ? "active" : ""}" aria-hidden="true"></span>
+        <span class="pharmacy-select-copy">
+          <strong class="pharmacy-select-text">${escapeHtml(selectionStatusTitle)}</strong>
+          <small>${escapeHtml(selectionStatusHint)}</small>
         </span>
       </div>
-      
-      <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border); display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 700; font-size: 1.125rem; color: var(--primary);">${escapeHtml(formatMoney(option.totalCost))}</span>
-        <button class="btn ${isSelected ? "btn-primary" : "btn-secondary"} btn-small" type="button" 
-          data-action="checkout-use-pharmacy" 
-          data-pharmacy-id="${escapeHtml(option.pharmacyId)}">
-          ${isSelected ? "Выбрано" : "Выбрать"}
-        </button>
+
+      <div class="pharmacy-price-lines">
+        ${priceLines}
       </div>
-    </div>
+
+      <div class="pharmacy-card-bottom">
+        <button
+          class="pharmacy-found-toggle"
+          type="button"
+          data-action="pharmacy-details-toggle"
+          data-pharmacy-id="${escapeHtml(option.pharmacyId)}">
+          ${isExpanded ? "Скрыть подробности" : "Показать подробности по заказу"}
+        </button>
+        <span class="status-badge pharmacy-availability-badge ${option.isAvailable ? "success" : "warning"}">
+          ${escapeHtml(availabilityLabel)}
+        </span>
+      </div>
+
+      ${isExpanded ? `
+        <div class="pharmacy-card-details">
+          <p class="pharmacy-details-title">Состав заказа в этой аптеке</p>
+          <p class="muted" style="margin: 0;">Нажмите на карточку лекарства, чтобы открыть полную информацию о товаре.</p>
+          ${detailsRows}
+        </div>
+      ` : ""}
+    </article>
   `;
 }
 
 function renderCheckoutPanel(positions, options) {
+  const isGuest = !state.token;
   if (!(positions || []).length) {
     return `
       <div class="panel empty-panel" style="padding: 2rem;">
@@ -3838,7 +5704,8 @@ function renderCheckoutPanel(positions, options) {
     `;
   }
 
-  const availableOptions = (options || []).filter(option => option.isAvailable);
+  const visibleOptions = getVisiblePharmacyOptions(options, positions);
+  const availableOptions = visibleOptions.filter(option => option.isAvailable);
   if (!availableOptions.length) {
     return `
       <div class="panel" style="border-color: var(--danger); background-color: #fef2f2;">
@@ -3848,44 +5715,89 @@ function renderCheckoutPanel(positions, options) {
     `;
   }
 
-  const selectedPharmacyId = availableOptions.some(item => item.pharmacyId === state.checkoutDraft.pharmacyId)
-    ? state.checkoutDraft.pharmacyId
-    : availableOptions[0].pharmacyId;
-
+  const selectedPharmacyId = String(state.checkoutDraft.pharmacyId || "").trim();
   const selectedOption = availableOptions.find(item => item.pharmacyId === selectedPharmacyId) || availableOptions[0];
+  const selectedOptionId = String(selectedOption?.pharmacyId || "").trim();
+  const selectedPharmacy = findPharmacyById(selectedOptionId);
+  const selectedPharmacyAddress = String(selectedPharmacy?.address || "").trim();
+
+  const isPickupSelected = Boolean(state.checkoutDraft.isPickup);
+  const addressHints = [...new Set(
+    [
+      selectedPharmacy?.address,
+      ...(state.pharmacies || []).map(item => item.address)
+    ]
+      .map(value => String(value || "").trim())
+      .filter(Boolean)
+  )];
 
   return `
-    <div class="panel" style="background-color: var(--primary-soft); border-color: var(--primary);">
+    <div class="panel checkout-panel-modern">
       <div class="section-headline" style="margin-bottom: 1.5rem;">
-        <h3>Завершение заказа</h3>
+        <h3>Настройки заказа</h3>
         <span class="status-badge success">Доступно аптек: ${escapeHtml(String(availableOptions.length))}</span>
       </div>
       <form class="stack-form" data-form="client-checkout">
-        <label>
-          Выбранная аптека
-          <select name="pharmacyId" required>
-            ${availableOptions.map(option => `
-              <option value="${escapeHtml(option.pharmacyId)}" ${option.pharmacyId === selectedPharmacyId ? "selected" : ""}>
-                ${escapeHtml(option.pharmacyTitle || "Аптека")} · ${escapeHtml(formatMoney(option.totalCost))}
-              </option>
-            `).join("")}
-          </select>
-        </label>
-        <label style="margin-top: 1rem;">
-          Адрес доставки
-          <input
-            name="deliveryAddress"
-            type="text"
-            value="${escapeHtml(state.checkoutDraft.deliveryAddress)}"
-            placeholder="Например: Dushanbe, Rudaki 10, kv. 5"
-            required>
-        </label>
-        <div class="checkout-summary-row" style="margin-top: 1.5rem; background-color: white;">
-          <span>К оплате:</span>
-          <strong style="font-size: 1.5rem; color: var(--primary);">${escapeHtml(formatMoney(selectedOption.totalCost))}</strong>
+        ${state.checkoutInlineNotice?.message
+          ? `<div class="checkout-inline-notice ${escapeHtml(state.checkoutInlineNotice.tone)}">${escapeHtml(state.checkoutInlineNotice.message)}</div>`
+          : ""}
+        <input type="hidden" name="pharmacyId" value="${escapeHtml(selectedOptionId)}">
+        <div class="checkout-selected-pharmacy">
+          <div class="checkout-selected-pharmacy-head">
+            <span class="status-badge success">Выбранная аптека</span>
+            <span class="mono-text">${escapeHtml(formatMoney(selectedOption.totalCost))}</span>
+          </div>
+          <strong>${escapeHtml(selectedOption.pharmacyTitle || "Аптека")}</strong>
+          <span class="muted">${escapeHtml(selectedPharmacyAddress || "Адрес аптеки недоступен")}</span>
         </div>
-        <button class="btn btn-primary" type="submit" style="width: 100%; margin-top: 1.5rem; padding: 1rem;">
-          Оформить заказ
+        <fieldset class="checkout-fulfillment-mode">
+          <legend>Способ получения</legend>
+          <label class="checkout-mode-pill">
+            <input type="radio" name="isPickup" value="false" ${isPickupSelected ? "" : "checked"}>
+            <span class="checkout-mode-pill-copy">
+              <strong>Доставка</strong>
+              <small>Курьер привезет по вашему адресу</small>
+            </span>
+          </label>
+          <label class="checkout-mode-pill">
+            <input type="radio" name="isPickup" value="true" ${isPickupSelected ? "checked" : ""}>
+            <span class="checkout-mode-pill-copy">
+              <strong>Самовывоз</strong>
+              <small>Получение в выбранной аптеке</small>
+            </span>
+          </label>
+        </fieldset>
+        ${isPickupSelected
+          ? `
+            <div class="checkout-pickup-note">
+              <strong>Адрес самовывоза</strong>
+              <span>${escapeHtml(selectedPharmacyAddress || "Адрес аптеки будет подставлен автоматически")}</span>
+            </div>
+          `
+          : `
+            <label class="checkout-address-field">
+              Адрес доставки
+              <input
+                name="deliveryAddress"
+                type="text"
+                list="checkout-address-hints"
+                value="${escapeHtml(state.checkoutDraft.deliveryAddress)}"
+                placeholder="Например: Dushanbe, Rudaki 10, kv. 5"
+                required>
+            </label>
+            <datalist id="checkout-address-hints">
+              ${addressHints.map(address => `<option value="${escapeHtml(address)}"></option>`).join("")}
+            </datalist>
+          `}
+        <div class="checkout-summary-row">
+          <span>К оплате:</span>
+          <strong>${escapeHtml(formatMoney(selectedOption.totalCost))}</strong>
+        </div>
+        ${isGuest ? `
+          <p class="muted" style="margin-top: 0.75rem;">Для оплаты вы перейдете на вход. Корзина и адрес не потеряются.</p>
+        ` : ""}
+        <button class="btn btn-primary checkout-submit-btn" type="submit">
+          ${isGuest ? "Войти и перейти к оплате" : "Оформить заказ"}
         </button>
       </form>
     </div>
@@ -3914,7 +5826,8 @@ function renderClientOrderCard(order) {
           <div class="workspace-order-meta">
             <span>Аптека: ${escapeHtml(pharmacyTitle)}</span>
             <span>Адрес аптеки: ${escapeHtml(pharmacy?.address || "—")}</span>
-            <span>Доставка: ${escapeHtml(details.deliveryAddress || order.deliveryAddress || "—")}</span>
+            <span>Тип: ${escapeHtml(formatFulfillmentTypeLabel(details.isPickup ?? order.isPickup))}</span>
+            <span>${escapeHtml((details.isPickup ?? order.isPickup) ? "Самовывоз" : "Доставка")}: ${escapeHtml(details.deliveryAddress || order.deliveryAddress || "—")}</span>
             <span>К оплате: ${escapeHtml(formatMoney(details.cost || order.cost))}</span>
           </div>
 
@@ -3945,12 +5858,13 @@ function renderClientOrderCard(order) {
           <strong>Заказ ${escapeHtml(String(order.orderId).slice(0, 8))}</strong>
           <p class="muted">${escapeHtml(pharmacyTitle)}</p>
         </div>
-        <span class="status-badge success">${escapeHtml(formatStatusLabel(order.status))}</span>
+        <span class="status-badge success">${escapeHtml(formatStatusUiLabel(order.status))}</span>
       </div>
 
       <div class="order-history-meta">
         <span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>
         <span>Дата: ${escapeHtml(formatDate(order.orderPlacedAt))}</span>
+        <span>Тип: ${escapeHtml(formatFulfillmentTypeLabel(order.isPickup))}</span>
         <span>PharmacyId: ${escapeHtml(String(order.pharmacyId).slice(0, 8))}</span>
       </div>
 
@@ -4071,7 +5985,7 @@ function renderStatusOptions(selectedStatus) {
   ];
 
   return statuses
-    .map(status => `<option value="${status}" ${selectedStatus === status ? "selected" : ""}>${status}</option>`)
+    .map(status => `<option value="${status}" ${selectedStatus === status ? "selected" : ""}>${escapeHtml(formatStatusUiLabel(status))}</option>`)
     .join("");
 }
 
@@ -4129,9 +6043,21 @@ function formatStatusLabel(value) {
   return labels[value] || String(value ?? "—");
 }
 
+function formatStatusUiLabel(value) {
+  const normalized = formatStatusLabel(value);
+  return normalized === "Delivered"
+    ? "Получен клиентом"
+    : normalized;
+}
+
 function formatAdminOrderStatusLabel(value) {
   const normalized = formatStatusLabel(value);
-  return normalized === "Ready" ? "Prepared" : normalized;
+  if (normalized === "Ready") return "Prepared";
+  return formatStatusUiLabel(normalized);
+}
+
+function formatFulfillmentTypeLabel(isPickup) {
+  return isPickup ? "Самовывоз" : "Доставка";
 }
 
 function canClientCancelOrder(status) {
@@ -4155,6 +6081,11 @@ function formatRefundStatusLabel(value) {
 }
 
 function basketBadge() {
+  if (!state.token) {
+    const count = getGuestBasketItemCount();
+    return count > 0 ? ` <span class="nav-badge">${escapeHtml(String(count))}</span>` : "";
+  }
+
   if (getRole() !== ROLE.CLIENT) return "";
   const count = Number(state.basket?.basketItemsCount || 0);
   return count > 0 ? ` <span class="nav-badge">${escapeHtml(String(count))}</span>` : "";
@@ -4179,7 +6110,11 @@ function getTopStripTitle() {
 
 function getTopStripText() {
   const role = getRole();
-  if (!state.token) return "Войдите, чтобы открыть клиентский, admin или superadmin интерфейс.";
+  if (!state.token) {
+    return state.route.name === "basket"
+      ? "Гостевая корзина сохраняется в браузере до очистки данных сайта."
+      : "Гостевой режим: собирайте корзину без входа, авторизация нужна только перед оплатой.";
+  }
 
   if (state.route.name === "workspace" && role === ROLE.SUPER_ADMIN) {
     return "Управляйте аптеками, администраторами, клиентами и товарами из одного кабинета.";
@@ -4210,7 +6145,7 @@ function getHeroTitle() {
     case "profile":
       return "Профиль клиента";
     case "basket":
-      return "Корзина клиента";
+      return state.token ? "Корзина клиента" : "Гостевая корзина";
     case "product":
       return "Полная карточка товара";
     case "workspace":
@@ -4235,7 +6170,9 @@ function getHeroText() {
     case "profile":
       return "Здесь собрана информация о клиенте, его корзина и заказы.";
     case "basket":
-      return "Здесь собраны все товары, управление количеством и предложения аптек.";
+      return state.token
+        ? "Здесь собраны все товары, управление количеством и предложения аптек."
+        : "Добавляйте товары, выбирайте аптеку и адрес. Вход потребуется только на шаге оплаты.";
     case "product":
       return "Карточка раскрывает товар отдельным экраном, а не коротким блоком в каталоге.";
     case "workspace":

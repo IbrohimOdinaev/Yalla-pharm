@@ -1,11 +1,15 @@
 ﻿using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Yalla.Infrastructure;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20260307085323_AddManualRefundRequests")]
     public partial class AddManualRefundRequests : Migration
     {
         /// <inheritdoc />

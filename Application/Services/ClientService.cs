@@ -491,9 +491,6 @@ public sealed class ClientService : IClientService
         if (request.PharmacyId == Guid.Empty)
             throw new DomainArgumentException("PharmacyId can't be empty.");
 
-        if (string.IsNullOrWhiteSpace(request.DeliveryAddress))
-            throw new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
-
         var client = await _dbContext.Clients
           .AsTracking()
           .Include(x => x.BasketPositions)
@@ -511,6 +508,17 @@ public sealed class ClientService : IClientService
         if (!pharmacy.IsActive)
             throw new InvalidOperationException(
               $"Pharmacy '{request.PharmacyId}' is inactive and cannot be used for checkout.");
+
+        var effectiveDeliveryAddress = request.IsPickup
+          ? (request.PharmacyId == pharmacy.Id ? pharmacy.Address : string.Empty)?.Trim() ?? string.Empty
+          : request.DeliveryAddress?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(effectiveDeliveryAddress))
+        {
+            throw request.IsPickup
+              ? new DomainArgumentException("Pickup order requires non-empty pharmacy address.")
+              : new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
+        }
 
         var ignoredPositionIds = request.IgnoredPositionIds?.ToHashSet() ?? [];
         ValidateIgnoredPositionIds(basketPositions, ignoredPositionIds);
@@ -550,6 +558,35 @@ public sealed class ClientService : IClientService
           .GroupBy(x => x.MedicineId)
           .ToDictionary(x => x.Key, x => x.Sum(y => y.Quantity));
 
+        var estimatedCost = evaluation.Positions
+          .Where(x => !x.IsRejected)
+          .Sum(x => (x.Price ?? 0m) * x.BasketPosition.Quantity);
+
+        if (estimatedCost <= 0m)
+            throw new InvalidOperationException("Checkout total amount must be greater than zero.");
+
+        var orderId = Guid.NewGuid();
+        var paymentResponse = await _paymentService.PayForOrderAsync(new PayForOrderRequest
+        {
+            OrderId = orderId,
+            ClientId = request.ClientId,
+            PharmacyId = request.PharmacyId,
+            Amount = estimatedCost,
+            Currency = "TJS",
+            Description = $"Checkout for order '{orderId}'.",
+            IdempotencyKey = request.IdempotencyKey
+        }, cancellationToken);
+
+        if (!paymentResponse.IsPaid)
+        {
+            var reason = string.IsNullOrWhiteSpace(paymentResponse.FailureReason)
+              ? paymentResponse.Status
+              : paymentResponse.FailureReason;
+
+            throw new InvalidOperationException(
+              $"Payment failed for checkout. Reason: {reason}.");
+        }
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         Order? order = null;
         try
@@ -578,7 +615,6 @@ public sealed class ClientService : IClientService
               .Where(x => x.PharmacyId == request.PharmacyId && acceptedMedicineIds.Contains(x.MedicineId))
               .ToDictionaryAsync(x => x.MedicineId, x => x.Price, cancellationToken);
 
-            var orderId = Guid.NewGuid();
             var orderPositions = evaluation.Positions
               .Select(x => new OrderPosition(
                 orderId: orderId,
@@ -593,8 +629,17 @@ public sealed class ClientService : IClientService
                 isRejected: x.IsRejected))
               .ToList();
 
-            order = request.ToDomain(orderId, orderPositions);
-            order.NextStage(true);
+            var orderRequest = new CheckoutBasketRequest
+            {
+                ClientId = request.ClientId,
+                PharmacyId = request.PharmacyId,
+                IsPickup = request.IsPickup,
+                DeliveryAddress = effectiveDeliveryAddress,
+                IdempotencyKey = request.IdempotencyKey,
+                IgnoredPositionIds = request.IgnoredPositionIds ?? []
+            };
+
+            order = orderRequest.ToDomain(orderId, orderPositions);
 
             foreach (var basketPosition in acceptedPositions)
                 client.RemoveBasketPosition(basketPosition);

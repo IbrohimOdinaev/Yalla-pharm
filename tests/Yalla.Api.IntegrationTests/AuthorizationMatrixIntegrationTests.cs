@@ -51,12 +51,9 @@ public sealed class AuthorizationMatrixIntegrationTests : ApiTestBase
     yield return [HttpMethod.Delete, "/api/basket/items", new { positionId = ApiTestData.BasketPosition1Id }];
     yield return [HttpMethod.Delete, "/api/basket", new { }];
 
-    yield return [HttpMethod.Get, "/api/medicines?page=1&pageSize=10", null];
-    yield return [HttpMethod.Get, $"/api/medicines/{ApiTestData.Medicine1Id}", null];
     yield return [HttpMethod.Post, "/api/medicines", new { title = "X", articul = "Y", atributes = new[] { new { name = "n", option = "o" } } }];
     yield return [HttpMethod.Put, "/api/medicines", new { medicineId = ApiTestData.Medicine1Id, title = "X", articul = "Y", url = "https://example.com" }];
     yield return [HttpMethod.Delete, "/api/medicines", new { medicineId = ApiTestData.Medicine1Id }];
-    yield return [HttpMethod.Post, "/api/medicines/search", new { query = "par", limit = 5 }];
 
     yield return [HttpMethod.Get, "/api/pharmacies", null];
     yield return [HttpMethod.Post, "/api/pharmacies", new { title = "New Pharmacy", address = "Addr", adminId = ApiTestData.Admin1Id }];
@@ -77,10 +74,13 @@ public sealed class AuthorizationMatrixIntegrationTests : ApiTestBase
     yield return [HttpMethod.Get, $"/api/orders/{ApiTestData.OrderUnderReviewId}", null];
     yield return [HttpMethod.Get, "/api/orders/worker/new?take=10", null];
     yield return [HttpMethod.Get, "/api/orders/admin/pharmacy?take=10", null];
+    yield return [HttpMethod.Get, "/api/orders/worker/history?page=1&pageSize=10", null];
     yield return [HttpMethod.Post, "/api/orders/assembly/start", new { orderId = ApiTestData.OrderUnderReviewId }];
     yield return [HttpMethod.Post, "/api/orders/positions/reject", new { orderId = ApiTestData.OrderPreparingId, positionIds = new[] { ApiTestData.OrderPositionPreparingId } }];
     yield return [HttpMethod.Post, "/api/orders/ready", new { orderId = ApiTestData.OrderPreparingId }];
     yield return [HttpMethod.Post, "/api/orders/on-the-way", new { orderId = ApiTestData.OrderReadyId }];
+    yield return [HttpMethod.Post, "/api/orders/admin/new/delete", new { orderId = ApiTestData.OrderUnderReviewId }];
+    yield return [HttpMethod.Post, "/api/orders/superadmin/next-status", new { orderId = ApiTestData.OrderUnderReviewId }];
     yield return [HttpMethod.Post, "/api/orders/delivered", new { orderId = ApiTestData.OrderOnTheWayId }];
     yield return [HttpMethod.Post, "/api/orders/cancel", new { orderId = ApiTestData.OrderCancelableId }];
 

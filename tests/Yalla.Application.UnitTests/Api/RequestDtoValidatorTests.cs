@@ -59,6 +59,21 @@ public sealed class RequestDtoValidatorTests
   }
 
   [Fact]
+  public void Validate_CheckoutBasketRequest_PickupWithoutDeliveryAddress_ShouldNotReturnDeliveryAddressError()
+  {
+    var request = new CheckoutBasketRequest
+    {
+      PharmacyId = Guid.NewGuid(),
+      IsPickup = true,
+      DeliveryAddress = " "
+    };
+
+    var errors = RequestDtoValidator.Validate(request);
+
+    Assert.DoesNotContain(errors, x => x.Field == nameof(CheckoutBasketRequest.DeliveryAddress));
+  }
+
+  [Fact]
   public void Validate_GetMedicinesCatalogRequest_WithInvalidPaging_ShouldReturnErrors()
   {
     var request = new GetMedicinesCatalogRequest
@@ -116,6 +131,23 @@ public sealed class RequestDtoValidatorTests
 
     Assert.Contains(errors, x => x.Field == nameof(StartOrderAssemblyRequest.OrderId));
     Assert.DoesNotContain(errors, x => x.Field == nameof(StartOrderAssemblyRequest.WorkerId));
+  }
+
+  [Fact]
+  public void Validate_DeleteNewOrderByAdminRequest_ShouldValidateOnlyOrderId()
+  {
+    var request = new DeleteNewOrderByAdminRequest
+    {
+      WorkerId = Guid.Empty,
+      PharmacyId = Guid.Empty,
+      OrderId = Guid.Empty
+    };
+
+    var errors = RequestDtoValidator.Validate(request);
+
+    Assert.Contains(errors, x => x.Field == nameof(DeleteNewOrderByAdminRequest.OrderId));
+    Assert.DoesNotContain(errors, x => x.Field == nameof(DeleteNewOrderByAdminRequest.WorkerId));
+    Assert.DoesNotContain(errors, x => x.Field == nameof(DeleteNewOrderByAdminRequest.PharmacyId));
   }
 
   [Fact]

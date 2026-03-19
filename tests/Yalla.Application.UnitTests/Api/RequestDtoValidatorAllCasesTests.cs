@@ -80,6 +80,19 @@ public sealed class RequestDtoValidatorAllCasesTests
   }
 
   [Fact]
+  public void CheckoutBasket_PickupWithoutDeliveryAddress_ShouldReturnNoErrors()
+  {
+    var request = new CheckoutBasketRequest
+    {
+      PharmacyId = Guid.NewGuid(),
+      IsPickup = true,
+      DeliveryAddress = " "
+    };
+
+    AssertNoErrors(request);
+  }
+
+  [Fact]
   public void ClearBasket_ShouldReturnNoErrors()
   {
     AssertNoErrors(new ClearBasketRequest());
@@ -153,6 +166,7 @@ public sealed class RequestDtoValidatorAllCasesTests
   {
     AssertHasErrors(new DeleteClientRequest { ClientId = Guid.Empty }, nameof(DeleteClientRequest.ClientId));
     AssertHasErrors(new DeleteMedicineRequest { MedicineId = Guid.Empty }, nameof(DeleteMedicineRequest.MedicineId));
+    AssertHasErrors(new DeleteNewOrderByAdminRequest { OrderId = Guid.Empty }, nameof(DeleteNewOrderByAdminRequest.OrderId));
     AssertHasErrors(
       new DeleteMedicineImageRequest { MedicineId = Guid.Empty, MedicineImageId = Guid.Empty },
       nameof(DeleteMedicineImageRequest.MedicineId),

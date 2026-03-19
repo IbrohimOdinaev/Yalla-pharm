@@ -45,6 +45,14 @@ public interface IOrderService
     MarkOrderDeliveredBySuperAdminRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<MarkOrderDeliveredBySuperAdminResponse> MoveOrderToNextStatusBySuperAdminAsync(
+    MarkOrderDeliveredBySuperAdminRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<DeleteNewOrderByAdminResponse> DeleteNewOrderByAdminAsync(
+    DeleteNewOrderByAdminRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<CancelOrderResponse> CancelOrderAsync(
     CancelOrderRequest request,
     CancellationToken cancellationToken = default);

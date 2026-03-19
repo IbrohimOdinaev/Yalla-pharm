@@ -35,6 +35,12 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .HasMaxLength(500)
           .IsRequired();
 
+        builder.Property(x => x.IsPickup)
+          .HasColumnName("is_pickup")
+          .HasColumnType("boolean")
+          .HasDefaultValue(false)
+          .IsRequired();
+
         builder.Property(x => x.IdempotencyKey)
           .HasColumnName("idempotency_key")
           .HasColumnType("character varying(128)")

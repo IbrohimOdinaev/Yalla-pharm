@@ -153,6 +153,7 @@ public sealed class ClientsController : ControllerBase
     {
       ClientId = currentUserId,
       PharmacyId = request.PharmacyId,
+      IsPickup = request.IsPickup,
       DeliveryAddress = request.DeliveryAddress,
       IdempotencyKey = request.IdempotencyKey,
       IgnoredPositionIds = request.IgnoredPositionIds
@@ -188,6 +189,7 @@ public sealed class ClientsController : ControllerBase
     {
       ClientId = currentUserId,
       PharmacyId = request.PharmacyId,
+      IsPickup = request.IsPickup,
       DeliveryAddress = request.DeliveryAddress,
       IdempotencyKey = idempotencyKey,
       IgnoredPositionIds = request.IgnoredPositionIds

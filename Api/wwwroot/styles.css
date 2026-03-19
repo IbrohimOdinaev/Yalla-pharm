@@ -849,9 +849,21 @@ select:focus {
 .product-detail-grid,
 .basket-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+  gap: 22px;
   align-items: start;
+}
+
+.basket-sidebar {
+  display: grid;
+  gap: 16px;
+  position: sticky;
+  top: 14px;
+  font-size: 0.94rem;
+}
+
+.basket-sidebar > .panel {
+  border-radius: 20px;
 }
 
 .catalog-main {
@@ -1267,9 +1279,9 @@ select:focus {
 
 .basket-item-extended {
   display: grid;
-  grid-template-columns: minmax(120px, 0.46fr) minmax(0, 1fr) minmax(120px, 0.44fr);
+  grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr) minmax(120px, 0.3fr);
   align-items: stretch;
-  gap: 12px;
+  gap: 14px;
   padding: 14px;
   border: 1px solid rgba(14, 143, 115, 0.14);
   border-radius: 16px;
@@ -1288,20 +1300,667 @@ select:focus {
 
 .basket-qty-form {
   display: grid;
-  grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
-  align-items: end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .basket-qty-form label {
   margin: 0;
 }
 
+.basket-qty-hint {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
 .basket-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  min-width: 120px;
+}
+
+.pharmacy-option-list {
+  display: grid;
+  gap: 12px;
+}
+
+.basket-pharmacy-panel {
+  padding: 16px 16px 14px;
+  background:
+    radial-gradient(circle at right top, rgba(37, 99, 235, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(245, 250, 255, 0.98));
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+}
+
+.basket-pharmacy-panel-head {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 0.75rem;
+}
+
+.basket-pharmacy-title-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.basket-pharmacy-title-wrap h3 {
+  margin: 0;
+  font-size: 1.24rem;
+  line-height: 1.2;
+}
+
+.basket-pharmacy-title-wrap p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.basket-pharmacy-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.basket-pharmacy-panel-note {
+  margin-bottom: 0.9rem;
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px dashed rgba(59, 130, 246, 0.28);
+  background: rgba(240, 247, 255, 0.75);
+  font-size: 0.81rem;
+  line-height: 1.45;
+}
+
+.basket-pharmacy-option-list {
+  max-height: min(70vh, 880px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.basket-pharmacy-option-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.basket-pharmacy-option-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.pharmacy-card {
+  display: grid;
+  gap: 11px;
+  padding: 15px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.11);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(250, 252, 254, 0.98));
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.pharmacy-market-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.pharmacy-market-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.7), rgba(59, 130, 246, 0.12));
+}
+
+.pharmacy-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.13);
+}
+
+.pharmacy-card.available {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: linear-gradient(180deg, rgba(240, 247, 255, 0.99), rgba(255, 255, 255, 0.99));
+}
+
+.pharmacy-card.limited {
+  border-color: rgba(240, 139, 82, 0.42);
+  background: linear-gradient(180deg, rgba(255, 246, 235, 0.99), rgba(255, 255, 255, 0.99));
+}
+
+.pharmacy-card.selected {
+  border-color: rgba(37, 99, 235, 0.75);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 18px 34px rgba(37, 99, 235, 0.18);
+}
+
+.pharmacy-card.disabled {
+  cursor: not-allowed;
+}
+
+.pharmacy-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pharmacy-market-head-main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.pharmacy-card-title {
+  display: block;
+  font-size: 1.02rem;
+  line-height: 1.22;
+}
+
+.pharmacy-card-address {
+  margin: 0;
+  color: #5b6b80;
+  font-size: 0.77rem;
+  line-height: 1.4;
+}
+
+.pharmacy-market-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pharmacy-flag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.pharmacy-flag.best {
+  background: rgba(212, 134, 45, 0.15);
+  color: #915a1e;
+  border-color: rgba(212, 134, 45, 0.3);
+}
+
+.pharmacy-flag.selected {
+  background: rgba(14, 143, 115, 0.14);
+  color: var(--accent-deep);
+  border-color: rgba(14, 143, 115, 0.32);
+}
+
+.pharmacy-market-price {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pharmacy-price-lines {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.pharmacy-line-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.pharmacy-line-item.ok {
+  border-color: rgba(29, 139, 88, 0.25);
+  background: rgba(29, 139, 88, 0.08);
+}
+
+.pharmacy-line-item.warn {
+  border-color: rgba(212, 134, 45, 0.25);
+  background: rgba(212, 134, 45, 0.08);
+}
+
+.pharmacy-line-item.miss {
+  border-color: rgba(201, 79, 82, 0.24);
+  background: rgba(201, 79, 82, 0.08);
+}
+
+.pharmacy-line-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pharmacy-line-copy strong {
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.pharmacy-line-copy small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.pharmacy-line-price {
+  font-weight: 700;
+  color: var(--accent-deep);
+  white-space: nowrap;
+  font-size: 0.84rem;
+}
+
+.pharmacy-market-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.pharmacy-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.pharmacy-chip.success {
+  background: rgba(29, 139, 88, 0.14);
+  color: #136c43;
+  border-color: rgba(29, 139, 88, 0.28);
+}
+
+.pharmacy-chip.warning {
+  background: rgba(212, 134, 45, 0.14);
+  color: #915a1e;
+  border-color: rgba(212, 134, 45, 0.3);
+}
+
+.pharmacy-chip.neutral {
+  background: rgba(15, 23, 42, 0.06);
+  color: #364152;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+.pharmacy-market-select {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #2a3e59;
+  min-height: 50px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  border: 1px dashed rgba(37, 99, 235, 0.38);
+  background: rgba(248, 251, 255, 0.95);
+}
+
+.pharmacy-select-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid rgba(14, 143, 115, 0.34);
+  background: rgba(255, 255, 255, 0.98);
+  flex-shrink: 0;
+}
+
+.pharmacy-select-dot.active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.pharmacy-select-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pharmacy-select-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2f4157;
+}
+
+.pharmacy-select-copy small {
+  color: #5f6d81;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.pharmacy-card.selected .pharmacy-market-select {
+  border-style: solid;
+  border-color: rgba(37, 99, 235, 0.45);
+  background: rgba(228, 239, 255, 0.74);
+}
+
+.pharmacy-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.pharmacy-found-toggle {
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.96);
+  color: #263a53;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.pharmacy-found-toggle:hover {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(226, 239, 255, 0.72);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.checkout-panel-modern {
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(236, 248, 255, 0.95), rgba(255, 255, 255, 0.99));
+  border-color: rgba(59, 130, 246, 0.32);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+}
+
+.checkout-selected-pharmacy {
   display: grid;
   gap: 8px;
-  min-width: 118px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.checkout-selected-pharmacy-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkout-selected-pharmacy strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.checkout-inline-notice {
+  margin-bottom: 0.5rem;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.checkout-inline-notice.warning {
+  border-color: rgba(212, 134, 45, 0.35);
+  background: rgba(255, 248, 238, 0.96);
+  color: #8f5a20;
+}
+
+.checkout-inline-notice.danger {
+  border-color: rgba(201, 79, 82, 0.34);
+  background: rgba(254, 242, 242, 0.98);
+  color: #b91c1c;
+}
+
+.checkout-fulfillment-mode {
+  margin: 1rem 0 0;
+  padding: 12px 11px;
+  border-radius: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  background: rgba(255, 255, 255, 0.95);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkout-fulfillment-mode legend {
+  grid-column: 1 / -1;
+  padding: 0;
+  color: #3c5068;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.checkout-mode-pill {
+  margin: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #fff;
+  cursor: pointer;
+}
+
+.checkout-mode-pill input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.checkout-mode-pill-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.checkout-mode-pill-copy strong {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.checkout-mode-pill-copy small {
+  font-size: 0.74rem;
+  color: #5f6d81;
+  line-height: 1.2;
+}
+
+.checkout-mode-pill:has(input:checked) {
+  border-color: rgba(37, 99, 235, 0.44);
+  background: rgba(226, 239, 255, 0.8);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
+}
+
+.checkout-pickup-note {
+  margin-top: 1rem;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(14, 143, 115, 0.2);
+  background: rgba(223, 246, 238, 0.62);
+}
+
+.checkout-address-field {
+  margin-top: 1rem;
+}
+
+.checkout-summary-row {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.checkout-summary-row strong {
+  font-size: 1.45rem;
+  color: var(--primary);
+}
+
+.checkout-submit-btn {
+  width: 100%;
+  margin-top: 1.2rem;
+  min-height: 48px;
+  border-radius: 14px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.pharmacy-card-total {
+  font-size: 1.26rem;
+  font-weight: 800;
+  color: #134e4a;
+}
+
+.pharmacy-card-details {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.pharmacy-details-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #21344d;
+}
+
+.pharmacy-availability-badge {
+  font-size: 0.76rem;
+  letter-spacing: 0.01em;
+}
+
+.pharmacy-detail-product {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(14, 143, 115, 0.16);
+  background: rgba(255, 255, 255, 0.98);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.pharmacy-detail-product:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.34);
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.14);
+}
+
+.pharmacy-detail-thumb {
+  min-height: 74px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.pharmacy-detail-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pharmacy-detail-thumb .image-fallback {
+  width: 100%;
+  height: 100%;
+  min-height: 74px;
+}
+
+.pharmacy-detail-body {
+  display: grid;
+  gap: 8px;
   align-content: start;
+}
+
+.pharmacy-detail-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pharmacy-detail-price {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #3d4f67;
+  font-size: 0.82rem;
+}
+
+.pharmacy-detail-price strong {
+  color: #1d4ed8;
+}
+
+.pharmacy-detail-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.partial-region-enter {
+  animation: regionFadeSlide 0.26s ease;
+}
+
+@keyframes regionFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.basket-add-success {
+  animation: basketAddPulse 0.62s ease;
+}
+
+@keyframes basketAddPulse {
+  0% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.35);
+  }
+  40% {
+    transform: translateY(-1px) scale(1.04);
+    box-shadow: 0 0 0 8px rgba(37, 99, 235, 0);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: none;
+  }
 }
 
 .basket-card-grid {
@@ -1332,12 +1991,82 @@ select:focus {
     linear-gradient(180deg, rgba(255, 251, 246, 0.97), rgba(247, 240, 230, 0.96));
 }
 
+.admin-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-control-shell {
+  padding: 24px;
+  border: 1px solid rgba(14, 143, 115, 0.28);
+  background:
+    radial-gradient(circle at right top, rgba(14, 143, 115, 0.14), transparent 40%),
+    linear-gradient(180deg, rgba(255, 252, 247, 0.99), rgba(247, 241, 233, 0.95));
+}
+
+.admin-control-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.admin-control-copy {
+  display: grid;
+  gap: 8px;
+  max-width: 820px;
+}
+
+.admin-control-copy h1 {
+  margin: 0;
+}
+
+.admin-main-region {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.admin-interface-nav {
+  justify-content: flex-start;
+  margin-bottom: 0;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(14, 143, 115, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(244, 251, 248, 0.88));
+}
+
+.admin-interface-nav .nav-link {
+  background: rgba(255, 255, 255, 0.84);
+  border-color: rgba(14, 143, 115, 0.18);
+}
+
+.admin-interface-nav .nav-link::after {
+  display: none;
+}
+
+.admin-interface-nav .nav-link.active {
+  border-color: rgba(14, 143, 115, 0.34);
+  background: linear-gradient(180deg, rgba(231, 252, 244, 0.96), rgba(248, 255, 252, 0.98));
+  box-shadow: 0 10px 18px rgba(14, 143, 115, 0.12);
+}
+
+.admin-stat-grid {
+  margin-top: 18px;
+}
+
 .admin-stat-card {
-  padding: 1rem;
+  padding: 14px;
+  border: 1px solid rgba(14, 143, 115, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  border-radius: 16px;
+  display: grid;
+  gap: 6px;
 }
 
 .admin-stat-card strong {
-  font-size: 1.4rem;
+  font-size: 1.52rem;
+  line-height: 1.1;
   color: #0b6e59;
 }
 
@@ -1347,6 +2076,25 @@ select:focus {
 
 .admin-interface-tabs {
   margin-top: 4px;
+}
+
+.admin-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(14, 143, 115, 0.24);
+}
+
+.admin-section-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-section-copy h3 {
+  margin: 0;
 }
 
 .admin-section-grid {
@@ -1372,6 +2120,22 @@ select:focus {
 .admin-catalog-panel {
   display: grid;
   gap: 12px;
+}
+
+.admin-search-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-orders-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-orders-filter select {
+  min-width: 220px;
 }
 
 .admin-catalog-grid {
@@ -1607,17 +2371,123 @@ select:focus {
 }
 
 .superadmin-manager-panel {
+  padding: 20px;
   border: 1px solid rgba(240, 139, 82, 0.28);
   background:
     radial-gradient(circle at right top, rgba(240, 139, 82, 0.1), transparent 36%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 244, 236, 0.95));
 }
 
+.superadmin-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.superadmin-control-shell {
+  padding: 24px;
+  border: 1px solid rgba(240, 139, 82, 0.32);
+  background:
+    radial-gradient(circle at right top, rgba(240, 139, 82, 0.22), transparent 42%),
+    linear-gradient(180deg, rgba(255, 252, 247, 0.99), rgba(250, 243, 235, 0.94));
+}
+
+.superadmin-control-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.superadmin-control-copy {
+  display: grid;
+  gap: 8px;
+  max-width: 860px;
+}
+
+.superadmin-control-copy h1 {
+  margin: 0;
+}
+
+.superadmin-stat-grid {
+  margin-top: 18px;
+}
+
+.superadmin-stat-grid .superadmin-stat-card {
+  border: 1px solid rgba(240, 139, 82, 0.26);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.superadmin-stat-card strong {
+  font-size: 1.62rem;
+  line-height: 1.1;
+  color: #e66f2a;
+}
+
+.superadmin-main-region {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.superadmin-interface-nav {
+  justify-content: flex-start;
+  margin-bottom: 0;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(240, 139, 82, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(252, 246, 239, 0.9));
+}
+
+.superadmin-interface-nav .nav-link {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(240, 139, 82, 0.18);
+}
+
+.superadmin-interface-nav .nav-link::after {
+  display: none;
+}
+
+.superadmin-interface-nav .nav-link.active {
+  border-color: rgba(230, 111, 42, 0.32);
+  background: linear-gradient(180deg, rgba(255, 241, 230, 0.98), rgba(255, 247, 241, 0.98));
+  box-shadow: 0 10px 18px rgba(230, 111, 42, 0.12);
+}
+
 .superadmin-section-panel {
+  padding: 20px;
   border: 2px solid rgba(240, 139, 82, 0.3);
   background:
     radial-gradient(circle at right top, rgba(240, 139, 82, 0.1), transparent 38%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(252, 246, 238, 0.95));
+}
+
+.superadmin-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(240, 139, 82, 0.24);
+}
+
+.superadmin-section-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.superadmin-section-copy h3 {
+  margin: 0;
+}
+
+.superadmin-orders-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.superadmin-orders-filter select {
+  min-width: 220px;
 }
 
 .superadmin-ops-tabs {
@@ -1632,8 +2502,47 @@ select:focus {
 
 .superadmin-order-card {
   border: 1px solid rgba(240, 139, 82, 0.24);
-  border-radius: 14px;
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.97), rgba(255, 248, 240, 0.94));
+  border-radius: 16px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 240, 0.95));
+  box-shadow: 0 14px 24px rgba(79, 52, 29, 0.08);
+}
+
+.superadmin-order-headline {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.superadmin-order-title {
+  display: grid;
+  gap: 4px;
+}
+
+.superadmin-order-badges {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.superadmin-order-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.superadmin-order-position-list {
+  gap: 8px;
+}
+
+.superadmin-order-position-item {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(240, 139, 82, 0.14);
 }
 
 .superadmin-refund-list {
@@ -1646,11 +2555,18 @@ select:focus {
   background: rgba(255, 255, 255, 0.95);
 }
 
+.superadmin-search-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .superadmin-inline-search {
   padding: 14px;
   border: 1px dashed rgba(240, 139, 82, 0.28);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.8);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 249, 243, 0.9));
 }
 
 .superadmin-boundary-grid {
@@ -1663,10 +2579,28 @@ select:focus {
   padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(240, 139, 82, 0.22);
-  background: rgba(255, 255, 255, 0.9);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(252, 248, 241, 0.9));
   display: grid;
   gap: 12px;
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.superadmin-client-shell,
+.superadmin-medicine-shell {
+  gap: 16px;
+}
+
+.superadmin-client-card {
+  border: 1px solid rgba(240, 139, 82, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.93);
+}
+
+.superadmin-client-orders-sublist {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(240, 139, 82, 0.26);
 }
 
 .superadmin-block:hover {
@@ -1828,8 +2762,25 @@ select:focus {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
+  .basket-sidebar {
+    position: static;
+    top: auto;
+  }
+
   .admin-main-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-interface-nav {
+    gap: 8px;
+  }
+
+  .admin-orders-filter {
+    width: 100%;
+  }
+
+  .admin-orders-filter select {
+    min-width: 0;
   }
 
   .admin-section-grid {
@@ -1843,6 +2794,22 @@ select:focus {
   .superadmin-boundary-grid,
   .superadmin-medicine-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .superadmin-interface-nav {
+    gap: 8px;
+  }
+
+  .superadmin-orders-filter {
+    width: 100%;
+  }
+
+  .superadmin-orders-filter select {
+    min-width: 0;
+  }
+
+  .superadmin-search-form {
+    width: 100%;
   }
 
   .superadmin-medicine-details {
@@ -1882,15 +2849,31 @@ select:focus {
   }
 
   .basket-qty-form {
-    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
   }
 
   .basket-item-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .basket-item-actions .btn {
+    width: 100%;
   }
 
   .basket-card-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .basket-pharmacy-panel {
+    padding: 14px 12px 12px;
+  }
+
+  .basket-pharmacy-panel-head {
+    gap: 8px;
+  }
+
+  .basket-pharmacy-title-wrap h3 {
+    font-size: 1.12rem;
   }
 
   .basket-item-extended {
@@ -1899,6 +2882,56 @@ select:focus {
 
   .basket-item-extended .basket-item-media {
     min-height: 200px;
+  }
+
+  .pharmacy-card-bottom {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pharmacy-market-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .pharmacy-market-price {
+    justify-items: start;
+  }
+
+  .pharmacy-market-meta {
+    gap: 6px;
+  }
+
+  .pharmacy-found-toggle {
+    width: 100%;
+  }
+
+  .pharmacy-detail-product {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pharmacy-detail-thumb {
+    min-height: 140px;
+  }
+
+  .pharmacy-detail-thumb .image-fallback {
+    min-height: 140px;
+  }
+
+  .pharmacy-detail-price {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .checkout-selected-pharmacy-head,
+  .checkout-summary-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .checkout-fulfillment-mode {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .admin-status-board {
@@ -1917,6 +2950,23 @@ select:focus {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .admin-control-shell {
+    padding: 18px 16px;
+  }
+
+  .admin-control-copy h1 {
+    font-size: 1.68rem;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-interface-nav .nav-link {
+    width: 100%;
+    justify-content: center;
+  }
+
   .superadmin-medicine-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1925,11 +2975,32 @@ select:focus {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .superadmin-control-shell {
+    padding: 18px 16px;
+  }
+
+  .superadmin-control-copy h1 {
+    font-size: 1.72rem;
+  }
+
+  .superadmin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .superadmin-interface-nav .nav-link {
+    width: 100%;
+    justify-content: center;
+  }
+
   .superadmin-danger-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .superadmin-order-list-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .superadmin-order-meta-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
