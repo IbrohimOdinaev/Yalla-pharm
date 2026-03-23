@@ -1,6 +1,7 @@
 using Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
 using Yalla.Domain.Enums;
@@ -25,6 +26,39 @@ public sealed class ClientsController : ControllerBase
     CancellationToken cancellationToken)
   {
     var response = await _clientService.RegisterClientAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("register/request")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-request")]
+  public async Task<IActionResult> RequestRegistrationVerification(
+    [FromBody] RegisterClientRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _clientService.RequestClientRegistrationVerificationAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("register/verify")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-verify")]
+  public async Task<IActionResult> VerifyRegistration(
+    [FromBody] VerifyClientRegistrationRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _clientService.VerifyClientRegistrationAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("register/resend")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-resend")]
+  public async Task<IActionResult> ResendRegistrationCode(
+    [FromBody] ResendClientRegistrationRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _clientService.ResendClientRegistrationVerificationAsync(request, cancellationToken);
     return Ok(response);
   }
 

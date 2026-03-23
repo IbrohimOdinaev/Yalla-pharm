@@ -89,6 +89,8 @@ public static class ResponseMappingExtensions
             OrderPlacedAt = order.OrderPlacedAt,
             IsPickup = order.IsPickup,
             Status = order.Status,
+            PaymentState = order.PaymentState,
+            PaymentExpiresAtUtc = order.PaymentExpiresAtUtc,
             Cost = order.Cost,
             ReturnCost = order.ReturnCost
         };
@@ -127,18 +129,23 @@ public static class ResponseMappingExtensions
         };
     }
 
-    public static CheckoutBasketResponse ToResponse(this Order order)
+    public static CheckoutBasketResponse ToResponse(this Order order, string? paymentUrl = null)
     {
         return new CheckoutBasketResponse
         {
-            ClientId = order.ClientId,
+            ClientId = order.ClientId ?? Guid.Empty,
             OrderId = order.Id,
             OrderPlacedAt = order.OrderPlacedAt,
             IsPickup = order.IsPickup,
             DeliveryAddress = order.DeliveryAddress,
             Status = order.Status,
             Cost = order.Cost,
-            ReturnCost = order.ReturnCost
+            ReturnCost = order.ReturnCost,
+            PaymentState = order.PaymentState,
+            PaymentExpiresAtUtc = order.PaymentExpiresAtUtc,
+            PaymentUrl = string.IsNullOrWhiteSpace(paymentUrl)
+              ? order.PaymentUrl
+              : paymentUrl
         };
     }
 }

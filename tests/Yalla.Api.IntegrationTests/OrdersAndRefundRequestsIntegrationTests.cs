@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Yalla.Api.IntegrationTests.TestInfrastructure;
@@ -239,6 +240,24 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var checkoutPayload = await ReadJsonAsync(checkoutResponse);
     var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
     Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
+    Assert.Equal(
+      (int)OrderPaymentState.PendingManualConfirmation,
+      checkoutPayload.GetProperty("paymentState").GetInt32());
+
+    var paymentExpiresAtUtc = checkoutPayload.GetProperty("paymentExpiresAtUtc").GetDateTime();
+    Assert.True(paymentExpiresAtUtc > DateTime.UtcNow);
+
+    var paymentUrl = checkoutPayload.GetProperty("paymentUrl").GetString();
+    Assert.False(string.IsNullOrWhiteSpace(paymentUrl));
+
+    var paymentQuery = ParseQuery(new Uri(paymentUrl!, UriKind.Absolute).Query);
+    Assert.True(paymentQuery.TryGetValue("s", out var amountValue));
+    Assert.Equal(
+      checkoutPayload.GetProperty("cost").GetDecimal().ToString("0.00", CultureInfo.InvariantCulture),
+      amountValue);
+    Assert.True(paymentQuery.TryGetValue("c", out var commentValue));
+    Assert.Contains("ClientNumber:", commentValue, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains(orderId.ToString(), commentValue, StringComparison.OrdinalIgnoreCase);
 
     var nextStatusResponse = await superAdminActor.PostAsJsonAsync("/api/orders/superadmin/next-status", new
     {
@@ -248,6 +267,20 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     Assert.Equal(HttpStatusCode.OK, nextStatusResponse.StatusCode);
     var payload = await ReadJsonAsync(nextStatusResponse);
     Assert.Equal((int)Status.UnderReview, payload.GetProperty("status").GetInt32());
+
+    using var scope = Factory.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var updatedOrder = await dbContext.Orders
+      .AsNoTracking()
+      .FirstAsync(x => x.Id == orderId);
+    Assert.Equal(OrderPaymentState.Confirmed, updatedOrder.PaymentState);
+    Assert.NotNull(updatedOrder.PaymentConfirmedAtUtc);
+
+    var paymentHistory = await dbContext.PaymentHistories
+      .AsNoTracking()
+      .FirstOrDefaultAsync(x => x.OrderId == orderId);
+    Assert.NotNull(paymentHistory);
+    Assert.Equal(updatedOrder.PaymentAmount, paymentHistory!.Amount);
   }
 
   [Fact]
@@ -301,6 +334,10 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var checkoutCost = checkoutPayload.GetProperty("cost").GetDecimal();
     Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
     Assert.True(checkoutCost > 0m);
+    Assert.Equal(
+      (int)OrderPaymentState.PendingManualConfirmation,
+      checkoutPayload.GetProperty("paymentState").GetInt32());
+    Assert.True(checkoutPayload.GetProperty("paymentExpiresAtUtc").GetDateTime() > DateTime.UtcNow);
 
     var historyResponse = await client.GetAsync("/api/orders/client-history");
     Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
@@ -311,6 +348,10 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     Assert.True(checkedOutOrder.ValueKind != System.Text.Json.JsonValueKind.Undefined);
     Assert.True(checkedOutOrder.GetProperty("cost").GetDecimal() > 0m);
+    Assert.Equal(
+      (int)OrderPaymentState.PendingManualConfirmation,
+      checkedOutOrder.GetProperty("paymentState").GetInt32());
+    Assert.True(checkedOutOrder.GetProperty("paymentExpiresAtUtc").GetDateTime() > DateTime.UtcNow);
   }
 
   [Fact]
@@ -373,5 +414,30 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     });
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+  }
+
+  private static Dictionary<string, string> ParseQuery(string query)
+  {
+    var queryPart = query.StartsWith("?", StringComparison.Ordinal) ? query[1..] : query;
+    var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    if (string.IsNullOrWhiteSpace(queryPart))
+      return result;
+
+    foreach (var segment in queryPart.Split('&', StringSplitOptions.RemoveEmptyEntries))
+    {
+      var separatorIndex = segment.IndexOf('=');
+      if (separatorIndex < 0)
+      {
+        result[Uri.UnescapeDataString(segment)] = string.Empty;
+        continue;
+      }
+
+      var key = Uri.UnescapeDataString(segment[..separatorIndex]);
+      var value = Uri.UnescapeDataString(segment[(separatorIndex + 1)..]);
+      if (!string.IsNullOrWhiteSpace(key))
+        result[key] = value;
+    }
+
+    return result;
   }
 }

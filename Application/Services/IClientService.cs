@@ -9,6 +9,18 @@ public interface IClientService
       RegisterClientRequest request,
       CancellationToken cancellationToken = default);
 
+    Task<RequestClientRegistrationVerificationResponse> RequestClientRegistrationVerificationAsync(
+      RegisterClientRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<RegisterClientResponse> VerifyClientRegistrationAsync(
+      VerifyClientRegistrationRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<RequestClientRegistrationVerificationResponse> ResendClientRegistrationVerificationAsync(
+      ResendClientRegistrationRequest request,
+      CancellationToken cancellationToken = default);
+
     Task<UpdateClientResponse> UpdateClientAsync(
       UpdateClientRequest request,
       CancellationToken cancellationToken = default);

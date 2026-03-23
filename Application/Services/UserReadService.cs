@@ -51,11 +51,11 @@ public sealed class UserReadService : IUserReadService
 
     var ordersByClientId = await _dbContext.Orders
       .AsNoTracking()
-      .Where(x => userIds.Contains(x.ClientId))
+      .Where(x => x.ClientId.HasValue && userIds.Contains(x.ClientId.Value))
       .OrderByDescending(x => x.OrderPlacedAt)
       .GroupBy(x => x.ClientId)
       .ToDictionaryAsync(
-        group => group.Key,
+        group => group.Key!.Value,
         group => (IReadOnlyCollection<UserOrderListItemResponse>)group
           .Select(order => new UserOrderListItemResponse
           {

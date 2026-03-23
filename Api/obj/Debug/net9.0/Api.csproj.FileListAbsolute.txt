@@ -322,3 +322,11 @@
 /home/agony/Documents/work/yalla-farm-recover-max/Api/obj/Debug/net9.0/ref/Api.dll
 /home/agony/Documents/work/yalla-farm/Api/obj/Debug/net9.0/compressed/jioqgmnej9-qq4g2nloec.gz
 /home/agony/Documents/work/yalla-farm/Api/obj/Debug/net9.0/compressed/1nvx5bvg0t-uj8ewsh92m.gz
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Configuration.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Configuration.Binder.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Diagnostics.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Diagnostics.Abstractions.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Http.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Options.ConfigurationExtensions.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.FileProviders.Abstractions.dll
+/home/agony/Documents/work/yalla-farm/Api/bin/Debug/net9.0/Microsoft.Extensions.Hosting.Abstractions.dll

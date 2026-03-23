@@ -30,6 +30,7 @@ public class ResponseMappingExtensionsTests
     var order = new Order(
       orderId,
       Guid.NewGuid(),
+      "900123456",
       pharmacyId,
       "Dushanbe",
       [

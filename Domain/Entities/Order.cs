@@ -9,7 +9,9 @@ public class Order
 
     public Guid Id { get; private set; }
 
-    public Guid ClientId { get; private set; }
+    public Guid? ClientId { get; private set; }
+
+    public string ClientPhoneNumber { get; private set; } = string.Empty;
 
     public Guid PharmacyId { get; private set; }
 
@@ -27,6 +29,26 @@ public class Order
 
     public Status Status { get; private set; } = Status.New;
 
+    public OrderPaymentState PaymentState { get; private set; } = OrderPaymentState.Confirmed;
+
+    public decimal PaymentAmount { get; private set; }
+
+    public string PaymentCurrency { get; private set; } = "TJS";
+
+    public string PaymentProvider { get; private set; } = "Legacy";
+
+    public string PaymentReceiverAccount { get; private set; } = string.Empty;
+
+    public string? PaymentUrl { get; private set; }
+
+    public string? PaymentComment { get; private set; }
+
+    public DateTime? PaymentExpiresAtUtc { get; private set; }
+
+    public DateTime? PaymentConfirmedAtUtc { get; private set; }
+
+    public Guid? PaymentConfirmedByUserId { get; private set; }
+
     private readonly List<OrderPosition> _positions = new();
 
     public IReadOnlyCollection<OrderPosition> Positions => _positions.AsReadOnly();
@@ -36,6 +58,7 @@ public class Order
     public Order(
       Guid id,
       Guid clientId,
+      string clientPhoneNumber,
       Guid pharmacyId,
       string deliveryAddress,
       List<OrderPosition> positions,
@@ -51,6 +74,8 @@ public class Order
 
         if (pharmacyId == Guid.Empty)
             throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        var normalizedClientPhoneNumber = NormalizeClientPhoneNumber(clientPhoneNumber);
 
         if (string.IsNullOrWhiteSpace(deliveryAddress))
             throw new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
@@ -69,6 +94,7 @@ public class Order
 
         Id = id;
         ClientId = clientId;
+        ClientPhoneNumber = normalizedClientPhoneNumber;
         PharmacyId = pharmacyId;
         DeliveryAddress = deliveryAddress;
         IsPickup = isPickup;
@@ -79,6 +105,8 @@ public class Order
 
         _positions.AddRange(positions);
         RecalculateTotals();
+        PaymentAmount = Cost;
+        PaymentConfirmedAtUtc = DateTime.UtcNow;
     }
 
     public void RecalculateTotals()
@@ -141,6 +169,72 @@ public class Order
         Status = Status.Cancelled;
     }
 
+    public void DetachClient(string? fallbackPhoneNumber = null)
+    {
+        if (ClientId is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(ClientPhoneNumber))
+            ClientPhoneNumber = NormalizeClientPhoneNumber(fallbackPhoneNumber ?? string.Empty);
+
+        ClientId = null;
+    }
+
+    public void MarkManualPaymentPending(
+      decimal amount,
+      string currency,
+      string provider,
+      string receiverAccount,
+      string? paymentUrl,
+      string? paymentComment,
+      DateTime expiresAtUtc)
+    {
+        if (amount <= 0)
+            throw new DomainArgumentException("Payment amount must be greater than zero.");
+
+        if (expiresAtUtc <= DateTime.UtcNow)
+            throw new DomainArgumentException("Payment expiration must be in the future.");
+
+        PaymentAmount = amount;
+        PaymentCurrency = NormalizeRequiredString(currency, 8, "PaymentCurrency").ToUpperInvariant();
+        PaymentProvider = NormalizeRequiredString(provider, 64, "PaymentProvider");
+        PaymentReceiverAccount = NormalizeRequiredString(receiverAccount, 128, "PaymentReceiverAccount");
+        PaymentUrl = NormalizeOptionalString(paymentUrl, 2048, "PaymentUrl");
+        PaymentComment = NormalizeOptionalString(paymentComment, 512, "PaymentComment");
+        PaymentState = OrderPaymentState.PendingManualConfirmation;
+        PaymentExpiresAtUtc = expiresAtUtc;
+        PaymentConfirmedAtUtc = null;
+        PaymentConfirmedByUserId = null;
+    }
+
+    public void ConfirmManualPayment(Guid confirmedByUserId, DateTime confirmedAtUtc)
+    {
+        if (confirmedByUserId == Guid.Empty)
+            throw new DomainArgumentException("ConfirmedByUserId can't be empty.");
+
+        if (PaymentState != OrderPaymentState.PendingManualConfirmation)
+            throw new DomainException($"Order payment can't be confirmed from state '{PaymentState}'.");
+
+        if (PaymentExpiresAtUtc.HasValue && PaymentExpiresAtUtc.Value <= confirmedAtUtc)
+            throw new DomainException("Order payment confirmation window has expired.");
+
+        PaymentState = OrderPaymentState.Confirmed;
+        PaymentConfirmedAtUtc = confirmedAtUtc;
+        PaymentConfirmedByUserId = confirmedByUserId;
+    }
+
+    public void MarkManualPaymentExpired(DateTime expiredAtUtc)
+    {
+        if (PaymentState != OrderPaymentState.PendingManualConfirmation)
+            return;
+
+        PaymentState = OrderPaymentState.Expired;
+        PaymentConfirmedAtUtc = null;
+        PaymentConfirmedByUserId = null;
+        if (!PaymentExpiresAtUtc.HasValue)
+            PaymentExpiresAtUtc = expiredAtUtc;
+    }
+
     private static DateTime GetUtcPlus5NowToSeconds()
     {
         var now = DateTimeOffset.UtcNow.ToOffset(UtcPlus5Offset);
@@ -181,6 +275,51 @@ public class Order
 
         if (normalized.Length > 128)
             throw new DomainArgumentException("IdempotencyKey length can't exceed 128.");
+
+        return normalized;
+    }
+
+    private static string NormalizeClientPhoneNumber(string clientPhoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(clientPhoneNumber))
+            throw new DomainArgumentException("ClientPhoneNumber can't be null or whitespace.");
+
+        var digitsOnly = new string(clientPhoneNumber
+          .Where(char.IsDigit)
+          .ToArray());
+
+        if (digitsOnly.StartsWith("992", StringComparison.Ordinal) && digitsOnly.Length == 12)
+            digitsOnly = digitsOnly[3..];
+
+        if (digitsOnly.Length != 9)
+            throw new DomainArgumentException("ClientPhoneNumber must contain exactly 9 digits.");
+
+        return digitsOnly;
+    }
+
+    private static string NormalizeRequiredString(string value, int maxLength, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new DomainArgumentException($"{fieldName} can't be null or whitespace.");
+
+        var normalized = value.Trim();
+        if (normalized.Length > maxLength)
+            throw new DomainArgumentException($"{fieldName} length can't exceed {maxLength}.");
+
+        return normalized;
+    }
+
+    private static string? NormalizeOptionalString(string? value, int maxLength, string fieldName)
+    {
+        if (value is null)
+            return null;
+
+        var normalized = value.Trim();
+        if (normalized.Length == 0)
+            return null;
+
+        if (normalized.Length > maxLength)
+            throw new DomainArgumentException($"{fieldName} length can't exceed {maxLength}.");
 
         return normalized;
     }

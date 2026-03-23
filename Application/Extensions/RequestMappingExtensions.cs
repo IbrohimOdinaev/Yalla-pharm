@@ -100,11 +100,13 @@ public static class RequestMappingExtensions
     public static Order ToDomain(
       this CheckoutBasketRequest request,
       Guid orderId,
+      string clientPhoneNumber,
       List<OrderPosition> positions)
     {
         return new Order(
           orderId,
           request.ClientId,
+          clientPhoneNumber,
           request.PharmacyId,
           request.DeliveryAddress,
           positions,

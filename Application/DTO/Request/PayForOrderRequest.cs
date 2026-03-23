@@ -4,6 +4,7 @@ public sealed class PayForOrderRequest
 {
   public Guid OrderId { get; init; }
   public Guid ClientId { get; init; }
+  public string ClientPhoneNumber { get; init; } = string.Empty;
   public Guid PharmacyId { get; init; }
   public decimal Amount { get; init; }
   public string Currency { get; init; } = "TJS";

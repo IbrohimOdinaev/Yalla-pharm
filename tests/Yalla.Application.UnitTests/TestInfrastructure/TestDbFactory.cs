@@ -103,7 +103,7 @@ internal static class TestDbFactory
         isRejected: x.isRejected))
       .ToList();
 
-    return new Order(orderId, clientId, pharmacyId, address, orderPositions, isPickup: isPickup);
+    return new Order(orderId, clientId, "900000000", pharmacyId, address, orderPositions, isPickup: isPickup);
   }
 }
 

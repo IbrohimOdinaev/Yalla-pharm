@@ -210,4 +210,46 @@ public sealed class RequestDtoValidatorTests
     Assert.Contains(errors, x => x.Field == nameof(UpdateMyClientProfileRequest.Name));
     Assert.Contains(errors, x => x.Field == nameof(UpdateMyClientProfileRequest.PhoneNumber));
   }
+
+  [Fact]
+  public void Validate_VerifyClientRegistrationRequest_WithInvalidCode_ShouldReturnErrors()
+  {
+    var request = new VerifyClientRegistrationRequest
+    {
+      RegistrationId = Guid.Empty,
+      Code = "12ab"
+    };
+
+    var errors = RequestDtoValidator.Validate(request);
+
+    Assert.Contains(errors, x => x.Field == nameof(VerifyClientRegistrationRequest.RegistrationId));
+    Assert.Contains(errors, x => x.Field == nameof(VerifyClientRegistrationRequest.Code));
+  }
+
+  [Fact]
+  public void Validate_VerifyClientRegistrationRequest_WithValidPayload_ShouldReturnNoErrors()
+  {
+    var request = new VerifyClientRegistrationRequest
+    {
+      RegistrationId = Guid.NewGuid(),
+      Code = "123456"
+    };
+
+    var errors = RequestDtoValidator.Validate(request);
+
+    Assert.Empty(errors);
+  }
+
+  [Fact]
+  public void Validate_ResendClientRegistrationRequest_WithEmptyRegistrationId_ShouldReturnError()
+  {
+    var request = new ResendClientRegistrationRequest
+    {
+      RegistrationId = Guid.Empty
+    };
+
+    var errors = RequestDtoValidator.Validate(request);
+
+    Assert.Contains(errors, x => x.Field == nameof(ResendClientRegistrationRequest.RegistrationId));
+  }
 }

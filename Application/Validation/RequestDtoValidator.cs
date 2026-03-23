@@ -107,6 +107,12 @@ public static class RequestDtoValidator
       case RegisterPharmacyWorkerRequest request:
         ValidateRegisterPharmacyWorker(request, errors);
         break;
+      case VerifyClientRegistrationRequest request:
+        ValidateVerifyClientRegistration(request, errors);
+        break;
+      case ResendClientRegistrationRequest request:
+        RequireNotEmpty(request.RegistrationId, nameof(request.RegistrationId), errors);
+        break;
       case RejectOrderPositionsRequest request:
         ValidateRejectOrderPositions(request, errors);
         break;
@@ -363,6 +369,20 @@ public static class RequestDtoValidator
     RequireDigitsPhone(request.PhoneNumber, nameof(request.PhoneNumber), errors);
     RequirePasswordByPolicy(request.Password, nameof(request.Password), errors);
     RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
+  }
+
+  private static void ValidateVerifyClientRegistration(
+    VerifyClientRegistrationRequest request,
+    List<ValidationError> errors)
+  {
+    RequireNotEmpty(request.RegistrationId, nameof(request.RegistrationId), errors);
+    RequireNotWhiteSpace(request.Code, nameof(request.Code), errors);
+
+    var code = request.Code?.Trim() ?? string.Empty;
+    if (code.Length > 0 && (code.Length != 6 || !code.All(char.IsDigit)))
+    {
+      errors.Add(new ValidationError(nameof(request.Code), "Code must contain exactly 6 digits."));
+    }
   }
 
   private static void ValidateRejectOrderPositions(

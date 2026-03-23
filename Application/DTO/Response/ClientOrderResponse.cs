@@ -9,6 +9,8 @@ public sealed class ClientOrderResponse
   public DateTime OrderPlacedAt { get; init; }
   public bool IsPickup { get; init; }
   public Status Status { get; init; }
+  public OrderPaymentState PaymentState { get; init; }
+  public DateTime? PaymentExpiresAtUtc { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }
 }

@@ -88,6 +88,32 @@ public sealed class ExceptionHandlingMiddlewareTests
     Assert.Equal(string.Empty, await ReadRawBodyAsync(context));
   }
 
+  [Fact]
+  public async Task InvokeAsync_ForClientErrorException_ShouldReturnCustomCodeAndReason()
+  {
+    var logger = new TestLogger<ExceptionHandlingMiddleware>();
+    var middleware = new ExceptionHandlingMiddleware(
+      _ => throw new ClientErrorException(
+        errorCode: "sms_code_invalid",
+        detail: "Код подтверждения введен неверно.",
+        reason: "invalid_code",
+        statusCode: 422,
+        title: "SMS Verification Failed"),
+      logger);
+    var context = CreateContext();
+
+    await middleware.InvokeAsync(context);
+
+    Assert.Equal(422, context.Response.StatusCode);
+    var payload = await ReadProblemDetailsAsync(context);
+    Assert.Equal(422, payload.Status);
+    Assert.Equal("SMS Verification Failed", payload.Title);
+    Assert.Equal("Код подтверждения введен неверно.", payload.Detail);
+    Assert.Equal("sms_code_invalid", payload.ErrorCode);
+    Assert.Equal("invalid_code", payload.Reason);
+    Assert.Equal(LogLevel.Warning, logger.Entries.Single().Level);
+  }
+
   public static IEnumerable<object[]> GetMappedExceptions()
   {
     yield return
@@ -177,7 +203,8 @@ public sealed class ExceptionHandlingMiddlewareTests
       Title = root.GetProperty("title").GetString(),
       Detail = root.GetProperty("detail").GetString(),
       TraceId = root.GetProperty("traceId").GetString(),
-      ErrorCode = root.GetProperty("errorCode").GetString()
+      ErrorCode = root.GetProperty("errorCode").GetString(),
+      Reason = root.TryGetProperty("reason", out var reasonNode) ? reasonNode.GetString() : null
     };
   }
 
@@ -195,6 +222,7 @@ public sealed class ExceptionHandlingMiddlewareTests
     public string? Detail { get; init; }
     public string? TraceId { get; init; }
     public string? ErrorCode { get; init; }
+    public string? Reason { get; init; }
   }
 
   private sealed class TestLogger<T> : ILogger<T>

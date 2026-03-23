@@ -15,8 +15,13 @@ const BASKET_OVERVIEW_REGION = "basket-overview";
 const BASKET_POSITIONS_REGION = "basket-positions";
 const BASKET_PHARMACY_REGION = "basket-pharmacy-selection";
 const BASKET_CHECKOUT_REGION = "basket-checkout-panel";
+const CATALOG_BASKET_SUMMARY_REGION = "catalog-basket-summary";
 const ADMIN_INTERFACE_REGION = "admin-interface-content";
 const SUPERADMIN_MAIN_INTERFACE_REGION = "superadmin-main-interface";
+const REGISTER_VERIFY_RESEND_REGION = "register-verify-resend";
+const PROFILE_ACCOUNT_REGION = "profile-account-actions";
+const PAYMENT_AWAIT_STATUS_REGION = "payment-await-status";
+const PROFILE_PENDING_PAYMENT_REGION = "profile-pending-payment";
 
 const ROLE = {
   CLIENT: "Client",
@@ -52,6 +57,12 @@ let superAdminWorkspaceRequestId = 0;
 let superAdminPharmacyAdminSearchRequestId = 0;
 let superAdminClientSearchRequestId = 0;
 let superAdminOrdersSearchRequestId = 0;
+let registerVerifyCountdownTimer = 0;
+let paymentAwaitCountdownTimer = 0;
+let paymentAwaitPollTimer = 0;
+let paymentAwaitPollInProgress = false;
+let paymentAwaitEntryRedirectHandled = false;
+const addToBasketInFlightMedicineIds = new Set();
 
 const state = {
   baseUrl: DEFAULT_BASE_URL,
@@ -92,6 +103,8 @@ const state = {
     isPickup: false
   },
   checkoutInlineNotice: null,
+  registrationVerification: null,
+  paymentAwait: null,
   expandedBasketPharmacyDetails: new Set(),
   guestBasket: {
     items: [],
@@ -139,6 +152,8 @@ function restoreSession() {
     state.baseUrl = normalizeBaseUrl(parsed.baseUrl || DEFAULT_BASE_URL);
     state.token = parsed.token || "";
     state.currentUser = parsed.currentUser || null;
+    state.registrationVerification = normalizeRegistrationVerificationState(parsed.registrationVerification);
+    state.paymentAwait = normalizePaymentAwaitState(parsed.paymentAwait);
     syncIdentityFromToken();
 
     if (!state.token) {
@@ -150,6 +165,8 @@ function restoreSession() {
     localStorage.removeItem(STORAGE_KEY);
     state.guestBasket = createEmptyGuestBasket();
     state.pendingGuestCheckoutAfterLogin = false;
+    state.registrationVerification = null;
+    state.paymentAwait = null;
   }
 }
 
@@ -157,8 +174,39 @@ function persistSession() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     baseUrl: state.baseUrl,
     token: state.token,
-    currentUser: state.currentUser
+    currentUser: state.currentUser,
+    registrationVerification: state.registrationVerification,
+    paymentAwait: state.paymentAwait
   }));
+}
+
+function normalizeRegistrationVerificationState(rawValue) {
+  if (!rawValue || typeof rawValue !== "object") return null;
+
+  const registrationId = String(rawValue.registrationId || "").trim();
+  if (!registrationId) return null;
+
+  return {
+    registrationId,
+    phoneNumber: String(rawValue.phoneNumber || "").trim(),
+    expiresAtUtc: String(rawValue.expiresAtUtc || ""),
+    resendAvailableAtUtc: String(rawValue.resendAvailableAtUtc || ""),
+    codeLength: Math.max(4, Math.min(8, Number(rawValue.codeLength || 6)))
+  };
+}
+
+function normalizePaymentAwaitState(rawValue) {
+  if (!rawValue || typeof rawValue !== "object") return null;
+
+  const orderId = String(rawValue.orderId || "").trim();
+  if (!orderId) return null;
+
+  return {
+    orderId,
+    paymentUrl: String(rawValue.paymentUrl || "").trim(),
+    paymentExpiresAtUtc: String(rawValue.paymentExpiresAtUtc || "").trim(),
+    createdAtUtc: String(rawValue.createdAtUtc || new Date().toISOString())
+  };
 }
 
 function createEmptyGuestBasket() {
@@ -406,6 +454,27 @@ function validatePasswordInput(value, fieldName = "Пароль") {
   return "";
 }
 
+function validateSmsCodeInput(value, length = 6) {
+  const normalized = String(value || "").replace(/\D+/g, "");
+  if (!normalized) {
+    return `Код: введите ${length} цифр.`;
+  }
+
+  return new RegExp(`^\\d{${length}}$`).test(normalized)
+    ? ""
+    : `Код: нужно ввести ровно ${length} цифр.`;
+}
+
+function getRegistrationResendSecondsLeft() {
+  const raw = state.registrationVerification?.resendAvailableAtUtc;
+  if (!raw) return 0;
+
+  const resendAt = Date.parse(raw);
+  if (!Number.isFinite(resendAt)) return 0;
+
+  return Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+}
+
 function parseRoute() {
   const rawHash = window.location.hash.replace(/^#/, "") || defaultAuthenticatedRoute();
   const cleanHash = rawHash.startsWith("/") ? rawHash : `/${rawHash}`;
@@ -425,6 +494,10 @@ function parseRoute() {
       return { name: "login", medicineId: null, orderId: null };
     case "/register":
       return { name: "register", medicineId: null, orderId: null };
+    case "/register/verify":
+      return { name: "register-verify", medicineId: null, orderId: null };
+    case "/payment-await":
+      return { name: "payment-await", medicineId: null, orderId: null };
     case "/profile":
       return { name: "profile", medicineId: null, orderId: null };
     case "/basket":
@@ -450,6 +523,37 @@ function setRoute(path) {
 async function handleRouteChange() {
   syncIdentityFromToken();
   state.route = parseRoute();
+  syncRegisterVerifyCountdownTimer();
+  syncPaymentAwaitPolling();
+
+  if (state.route.name === "register-verify" && !state.registrationVerification) {
+    showNotice("Сначала запросите код подтверждения номера телефона.", "warning");
+    setRoute("/register");
+    return;
+  }
+
+  if (state.route.name === "payment-await" && !state.paymentAwait) {
+    showNotice("Сессия ожидания оплаты не найдена.", "warning");
+    setRoute("/basket");
+    return;
+  }
+
+  if (!state.paymentAwait) {
+    paymentAwaitEntryRedirectHandled = false;
+  } else if (
+    !paymentAwaitEntryRedirectHandled
+    && state.token
+    && getRole() === ROLE.CLIENT
+    && getPaymentAwaitSecondsLeft() > 0
+    && state.route.name !== "profile"
+    && state.route.name !== "payment-await")
+  {
+    paymentAwaitEntryRedirectHandled = true;
+    showNotice("Возврат после оплаты: открылся профиль с текущим заказом и таймером подтверждения.", "success");
+    setRoute("/profile");
+    return;
+  }
+
   document.title = getPageTitle(state.route.name);
   render();
 
@@ -502,12 +606,236 @@ async function handleRouteChange() {
   }
 }
 
+function syncRegisterVerifyCountdownTimer() {
+  const shouldRun = state.route.name === "register-verify" && Boolean(state.registrationVerification);
+  if (shouldRun && registerVerifyCountdownTimer === 0) {
+    registerVerifyCountdownTimer = window.setInterval(() => {
+      if (state.route.name === "register-verify" && state.registrationVerification) {
+        replaceRegionOrFallback(REGISTER_VERIFY_RESEND_REGION, renderRegisterVerifyResendRegion());
+      }
+    }, 1000);
+    return;
+  }
+
+  if (!shouldRun && registerVerifyCountdownTimer !== 0) {
+    window.clearInterval(registerVerifyCountdownTimer);
+    registerVerifyCountdownTimer = 0;
+  }
+}
+
+function getPaymentAwaitSecondsLeft() {
+  const raw = state.paymentAwait?.paymentExpiresAtUtc;
+  if (!raw) return 0;
+
+  const expiresAt = Date.parse(raw);
+  if (!Number.isFinite(expiresAt)) return 0;
+
+  return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+}
+
+function formatSecondsToMinuteClock(totalSeconds) {
+  const safeValue = Math.max(0, Math.floor(Number(totalSeconds || 0)));
+  const minutes = String(Math.floor(safeValue / 60)).padStart(2, "0");
+  const seconds = String(safeValue % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function getPaymentAwaitStatusCountdownText(totalSeconds) {
+  const secondsLeft = Math.max(0, Math.floor(Number(totalSeconds || 0)));
+  if (secondsLeft <= 0) {
+    return "Время ожидания оплаты истекло. Проверяем финальный статус...";
+  }
+
+  return `До автозавершения: ${formatSecondsToMinuteClock(secondsLeft)}`;
+}
+
+function getPaymentAwaitProfileCountdownText(totalSeconds) {
+  const secondsLeft = Math.max(0, Math.floor(Number(totalSeconds || 0)));
+  if (secondsLeft <= 0) {
+    return "Время оплаты истекло. Проверяем финальный статус...";
+  }
+
+  return `До автоотмены: ${formatSecondsToMinuteClock(secondsLeft)}`;
+}
+
+function updatePaymentAwaitCountdownDisplays() {
+  const secondsLeft = getPaymentAwaitSecondsLeft();
+  const statusText = getPaymentAwaitStatusCountdownText(secondsLeft);
+  const profileText = getPaymentAwaitProfileCountdownText(secondsLeft);
+
+  app.querySelectorAll("[data-payment-await-status-countdown]").forEach(node => {
+    node.textContent = statusText;
+  });
+  app.querySelectorAll("[data-payment-await-profile-countdown]").forEach(node => {
+    node.textContent = profileText;
+  });
+
+  const pendingOrderId = String(state.paymentAwait?.orderId || "").trim();
+  if (!pendingOrderId) return;
+
+  const orderTimerText = formatSecondsToMinuteClock(secondsLeft);
+  app.querySelectorAll("[data-payment-await-order-timer]").forEach(node => {
+    const timerOrderId = String(node.getAttribute("data-payment-await-order-timer") || "").trim();
+    if (timerOrderId !== pendingOrderId) return;
+    node.textContent = orderTimerText;
+  });
+}
+
+function refreshPaymentAwaitStatusRegions() {
+  if (state.route.name === "payment-await") {
+    replaceRegionIfExists(PAYMENT_AWAIT_STATUS_REGION, renderPaymentAwaitStatusRegion());
+    updatePaymentAwaitCountdownDisplays();
+    return;
+  }
+
+  if (state.route.name === "profile") {
+    replaceRegionIfExists(PROFILE_PENDING_PAYMENT_REGION, renderProfilePendingPaymentRegion());
+    updatePaymentAwaitCountdownDisplays();
+  }
+}
+
+function syncPaymentAwaitPolling() {
+  const shouldRun = (state.route.name === "payment-await" || state.route.name === "profile")
+    && Boolean(state.paymentAwait?.orderId)
+    && Boolean(state.token)
+    && getRole() === ROLE.CLIENT;
+
+  if (shouldRun) {
+    if (paymentAwaitCountdownTimer === 0) {
+      paymentAwaitCountdownTimer = window.setInterval(() => {
+        updatePaymentAwaitCountdownDisplays();
+      }, 1000);
+    }
+
+    if (paymentAwaitPollTimer === 0) {
+      paymentAwaitPollTimer = window.setInterval(() => {
+        void pollPaymentAwaitStatus();
+      }, 5000);
+    }
+
+    updatePaymentAwaitCountdownDisplays();
+    void pollPaymentAwaitStatus();
+    return;
+  }
+
+  if (paymentAwaitCountdownTimer !== 0) {
+    window.clearInterval(paymentAwaitCountdownTimer);
+    paymentAwaitCountdownTimer = 0;
+  }
+
+  if (paymentAwaitPollTimer !== 0) {
+    window.clearInterval(paymentAwaitPollTimer);
+    paymentAwaitPollTimer = 0;
+  }
+
+  paymentAwaitPollInProgress = false;
+}
+
+async function pollPaymentAwaitStatus() {
+  if (paymentAwaitPollInProgress) return;
+  if (state.route.name !== "payment-await" && state.route.name !== "profile") return;
+  if (!state.paymentAwait?.orderId) return;
+  if (!state.token || getRole() !== ROLE.CLIENT) return;
+
+  paymentAwaitPollInProgress = true;
+  try {
+    const pendingState = state.paymentAwait;
+    const historyResponse = await apiFetch("/api/orders/client-history");
+    const orders = Array.isArray(historyResponse?.orders) ? historyResponse.orders : [];
+    const currentOrder = orders.find(order => String(order?.orderId || "").trim() === pendingState.orderId);
+
+    if (currentOrder) {
+      const paymentState = formatPaymentStateLabel(currentOrder.paymentState);
+      const orderStatus = formatStatusLabel(currentOrder.status);
+      const isSuccessfulPostPaymentStatus = orderStatus === "UnderReview"
+        || orderStatus === "Preparing"
+        || orderStatus === "Ready"
+        || orderStatus === "OnTheWay"
+        || orderStatus === "Delivered"
+        || orderStatus === "Returned";
+
+      if (paymentState === "Confirmed" || isSuccessfulPostPaymentStatus) {
+        await finalizePaymentAwaitSuccess(currentOrder);
+        return;
+      }
+
+      if (paymentState === "Expired" || orderStatus === "Cancelled") {
+        await finalizePaymentAwaitFailure();
+        return;
+      }
+    }
+
+    if (getPaymentAwaitSecondsLeft() <= 0) {
+      await finalizePaymentAwaitFailure();
+      return;
+    }
+
+    refreshPaymentAwaitStatusRegions();
+  } catch (error) {
+    if (Number(error?.status || 0) === 401) {
+      handleError(error);
+      return;
+    }
+  } finally {
+    paymentAwaitPollInProgress = false;
+  }
+}
+
+async function finalizePaymentAwaitSuccess(order) {
+  const orderId = String(order?.orderId || state.paymentAwait?.orderId || "").trim();
+  const shortOrderId = orderId.slice(0, 8);
+
+  state.paymentAwait = null;
+  paymentAwaitEntryRedirectHandled = false;
+  persistSession();
+  syncPaymentAwaitPolling();
+
+  await Promise.all([
+    fetchBasket({ silent: true }),
+    fetchProfile({ silent: true })
+  ]);
+
+  showNotice(
+    shortOrderId
+      ? `Оплата подтверждена. Заказ ${shortOrderId} успешно оформлен.`
+      : "Оплата подтверждена. Заказ успешно оформлен.",
+    "success"
+  );
+
+  setRoute("/profile");
+}
+
+async function finalizePaymentAwaitFailure() {
+  const orderId = String(state.paymentAwait?.orderId || "").trim();
+  const shortOrderId = orderId.slice(0, 8);
+
+  state.paymentAwait = null;
+  paymentAwaitEntryRedirectHandled = false;
+  persistSession();
+  syncPaymentAwaitPolling();
+
+  await Promise.all([
+    fetchBasket({ silent: true }),
+    fetchProfile({ silent: true })
+  ]);
+
+  showNotice(
+    shortOrderId
+      ? `Не получилось оформить заказ ${shortOrderId}: время оплаты истекло.`
+      : "Не получилось оформить заказ: время оплаты истекло.",
+    "warning"
+  );
+
+  setRoute("/basket");
+}
+
 function canAccessRoute(routeName) {
-  if (routeName === "login" || routeName === "register" || routeName === "catalog" || routeName === "product") return true;
+  if (routeName === "login" || routeName === "register" || routeName === "register-verify" || routeName === "catalog" || routeName === "product") return true;
   if (routeName === "basket" && !state.token) return true;
   if (!state.token) return false;
 
   const role = getRole();
+  if (routeName === "payment-await") return role === ROLE.CLIENT;
   if (routeName === "profile") return role === ROLE.CLIENT;
   if (routeName === "basket") return role === ROLE.CLIENT;
   if (routeName === "workspace") return role === ROLE.ADMIN || role === ROLE.SUPER_ADMIN;
@@ -528,6 +856,10 @@ function getPageTitle(routeName) {
       return "Вход | Yalla Farm Apteka";
     case "register":
       return "Регистрация | Yalla Farm Apteka";
+    case "register-verify":
+      return "Подтверждение телефона | Yalla Farm Apteka";
+    case "payment-await":
+      return "Ожидание оплаты | Yalla Farm Apteka";
     case "profile":
       return "Профиль | Yalla Farm Apteka";
     case "basket":
@@ -585,6 +917,16 @@ async function handleSubmit(event) {
 
     if (formType === "register") {
       await register(formData);
+      return;
+    }
+
+    if (formType === "register-verify") {
+      await verifyRegistration(formData);
+      return;
+    }
+
+    if (formType === "register-resend") {
+      await resendRegistrationCode();
       return;
     }
 
@@ -658,6 +1000,11 @@ async function handleSubmit(event) {
 
     if (formType === "password-change") {
       await changePassword(formData);
+      return;
+    }
+
+    if (formType === "profile-delete-account") {
+      await deleteMyAccount();
       return;
     }
 
@@ -1150,6 +1497,12 @@ async function handleClick(event) {
       return;
     }
 
+    if (action === "client-delete-by-id") {
+      const clientId = String(actionTarget.dataset.clientId || "").trim();
+      await deleteClientAsSuperAdminById(clientId);
+      return;
+    }
+
     if (action === "order-delivered") {
       const confirmed = window.confirm("Перевести выбранный заказ в статус «Получен клиентом»?");
       if (!confirmed) return;
@@ -1176,6 +1529,20 @@ function clearSession() {
   window.clearTimeout(workspaceLiveSearchTimer);
   window.clearTimeout(adminMedicineLiveSearchTimer);
   window.clearTimeout(superAdminMedicineLiveSearchTimer);
+  if (registerVerifyCountdownTimer !== 0) {
+    window.clearInterval(registerVerifyCountdownTimer);
+    registerVerifyCountdownTimer = 0;
+  }
+  if (paymentAwaitCountdownTimer !== 0) {
+    window.clearInterval(paymentAwaitCountdownTimer);
+    paymentAwaitCountdownTimer = 0;
+  }
+  if (paymentAwaitPollTimer !== 0) {
+    window.clearInterval(paymentAwaitPollTimer);
+    paymentAwaitPollTimer = 0;
+  }
+  paymentAwaitPollInProgress = false;
+  paymentAwaitEntryRedirectHandled = false;
   catalogFetchRequestId = 0;
   adminMedicineSearchRequestId = 0;
   superAdminMedicineSearchRequestId = 0;
@@ -1208,6 +1575,8 @@ function clearSession() {
   state.superAdminInterface = SUPERADMIN_INTERFACE.PHARMACY_ADMIN;
   state.superAdminSelectedMedicineId = "";
   state.superAdminMedicineDetailsLoading = false;
+  state.registrationVerification = null;
+  state.paymentAwait = null;
   state.expandedBasketPharmacyDetails = new Set();
   const guestBasket = loadGuestBasket();
   state.checkoutDraft.pharmacyId = guestBasket.pharmacyId || "";
@@ -1299,6 +1668,10 @@ async function login(formData) {
 async function register(formData) {
   const phoneNumber = normalizePhoneInputValue(formData.get("phoneNumber"));
   const password = String(formData.get("password") || "");
+  const registrationMode = String(formData.get("registrationMode") || "").trim().toLowerCase();
+  const skipPhoneVerification = registrationMode === "skip" || formData.get("skipPhoneVerification") !== null;
+  const enteredName = String(formData.get("name") || "").trim();
+  const name = enteredName || `Клиент ${phoneNumber}`;
   const phoneError = validatePhoneNumberInput(phoneNumber, "Телефон");
   if (phoneError) {
     showNotice(phoneError, "warning");
@@ -1311,18 +1684,117 @@ async function register(formData) {
     return;
   }
 
-  await withLoading("Создаем аккаунт...", () => apiFetch("/api/clients/register", {
+  if (skipPhoneVerification) {
+    await withLoading("Создаем аккаунт...", () => apiFetch("/api/clients/register", {
+      method: "POST",
+      body: {
+        name,
+        phoneNumber,
+        password,
+        skipPhoneVerification: true
+      },
+      auth: false
+    }));
+
+    state.registrationVerification = null;
+    persistSession();
+    showNotice("Аккаунт создан. Теперь можно войти.", "success");
+    setRoute("/login");
+    return;
+  }
+
+  const response = await withLoading("Отправляем код подтверждения...", () => apiFetch("/api/clients/register/request", {
     method: "POST",
     body: {
-      name: String(formData.get("name") || "").trim(),
+      name,
       phoneNumber,
       password
     },
     auth: false
   }));
 
-  showNotice("Аккаунт создан. Теперь можно войти.", "success");
+  state.registrationVerification = {
+    registrationId: String(response.registrationId || "").trim(),
+    phoneNumber: String(response.phoneNumber || phoneNumber).trim(),
+    expiresAtUtc: String(response.expiresAtUtc || ""),
+    resendAvailableAtUtc: String(response.resendAvailableAtUtc || ""),
+    codeLength: Math.max(4, Math.min(8, Number(response.codeLength || 6)))
+  };
+  persistSession();
+
+  showNotice("Код подтверждения отправлен. Введите его для завершения регистрации.", "success");
+  setRoute("/register/verify");
+}
+
+async function verifyRegistration(formData) {
+  if (!state.registrationVerification?.registrationId) {
+    showNotice("Сессия подтверждения не найдена. Запросите код снова.", "warning");
+    setRoute("/register");
+    return;
+  }
+
+  const expectedLength = Number(state.registrationVerification.codeLength || 6);
+  const codeRaw = String(formData.get("code") || "");
+  const code = codeRaw.replace(/\D+/g, "");
+  const codeError = validateSmsCodeInput(code, expectedLength);
+  if (codeError) {
+    showNotice(codeError, "warning");
+    return;
+  }
+
+  await withLoading("Проверяем код...", () => apiFetch("/api/clients/register/verify", {
+    method: "POST",
+    body: {
+      registrationId: state.registrationVerification.registrationId,
+      code
+    },
+    auth: false
+  }));
+
+  state.registrationVerification = null;
+  syncRegisterVerifyCountdownTimer();
+  persistSession();
+  showNotice("Регистрация подтверждена. Теперь можно войти.", "success");
   setRoute("/login");
+}
+
+async function resendRegistrationCode() {
+  const registrationId = String(state.registrationVerification?.registrationId || "").trim();
+  if (!registrationId) {
+    showNotice("Сессия подтверждения не найдена. Запросите код снова.", "warning");
+    setRoute("/register");
+    return;
+  }
+
+  const secondsLeft = getRegistrationResendSecondsLeft();
+  if (secondsLeft > 0) {
+    showNotice(`Запросить новый код можно через ${secondsLeft} сек.`, "warning");
+    return;
+  }
+
+  const response = await withLoading("Запрашиваем новый код...", () => apiFetch("/api/clients/register/resend", {
+    method: "POST",
+    body: {
+      registrationId
+    },
+    auth: false
+  }));
+
+  state.registrationVerification = {
+    ...state.registrationVerification,
+    expiresAtUtc: String(response.expiresAtUtc || state.registrationVerification.expiresAtUtc || ""),
+    resendAvailableAtUtc: String(response.resendAvailableAtUtc || state.registrationVerification.resendAvailableAtUtc || ""),
+    codeLength: Math.max(4, Math.min(8, Number(response.codeLength || state.registrationVerification.codeLength || 6)))
+  };
+  persistSession();
+
+  showNotice("Новый код отправлен.", "success");
+  if (state.route.name === "register-verify" && state.registrationVerification) {
+    replaceRegionOrFallback(REGISTER_VERIFY_RESEND_REGION, renderRegisterVerifyResendRegion());
+    return;
+  }
+
+  render();
 }
 
 async function updateClientProfile(formData) {
@@ -1355,6 +1827,19 @@ async function updateClientProfile(formData) {
 
   showNotice("Профиль обновлен.", "success");
   await fetchProfile();
+}
+
+async function deleteMyAccount() {
+  const confirmed = window.confirm("Удалить аккаунт? История заказов сохранится, но доступ к профилю будет потерян.");
+  if (!confirmed) return;
+
+  await withLoading("Удаляем аккаунт...", () => apiFetch("/api/clients/me", {
+    method: "DELETE"
+  }));
+
+  clearSession();
+  showNotice("Аккаунт удален. История заказов сохранена.", "success");
+  setRoute("/register");
 }
 
 async function updateAdminProfile(formData) {
@@ -1443,41 +1928,53 @@ async function addToBasket(formData, formElement = null) {
     return;
   }
 
-  if (!state.token) {
-    addGuestBasketQuantity(medicineId, quantity);
-    await hydrateMedicineDetails([medicineId]);
+  if (addToBasketInFlightMedicineIds.has(medicineId)) return;
+
+  const submitButton = formElement?.querySelector("button[type='submit']");
+  const hasSubmitButton = submitButton instanceof HTMLButtonElement;
+  addToBasketInFlightMedicineIds.add(medicineId);
+  if (hasSubmitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    if (!state.token) {
+      addGuestBasketQuantity(medicineId, quantity);
+      await hydrateMedicineDetails([medicineId]);
+      animateAddToBasketFeedback(formElement);
+      await fetchBasket({
+        silent: true,
+        partial: true
+      });
+      return;
+    }
+
+    if (getRole() !== ROLE.CLIENT) {
+      showNotice("Корзина доступна только клиенту.", "warning");
+      return;
+    }
+
+    await withLoading("Добавляем товар в корзину...", () => apiFetch("/api/basket/items", {
+      method: "POST",
+      body: {
+        medicineId,
+        quantity
+      }
+    }), {
+      silent: true
+    });
+
     animateAddToBasketFeedback(formElement);
     await fetchBasket({
       silent: true,
       partial: true
     });
-
-    if (state.route.name === "basket") {
-      renderBasketViewRegions();
-      return;
+  } finally {
+    addToBasketInFlightMedicineIds.delete(medicineId);
+    if (hasSubmitButton) {
+      submitButton.disabled = false;
     }
-
-    return;
   }
-
-  if (getRole() !== ROLE.CLIENT) {
-    showNotice("Корзина доступна только клиенту.", "warning");
-    return;
-  }
-
-  await withLoading("Добавляем товар в корзину...", () => apiFetch("/api/basket/items", {
-    method: "POST",
-    body: {
-      medicineId,
-      quantity
-    }
-  }));
-
-  animateAddToBasketFeedback(formElement);
-  await fetchBasket({
-    silent: true,
-    partial: true
-  });
 }
 
 async function removeFromBasket(positionId) {
@@ -1493,7 +1990,9 @@ async function removeFromBasket(positionId) {
   await withLoading("Удаляем товар из корзины...", () => apiFetch("/api/basket/items", {
     method: "DELETE",
     body: { positionId }
-  }));
+  }), {
+    silent: true
+  });
 
   await fetchBasket({ partial: true });
 }
@@ -1525,7 +2024,9 @@ async function clearBasket() {
   await withLoading("Очищаем корзину...", () => apiFetch("/api/basket", {
     method: "DELETE",
     body: {}
-  }));
+  }), {
+    silent: true
+  });
 
   state.expandedBasketPharmacyDetails = new Set();
   clearCheckoutInlineNotice();
@@ -1549,7 +2050,9 @@ async function updateBasketQuantity(positionId, quantity, options = {}) {
       positionId,
       quantity
     }
-  }));
+  }), {
+    silent: true
+  });
 
   await fetchBasket({ silent: silentFetch, partial: true });
 }
@@ -1626,6 +2129,22 @@ async function checkoutBasket(formData) {
   setGuestCheckoutIntent(false);
 
   const shortOrderId = String(checkoutResponse.orderId || "").slice(0, 8);
+  const paymentUrl = String(checkoutResponse.paymentUrl || "").trim();
+
+  if (paymentUrl) {
+    state.paymentAwait = normalizePaymentAwaitState({
+      orderId: String(checkoutResponse.orderId || "").trim(),
+      paymentUrl,
+      paymentExpiresAtUtc: String(checkoutResponse.paymentExpiresAtUtc || ""),
+      createdAtUtc: new Date().toISOString()
+    });
+    paymentAwaitEntryRedirectHandled = false;
+    persistSession();
+
+    window.location.assign(paymentUrl);
+    return;
+  }
+
   showNotice(
     `Заказ ${shortOrderId} оформлен. Сумма: ${formatMoney(checkoutResponse.cost)}.`,
     "success"
@@ -1954,14 +2473,17 @@ async function createPharmacy(formData) {
 }
 
 async function deletePharmacy(formData) {
-  await withLoading("Удаляем аптеку...", () => apiFetch("/api/pharmacies", {
+  const confirmed = window.confirm("Деактивировать аптеку? Она станет неактивной и останется в истории заказов.");
+  if (!confirmed) return;
+
+  await withLoading("Деактивируем аптеку...", () => apiFetch("/api/pharmacies", {
     method: "DELETE",
     body: {
       pharmacyId: String(formData.get("pharmacyId") || "").trim()
     }
   }));
 
-  showNotice("Аптека удалена.", "success");
+  showNotice("Аптека деактивирована.", "success");
   await fetchWorkspace();
 }
 
@@ -1988,6 +2510,15 @@ async function updateClientAsSuperAdmin(formData) {
 
 async function deleteClientAsSuperAdmin(formData) {
   const clientId = String(formData.get("clientId") || "").trim();
+  await deleteClientAsSuperAdminById(clientId);
+}
+
+async function deleteClientAsSuperAdminById(clientId) {
+  if (!clientId) {
+    showNotice("ClientId не передан.", "warning");
+    return;
+  }
+
   const confirmed = window.confirm("Удалить клиента? Это действие нельзя отменить.");
   if (!confirmed) return;
 
@@ -1998,7 +2529,7 @@ async function deleteClientAsSuperAdmin(formData) {
     }
   }));
 
-  showNotice("Клиент удален.", "success");
+  showNotice("Аккаунт клиента удален. История заказов сохранена.", "success");
   await fetchWorkspace();
 }
 
@@ -2130,14 +2661,21 @@ function isCatalogViewVisible() {
   return state.route.name === "catalog";
 }
 
-function replaceRegionOrFallback(regionName, markup) {
+function replaceRegionIfExists(regionName, markup) {
   const regionNode = app.querySelector(`[data-region='${regionName}']`);
   if (!(regionNode instanceof HTMLElement)) {
-    render();
     return false;
   }
 
   regionNode.outerHTML = markup;
+  return true;
+}
+
+function replaceRegionOrFallback(regionName, markup) {
+  if (!replaceRegionIfExists(regionName, markup)) {
+    render();
+    return false;
+  }
   return true;
 }
 
@@ -2158,6 +2696,38 @@ function renderCatalogResultsRegion() {
     "catalog-results",
     renderCatalogResultsSection(items, role, emptyMessage, totalItemsLabel)
   );
+}
+
+function renderCatalogBasketSummaryRegion() {
+  const role = getRole();
+  const isGuest = !state.token;
+  const isClient = !isGuest && role === ROLE.CLIENT;
+  if (!isGuest && !isClient) return "";
+
+  const positionsCount = isGuest
+    ? getGuestBasketItemCount()
+    : Number(state.basket?.basketItemsCount || 0);
+
+  return `
+    <article class="panel catalog-side-card partial-region-enter" data-region="${CATALOG_BASKET_SUMMARY_REGION}">
+      <h3>${isGuest ? "Гостевая корзина" : "Корзина"}</h3>
+      <div class="catalog-basket-count">
+        ${escapeHtml(String(positionsCount))}
+        <span>позиций</span>
+      </div>
+      <a class="btn btn-primary btn-small" href="#/basket">${isGuest ? "Открыть корзину" : "Перейти к оформлению"}</a>
+    </article>
+  `;
+}
+
+function updateCatalogBasketSummaryRegion() {
+  if (!isCatalogViewVisible()) return;
+
+  const role = getRole();
+  const shouldRenderRegion = !state.token || role === ROLE.CLIENT;
+  if (!shouldRenderRegion) return;
+
+  replaceRegionIfExists(CATALOG_BASKET_SUMMARY_REGION, renderCatalogBasketSummaryRegion());
 }
 
 async function fetchCatalog(options = {}) {
@@ -2230,6 +2800,11 @@ async function fetchProfile(options = {}) {
   state.expandedClientOrders = new Set(
     [...state.expandedClientOrders].filter(orderId => knownOrderIds.has(orderId))
   );
+
+  const pendingOrderId = String(state.paymentAwait?.orderId || "").trim();
+  if (pendingOrderId && knownOrderIds.has(pendingOrderId)) {
+    state.expandedClientOrders.add(pendingOrderId);
+  }
 
   await hydrateMedicineDetails((state.profile?.basketPositions || []).map(item => item.medicineId));
   render();
@@ -2377,6 +2952,14 @@ function getVisiblePharmacyOptions(options, positions) {
   });
 }
 
+function isPharmacyOptionSelectable(option) {
+  const enoughCountRaw = Number(option?.enoughQuantityMedicinesCount);
+  const enoughCount = Number.isFinite(enoughCountRaw)
+    ? enoughCountRaw
+    : (Array.isArray(option?.items) ? option.items.filter(item => item?.hasEnoughQuantity).length : 0);
+  return enoughCount >= 1;
+}
+
 function isBasketViewVisible() {
   return state.route.name === "basket";
 }
@@ -2400,12 +2983,12 @@ function getBasketRenderContext() {
     [...state.expandedBasketPharmacyDetails].filter(pharmacyId => visibleOptionIds.has(pharmacyId))
   );
 
-  const availableOptions = visibleOptions.filter(option => option.isAvailable);
+  const selectableOptions = visibleOptions.filter(isPharmacyOptionSelectable);
   const selectedPharmacyId = String(state.checkoutDraft.pharmacyId || "").trim();
-  const hasSelectedAvailable = availableOptions.some(option => String(option.pharmacyId || "") === selectedPharmacyId);
-  const fallbackPharmacyId = hasSelectedAvailable
+  const hasSelectedSelectable = selectableOptions.some(option => String(option.pharmacyId || "") === selectedPharmacyId);
+  const fallbackPharmacyId = hasSelectedSelectable
     ? selectedPharmacyId
-    : String(availableOptions[0]?.pharmacyId || "").trim();
+    : String(selectableOptions[0]?.pharmacyId || "").trim();
 
   if (fallbackPharmacyId !== selectedPharmacyId) {
     state.checkoutDraft.pharmacyId = fallbackPharmacyId;
@@ -2681,6 +3264,7 @@ async function fetchBasket(options = {}) {
     state.basket = response;
     if (options.partial) {
       updateMainNavRegion();
+      updateCatalogBasketSummaryRegion();
       if (isBasketViewVisible()) {
         renderBasketViewRegions();
       }
@@ -2699,6 +3283,7 @@ async function fetchBasket(options = {}) {
   await hydrateMedicineDetails((state.basket?.basketPositions || []).map(item => item.medicineId));
   if (options.partial) {
     updateMainNavRegion();
+    updateCatalogBasketSummaryRegion();
     if (isBasketViewVisible()) {
       renderBasketViewRegions();
     }
@@ -3414,6 +3999,7 @@ function extractErrorMessage(payload) {
   if (!payload) return "";
   if (typeof payload === "string") return payload;
   if (typeof payload.message === "string" && payload.message) return payload.message;
+  if (typeof payload.detail === "string" && payload.detail) return payload.detail;
   if (typeof payload.title === "string" && payload.title) return payload.title;
   if (payload.errors && typeof payload.errors === "object") {
     const firstKey = Object.keys(payload.errors)[0];
@@ -3422,6 +4008,41 @@ function extractErrorMessage(payload) {
     }
   }
   return "";
+}
+
+function getApiErrorReason(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  return String(payload.reason || "").trim();
+}
+
+function mapApiErrorToNotice(error) {
+  const payload = error?.payload;
+  const reason = getApiErrorReason(payload);
+
+  switch (reason) {
+    case "invalid_code":
+      return { message: "Код подтверждения неверный. Проверьте SMS и попробуйте снова.", tone: "warning" };
+    case "expired":
+      return { message: "Срок действия кода истек. Запросите новый код.", tone: "warning" };
+    case "attempts_exceeded":
+      return { message: "Лимит попыток исчерпан. Запросите новый код.", tone: "warning" };
+    case "cooldown":
+      return { message: extractErrorMessage(payload) || "Повторный запрос кода пока недоступен.", tone: "warning" };
+    case "resend_limit_exceeded":
+      return { message: "Лимит повторной отправки исчерпан. Начните регистрацию заново.", tone: "warning" };
+    case "session_not_found":
+      return { message: "Сессия подтверждения не найдена. Запросите код заново.", tone: "warning" };
+    case "already_completed":
+      return { message: "Сессия подтверждения уже завершена. Начните регистрацию заново.", tone: "warning" };
+    case "phone_verification_required":
+      return { message: "Для регистрации нужно подтвердить телефон по SMS.", tone: "warning" };
+    case "bypass_disabled":
+      return { message: "Регистрация без SMS-подтверждения отключена.", tone: "warning" };
+    case "rate_limit_exceeded":
+      return { message: "Слишком много запросов. Подождите и попробуйте снова.", tone: "warning" };
+    default:
+      return { message: error?.message || "Произошла ошибка.", tone: "danger" };
+  }
 }
 
 async function withLoading(label, action, options = {}) {
@@ -3451,7 +4072,8 @@ function handleError(error) {
     return;
   }
 
-  showNotice(error?.message || "Произошла ошибка.", "danger");
+  const notice = mapApiErrorToNotice(error);
+  showNotice(notice.message, notice.tone);
   render();
 }
 
@@ -3645,6 +4267,7 @@ function render() {
     </div>
   `;
 
+  updatePaymentAwaitCountdownDisplays();
   restoreActiveInputSnapshot(activeInputSnapshot);
 }
 
@@ -3656,7 +4279,7 @@ function renderMainNavRegion() {
         ${renderNavLink("/catalog", "Каталог", state.route.name === "catalog" || state.route.name === "product")}
         ${renderNavLink("/basket", `Корзина${basketBadge()}`, state.route.name === "basket")}
         ${renderNavLink("/login", "Войти", state.route.name === "login")}
-        ${renderNavLink("/register", "Регистрация", state.route.name === "register")}
+        ${renderNavLink("/register", "Регистрация", state.route.name === "register" || state.route.name === "register-verify")}
       `}
       ${state.token ? `<button class="nav-link ghost" type="button" data-action="logout">Выйти</button>` : ""}
     </nav>
@@ -3688,6 +4311,10 @@ function renderCurrentView() {
       return renderLoginView();
     case "register":
       return renderRegisterView();
+    case "register-verify":
+      return renderRegisterVerifyView();
+    case "payment-await":
+      return renderPaymentAwaitView();
     case "profile":
       return renderProfileView();
     case "basket":
@@ -3748,15 +4375,11 @@ function renderRegisterView() {
         <div style="padding: 3rem; display: flex; flex-direction: column; justify-content: center; background-color: var(--primary-soft);">
            <p class="eyebrow">Регистрация</p>
            <h2 style="font-size: 2.5rem; line-height: 1.1; margin-bottom: 1.5rem;">Создайте аккаунт для покупок</h2>
-           <p class="muted">Присоединяйтесь к нашей сети аптек и заказывайте лекарства онлайн с доставкой или самовывозом.</p>
+           <p class="muted">Введите номер телефона и пароль, затем выберите регистрацию с подтверждением по SMS или без подтверждения.</p>
         </div>
         <div style="padding: 3rem;">
           <form class="stack-form" data-form="register">
             <label>
-              Ваше имя
-              <input name="name" type="text" placeholder="Иван Иванов" required>
-            </label>
-            <label style="margin-top: 1rem;">
               Номер телефона
               ${renderPhoneField({ name: "phoneNumber", autocomplete: "tel", placeholder: "900000001" })}
             </label>
@@ -3771,6 +4394,24 @@ function renderRegisterView() {
                 placeholder="минимум 8 символов"
                 required>
             </label>
+            <p class="muted" style="margin-top: 0.75rem;">Имя можно заполнить позже в профиле.</p>
+            <fieldset style="margin-top: 1rem; border: 1px solid var(--line); border-radius: 12px; padding: 0.9rem 1rem;">
+              <legend style="padding: 0 0.35rem; font-weight: 600; color: var(--ink);">Режим регистрации</legend>
+              <label style="display: flex; align-items: flex-start; gap: 0.65rem;">
+                <input name="registrationMode" type="radio" value="sms" checked>
+                <span>
+                  С SMS-подтверждением
+                  <small class="muted" style="display: block;">После отправки формы откроется экран ввода кода из SMS.</small>
+                </span>
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: 0.65rem; margin-top: 0.75rem;">
+                <input name="registrationMode" type="radio" value="skip">
+                <span>
+                  Без SMS-подтверждения
+                  <small class="muted" style="display: block;">Если bypass отключен на сервере, форма вернет понятную ошибку.</small>
+                </span>
+              </label>
+            </fieldset>
             <button class="btn btn-primary" type="submit" style="width: 100%; margin-top: 1.5rem;">Создать аккаунт</button>
           </form>
           <p class="muted" style="margin-top: 1.5rem; text-align: center;">
@@ -3779,6 +4420,140 @@ function renderRegisterView() {
         </div>
       </article>
     </section>
+  `;
+}
+
+function renderRegisterVerifyView() {
+  const verification = state.registrationVerification || {};
+  const codeLength = Math.max(4, Math.min(8, Number(verification.codeLength || 6)));
+  const phoneLabel = formatPhoneNumber(verification.phoneNumber || "");
+  const expiresAtLabel = verification.expiresAtUtc
+    ? new Date(verification.expiresAtUtc).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+    : "";
+
+  return `
+    <section class="view-area" style="align-items: center; justify-content: center; min-height: 80vh;">
+      <article class="panel auth-layout" style="max-width: 900px; padding: 0; overflow: hidden;">
+        <div style="padding: 3rem; display: flex; flex-direction: column; justify-content: center; background-color: var(--primary-soft);">
+           <p class="eyebrow">Подтверждение номера</p>
+           <h2 style="font-size: 2.5rem; line-height: 1.1; margin-bottom: 1.5rem;">Введите код из SMS</h2>
+           <p class="muted">Мы отправили код на номер <strong>${escapeHtml(phoneLabel || "—")}</strong>.</p>
+           ${expiresAtLabel ? `<p class="muted" style="margin-top: 0.5rem;">Код действует до ${escapeHtml(expiresAtLabel)}.</p>` : ""}
+        </div>
+        <div style="padding: 3rem;">
+	          <form class="stack-form" data-form="register-verify">
+            <label>
+              Код подтверждения
+              <input
+                name="code"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]{${codeLength}}"
+                minlength="${codeLength}"
+                maxlength="${codeLength}"
+                placeholder="${"0".repeat(codeLength)}"
+                autocomplete="one-time-code"
+                required>
+            </label>
+	            <button class="btn btn-primary" type="submit" style="width: 100%; margin-top: 1.5rem;">Подтвердить номер</button>
+	          </form>
+
+	          ${renderRegisterVerifyResendRegion()}
+
+          <p class="muted" style="margin-top: 1.5rem; text-align: center;">
+            Ошиблись номером? <a href="#/register" style="color: var(--primary); font-weight: 600;">Вернуться к регистрации</a>
+          </p>
+        </div>
+      </article>
+    </section>
+	  `;
+}
+
+function renderRegisterVerifyResendRegion() {
+  const secondsLeft = getRegistrationResendSecondsLeft();
+  return `
+    <form class="stack-form partial-region-enter" data-region="${REGISTER_VERIFY_RESEND_REGION}" data-form="register-resend" style="margin-top: 1rem;">
+      <button class="btn btn-secondary" type="submit" style="width: 100%;" ${secondsLeft > 0 ? "disabled" : ""}>
+        ${secondsLeft > 0 ? `Запросить код повторно через ${secondsLeft} сек.` : "Запросить код повторно"}
+      </button>
+    </form>
+  `;
+}
+
+function renderPaymentAwaitView() {
+  const pending = state.paymentAwait;
+  if (!pending) {
+    return `
+      <section class="view-area" style="align-items: center; justify-content: center; min-height: 70vh;">
+        <article class="panel" style="max-width: 760px; width: 100%;">
+          <h2 style="margin-top: 0;">Ожидание оплаты</h2>
+          <p class="muted">Сессия ожидания оплаты не найдена.</p>
+          <div class="hero-actions" style="margin-top: 1rem;">
+            <a class="btn btn-primary" href="#/basket">Вернуться в корзину</a>
+          </div>
+        </article>
+      </section>
+    `;
+  }
+
+  const shortOrderId = String(pending.orderId || "").slice(0, 8);
+  const paymentUrl = String(pending.paymentUrl || "").trim();
+  const safePaymentUrl = escapeHtml(paymentUrl);
+
+  return `
+    <section class="view-area" style="align-items: center; justify-content: center; min-height: 75vh;">
+      <article class="panel auth-layout" style="max-width: 1100px; padding: 0; overflow: hidden;">
+        <div style="padding: 2.2rem; background-color: var(--primary-soft); display: flex; flex-direction: column; justify-content: center;">
+          <p class="eyebrow">Оплата заказа</p>
+          <h2 style="font-size: 2rem; line-height: 1.15; margin-bottom: 1rem;">Ожидаем подтверждение оплаты</h2>
+          <p class="muted">
+            Заказ <strong>#${escapeHtml(shortOrderId || "—")}</strong> создан. После подтверждения SuperAdmin вы автоматически вернетесь в приложение.
+          </p>
+          <div data-region="${PAYMENT_AWAIT_STATUS_REGION}" style="margin-top: 1rem;">
+            ${renderPaymentAwaitStatusRegion()}
+          </div>
+          <div class="hero-actions" style="margin-top: 1rem;">
+            ${paymentUrl
+              ? `<a class="btn btn-primary" href="${safePaymentUrl}" target="_blank" rel="noopener noreferrer">Открыть QR-страницу оплаты</a>`
+              : ""}
+            <a class="btn btn-secondary" href="#/profile">Мои заказы</a>
+          </div>
+        </div>
+        <div style="padding: 1.25rem; background: #fff;">
+          ${paymentUrl
+            ? `
+              <iframe
+                title="QR payment page"
+                src="${safePaymentUrl}"
+                style="width: 100%; min-height: 560px; border: 1px solid var(--line); border-radius: 14px; background: #fff;"
+                loading="lazy"
+                referrerpolicy="no-referrer">
+              </iframe>
+            `
+            : `<p class="muted">Платежная ссылка недоступна. Обновите корзину и создайте заказ снова.</p>`}
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderPaymentAwaitStatusRegion() {
+  const pending = state.paymentAwait;
+  if (!pending) {
+    return `<p class="muted">Сессия ожидания оплаты завершена.</p>`;
+  }
+
+  const secondsLeft = getPaymentAwaitSecondsLeft();
+
+  return `
+    <div class="panel" style="padding: 1rem; margin: 0;">
+      <p style="margin: 0; font-weight: 600;" data-payment-await-status-countdown="true">
+        ${escapeHtml(getPaymentAwaitStatusCountdownText(secondsLeft))}
+      </p>
+      <p class="muted" style="margin-top: 0.45rem;">
+        Если оплата подтверждена SuperAdmin, вы будете автоматически перенаправлены в профиль с сообщением об успешном оформлении заказа.
+      </p>
+    </div>
   `;
 }
 
@@ -3805,14 +4580,7 @@ function renderCatalogView() {
           </div>
         </article>
 
-        <article class="panel catalog-side-card">
-          <h3>Гостевая корзина</h3>
-          <div class="catalog-basket-count">
-            ${escapeHtml(String(getGuestBasketItemCount()))}
-            <span>позиций</span>
-          </div>
-          <a class="btn btn-primary btn-small" href="#/basket">Открыть корзину</a>
-        </article>
+        ${renderCatalogBasketSummaryRegion()}
 
         <article class="panel catalog-side-card">
           <h3>Как начать покупку</h3>
@@ -3836,14 +4604,7 @@ function renderCatalogView() {
             <a class="btn btn-secondary btn-small" href="#/profile">Открыть профиль</a>
           </article>
 
-          <article class="panel catalog-side-card">
-            <h3>Корзина</h3>
-            <div class="catalog-basket-count">
-              ${escapeHtml(String(state.basket?.basketItemsCount || 0))}
-              <span>позиций</span>
-            </div>
-            <a class="btn btn-primary btn-small" href="#/basket">Перейти к оформлению</a>
-          </article>
+          ${renderCatalogBasketSummaryRegion()}
         </aside>
       `
       : `
@@ -4035,6 +4796,15 @@ function renderProfileView() {
   const identity = getIdentity();
   const basketPreview = profile.basketPositions || [];
   const orders = state.clientOrderHistory || [];
+  const pendingPaymentOrderId = String(state.paymentAwait?.orderId || "").trim();
+  const sortedOrders = pendingPaymentOrderId
+    ? [...orders].sort((left, right) => {
+      const leftIsPending = String(left?.orderId || "").trim() === pendingPaymentOrderId;
+      const rightIsPending = String(right?.orderId || "").trim() === pendingPaymentOrderId;
+      if (leftIsPending === rightIsPending) return 0;
+      return leftIsPending ? -1 : 1;
+    })
+    : orders;
 
   return `
     <section class="view-area">
@@ -4067,8 +4837,8 @@ function renderProfileView() {
             </form>
           </article>
 
-          <article class="panel">
-            <h3>Безопасность</h3>
+	          <article class="panel">
+	            <h3>Безопасность</h3>
             <form class="stack-form" data-form="password-change" style="margin-top: 1.5rem;">
               <label>
                 Текущий пароль
@@ -4088,20 +4858,26 @@ function renderProfileView() {
                   pattern="[A-Za-z0-9!@#$%^&*()\\-_=.,?]+"
                   required>
               </label>
-              <button class="btn btn-secondary btn-small" type="submit" style="margin-top: 1.5rem;">Обновить пароль</button>
-            </form>
-          </article>
-        </div>
+	              <button class="btn btn-secondary btn-small" type="submit" style="margin-top: 1.5rem;">Обновить пароль</button>
+	            </form>
+	          </article>
+
+	          ${renderProfileAccountActionsRegion()}
+	        </div>
 
         <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div class="partial-region-enter" data-region="${PROFILE_PENDING_PAYMENT_REGION}">
+            ${renderProfilePendingPaymentRegion()}
+          </div>
+
           <article class="panel profile-order-history">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
               <h3>История заказов</h3>
               <button class="btn btn-secondary btn-small" type="button" data-action="refresh-route">Обновить</button>
             </div>
             <div class="order-history-list">
-              ${orders.length
-                ? orders.map(order => renderClientOrderCard(order)).join("")
+              ${sortedOrders.length
+                ? sortedOrders.map(order => renderClientOrderCard(order, { highlightPaymentOrderId: pendingPaymentOrderId })).join("")
                 : `<div style="text-align: center; padding: 2rem;"><p class="muted">У вас пока нет заказов.</p></div>`}
             </div>
           </article>
@@ -4118,6 +4894,25 @@ function renderProfileView() {
         </div>
       </div>
     </section>
+	  `;
+}
+
+function renderProfileAccountActionsRegion() {
+  return `
+    <article class="panel partial-region-enter" data-region="${PROFILE_ACCOUNT_REGION}">
+      <h3>Удаление аккаунта</h3>
+      <p class="muted" style="margin-top: 0.75rem;">
+        Аккаунт будет удален, но заказы сохранятся в истории с номером телефона без привязки к профилю.
+      </p>
+      <form class="stack-form" data-form="profile-delete-account" style="margin-top: 1rem;">
+        <button
+          class="btn btn-secondary btn-small"
+          type="submit"
+          style="color: var(--danger); border-color: rgba(239, 68, 68, 0.35);">
+          Удалить аккаунт
+        </button>
+      </form>
+    </article>
   `;
 }
 
@@ -4815,7 +5610,7 @@ function renderSuperAdminClientManager(workspace) {
       <div class="superadmin-section-head">
         <div class="superadmin-section-copy">
           <h3>Клиентский реестр</h3>
-          <p class="muted">Просмотр клиентов, корзин и последних заказов без редактирования данных.</p>
+          <p class="muted">Просмотр клиентов, корзин, последних заказов и удаление клиентских аккаунтов с сохранением истории.</p>
         </div>
       </div>
       <form class="workspace-inline-filter superadmin-inline-search superadmin-search-form" data-form="superadmin-client-search">
@@ -5246,7 +6041,14 @@ function renderAdminOrderDetailView() {
   const canMarkReady = status === "Preparing";
   const canMarkOnTheWay = status === "Ready";
   const canRejectPositions = status === "Preparing";
+  const paymentState = formatPaymentStateLabel(order.paymentState);
+  const isPendingPayment = paymentState === "PendingManualConfirmation";
   const isPickup = Boolean(order.isPickup);
+  const clientPhoneLabel = formatPhoneNumber(order.clientPhoneNumber || "");
+  const clientIdShortLabel = String(order.clientId || "").slice(0, 8);
+  const clientIdentityLabel = clientPhoneLabel
+    ? `${clientPhoneLabel}${clientIdShortLabel ? ` · ${clientIdShortLabel}` : " · удален"}`
+    : (clientIdShortLabel || "удален");
   const deliveryLineLabel = isPickup ? "Самовывоз" : "Доставка";
   const nextActionMarkup = canDeleteNew
     ? `<button class="btn btn-secondary" type="button" data-action="order-delete-new-admin" data-order-id="${escapeHtml(order.orderId)}">Удалить заказ New</button>`
@@ -5276,10 +6078,13 @@ function renderAdminOrderDetailView() {
         <div class="admin-order-detail-meta">
           <span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>
           <span>Дата: ${escapeHtml(formatDate(order.orderPlacedAt))}</span>
-          <span>ClientId: ${escapeHtml(String(order.clientId || "").slice(0, 8) || "—")}</span>
+          <span>Клиент: ${escapeHtml(clientIdentityLabel)}</span>
           <span>PharmacyId: ${escapeHtml(String(order.pharmacyId || "").slice(0, 8) || "—")}</span>
           <span>Тип: ${escapeHtml(formatFulfillmentTypeLabel(order.isPickup))}</span>
           <span>Возврат: ${escapeHtml(formatMoney(order.returnCost))}</span>
+          ${isPendingPayment
+            ? `<span>Оплата: ожидает подтверждения${order.paymentExpiresAtUtc ? ` до ${escapeHtml(formatDate(order.paymentExpiresAtUtc))}` : ""}</span>`
+            : ""}
         </div>
       </article>
 
@@ -5339,7 +6144,14 @@ function renderAdminOrderDetailView() {
 
 function renderSuperAdminOrderCard(order) {
   const status = formatStatusLabel(order.status);
+  const paymentState = formatPaymentStateLabel(order.paymentState);
+  const isPendingPayment = paymentState === "PendingManualConfirmation";
   const isPickup = Boolean(order.isPickup);
+  const clientPhoneLabel = formatPhoneNumber(order.clientPhoneNumber || "");
+  const clientIdShortLabel = String(order.clientId || "").slice(0, 8);
+  const clientIdentityLabel = clientPhoneLabel
+    ? `${clientPhoneLabel}${clientIdShortLabel ? ` · ${clientIdShortLabel}` : " · удален"}`
+    : (clientIdShortLabel || "удален");
   const deliveryLineLabel = isPickup ? "Самовывоз" : "Доставка";
   const canMoveNext = status === "New" || status === "OnTheWay";
   const nextLabel = status === "New"
@@ -5364,10 +6176,14 @@ function renderSuperAdminOrderCard(order) {
 
       <div class="superadmin-order-meta-grid">
         <span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>
+        <span>Клиент: ${escapeHtml(clientIdentityLabel)}</span>
         <span>PharmacyId: ${escapeHtml(String(order.pharmacyId).slice(0, 8))}</span>
         <span>${escapeHtml(`${deliveryLineLabel}: ${order.deliveryAddress || "без адреса"}`)}</span>
         <span>Дата: ${escapeHtml(formatDate(order.orderPlacedAt))}</span>
         <span>Позиций: ${escapeHtml(String((order.positions || []).length))}</span>
+        ${isPendingPayment
+          ? `<span>Оплата: ожидает подтверждения${order.paymentExpiresAtUtc ? ` до ${escapeHtml(formatDate(order.paymentExpiresAtUtc))}` : ""}</span>`
+          : ""}
       </div>
 
       <div class="workspace-position-list superadmin-order-position-list">
@@ -5421,7 +6237,61 @@ function renderClientCard(client) {
           `).join("")}
         </div>
       ` : ""}
+      <button
+        class="btn btn-secondary btn-small"
+        type="button"
+        data-action="client-delete-by-id"
+        data-client-id="${escapeHtml(client.id)}"
+        style="color: var(--danger); border-color: rgba(239, 68, 68, 0.35);">
+        Удалить аккаунт клиента
+      </button>
     </div>
+  `;
+}
+
+function renderProfilePendingPaymentRegion() {
+  const pending = state.paymentAwait;
+  if (!pending?.orderId) return "";
+
+  const orderId = String(pending.orderId || "").trim();
+  const order = (state.clientOrderHistory || []).find(item => String(item?.orderId || "").trim() === orderId) || null;
+  const paymentUrl = String(pending.paymentUrl || "").trim();
+  const secondsLeft = getPaymentAwaitSecondsLeft();
+
+  const statusLabel = order
+    ? formatStatusUiLabel(order.status)
+    : "Ожидает обновления статуса";
+  const isPending = order
+    ? formatPaymentStateLabel(order.paymentState) === "PendingManualConfirmation" && formatStatusLabel(order.status) === "New"
+    : true;
+
+  return `
+    <article class="panel" style="border: 1px solid rgba(15, 118, 110, 0.2); background: linear-gradient(120deg, rgba(240, 253, 250, 0.95) 0%, rgba(255, 255, 255, 0.96) 100%);">
+      <p class="eyebrow">Ожидает оплаты</p>
+      <h3 style="margin-top: 0.4rem;">Заказ ${escapeHtml(orderId.slice(0, 8) || "—")}</h3>
+      <div class="order-history-meta" style="margin-top: 0.7rem;">
+        ${order ? `<span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>` : ""}
+        <span>Статус: ${escapeHtml(statusLabel)}</span>
+        <span data-payment-await-profile-countdown="true">${escapeHtml(getPaymentAwaitProfileCountdownText(secondsLeft))}</span>
+      </div>
+      <p class="muted" style="margin-top: 0.7rem;">
+        ${isPending
+          ? "После подтверждения SuperAdmin заказ автоматически продолжит обычный путь. Если время истечет, заказ отменится и товары вернутся в корзину."
+          : "Статус заказа обновлен. Проверяем, чтобы автоматически завершить сценарий оплаты."}
+      </p>
+      <div class="hero-actions" style="margin-top: 0.9rem;">
+        ${paymentUrl
+          ? `<a class="btn btn-primary" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noopener noreferrer">Перейти к оплате</a>`
+          : ""}
+        <button
+          class="btn btn-secondary btn-small"
+          type="button"
+          data-action="client-order-toggle"
+          data-order-id="${escapeHtml(orderId)}">
+          Показать детали заказа
+        </button>
+      </div>
+    </article>
   `;
 }
 
@@ -5556,7 +6426,7 @@ function renderPharmacyOption(option, index, allOptions) {
   const isBestPrice = Number.isFinite(currentCost) && Math.abs(currentCost - minCost) < 0.0001;
   const pharmacy = findPharmacyById(option.pharmacyId);
   const pharmacyAddress = String(pharmacy?.address || "").trim();
-  const canSelect = Boolean(option.isAvailable);
+  const canSelect = isPharmacyOptionSelectable(option);
   const selectionStatusTitle = isSelected
     ? "Аптека выбрана"
     : canSelect
@@ -5705,21 +6575,22 @@ function renderCheckoutPanel(positions, options) {
   }
 
   const visibleOptions = getVisiblePharmacyOptions(options, positions);
-  const availableOptions = visibleOptions.filter(option => option.isAvailable);
-  if (!availableOptions.length) {
+  const selectableOptions = visibleOptions.filter(isPharmacyOptionSelectable);
+  if (!selectableOptions.length) {
     return `
       <div class="panel" style="border-color: var(--danger); background-color: #fef2f2;">
         <h3>Оформление заказа</h3>
-        <p class="muted">Нет аптек, где все позиции доступны в нужном количестве. Измените корзину или выберите другие товары.</p>
+        <p class="muted">Нет аптек, где хотя бы одна позиция доступна в нужном количестве. Измените корзину или выберите другие товары.</p>
       </div>
     `;
   }
 
   const selectedPharmacyId = String(state.checkoutDraft.pharmacyId || "").trim();
-  const selectedOption = availableOptions.find(item => item.pharmacyId === selectedPharmacyId) || availableOptions[0];
+  const selectedOption = selectableOptions.find(item => item.pharmacyId === selectedPharmacyId) || selectableOptions[0];
   const selectedOptionId = String(selectedOption?.pharmacyId || "").trim();
   const selectedPharmacy = findPharmacyById(selectedOptionId);
   const selectedPharmacyAddress = String(selectedPharmacy?.address || "").trim();
+  const availableOptionsCount = selectableOptions.filter(option => option.isAvailable).length;
 
   const isPickupSelected = Boolean(state.checkoutDraft.isPickup);
   const addressHints = [...new Set(
@@ -5735,9 +6606,12 @@ function renderCheckoutPanel(positions, options) {
     <div class="panel checkout-panel-modern">
       <div class="section-headline" style="margin-bottom: 1.5rem;">
         <h3>Настройки заказа</h3>
-        <span class="status-badge success">Доступно аптек: ${escapeHtml(String(availableOptions.length))}</span>
+        <span class="status-badge success">Доступно аптек: ${escapeHtml(String(selectableOptions.length))}</span>
       </div>
       <form class="stack-form" data-form="client-checkout">
+        ${selectedOption?.isAvailable
+          ? ""
+          : `<div class="checkout-inline-notice warning">В этой аптеке доступна только часть заказа. Можно выбрать, но оформить получится только полный состав.</div>`}
         ${state.checkoutInlineNotice?.message
           ? `<div class="checkout-inline-notice ${escapeHtml(state.checkoutInlineNotice.tone)}">${escapeHtml(state.checkoutInlineNotice.message)}</div>`
           : ""}
@@ -5793,6 +6667,9 @@ function renderCheckoutPanel(positions, options) {
           <span>К оплате:</span>
           <strong>${escapeHtml(formatMoney(selectedOption.totalCost))}</strong>
         </div>
+        ${availableOptionsCount > 0
+          ? `<p class="muted" style="margin-top: 0.5rem;">Аптек с полным составом заказа: ${escapeHtml(String(availableOptionsCount))}</p>`
+          : ""}
         ${isGuest ? `
           <p class="muted" style="margin-top: 0.75rem;">Для оплаты вы перейдете на вход. Корзина и адрес не потеряются.</p>
         ` : ""}
@@ -5809,13 +6686,24 @@ function findPharmacyById(pharmacyId) {
   return (state.pharmacies || []).find(item => String(item.id) === normalizedPharmacyId) || null;
 }
 
-function renderClientOrderCard(order) {
+function renderClientOrderCard(order, options = {}) {
   const orderId = String(order.orderId || "");
+  const highlightPaymentOrderId = String(options.highlightPaymentOrderId || "").trim();
+  const isPaymentFocusCard = highlightPaymentOrderId.length > 0 && orderId === highlightPaymentOrderId;
   const isExpanded = state.expandedClientOrders.has(orderId);
   const isLoading = state.clientOrderDetailsLoading.has(orderId);
   const details = state.clientOrderDetailsCache.get(orderId);
   const pharmacy = findPharmacyById(order.pharmacyId);
   const pharmacyTitle = pharmacy?.title || `Аптека ${String(order.pharmacyId || "").slice(0, 8)}`;
+  const paymentState = formatPaymentStateLabel(order.paymentState);
+  const isPendingPayment = paymentState === "PendingManualConfirmation";
+  const trackedPaymentUrl = isPaymentFocusCard
+    ? String(state.paymentAwait?.paymentUrl || "").trim()
+    : "";
+  const trackedSecondsLeft = isPaymentFocusCard ? getPaymentAwaitSecondsLeft() : 0;
+  const paymentDeadlineLabel = isPendingPayment && order.paymentExpiresAtUtc
+    ? formatDate(order.paymentExpiresAtUtc)
+    : "";
   const canCancel = canClientCancelOrder(order.status);
 
   const detailsMarkup = isLoading
@@ -5852,13 +6740,19 @@ function renderClientOrderCard(order) {
       : `<p class="muted">Нажмите "Подробнее", чтобы загрузить состав и информацию о заказе.</p>`;
 
   return `
-    <article class="order-card customer-order-card order-history-card">
+    <article class="order-card customer-order-card order-history-card ${isPaymentFocusCard ? "selected" : ""}">
       <div class="order-history-head">
         <div>
           <strong>Заказ ${escapeHtml(String(order.orderId).slice(0, 8))}</strong>
           <p class="muted">${escapeHtml(pharmacyTitle)}</p>
+          ${isPendingPayment
+            ? `<p class="muted" style="margin-top: 0.4rem;">Ожидает подтверждения оплаты SuperAdmin${paymentDeadlineLabel ? ` до ${escapeHtml(paymentDeadlineLabel)}` : ""}.</p>`
+            : ""}
+          ${isPaymentFocusCard && isPendingPayment
+            ? `<p class="muted" style="margin-top: 0.35rem;">Таймер оплаты: <span data-payment-await-order-timer="${escapeHtml(orderId)}">${escapeHtml(formatSecondsToMinuteClock(trackedSecondsLeft))}</span></p>`
+            : ""}
         </div>
-        <span class="status-badge success">${escapeHtml(formatStatusUiLabel(order.status))}</span>
+        <span class="status-badge ${isPendingPayment ? "warning" : "success"}">${escapeHtml(formatStatusUiLabel(order.status))}</span>
       </div>
 
       <div class="order-history-meta">
@@ -5876,6 +6770,9 @@ function renderClientOrderCard(order) {
           data-order-id="${escapeHtml(order.orderId)}">
           ${isExpanded ? "Скрыть детали" : "Подробнее"}
         </button>
+        ${isPaymentFocusCard && isPendingPayment && trackedPaymentUrl
+          ? `<a class="btn btn-primary btn-small" href="${escapeHtml(trackedPaymentUrl)}" target="_blank" rel="noopener noreferrer">Перейти к оплате</a>`
+          : ""}
         ${canCancel
           ? `<button
               class="btn btn-secondary btn-small"
@@ -6043,6 +6940,19 @@ function formatStatusLabel(value) {
   return labels[value] || String(value ?? "—");
 }
 
+function formatPaymentStateLabel(value) {
+  const labels = {
+    0: "Confirmed",
+    1: "PendingManualConfirmation",
+    2: "Expired",
+    Confirmed: "Confirmed",
+    PendingManualConfirmation: "PendingManualConfirmation",
+    Expired: "Expired"
+  };
+
+  return labels[value] || String(value ?? "—");
+}
+
 function formatStatusUiLabel(value) {
   const normalized = formatStatusLabel(value);
   return normalized === "Delivered"
@@ -6103,8 +7013,10 @@ function getTopStripTitle() {
   if (state.route.name === "product") return "Карточка товара";
   if (state.route.name === "workspace-order") return "Детали заказа";
   if (state.route.name === "basket") return "Корзина";
+  if (state.route.name === "payment-await") return "Ожидание оплаты";
   if (state.route.name === "profile") return "Профиль клиента";
   if (state.route.name === "register") return "Регистрация";
+  if (state.route.name === "register-verify") return "Подтверждение телефона";
   return "Вход";
 }
 
@@ -6131,8 +7043,10 @@ function getTopStripText() {
   if (state.route.name === "catalog") return "Ищите товары и открывайте детальную карточку.";
   if (state.route.name === "product") return "Детали, изображения и статус выбранного товара.";
   if (state.route.name === "basket") return "Позиции корзины и варианты аптек для оформления.";
+  if (state.route.name === "payment-await") return "Ожидание подтверждения оплаты заказа и автоматический возврат в приложение.";
   if (state.route.name === "profile") return "Личные данные, история заказов и настройки.";
   if (state.route.name === "register") return "Создание клиентского аккаунта.";
+  if (state.route.name === "register-verify") return "Подтвердите номер телефона кодом из SMS.";
   return "Выполните вход и продолжайте работу.";
 }
 
@@ -6142,10 +7056,14 @@ function getHeroTitle() {
       return "Отдельное окно входа";
     case "register":
       return "Отдельное окно регистрации";
+    case "register-verify":
+      return "Подтверждение номера телефона";
     case "profile":
       return "Профиль клиента";
     case "basket":
       return state.token ? "Корзина клиента" : "Гостевая корзина";
+    case "payment-await":
+      return "Ожидание подтверждения оплаты";
     case "product":
       return "Полная карточка товара";
     case "workspace":
@@ -6167,12 +7085,16 @@ function getHeroText() {
       return "Вход единый, а после него интерфейс переключается под роль пользователя.";
     case "register":
       return "Регистрация открывает только клиентский поток: каталог, корзину и профиль.";
+    case "register-verify":
+      return "Введите 6-значный код из SMS. Через 60 секунд можно запросить код повторно.";
     case "profile":
       return "Здесь собрана информация о клиенте, его корзина и заказы.";
     case "basket":
       return state.token
         ? "Здесь собраны все товары, управление количеством и предложения аптек."
         : "Добавляйте товары, выбирайте аптеку и адрес. Вход потребуется только на шаге оплаты.";
+    case "payment-await":
+      return "Откройте QR-страницу оплаты. После подтверждения SuperAdmin вы автоматически вернетесь в приложение.";
     case "product":
       return "Карточка раскрывает товар отдельным экраном, а не коротким блоком в каталоге.";
     case "workspace":

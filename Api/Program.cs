@@ -1,9 +1,11 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Api.Middleware;
 using Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Yalla.Application;
@@ -50,6 +52,67 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
     };
 });
 builder.Services.AddAuthorization();
+var smsVerificationSection = builder.Configuration.GetSection(SmsVerificationOptions.SectionName);
+var requestRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("RequestRateLimitPerMinute") ?? 10);
+var verifyRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("VerifyRateLimitPerMinute") ?? 30);
+var resendRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("ResendRateLimitPerMinute") ?? 10);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+
+        var problemDetails = new ProblemDetails
+        {
+            Status = StatusCodes.Status429TooManyRequests,
+            Title = "Too Many Requests",
+            Detail = "Слишком много запросов. Повторите немного позже."
+        };
+
+        problemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+        problemDetails.Extensions["errorCode"] = "rate_limited";
+        problemDetails.Extensions["reason"] = "rate_limit_exceeded";
+        await context.HttpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
+    };
+
+    options.AddPolicy("sms-register-request", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: BuildRateLimitPartitionKey(context, "sms-register-request"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = requestRateLimitPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("sms-register-verify", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: BuildRateLimitPartitionKey(context, "sms-register-verify"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = verifyRateLimitPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("sms-register-resend", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: BuildRateLimitPartitionKey(context, "sms-register-resend"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = resendRateLimitPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = UserInputPolicy.MaxMedicineImageFileSizeBytes;
@@ -103,11 +166,23 @@ app.UseStaticFiles();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
+app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+static string BuildRateLimitPartitionKey(HttpContext context, string policyName)
+{
+    var hostEnvironment = context.RequestServices.GetService<IHostEnvironment>();
+    if (hostEnvironment?.IsEnvironment("IntegrationTests") == true)
+        return $"{policyName}:integration-tests";
+
+    var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown-ip";
+    return $"{policyName}:{ip}";
+}
 
 public partial class Program { }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Yalla.Application.Abstractions;
@@ -14,11 +15,18 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
 {
   private readonly SqliteConnection _connection;
   private readonly IServiceProvider _sqliteEntityFrameworkServices;
+  private readonly IReadOnlyDictionary<string, string?> _configurationOverrides;
 
   public ApiWebApplicationFactory()
+    : this(null)
+  {
+  }
+
+  internal ApiWebApplicationFactory(IReadOnlyDictionary<string, string?>? configurationOverrides)
   {
     _connection = new SqliteConnection("Data Source=:memory:");
     _connection.Open();
+    _configurationOverrides = configurationOverrides ?? new Dictionary<string, string?>(StringComparer.Ordinal);
 
     _sqliteEntityFrameworkServices = new ServiceCollection()
       .AddEntityFrameworkSqlite()
@@ -28,6 +36,26 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
   protected override void ConfigureWebHost(IWebHostBuilder builder)
   {
     builder.UseEnvironment("IntegrationTests");
+
+    builder.ConfigureAppConfiguration((_, config) =>
+    {
+      var settings = new Dictionary<string, string?>(StringComparer.Ordinal)
+      {
+        ["SmsVerification:RegistrationEnabled"] = "true",
+        ["SmsVerification:AllowRegistrationBypass"] = "true",
+        ["SmsVerification:CodeLength"] = "6",
+        ["SmsVerification:FixedCodeForTests"] = "111111",
+        ["SmsVerification:RequestRateLimitPerMinute"] = "1000",
+        ["SmsVerification:VerifyRateLimitPerMinute"] = "1000",
+        ["SmsVerification:ResendRateLimitPerMinute"] = "1000",
+        ["OsonSms:UseStub"] = "true"
+      };
+
+      foreach (var entry in _configurationOverrides)
+        settings[entry.Key] = entry.Value;
+
+      config.AddInMemoryCollection(settings);
+    });
 
     builder.ConfigureServices(services =>
     {

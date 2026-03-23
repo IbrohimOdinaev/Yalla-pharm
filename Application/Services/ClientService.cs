@@ -1,75 +1,213 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Application.Extensions;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
 using Yalla.Domain.Exceptions;
 
 namespace Yalla.Application.Services;
 
 public sealed class ClientService : IClientService
 {
-    private readonly IAppDbContext _dbContext;
-    private readonly IPaymentService _paymentService;
-    private readonly IPasswordHasher _passwordHasher;
+  private readonly IAppDbContext _dbContext;
+  private readonly IPaymentService _paymentService;
+  private readonly IPasswordHasher _passwordHasher;
+  private readonly ISmsService _smsService;
+  private readonly SmsVerificationOptions _smsOptions;
+  private readonly DushanbeCityPaymentOptions _paymentOptions;
+  private readonly ILogger<ClientService> _logger;
 
-    public ClientService(IAppDbContext dbContext)
-      : this(dbContext, new StubPaymentService(), new BCryptPasswordHasher())
+  public ClientService(
+    IAppDbContext dbContext,
+    IPaymentService paymentService,
+    IPasswordHasher passwordHasher,
+    ISmsService smsService,
+    IOptions<SmsVerificationOptions> smsOptions,
+    IOptions<DushanbeCityPaymentOptions> paymentOptions,
+    ILogger<ClientService> logger)
+  {
+    ArgumentNullException.ThrowIfNull(dbContext);
+    ArgumentNullException.ThrowIfNull(paymentService);
+    ArgumentNullException.ThrowIfNull(passwordHasher);
+    ArgumentNullException.ThrowIfNull(smsService);
+    ArgumentNullException.ThrowIfNull(smsOptions);
+    ArgumentNullException.ThrowIfNull(paymentOptions);
+    ArgumentNullException.ThrowIfNull(logger);
+
+    _dbContext = dbContext;
+    _paymentService = paymentService;
+    _passwordHasher = passwordHasher;
+    _smsService = smsService;
+    _smsOptions = smsOptions.Value;
+    _paymentOptions = paymentOptions.Value;
+    _logger = logger;
+  }
+
+  public async Task<RegisterClientResponse> RegisterClientAsync(
+    RegisterClientRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    if (_smsOptions.RegistrationEnabled && !request.SkipPhoneVerification)
     {
+      throw new ClientErrorException(
+        errorCode: "phone_verification_required",
+        detail: "Требуется подтверждение телефона. Сначала запросите код, затем подтвердите его.",
+        reason: "phone_verification_required");
     }
 
-    public ClientService(
-      IAppDbContext dbContext,
-      IPaymentService paymentService)
-      : this(dbContext, paymentService, new BCryptPasswordHasher())
+    if (request.SkipPhoneVerification && !_smsOptions.AllowRegistrationBypass)
+      throw new ClientErrorException(
+        errorCode: "phone_verification_bypass_disabled",
+        detail: "Регистрация без подтверждения телефона отключена.",
+        reason: "bypass_disabled");
+
+    var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
+    await EnsurePhoneIsAvailableAsync(normalizedPhoneNumber, cancellationToken);
+
+    var passwordHash = HashPasswordOrThrow(request.Password);
+    var client = request.ToDomain(normalizedPhoneNumber, passwordHash);
+
+    _dbContext.Clients.Add(client);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+    _logger.LogInformation(
+      "Client registered without phone verification (bypass). ClientId={ClientId}, Phone={PhoneNumber}",
+      client.Id,
+      client.PhoneNumber);
+
+    return new RegisterClientResponse
     {
-    }
+      Client = client.ToResponse([], [])
+    };
+  }
 
-    public ClientService(
-      IAppDbContext dbContext,
-      IPaymentService paymentService,
-      IPasswordHasher passwordHasher)
+  public async Task<RequestClientRegistrationVerificationResponse> RequestClientRegistrationVerificationAsync(
+    RegisterClientRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    if (!_smsOptions.RegistrationEnabled)
+      throw new ClientErrorException(
+        errorCode: "phone_verification_disabled",
+        detail: "Подтверждение телефона для регистрации отключено в текущем окружении.",
+        reason: "verification_disabled");
+
+    var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
+    await EnsurePhoneIsAvailableAsync(normalizedPhoneNumber, cancellationToken);
+
+    if (string.IsNullOrWhiteSpace(request.Name))
+      throw new DomainArgumentException("Name can't be null or whitespace.");
+
+    var passwordHash = HashPasswordOrThrow(request.Password);
+    var payload = new ClientRegistrationPayload
     {
-        ArgumentNullException.ThrowIfNull(dbContext);
-        ArgumentNullException.ThrowIfNull(paymentService);
-        ArgumentNullException.ThrowIfNull(passwordHasher);
+      Name = request.Name.Trim(),
+      PhoneNumber = normalizedPhoneNumber,
+      PasswordHash = passwordHash
+    };
 
-        _dbContext = dbContext;
-        _paymentService = paymentService;
-        _passwordHasher = passwordHasher;
-    }
+    var payloadJson = JsonSerializer.Serialize(payload);
+    var smsResponse = await _smsService.SendSmsAsync(
+      new SmsSendRequest
+      {
+        Purpose = SmsVerificationPurpose.ClientRegistration,
+        PhoneNumber = normalizedPhoneNumber,
+        PayloadJson = payloadJson
+      },
+      cancellationToken);
 
-    public async Task<RegisterClientResponse> RegisterClientAsync(
-      RegisterClientRequest request,
-      CancellationToken cancellationToken = default)
+    _logger.LogInformation(
+      "Registration verification requested. RegistrationId={RegistrationId}, Phone={PhoneNumber}",
+      smsResponse.SessionId,
+      smsResponse.PhoneNumber);
+
+    return new RequestClientRegistrationVerificationResponse
     {
-        ArgumentNullException.ThrowIfNull(request);
+      RegistrationId = smsResponse.SessionId,
+      PhoneNumber = smsResponse.PhoneNumber,
+      ExpiresAtUtc = smsResponse.ExpiresAtUtc,
+      ResendAvailableAtUtc = smsResponse.ResendAvailableAtUtc,
+      CodeLength = smsResponse.CodeLength
+    };
+  }
 
-        var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
+  public async Task<RegisterClientResponse> VerifyClientRegistrationAsync(
+    VerifyClientRegistrationRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
 
-        var phoneExists = await _dbContext.Users
-          .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber, cancellationToken);
+    var verificationResult = await _smsService.VerifySmsAsync(
+      new SmsVerifyRequest
+      {
+        SessionId = request.RegistrationId,
+        Code = request.Code
+      },
+      cancellationToken);
 
-        if (phoneExists)
-            throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
+    if (!verificationResult.IsSuccess)
+      throw CreateVerificationException(verificationResult.FailureReason);
 
-        UserInputPolicy.EnsureValidPassword(request.Password, nameof(request.Password));
-        var passwordHash = _passwordHasher.HashPassword(request.Password);
-        if (!_passwordHasher.VerifyPassword(request.Password, passwordHash))
-            throw new InvalidOperationException("Password hashing verification failed.");
+    if (verificationResult.Purpose != SmsVerificationPurpose.ClientRegistration)
+      throw new InvalidOperationException("Verification session purpose mismatch.");
 
-        var client = request.ToDomain(normalizedPhoneNumber, passwordHash);
+    var payload = DeserializeRegistrationPayload(verificationResult.PayloadJson);
+    await EnsurePhoneIsAvailableAsync(payload.PhoneNumber, cancellationToken);
 
-        _dbContext.Clients.Add(client);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+    var client = new Client(
+      payload.Name,
+      payload.PhoneNumber,
+      payload.PasswordHash);
 
-        return new RegisterClientResponse
-        {
-            Client = client.ToResponse([], [])
-        };
-    }
+    _dbContext.Clients.Add(client);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+    _logger.LogInformation(
+      "Client registration completed via SMS verification. ClientId={ClientId}, Phone={PhoneNumber}, RegistrationId={RegistrationId}",
+      client.Id,
+      client.PhoneNumber,
+      request.RegistrationId);
+
+    return new RegisterClientResponse
+    {
+      Client = client.ToResponse([], [])
+    };
+  }
+
+  public async Task<RequestClientRegistrationVerificationResponse> ResendClientRegistrationVerificationAsync(
+    ResendClientRegistrationRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var smsResponse = await _smsService.ResendSmsAsync(
+      new SmsResendRequest
+      {
+        SessionId = request.RegistrationId
+      },
+      cancellationToken);
+
+    _logger.LogInformation(
+      "Registration verification code resent. RegistrationId={RegistrationId}, Phone={PhoneNumber}",
+      smsResponse.SessionId,
+      smsResponse.PhoneNumber);
+
+    return new RequestClientRegistrationVerificationResponse
+    {
+      RegistrationId = smsResponse.SessionId,
+      PhoneNumber = smsResponse.PhoneNumber,
+      ExpiresAtUtc = smsResponse.ExpiresAtUtc,
+      ResendAvailableAtUtc = smsResponse.ResendAvailableAtUtc,
+      CodeLength = smsResponse.CodeLength
+    };
+  }
 
     public async Task<UpdateClientResponse> UpdateClientAsync(
       UpdateClientRequest request,
@@ -119,10 +257,6 @@ public sealed class ClientService : IClientService
               .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
               ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
 
-            if (client.Orders.Count > 0)
-                throw new InvalidOperationException(
-                  $"Client '{request.ClientId}' has orders and cannot be deleted.");
-
             if (client.BasketPositions.Count > 0)
             {
                 var basketPositions = client.BasketPositions.ToList();
@@ -131,6 +265,16 @@ public sealed class ClientService : IClientService
                     client.RemoveBasketPosition(basketPosition);
 
                 _dbContext.BasketPositions.RemoveRange(basketPositions);
+            }
+
+            if (client.Orders.Count > 0)
+            {
+                var trackedOrders = client.Orders.ToList();
+                foreach (var order in trackedOrders)
+                {
+                    order.DetachClient(client.PhoneNumber);
+                    client.RemoveOrder(order);
+                }
             }
 
             _dbContext.Clients.Remove(client);
@@ -570,9 +714,10 @@ public sealed class ClientService : IClientService
         {
             OrderId = orderId,
             ClientId = request.ClientId,
+            ClientPhoneNumber = client.PhoneNumber,
             PharmacyId = request.PharmacyId,
             Amount = estimatedCost,
-            Currency = "TJS",
+            Currency = _paymentOptions.Currency,
             Description = $"Checkout for order '{orderId}'.",
             IdempotencyKey = request.IdempotencyKey
         }, cancellationToken);
@@ -639,7 +784,17 @@ public sealed class ClientService : IClientService
                 IgnoredPositionIds = request.IgnoredPositionIds ?? []
             };
 
-            order = orderRequest.ToDomain(orderId, orderPositions);
+            order = orderRequest.ToDomain(orderId, client.PhoneNumber, orderPositions);
+            order.MarkManualPaymentPending(
+              amount: estimatedCost,
+              currency: _paymentOptions.Currency,
+              provider: string.IsNullOrWhiteSpace(paymentResponse.Provider)
+                ? _paymentOptions.ProviderName
+                : paymentResponse.Provider,
+              receiverAccount: paymentResponse.ReceiverAccount ?? string.Empty,
+              paymentUrl: paymentResponse.PaymentUrl,
+              paymentComment: paymentResponse.PaymentComment,
+              expiresAtUtc: DateTime.UtcNow.AddMinutes(Math.Max(1, _paymentOptions.PendingConfirmationTimeoutMinutes)));
 
             foreach (var basketPosition in acceptedPositions)
                 client.RemoveBasketPosition(basketPosition);
@@ -658,7 +813,7 @@ public sealed class ClientService : IClientService
             throw;
         }
 
-        return order!.ToResponse();
+        return order!.ToResponse(paymentResponse.PaymentUrl);
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
@@ -885,12 +1040,13 @@ public sealed class ClientService : IClientService
 
         var orders = await _dbContext.Orders
           .AsNoTracking()
-          .Where(x => clientIds.Contains(x.ClientId))
+          .Where(x => x.ClientId.HasValue && clientIds.Contains(x.ClientId.Value))
           .OrderByDescending(x => x.OrderPlacedAt)
           .ToListAsync(cancellationToken);
 
         return orders
-          .GroupBy(x => x.ClientId)
+          .Where(x => x.ClientId.HasValue)
+          .GroupBy(x => x.ClientId!.Value)
           .ToDictionary(
             x => x.Key,
             x => x
@@ -1017,6 +1173,82 @@ public sealed class ClientService : IClientService
           .ToList();
 
         return result;
+    }
+
+    private async Task EnsurePhoneIsAvailableAsync(
+      string normalizedPhoneNumber,
+      CancellationToken cancellationToken)
+    {
+        var phoneExists = await _dbContext.Users
+          .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber, cancellationToken);
+
+        if (phoneExists)
+            throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
+    }
+
+    private string HashPasswordOrThrow(string password)
+    {
+        UserInputPolicy.EnsureValidPassword(password, nameof(password));
+        var passwordHash = _passwordHasher.HashPassword(password);
+        if (!_passwordHasher.VerifyPassword(password, passwordHash))
+            throw new InvalidOperationException("Password hashing verification failed.");
+
+        return passwordHash;
+    }
+
+    private static ClientRegistrationPayload DeserializeRegistrationPayload(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+            throw new InvalidOperationException("Verification payload is missing.");
+
+        var payload = JsonSerializer.Deserialize<ClientRegistrationPayload>(payloadJson);
+        if (payload is null
+          || string.IsNullOrWhiteSpace(payload.Name)
+          || string.IsNullOrWhiteSpace(payload.PhoneNumber)
+          || string.IsNullOrWhiteSpace(payload.PasswordHash))
+        {
+            throw new InvalidOperationException("Verification payload is invalid.");
+        }
+
+        return payload;
+    }
+
+    private static Exception CreateVerificationException(SmsVerificationFailureReason reason)
+    {
+        return reason switch
+        {
+            SmsVerificationFailureReason.NotFound => new ClientErrorException(
+              errorCode: "sms_session_not_found",
+              detail: "Сессия подтверждения не найдена. Запросите новый код.",
+              reason: "session_not_found"),
+            SmsVerificationFailureReason.InvalidCode => new ClientErrorException(
+              errorCode: "sms_code_invalid",
+              detail: "Код подтверждения введен неверно.",
+              reason: "invalid_code"),
+            SmsVerificationFailureReason.Expired => new ClientErrorException(
+              errorCode: "sms_code_expired",
+              detail: "Срок действия кода истек. Запросите новый код.",
+              reason: "expired"),
+            SmsVerificationFailureReason.AttemptsExceeded => new ClientErrorException(
+              errorCode: "sms_attempts_exceeded",
+              detail: "Лимит попыток ввода кода исчерпан. Запросите новый код.",
+              reason: "attempts_exceeded"),
+            SmsVerificationFailureReason.AlreadyCompleted => new ClientErrorException(
+              errorCode: "sms_session_already_completed",
+              detail: "Эта сессия подтверждения уже завершена. Начните регистрацию заново.",
+              reason: "already_completed"),
+            _ => new ClientErrorException(
+              errorCode: "sms_verification_failed",
+              detail: "Подтверждение номера не удалось.",
+              reason: "verification_failed")
+        };
+    }
+
+    private sealed class ClientRegistrationPayload
+    {
+        public string Name { get; init; } = string.Empty;
+        public string PhoneNumber { get; init; } = string.Empty;
+        public string PasswordHash { get; init; } = string.Empty;
     }
 
     private sealed class ClientBasketData

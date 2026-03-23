@@ -81,44 +81,14 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
-        try
-        {
-            var pharmacy = await _dbContext.GetTrackedPharmacyOrThrowAsync(
-              request.PharmacyId,
-              cancellationToken);
+        var pharmacy = await _dbContext.GetTrackedPharmacyOrThrowAsync(
+          request.PharmacyId,
+          cancellationToken);
 
-            var pharmacyWorkers = await _dbContext.PharmacyWorkers
-              .Where(x => x.PharmacyId == request.PharmacyId)
-              .ToListAsync(cancellationToken);
+        if (pharmacy.IsActive)
+            pharmacy.ChangeActivity();
 
-            if (pharmacyWorkers.Count > 0)
-                _dbContext.PharmacyWorkers.RemoveRange(pharmacyWorkers);
-
-            var pharmacyOffers = await _dbContext.Offers
-              .Where(x => x.PharmacyId == request.PharmacyId)
-              .ToListAsync(cancellationToken);
-
-            if (pharmacyOffers.Count > 0)
-                _dbContext.Offers.RemoveRange(pharmacyOffers);
-
-            _dbContext.Pharmacies.Remove(pharmacy);
-
-            var adminUser = await _dbContext.Users
-              .AsTracking()
-              .FirstOrDefaultAsync(x => x.Id == pharmacy.AdminId, cancellationToken);
-
-            if (adminUser is not null)
-                _dbContext.Users.Remove(adminUser);
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-        }
-        catch (Exception)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new DeletePharmacyResponse
         {

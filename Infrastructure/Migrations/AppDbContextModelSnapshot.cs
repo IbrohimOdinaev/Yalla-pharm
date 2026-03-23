@@ -241,9 +241,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("ClientId")
+                    b.Property<Guid?>("ClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
+
+                    b.Property<string>("ClientPhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("client_phone_number");
 
                     b.Property<decimal>("Cost")
                         .ValueGeneratedOnAdd()
@@ -258,20 +264,79 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("delivery_address");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
                     b.Property<bool>("IsPickup")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("is_pickup");
 
-                    b.Property<string>("IdempotencyKey")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("idempotency_key");
-
                     b.Property<DateTime>("OrderPlacedAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("order_placed_at");
+
+                    b.Property<decimal>("PaymentAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("payment_amount");
+
+                    b.Property<string>("PaymentComment")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("payment_comment");
+
+                    b.Property<DateTime?>("PaymentConfirmedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("payment_confirmed_at_utc");
+
+                    b.Property<Guid?>("PaymentConfirmedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_confirmed_by_user_id");
+
+                    b.Property<string>("PaymentCurrency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("TJS")
+                        .HasColumnName("payment_currency");
+
+                    b.Property<DateTime?>("PaymentExpiresAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("payment_expires_at_utc");
+
+                    b.Property<string>("PaymentProvider")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("Legacy")
+                        .HasColumnName("payment_provider");
+
+                    b.Property<string>("PaymentReceiverAccount")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasDefaultValue("")
+                        .HasColumnName("payment_receiver_account");
+
+                    b.Property<int>("PaymentState")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("payment_state");
+
+                    b.Property<string>("PaymentUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("payment_url");
 
                     b.Property<Guid>("PharmacyId")
                         .HasColumnType("uuid")
@@ -295,6 +360,11 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientId")
                         .HasDatabaseName("ix_orders_client_id");
 
+                    b.HasIndex("PaymentConfirmedByUserId");
+
+                    b.HasIndex("PaymentState")
+                        .HasDatabaseName("ix_orders_payment_state");
+
                     b.HasIndex("PharmacyId")
                         .HasDatabaseName("ix_orders_pharmacy_id");
 
@@ -304,6 +374,9 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientId", "IdempotencyKey")
                         .IsUnique()
                         .HasDatabaseName("ux_orders_client_idempotency_key");
+
+                    b.HasIndex("Status", "PaymentState", "PaymentExpiresAtUtc")
+                        .HasDatabaseName("ix_orders_status_payment_state_payment_expires_at_utc");
 
                     b.ToTable("orders", (string)null);
                 });
@@ -344,6 +417,91 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("ix_order_positions_order_id");
 
                     b.ToTable("order_positions", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.PaymentHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("ConfirmedByPhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("confirmed_by_phone_number");
+
+                    b.Property<Guid>("ConfirmedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_by_user_id");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<DateTime>("PaidAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("paid_at_utc");
+
+                    b.Property<string>("PaymentComment")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("payment_comment");
+
+                    b.Property<string>("PaymentUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("payment_url");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ReceiverAccount")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("receiver_account");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UserPhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("user_phone_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConfirmedByUserId");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_payment_histories_order_id");
+
+                    b.HasIndex("PaidAtUtc")
+                        .HasDatabaseName("ix_payment_histories_paid_at_utc");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_payment_histories_user_id");
+
+                    b.ToTable("payment_histories", (string)null);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
@@ -454,6 +612,95 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("ix_refund_requests_status");
 
                     b.ToTable("refund_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.SmsVerificationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptsRemaining")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts_remaining");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("expires_at_utc");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("LastMsgId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_msg_id");
+
+                    b.Property<string>("LastTxnId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_txn_id");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("text")
+                        .HasColumnName("payload_json");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone_number");
+
+                    b.Property<int>("Purpose")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("purpose");
+
+                    b.Property<DateTime>("ResendAvailableAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("resend_available_at_utc");
+
+                    b.Property<int>("ResendsRemaining")
+                        .HasColumnType("integer")
+                        .HasColumnName("resends_remaining");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("verified_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc")
+                        .HasDatabaseName("ix_sms_verification_sessions_expires_at_utc");
+
+                    b.HasIndex("Purpose", "PhoneNumber", "Status")
+                        .HasDatabaseName("ix_sms_verification_sessions_purpose_phone_status");
+
+                    b.ToTable("sms_verification_sessions", (string)null);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.User", b =>
@@ -637,8 +884,12 @@ namespace Infrastructure.Migrations
                     b.HasOne("Yalla.Domain.Entities.Client", null)
                         .WithMany("Orders")
                         .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Yalla.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentConfirmedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Yalla.Domain.Entities.Pharmacy", null)
                         .WithMany("Orders")
@@ -687,6 +938,26 @@ namespace Infrastructure.Migrations
 
                     b.Navigation("OfferSnapshot")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.PaymentHistory", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ConfirmedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Yalla.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Yalla.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>

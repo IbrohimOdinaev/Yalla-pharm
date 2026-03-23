@@ -11,6 +11,8 @@ public sealed class GetClientOrderDetailsResponse
   public bool IsPickup { get; init; }
   public string DeliveryAddress { get; init; } = string.Empty;
   public Status Status { get; init; }
+  public OrderPaymentState PaymentState { get; init; }
+  public DateTime? PaymentExpiresAtUtc { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }
   public IReadOnlyCollection<ClientOrderDetailsPositionResponse> Positions { get; init; } = [];

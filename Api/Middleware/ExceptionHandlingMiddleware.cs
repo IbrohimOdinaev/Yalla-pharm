@@ -52,6 +52,8 @@ public sealed class ExceptionHandlingMiddleware
 
       problemDetails.Extensions["traceId"] = context.TraceIdentifier;
       problemDetails.Extensions["errorCode"] = error.Code;
+      if (!string.IsNullOrWhiteSpace(error.Reason))
+        problemDetails.Extensions["reason"] = error.Reason;
 
       await context.Response.WriteAsJsonAsync(problemDetails);
     }
@@ -65,37 +67,50 @@ public sealed class ExceptionHandlingMiddleware
         StatusCodes.Status400BadRequest,
         "Request Failed",
         "Некорректные данные запроса.",
-        "validation_error"),
+        "validation_error",
+        null),
+      ClientErrorException clientError => new ErrorPayload(
+        clientError.StatusCode,
+        clientError.Title,
+        clientError.Detail,
+        clientError.ErrorCode,
+        clientError.Reason),
       ConflictException => new ErrorPayload(
         StatusCodes.Status409Conflict,
         "Request Failed",
         "Конфликт состояния. Обновите данные и повторите попытку.",
-        "conflict"),
+        "conflict",
+        null),
       DomainException => new ErrorPayload(
         StatusCodes.Status400BadRequest,
         "Request Failed",
         "Операция не может быть выполнена в текущем состоянии.",
-        "domain_error"),
+        "domain_error",
+        null),
       InvalidOperationException => new ErrorPayload(
         StatusCodes.Status400BadRequest,
         "Request Failed",
         "Операция не может быть выполнена в текущем состоянии.",
-        "invalid_operation"),
+        "invalid_operation",
+        null),
       UnauthorizedAccessException => new ErrorPayload(
         StatusCodes.Status401Unauthorized,
         "Request Failed",
         "Требуется авторизация.",
-        "unauthorized"),
+        "unauthorized",
+        null),
       OperationCanceledException => new ErrorPayload(
         499,
         "Request Failed",
         "Запрос был отменен.",
-        "request_canceled"),
+        "request_canceled",
+        null),
       _ => new ErrorPayload(
         StatusCodes.Status500InternalServerError,
         "Internal Server Error",
         "Внутренняя ошибка сервера.",
-        "internal_error")
+        "internal_error",
+        null)
     };
   }
 
@@ -139,5 +154,6 @@ public sealed class ExceptionHandlingMiddleware
     int StatusCode,
     string Title,
     string Detail,
-    string Code);
+    string Code,
+    string? Reason);
 }

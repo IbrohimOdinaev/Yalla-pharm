@@ -100,6 +100,8 @@ public sealed class OrderService : IOrderService
           IsPickup = x.IsPickup,
           DeliveryAddress = x.DeliveryAddress,
           Status = x.Status,
+          PaymentState = x.PaymentState,
+          PaymentExpiresAtUtc = x.PaymentExpiresAtUtc,
           Cost = x.Cost,
           ReturnCost = x.ReturnCost,
           Positions = x.Positions
@@ -131,13 +133,15 @@ public sealed class OrderService : IOrderService
 
     return new GetClientOrderDetailsResponse
     {
-      ClientId = order.ClientId,
+      ClientId = request.ClientId,
       OrderId = order.Id,
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
       IsPickup = order.IsPickup,
       DeliveryAddress = order.DeliveryAddress,
       Status = order.Status,
+      PaymentState = order.PaymentState,
+      PaymentExpiresAtUtc = order.PaymentExpiresAtUtc,
       Cost = order.Cost,
       ReturnCost = order.ReturnCost,
       Positions = order.Positions
@@ -668,6 +672,25 @@ public sealed class OrderService : IOrderService
           $"Order '{order.Id}' must be in one of statuses [{allowed}] for action '{action}'.");
       }
 
+      if (order.Status == Status.New)
+      {
+        var nowUtc = DateTime.UtcNow;
+        if (order.PaymentState == OrderPaymentState.Expired
+          || (order.PaymentState == OrderPaymentState.PendingManualConfirmation
+            && order.PaymentExpiresAtUtc.HasValue
+            && order.PaymentExpiresAtUtc.Value <= nowUtc))
+        {
+          throw new InvalidOperationException(
+            $"Order '{order.Id}' payment confirmation timeout exceeded.");
+        }
+
+        if (order.PaymentState == OrderPaymentState.PendingManualConfirmation)
+        {
+          order.ConfirmManualPayment(superAdmin.Id, nowUtc);
+          _dbContext.PaymentHistories.Add(CreatePaymentHistory(order, superAdmin, nowUtc));
+        }
+      }
+
       var oldStatus = order.Status;
       order.NextStage(true);
       LogStatusTransition(order.Id, oldStatus, order.Status, action, superAdmin.Id);
@@ -695,6 +718,7 @@ public sealed class OrderService : IOrderService
     {
       OrderId = order.Id,
       ClientId = order.ClientId,
+      ClientPhoneNumber = order.ClientPhoneNumber,
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
       IsPickup = order.IsPickup,
@@ -746,6 +770,27 @@ public sealed class OrderService : IOrderService
       return 50;
 
     return Math.Min(take, 200);
+  }
+
+  private static PaymentHistory CreatePaymentHistory(
+    Order order,
+    User superAdmin,
+    DateTime paidAtUtc)
+  {
+    var amount = order.PaymentAmount > 0 ? order.PaymentAmount : order.Cost;
+    return new PaymentHistory(
+      orderId: order.Id,
+      userId: order.ClientId,
+      userPhoneNumber: order.ClientPhoneNumber,
+      amount: amount,
+      currency: string.IsNullOrWhiteSpace(order.PaymentCurrency) ? "TJS" : order.PaymentCurrency,
+      provider: string.IsNullOrWhiteSpace(order.PaymentProvider) ? "DushanbeCityManualPhone" : order.PaymentProvider,
+      receiverAccount: string.IsNullOrWhiteSpace(order.PaymentReceiverAccount) ? "unknown" : order.PaymentReceiverAccount,
+      paymentUrl: order.PaymentUrl,
+      paymentComment: order.PaymentComment,
+      confirmedByUserId: superAdmin.Id,
+      confirmedByPhoneNumber: superAdmin.PhoneNumber,
+      paidAtUtc: paidAtUtc);
   }
 
   private static RefundRequestStubResponse CreateRefundRequestStub(Guid orderId, decimal amount)

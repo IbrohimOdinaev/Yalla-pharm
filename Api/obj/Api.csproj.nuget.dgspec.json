@@ -305,6 +305,14 @@
               "target": "Package",
               "version": "[9.0.11, )"
             },
+            "Microsoft.Extensions.Hosting.Abstractions": {
+              "target": "Package",
+              "version": "[9.0.11, )"
+            },
+            "Microsoft.Extensions.Http": {
+              "target": "Package",
+              "version": "[9.0.11, )"
+            },
             "Minio": {
               "target": "Package",
               "version": "[6.0.4, )"

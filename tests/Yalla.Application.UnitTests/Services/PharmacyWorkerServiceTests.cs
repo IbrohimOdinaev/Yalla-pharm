@@ -95,7 +95,7 @@ public class PharmacyWorkerServiceTests
   }
 
   [Fact]
-  public async Task DeletePharmacyAsync_RemovesPharmacyWorkersOffersAndAdmin()
+  public async Task DeletePharmacyAsync_DeactivatesPharmacyWithoutRemovingRelatedData()
   {
     using var scope = TestDbFactory.Create();
     var admin = TestDbFactory.CreateUser("Admin", "992200006", Role.Admin);
@@ -117,10 +117,11 @@ public class PharmacyWorkerServiceTests
     var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
     await service.DeletePharmacyAsync(new DeletePharmacyRequest { PharmacyId = pharmacy.Id });
 
-    Assert.False(await scope.Db.Pharmacies.AnyAsync(x => x.Id == pharmacy.Id));
-    Assert.False(await scope.Db.PharmacyWorkers.AnyAsync(x => x.PharmacyId == pharmacy.Id));
-    Assert.False(await scope.Db.Offers.AnyAsync(x => x.PharmacyId == pharmacy.Id));
-    Assert.False(await scope.Db.Users.AnyAsync(x => x.Id == admin.Id));
+    var updatedPharmacy = await scope.Db.Pharmacies.AsNoTracking().FirstAsync(x => x.Id == pharmacy.Id);
+    Assert.False(updatedPharmacy.IsActive);
+    Assert.True(await scope.Db.PharmacyWorkers.AnyAsync(x => x.PharmacyId == pharmacy.Id));
+    Assert.True(await scope.Db.Offers.AnyAsync(x => x.PharmacyId == pharmacy.Id));
+    Assert.True(await scope.Db.Users.AnyAsync(x => x.Id == admin.Id));
   }
 
   [Fact]
