@@ -134,6 +134,11 @@ public static class ResponseMappingExtensions
         return new CheckoutBasketResponse
         {
             ClientId = order.ClientId ?? Guid.Empty,
+            PaymentIntentId = Guid.Empty,
+            ReservedOrderId = order.Id,
+            Currency = order.PaymentCurrency,
+            CreatedAtUtc = DateTime.UtcNow,
+            PaymentIntentState = Domain.Enums.PaymentIntentState.Confirmed,
             OrderId = order.Id,
             OrderPlacedAt = order.OrderPlacedAt,
             IsPickup = order.IsPickup,

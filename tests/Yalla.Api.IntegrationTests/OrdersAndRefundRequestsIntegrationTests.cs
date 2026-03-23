@@ -238,14 +238,12 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     Assert.Equal(HttpStatusCode.OK, checkoutResponse.StatusCode);
 
     var checkoutPayload = await ReadJsonAsync(checkoutResponse);
-    var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
+    var paymentIntentId = checkoutPayload.GetProperty("paymentIntentId").GetGuid();
+    var orderId = checkoutPayload.GetProperty("reservedOrderId").GetGuid();
     Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
     Assert.Equal(
       (int)OrderPaymentState.PendingManualConfirmation,
       checkoutPayload.GetProperty("paymentState").GetInt32());
-
-    var paymentExpiresAtUtc = checkoutPayload.GetProperty("paymentExpiresAtUtc").GetDateTime();
-    Assert.True(paymentExpiresAtUtc > DateTime.UtcNow);
 
     var paymentUrl = checkoutPayload.GetProperty("paymentUrl").GetString();
     Assert.False(string.IsNullOrWhiteSpace(paymentUrl));
@@ -258,6 +256,11 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     Assert.True(paymentQuery.TryGetValue("c", out var commentValue));
     Assert.Contains("ClientNumber:", commentValue, StringComparison.OrdinalIgnoreCase);
     Assert.Contains(orderId.ToString(), commentValue, StringComparison.OrdinalIgnoreCase);
+
+    var confirmPaymentResponse = await superAdminActor.PostAsync(
+      $"/api/superadmin/payment-intents/{paymentIntentId}/confirm",
+      JsonContent.Create(new { }));
+    Assert.Equal(HttpStatusCode.OK, confirmPaymentResponse.StatusCode);
 
     var nextStatusResponse = await superAdminActor.PostAsJsonAsync("/api/orders/superadmin/next-status", new
     {
@@ -287,6 +290,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
   public async Task Orders_DeleteNew_AsAdmin_ShouldDeleteOrder()
   {
     using var clientActor = await CreateAuthorizedClientAsync(TestActor.Client1);
+    using var superAdminActor = await CreateAuthorizedClientAsync(TestActor.SuperAdmin);
     using var adminActor = await CreateAuthorizedClientAsync(TestActor.Admin1);
 
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
@@ -298,8 +302,14 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     Assert.Equal(HttpStatusCode.OK, checkoutResponse.StatusCode);
 
     var checkoutPayload = await ReadJsonAsync(checkoutResponse);
-    var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
+    var paymentIntentId = checkoutPayload.GetProperty("paymentIntentId").GetGuid();
+    var orderId = checkoutPayload.GetProperty("reservedOrderId").GetGuid();
     Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
+
+    var confirmPaymentResponse = await superAdminActor.PostAsync(
+      $"/api/superadmin/payment-intents/{paymentIntentId}/confirm",
+      JsonContent.Create(new { }));
+    Assert.Equal(HttpStatusCode.OK, confirmPaymentResponse.StatusCode);
 
     var deleteResponse = await adminActor.PostAsJsonAsync("/api/orders/admin/new/delete", new
     {
@@ -318,6 +328,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
   public async Task Orders_Checkout_ThenClientHistory_ShouldContainNonZeroCost()
   {
     using var client = await CreateAuthorizedClientAsync(TestActor.Client1);
+    using var superAdminActor = await CreateAuthorizedClientAsync(TestActor.SuperAdmin);
 
     var idempotencyKey = Guid.NewGuid().ToString("N");
     var checkoutResponse = await client.PostAsJsonAsync("/api/clients/checkout", new
@@ -330,28 +341,39 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     Assert.Equal(HttpStatusCode.OK, checkoutResponse.StatusCode);
 
     var checkoutPayload = await ReadJsonAsync(checkoutResponse);
-    var orderId = checkoutPayload.GetProperty("orderId").GetGuid();
+    var paymentIntentId = checkoutPayload.GetProperty("paymentIntentId").GetGuid();
+    var orderId = checkoutPayload.GetProperty("reservedOrderId").GetGuid();
     var checkoutCost = checkoutPayload.GetProperty("cost").GetDecimal();
     Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
     Assert.True(checkoutCost > 0m);
     Assert.Equal(
       (int)OrderPaymentState.PendingManualConfirmation,
       checkoutPayload.GetProperty("paymentState").GetInt32());
-    Assert.True(checkoutPayload.GetProperty("paymentExpiresAtUtc").GetDateTime() > DateTime.UtcNow);
 
     var historyResponse = await client.GetAsync("/api/orders/client-history");
     Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
 
     var historyPayload = await ReadJsonAsync(historyResponse);
     var historyOrders = historyPayload.GetProperty("orders").EnumerateArray().ToList();
-    var checkedOutOrder = historyOrders.FirstOrDefault(x => x.GetProperty("orderId").GetGuid() == orderId);
+    Assert.DoesNotContain(historyOrders, x => x.GetProperty("orderId").GetGuid() == orderId);
+
+    var confirmPaymentResponse = await superAdminActor.PostAsync(
+      $"/api/superadmin/payment-intents/{paymentIntentId}/confirm",
+      JsonContent.Create(new { }));
+    Assert.Equal(HttpStatusCode.OK, confirmPaymentResponse.StatusCode);
+
+    var historyAfterConfirmResponse = await client.GetAsync("/api/orders/client-history");
+    Assert.Equal(HttpStatusCode.OK, historyAfterConfirmResponse.StatusCode);
+
+    var historyAfterConfirmPayload = await ReadJsonAsync(historyAfterConfirmResponse);
+    var historyAfterConfirmOrders = historyAfterConfirmPayload.GetProperty("orders").EnumerateArray().ToList();
+    var checkedOutOrder = historyAfterConfirmOrders.FirstOrDefault(x => x.GetProperty("orderId").GetGuid() == orderId);
 
     Assert.True(checkedOutOrder.ValueKind != System.Text.Json.JsonValueKind.Undefined);
     Assert.True(checkedOutOrder.GetProperty("cost").GetDecimal() > 0m);
     Assert.Equal(
-      (int)OrderPaymentState.PendingManualConfirmation,
+      (int)OrderPaymentState.Confirmed,
       checkedOutOrder.GetProperty("paymentState").GetInt32());
-    Assert.True(checkedOutOrder.GetProperty("paymentExpiresAtUtc").GetDateTime() > DateTime.UtcNow);
   }
 
   [Fact]

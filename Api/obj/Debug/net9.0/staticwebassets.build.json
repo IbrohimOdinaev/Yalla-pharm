@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "2wnAOfeNvI4y95VlZueEpx/GzwNeuQLoTqsRemzOPDE=",
+  "Hash": "A0xE086wgU1+33kpDNkJ3saiO0nUnVF5ce+P0Oi2faI=",
   "Source": "Api",
   "BasePath": "_content/Api",
   "Mode": "Default",
@@ -73,8 +73,8 @@
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "pb0ocu38vk",
-      "Integrity": "pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=",
+      "Fingerprint": "idu9zeadcg",
+      "Integrity": "Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
       "OriginalItemSpec": "wwwroot/app.js"
@@ -85,7 +85,7 @@
       "SourceType": "Discovered",
       "ContentRoot": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/",
       "BasePath": "_content/Api",
-      "RelativePath": "app#[.{fingerprint=pb0ocu38vk}]?.js.br",
+      "RelativePath": "app#[.{fingerprint=idu9zeadcg}]?.js.br",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Alternative",
@@ -106,7 +106,7 @@
       "SourceType": "Discovered",
       "ContentRoot": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/",
       "BasePath": "_content/Api",
-      "RelativePath": "app#[.{fingerprint=pb0ocu38vk}]?.js.gz",
+      "RelativePath": "app#[.{fingerprint=idu9zeadcg}]?.js.gz",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Alternative",
@@ -292,6 +292,283 @@
   ],
   "Endpoints": [
     {
+      "Route": "app.idu9zeadcg.js",
+      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "274813"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "idu9zeadcg"
+        },
+        {
+          "Name": "label",
+          "Value": "app.js"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0="
+        }
+      ]
+    },
+    {
+      "Route": "app.idu9zeadcg.js",
+      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.br",
+      "Selectors": [
+        {
+          "Name": "Content-Encoding",
+          "Value": "br",
+          "Quality": "0.000050864700"
+        }
+      ],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "19659"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"uSBatGjXCQmJJqjRbju/0HcGe+vPhn/XcWkebX5jlwE=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "br"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "W/\"Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=\""
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "idu9zeadcg"
+        },
+        {
+          "Name": "label",
+          "Value": "app.js"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0="
+        }
+      ]
+    },
+    {
+      "Route": "app.idu9zeadcg.js",
+      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.gz",
+      "Selectors": [
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip",
+          "Quality": "0.000040903141"
+        }
+      ],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "24447"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "W/\"Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=\""
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "idu9zeadcg"
+        },
+        {
+          "Name": "label",
+          "Value": "app.js"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0="
+        }
+      ]
+    },
+    {
+      "Route": "app.idu9zeadcg.js.br",
+      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.br",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "19659"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"uSBatGjXCQmJJqjRbju/0HcGe+vPhn/XcWkebX5jlwE=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "br"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "idu9zeadcg"
+        },
+        {
+          "Name": "label",
+          "Value": "app.js.br"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-uSBatGjXCQmJJqjRbju/0HcGe+vPhn/XcWkebX5jlwE="
+        }
+      ]
+    },
+    {
+      "Route": "app.idu9zeadcg.js.gz",
+      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.gz",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "24447"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "idu9zeadcg"
+        },
+        {
+          "Name": "label",
+          "Value": "app.js.gz"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s="
+        }
+      ]
+    },
+    {
       "Route": "app.js",
       "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js",
       "Selectors": [],
@@ -302,7 +579,7 @@
         },
         {
           "Name": "Content-Length",
-          "Value": "267509"
+          "Value": "274813"
         },
         {
           "Name": "Content-Type",
@@ -310,11 +587,11 @@
         },
         {
           "Name": "ETag",
-          "Value": "\"pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=\""
+          "Value": "\"Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=\""
         },
         {
           "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
         },
         {
           "Name": "Cache-Control",
@@ -324,7 +601,7 @@
       "EndpointProperties": [
         {
           "Name": "integrity",
-          "Value": "sha256-pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY="
+          "Value": "sha256-Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0="
         }
       ]
     },
@@ -353,7 +630,7 @@
         },
         {
           "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
         },
         {
           "Name": "Cache-Control",
@@ -373,13 +650,13 @@
         },
         {
           "Name": "ETag",
-          "Value": "W/\"pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=\""
+          "Value": "W/\"Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=\""
         }
       ],
       "EndpointProperties": [
         {
           "Name": "integrity",
-          "Value": "sha256-pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY="
+          "Value": "sha256-Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0="
         }
       ]
     },
@@ -408,7 +685,7 @@
         },
         {
           "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
         },
         {
           "Name": "Cache-Control",
@@ -428,13 +705,13 @@
         },
         {
           "Name": "ETag",
-          "Value": "W/\"pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=\""
+          "Value": "W/\"Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0=\""
         }
       ],
       "EndpointProperties": [
         {
           "Name": "integrity",
-          "Value": "sha256-pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY="
+          "Value": "sha256-Bt1opv6D3K5ijWnDXA3/6ey55+6t2BDcmwnSpFQYtL0="
         }
       ]
     },
@@ -461,7 +738,7 @@
         },
         {
           "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
         },
         {
           "Name": "Cache-Control",
@@ -506,7 +783,7 @@
         },
         {
           "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
+          "Value": "Mon, 23 Mar 2026 07:27:07 GMT"
         },
         {
           "Name": "Cache-Control",
@@ -522,283 +799,6 @@
         }
       ],
       "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s="
-        }
-      ]
-    },
-    {
-      "Route": "app.pb0ocu38vk.js",
-      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "267509"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/javascript"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "pb0ocu38vk"
-        },
-        {
-          "Name": "label",
-          "Value": "app.js"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY="
-        }
-      ]
-    },
-    {
-      "Route": "app.pb0ocu38vk.js",
-      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.br",
-      "Selectors": [
-        {
-          "Name": "Content-Encoding",
-          "Value": "br",
-          "Quality": "0.000050864700"
-        }
-      ],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "19659"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"uSBatGjXCQmJJqjRbju/0HcGe+vPhn/XcWkebX5jlwE=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        },
-        {
-          "Name": "Content-Encoding",
-          "Value": "br"
-        },
-        {
-          "Name": "Vary",
-          "Value": "Content-Encoding"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/javascript"
-        },
-        {
-          "Name": "ETag",
-          "Value": "W/\"pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=\""
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "pb0ocu38vk"
-        },
-        {
-          "Name": "label",
-          "Value": "app.js"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY="
-        }
-      ]
-    },
-    {
-      "Route": "app.pb0ocu38vk.js",
-      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.gz",
-      "Selectors": [
-        {
-          "Name": "Content-Encoding",
-          "Value": "gzip",
-          "Quality": "0.000040903141"
-        }
-      ],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "24447"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        },
-        {
-          "Name": "Content-Encoding",
-          "Value": "gzip"
-        },
-        {
-          "Name": "Vary",
-          "Value": "Content-Encoding"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/javascript"
-        },
-        {
-          "Name": "ETag",
-          "Value": "W/\"pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY=\""
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "pb0ocu38vk"
-        },
-        {
-          "Name": "label",
-          "Value": "app.js"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-pQsyoAtlbCptOVMzJtSZSXvqKo2klojEZYf8Ddf1lLY="
-        }
-      ]
-    },
-    {
-      "Route": "app.pb0ocu38vk.js.br",
-      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.br",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "19659"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/javascript"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"uSBatGjXCQmJJqjRbju/0HcGe+vPhn/XcWkebX5jlwE=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        },
-        {
-          "Name": "Content-Encoding",
-          "Value": "br"
-        },
-        {
-          "Name": "Vary",
-          "Value": "Content-Encoding"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "pb0ocu38vk"
-        },
-        {
-          "Name": "label",
-          "Value": "app.js.br"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-uSBatGjXCQmJJqjRbju/0HcGe+vPhn/XcWkebX5jlwE="
-        }
-      ]
-    },
-    {
-      "Route": "app.pb0ocu38vk.js.gz",
-      "AssetFile": "/home/agony/Documents/work/yalla-farm/Api/wwwroot/app.js.gz",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "24447"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/javascript"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 21 Mar 2026 23:21:44 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        },
-        {
-          "Name": "Content-Encoding",
-          "Value": "gzip"
-        },
-        {
-          "Name": "Vary",
-          "Value": "Content-Encoding"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "pb0ocu38vk"
-        },
-        {
-          "Name": "label",
-          "Value": "app.js.gz"
-        },
         {
           "Name": "integrity",
           "Value": "sha256-bH/A3QdBVW6t9gEoqK8zAGPUMXq2ssiMc6J4bIZ/q1s="

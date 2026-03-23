@@ -10,11 +10,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Api/Api.csproj",
         "projectName": "Api",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Api/Api.csproj",
-        "packagesPath": "/tmp/.nuget/packages/",
+        "packagesPath": "/home/agony/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Api/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/tmp/.nuget/NuGet/NuGet.Config"
+          "/home/agony/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -111,11 +111,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Application/Application.csproj",
         "projectName": "Application",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Application/Application.csproj",
-        "packagesPath": "/tmp/.nuget/packages/",
+        "packagesPath": "/home/agony/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Application/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/tmp/.nuget/NuGet/NuGet.Config"
+          "/home/agony/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -189,11 +189,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
         "projectName": "Domain",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
-        "packagesPath": "/tmp/.nuget/packages/",
+        "packagesPath": "/home/agony/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Domain/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/tmp/.nuget/NuGet/NuGet.Config"
+          "/home/agony/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -249,11 +249,11 @@
         "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
         "projectName": "Infrastructure",
         "projectPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
-        "packagesPath": "/tmp/.nuget/packages/",
+        "packagesPath": "/home/agony/.nuget/packages/",
         "outputPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/tmp/.nuget/NuGet/NuGet.Config"
+          "/home/agony/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"

@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -10,19 +9,23 @@ public sealed class OsonSmsSender : ISmsSender
 {
   private readonly HttpClient _httpClient;
   private readonly OsonSmsOptions _options;
+  private readonly IReadOnlyDictionary<OsonSmsAuthMode, IOsonSmsRequestSigner> _signers;
   private readonly ILogger<OsonSmsSender> _logger;
 
   public OsonSmsSender(
     HttpClient httpClient,
     IOptions<OsonSmsOptions> options,
+    IEnumerable<IOsonSmsRequestSigner> signers,
     ILogger<OsonSmsSender> logger)
   {
     ArgumentNullException.ThrowIfNull(httpClient);
     ArgumentNullException.ThrowIfNull(options);
+    ArgumentNullException.ThrowIfNull(signers);
     ArgumentNullException.ThrowIfNull(logger);
 
     _httpClient = httpClient;
     _options = options.Value;
+    _signers = signers.ToDictionary(x => x.Mode);
     _logger = logger;
   }
 
@@ -32,60 +35,172 @@ public sealed class OsonSmsSender : ISmsSender
   {
     ArgumentNullException.ThrowIfNull(command);
 
-    if (string.IsNullOrWhiteSpace(_options.Login)
-      || string.IsNullOrWhiteSpace(_options.Token)
-      || string.IsNullOrWhiteSpace(_options.Sender))
+    if (!TryResolveSigner(out var signer, out var configErrorResult))
+      return configErrorResult;
+
+    if (!signer.IsConfigured(_options, out var signerConfigError))
     {
       return new SmsSendResult
       {
         IsSuccess = false,
+        StatusCode = 0,
         ErrorCode = "config_invalid",
-        ErrorMessage = "OsonSms credentials are not configured."
+        ErrorMessage = signerConfigError
       };
     }
 
-    var normalizedPhone = NormalizePhoneForProvider(command.PhoneNumber);
-    var query = BuildQuery(
-      ("from", _options.Sender),
-      ("phone_number", normalizedPhone),
-      ("msg", command.Message),
-      ("login", _options.Login),
-      ("txn_id", command.TxnId),
-      ("is_confidential", command.IsConfidential || _options.IsConfidential ? "true" : "false"));
-
-    using var request = new HttpRequestMessage(HttpMethod.Get, $"/sendsms_v1.php?{query}");
-    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
-
-    try
+    if (string.IsNullOrWhiteSpace(command.TxnId))
     {
-      using var response = await _httpClient.SendAsync(request, cancellationToken);
-      var payload = await ReadJsonAsync(response, cancellationToken);
-      var error = ReadError(payload);
-
-      return new SmsSendResult
-      {
-        IsSuccess = (int)response.StatusCode == 201 || (int)response.StatusCode == 409,
-        StatusCode = (int)response.StatusCode,
-        TxnId = ReadString(payload, "txn_id") ?? command.TxnId,
-        MsgId = ReadString(payload, "msg_id"),
-        ErrorCode = error.Code,
-        ErrorMessage = error.Message
-      };
-    }
-    catch (OperationCanceledException)
-    {
-      throw;
-    }
-    catch (Exception exception)
-    {
-      _logger.LogError(exception, "OsonSms send failed for txnId={TxnId}", command.TxnId);
       return new SmsSendResult
       {
         IsSuccess = false,
-        ErrorCode = "transport_error",
-        ErrorMessage = exception.Message
+        StatusCode = 0,
+        ErrorCode = "config_invalid",
+        ErrorMessage = "TxnId is required."
       };
     }
+
+    var normalizedPhone = OsonSmsPhoneNumberNormalizer.NormalizeForProvider(command.PhoneNumber);
+    if (string.IsNullOrWhiteSpace(normalizedPhone))
+    {
+      return new SmsSendResult
+      {
+        IsSuccess = false,
+        StatusCode = 0,
+        ErrorCode = "provider_reject",
+        ErrorMessage = "Phone number is invalid for provider."
+      };
+    }
+
+    var maxRetries = Math.Max(0, _options.MaxRetryAttempts);
+    var backoffSeconds = Math.Max(1, _options.RetryBackoffSeconds);
+    SmsSendResult? lastResult = null;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++)
+    {
+      var queryParameters = new List<(string Key, string Value)>
+      {
+        ("from", _options.Sender.Trim()),
+        ("phone_number", normalizedPhone),
+        ("msg", command.Message),
+        ("login", _options.Login.Trim()),
+        ("txn_id", command.TxnId.Trim()),
+        ("is_confidential", command.IsConfidential || _options.IsConfidential ? "true" : "false")
+      };
+
+      using var request = new HttpRequestMessage(HttpMethod.Get, "/sendsms_v1.php");
+      signer.Apply(
+        request,
+        queryParameters,
+        _options,
+        new OsonRequestSigningContext
+        {
+          IsSendRequest = true,
+          SendCommand = command,
+          NormalizedPhoneNumber = normalizedPhone
+        });
+      request.RequestUri = new Uri($"/sendsms_v1.php?{BuildQuery(queryParameters)}", UriKind.Relative);
+
+      try
+      {
+        using var timeoutCts = CreateTimeoutCancellationSource(cancellationToken);
+        using var response = await _httpClient.SendAsync(request, timeoutCts.Token);
+        var payload = await ReadJsonAsync(response, timeoutCts.Token);
+        var providerCode = ReadErrorCode(payload);
+        var providerMessage = ReadErrorMessage(payload);
+
+        if (response.IsSuccessStatusCode && string.IsNullOrWhiteSpace(providerCode))
+        {
+          return new SmsSendResult
+          {
+            IsSuccess = true,
+            StatusCode = (int)response.StatusCode,
+            TxnId = ReadString(payload, "txn_id") ?? command.TxnId.Trim(),
+            MsgId = ReadString(payload, "msg_id")
+          };
+        }
+
+        var mappedError = OsonSmsErrorMapper.Map(response.StatusCode, providerCode, providerMessage);
+        lastResult = new SmsSendResult
+        {
+          IsSuccess = false,
+          StatusCode = (int)response.StatusCode,
+          TxnId = ReadString(payload, "txn_id") ?? command.TxnId.Trim(),
+          MsgId = ReadString(payload, "msg_id"),
+          ErrorCode = mappedError.ErrorCode,
+          ErrorMessage = mappedError.ErrorMessage
+        };
+
+        if (!mappedError.IsTransient || attempt >= maxRetries)
+          return lastResult;
+
+        var delay = CalculateBackoff(attempt, backoffSeconds);
+        _logger.LogWarning(
+          "OsonSms transient send error, retry scheduled. TxnId={TxnId}, Attempt={Attempt}, RetryAfterSeconds={RetryAfterSeconds}, ErrorCode={ErrorCode}",
+          command.TxnId,
+          attempt + 1,
+          delay.TotalSeconds,
+          mappedError.ErrorCode);
+        await Task.Delay(delay, cancellationToken);
+      }
+      catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+      {
+        lastResult = new SmsSendResult
+        {
+          IsSuccess = false,
+          StatusCode = 0,
+          TxnId = command.TxnId.Trim(),
+          ErrorCode = "transport_error",
+          ErrorMessage = "SMS provider timeout."
+        };
+
+        if (attempt >= maxRetries)
+          return lastResult;
+
+        var delay = CalculateBackoff(attempt, backoffSeconds);
+        _logger.LogWarning(
+          "OsonSms timeout, retry scheduled. TxnId={TxnId}, Attempt={Attempt}, RetryAfterSeconds={RetryAfterSeconds}",
+          command.TxnId,
+          attempt + 1,
+          delay.TotalSeconds);
+        await Task.Delay(delay, cancellationToken);
+      }
+      catch (OperationCanceledException)
+      {
+        throw;
+      }
+      catch (Exception exception)
+      {
+        _logger.LogError(
+          exception,
+          "OsonSms transport error while sending SMS. TxnId={TxnId}, Attempt={Attempt}",
+          command.TxnId,
+          attempt + 1);
+
+        lastResult = new SmsSendResult
+        {
+          IsSuccess = false,
+          StatusCode = 0,
+          TxnId = command.TxnId.Trim(),
+          ErrorCode = "transport_error",
+          ErrorMessage = "SMS provider transport error."
+        };
+
+        if (attempt >= maxRetries)
+          return lastResult;
+
+        await Task.Delay(CalculateBackoff(attempt, backoffSeconds), cancellationToken);
+      }
+    }
+
+    return lastResult ?? new SmsSendResult
+    {
+      IsSuccess = false,
+      StatusCode = 0,
+      TxnId = command.TxnId.Trim(),
+      ErrorCode = "unknown_provider_error",
+      ErrorMessage = "Unknown SMS send failure."
+    };
   }
 
   public async Task<SmsDeliveryVerificationResult> VerifySmsAsync(
@@ -94,46 +209,76 @@ public sealed class OsonSmsSender : ISmsSender
   {
     ArgumentNullException.ThrowIfNull(command);
 
-    if (string.IsNullOrWhiteSpace(_options.Login)
-      || string.IsNullOrWhiteSpace(_options.Token))
+    if (!TryResolveSigner(out var signer, out var configErrorResult))
+      return new SmsDeliveryVerificationResult
+      {
+        IsSuccess = false,
+        StatusCode = configErrorResult.StatusCode,
+        ErrorCode = configErrorResult.ErrorCode,
+        ErrorMessage = configErrorResult.ErrorMessage
+      };
+
+    if (!signer.IsConfigured(_options, out var signerConfigError))
     {
       return new SmsDeliveryVerificationResult
       {
         IsSuccess = false,
+        StatusCode = 0,
         ErrorCode = "config_invalid",
-        ErrorMessage = "OsonSms credentials are not configured."
+        ErrorMessage = signerConfigError
       };
     }
 
-    var queryParts = new List<(string Key, string Value)>
+    var queryParameters = new List<(string Key, string Value)>
     {
-      ("login", _options.Login)
+      ("login", _options.Login.Trim())
     };
 
     if (!string.IsNullOrWhiteSpace(command.MsgId))
-      queryParts.Add(("msg_id", command.MsgId.Trim()));
+      queryParameters.Add(("msg_id", command.MsgId.Trim()));
 
     if (!string.IsNullOrWhiteSpace(command.TxnId))
-      queryParts.Add(("txn_id", command.TxnId.Trim()));
-
-    var query = BuildQuery(queryParts.ToArray());
-
-    using var request = new HttpRequestMessage(HttpMethod.Get, $"/query_sms.php?{query}");
-    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
+      queryParameters.Add(("txn_id", command.TxnId.Trim()));
 
     try
     {
-      using var response = await _httpClient.SendAsync(request, cancellationToken);
-      var payload = await ReadJsonAsync(response, cancellationToken);
-      var error = ReadError(payload);
+      using var request = new HttpRequestMessage(HttpMethod.Get, "/query_sms.php");
+      signer.Apply(
+        request,
+        queryParameters,
+        _options,
+        new OsonRequestSigningContext
+        {
+          IsSendRequest = false,
+          VerifyCommand = command
+        });
+      request.RequestUri = new Uri($"/query_sms.php?{BuildQuery(queryParameters)}", UriKind.Relative);
+
+      using var timeoutCts = CreateTimeoutCancellationSource(cancellationToken);
+      using var response = await _httpClient.SendAsync(request, timeoutCts.Token);
+      var payload = await ReadJsonAsync(response, timeoutCts.Token);
+      var providerCode = ReadErrorCode(payload);
+      var providerMessage = ReadErrorMessage(payload);
+      var mappedError = OsonSmsErrorMapper.Map(response.StatusCode, providerCode, providerMessage);
+      var isSuccess = response.IsSuccessStatusCode && string.IsNullOrWhiteSpace(providerCode);
 
       return new SmsDeliveryVerificationResult
       {
-        IsSuccess = response.IsSuccessStatusCode,
+        IsSuccess = isSuccess,
         StatusCode = (int)response.StatusCode,
         DeliveryStatus = ReadString(payload, "status"),
-        ErrorCode = error.Code,
-        ErrorMessage = error.Message
+        ErrorCode = isSuccess ? null : mappedError.ErrorCode,
+        ErrorMessage = isSuccess ? null : mappedError.ErrorMessage
+      };
+    }
+    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+      return new SmsDeliveryVerificationResult
+      {
+        IsSuccess = false,
+        StatusCode = 0,
+        ErrorCode = "transport_error",
+        ErrorMessage = "SMS provider timeout."
       };
     }
     catch (OperationCanceledException)
@@ -146,8 +291,9 @@ public sealed class OsonSmsSender : ISmsSender
       return new SmsDeliveryVerificationResult
       {
         IsSuccess = false,
+        StatusCode = 0,
         ErrorCode = "transport_error",
-        ErrorMessage = exception.Message
+        ErrorMessage = "SMS provider transport error."
       };
     }
   }
@@ -156,48 +302,105 @@ public sealed class OsonSmsSender : ISmsSender
     HttpResponseMessage response,
     CancellationToken cancellationToken)
   {
-    var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
-    if (!contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+    var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+    if (string.IsNullOrWhiteSpace(raw))
       return null;
 
-    await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-    using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-    return document.RootElement.Clone();
+    try
+    {
+      using var document = JsonDocument.Parse(raw);
+      return document.RootElement.Clone();
+    }
+    catch (JsonException)
+    {
+      return null;
+    }
   }
 
-  private static string BuildQuery(params (string Key, string Value)[] pairs)
+  private static string BuildQuery(IEnumerable<(string Key, string Value)> pairs)
   {
     return string.Join(
       "&",
       pairs.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
   }
 
-  private static string NormalizePhoneForProvider(string phoneNumber)
+  private bool TryResolveSigner(out IOsonSmsRequestSigner signer, out SmsSendResult errorResult)
   {
-    var digits = string.IsNullOrWhiteSpace(phoneNumber)
-      ? string.Empty
-      : new string(phoneNumber.Where(char.IsDigit).ToArray());
+    if (!TryParseAuthMode(_options.AuthMode, out var mode))
+    {
+      signer = default!;
+      errorResult = new SmsSendResult
+      {
+        IsSuccess = false,
+        StatusCode = 0,
+        ErrorCode = "config_invalid",
+        ErrorMessage = $"Unsupported OsonSms.AuthMode '{_options.AuthMode}'. Allowed: Bearer, Hash."
+      };
+      return false;
+    }
 
-    if (digits.StartsWith("992", StringComparison.Ordinal) && digits.Length == 12)
-      return digits;
+    if (_signers.TryGetValue(mode, out signer!))
+    {
+      errorResult = new SmsSendResult
+      {
+        IsSuccess = true
+      };
+      return true;
+    }
 
-    if (digits.Length == 9)
-      return $"992{digits}";
-
-    return digits;
+    errorResult = new SmsSendResult
+    {
+      IsSuccess = false,
+      StatusCode = 0,
+      ErrorCode = "config_invalid",
+      ErrorMessage = $"Signer for OsonSms.AuthMode '{mode}' is not registered."
+    };
+    return false;
   }
 
-  private static (string? Code, string? Message) ReadError(JsonElement? payload)
+  private static bool TryParseAuthMode(string? rawMode, out OsonSmsAuthMode mode)
+  {
+    if (Enum.TryParse<OsonSmsAuthMode>(rawMode?.Trim(), ignoreCase: true, out mode))
+      return true;
+
+    mode = OsonSmsAuthMode.Bearer;
+    return false;
+  }
+
+  private CancellationTokenSource CreateTimeoutCancellationSource(CancellationToken cancellationToken)
+  {
+    var timeoutSeconds = Math.Max(5, _options.TimeoutSeconds);
+    var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+    return cts;
+  }
+
+  private static TimeSpan CalculateBackoff(int attempt, int backoffSeconds)
+  {
+    var multiplier = Math.Pow(2, attempt);
+    return TimeSpan.FromSeconds(backoffSeconds * multiplier);
+  }
+
+  private static string? ReadErrorCode(JsonElement? payload)
   {
     if (payload is null || payload.Value.ValueKind != JsonValueKind.Object)
-      return (null, null);
+      return null;
 
     if (!payload.Value.TryGetProperty("error", out var errorNode))
-      return (null, null);
+      return null;
 
-    return (
-      ReadString(errorNode, "code"),
-      ReadString(errorNode, "msg"));
+    return ReadString(errorNode, "code");
+  }
+
+  private static string? ReadErrorMessage(JsonElement? payload)
+  {
+    if (payload is null || payload.Value.ValueKind != JsonValueKind.Object)
+      return null;
+
+    if (!payload.Value.TryGetProperty("error", out var errorNode))
+      return null;
+
+    return ReadString(errorNode, "msg");
   }
 
   private static string? ReadString(JsonElement? payload, string propertyName)

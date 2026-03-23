@@ -39,6 +39,10 @@ public static class DependencyInjection
       options.BaseUrl = config[$"{DushanbeCityPaymentOptions.SectionName}:BaseUrl"] ?? options.BaseUrl;
       options.ProviderName = config[$"{DushanbeCityPaymentOptions.SectionName}:ProviderName"] ?? options.ProviderName;
       options.Currency = config[$"{DushanbeCityPaymentOptions.SectionName}:Currency"] ?? options.Currency;
+      options.CreateOrderOnlyAfterAdminPaymentConfirmation = !bool.TryParse(
+        config[$"{DushanbeCityPaymentOptions.SectionName}:CreateOrderOnlyAfterAdminPaymentConfirmation"],
+        out var createOrderOnlyAfterAdminPaymentConfirmation)
+        || createOrderOnlyAfterAdminPaymentConfirmation;
       options.PendingConfirmationTimeoutMinutes = int.TryParse(
         config[$"{DushanbeCityPaymentOptions.SectionName}:PendingConfirmationTimeoutMinutes"],
         out var pendingConfirmationTimeoutMinutes)
@@ -97,15 +101,57 @@ public static class DependencyInjection
     services.Configure<OsonSmsOptions>(options =>
     {
       options.ApiBaseUrl = config[$"{OsonSmsOptions.SectionName}:ApiBaseUrl"] ?? "https://api.osonsms.com";
+      options.AuthMode = config[$"{OsonSmsOptions.SectionName}:AuthMode"] ?? "Bearer";
       options.Login = config[$"{OsonSmsOptions.SectionName}:Login"] ?? string.Empty;
       options.Token = config[$"{OsonSmsOptions.SectionName}:Token"] ?? string.Empty;
       options.Sender = config[$"{OsonSmsOptions.SectionName}:Sender"] ?? string.Empty;
+      options.PassSaltHash = config[$"{OsonSmsOptions.SectionName}:PassSaltHash"] ?? string.Empty;
+      options.Delimiter = config[$"{OsonSmsOptions.SectionName}:Delimiter"] ?? ";";
+      options.T = config[$"{OsonSmsOptions.SectionName}:T"] ?? "23";
       options.IsConfidential = bool.TryParse(config[$"{OsonSmsOptions.SectionName}:IsConfidential"], out var isConfidential)
         && isConfidential;
       options.UseStub = !bool.TryParse(config[$"{OsonSmsOptions.SectionName}:UseStub"], out var useStub) || useStub;
       options.TimeoutSeconds = int.TryParse(config[$"{OsonSmsOptions.SectionName}:TimeoutSeconds"], out var timeoutSeconds)
         ? timeoutSeconds
         : 20;
+      options.MaxRetryAttempts = int.TryParse(config[$"{OsonSmsOptions.SectionName}:MaxRetryAttempts"], out var maxRetryAttempts)
+        ? maxRetryAttempts
+        : 2;
+      options.RetryBackoffSeconds = int.TryParse(config[$"{OsonSmsOptions.SectionName}:RetryBackoffSeconds"], out var retryBackoffSeconds)
+        ? retryBackoffSeconds
+        : 2;
+    });
+    services.Configure<SmsOutboxOptions>(options =>
+    {
+      options.Enabled = !bool.TryParse(config[$"{SmsOutboxOptions.SectionName}:Enabled"], out var enabled) || enabled;
+      options.BatchSize = int.TryParse(config[$"{SmsOutboxOptions.SectionName}:BatchSize"], out var batchSize)
+        ? batchSize
+        : 50;
+      options.PollIntervalSeconds = int.TryParse(config[$"{SmsOutboxOptions.SectionName}:PollIntervalSeconds"], out var pollIntervalSeconds)
+        ? pollIntervalSeconds
+        : 15;
+      options.MaxAttempts = int.TryParse(config[$"{SmsOutboxOptions.SectionName}:MaxAttempts"], out var maxAttempts)
+        ? maxAttempts
+        : 5;
+      options.RetryBackoffSeconds = int.TryParse(config[$"{SmsOutboxOptions.SectionName}:RetryBackoffSeconds"], out var retryBackoffSeconds)
+        ? retryBackoffSeconds
+        : 30;
+      options.RetentionDays = int.TryParse(config[$"{SmsOutboxOptions.SectionName}:RetentionDays"], out var retentionDays)
+        ? retentionDays
+        : 7;
+    });
+    services.Configure<SmsTemplatesOptions>(options =>
+    {
+      options.Provider = config[$"{SmsTemplatesOptions.SectionName}:Provider"] ?? "OsonSms";
+      options.PaymentConfirmed = config[$"{SmsTemplatesOptions.SectionName}:PaymentConfirmed"] ?? options.PaymentConfirmed;
+
+      var section = config.GetSection($"{SmsTemplatesOptions.SectionName}:OrderStatus");
+      options.OrderStatus = section.GetChildren()
+        .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+        .ToDictionary(
+          x => x.Key,
+          x => x.Value ?? string.Empty,
+          StringComparer.OrdinalIgnoreCase);
     });
     services.AddHttpClient<OsonSmsSender>((provider, client) =>
     {
@@ -113,6 +159,8 @@ public static class DependencyInjection
       client.BaseAddress = new Uri(smsOptions.ApiBaseUrl);
       client.Timeout = TimeSpan.FromSeconds(Math.Max(5, smsOptions.TimeoutSeconds));
     });
+    services.AddSingleton<IOsonSmsRequestSigner, OsonBearerSigner>();
+    services.AddSingleton<IOsonSmsRequestSigner, OsonHashSigner>();
     services.AddScoped<StubSmsSender>();
     services.AddScoped<ISmsSender>(provider =>
     {
@@ -123,6 +171,8 @@ public static class DependencyInjection
       return provider.GetRequiredService<OsonSmsSender>();
     });
     services.AddHostedService<SmsVerificationCleanupHostedService>();
+    services.AddHostedService<OrderStatusSmsEnqueueHostedService>();
+    services.AddHostedService<SmsOutboxDispatcherHostedService>();
     services.AddHostedService<ManualPaymentTimeoutHostedService>();
 
     return services;

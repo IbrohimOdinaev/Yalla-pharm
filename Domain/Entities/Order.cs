@@ -235,6 +235,36 @@ public class Order
             PaymentExpiresAtUtc = expiredAtUtc;
     }
 
+    public void MarkManualPaymentConfirmed(
+      decimal amount,
+      string currency,
+      string provider,
+      string receiverAccount,
+      string? paymentUrl,
+      string? paymentComment,
+      Guid confirmedByUserId,
+      DateTime confirmedAtUtc)
+    {
+        if (amount <= 0)
+            throw new DomainArgumentException("Payment amount must be greater than zero.");
+
+        if (confirmedByUserId == Guid.Empty)
+            throw new DomainArgumentException("ConfirmedByUserId can't be empty.");
+
+        PaymentAmount = amount;
+        PaymentCurrency = NormalizeRequiredString(currency, 8, "PaymentCurrency").ToUpperInvariant();
+        PaymentProvider = NormalizeRequiredString(provider, 64, "PaymentProvider");
+        PaymentReceiverAccount = NormalizeRequiredString(receiverAccount, 128, "PaymentReceiverAccount");
+        PaymentUrl = NormalizeOptionalString(paymentUrl, 2048, "PaymentUrl");
+        PaymentComment = NormalizeOptionalString(paymentComment, 512, "PaymentComment");
+        PaymentState = OrderPaymentState.Confirmed;
+        PaymentExpiresAtUtc = null;
+        PaymentConfirmedByUserId = confirmedByUserId;
+        PaymentConfirmedAtUtc = confirmedAtUtc.Kind == DateTimeKind.Utc
+          ? confirmedAtUtc
+          : confirmedAtUtc.ToUniversalTime();
+    }
+
     private static DateTime GetUtcPlus5NowToSeconds()
     {
         var now = DateTimeOffset.UtcNow.ToOffset(UtcPlus5Offset);

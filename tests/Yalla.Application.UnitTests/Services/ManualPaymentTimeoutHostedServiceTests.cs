@@ -83,6 +83,7 @@ public sealed class ManualPaymentTimeoutHostedServiceTests
       provider.GetRequiredService<IServiceScopeFactory>(),
       Options.Create(new DushanbeCityPaymentOptions
       {
+        CreateOrderOnlyAfterAdminPaymentConfirmation = false,
         CleanupIntervalSeconds = 30
       }),
       NullLogger<ManualPaymentTimeoutHostedService>.Instance);
@@ -168,6 +169,7 @@ public sealed class ManualPaymentTimeoutHostedServiceTests
       provider.GetRequiredService<IServiceScopeFactory>(),
       Options.Create(new DushanbeCityPaymentOptions
       {
+        CreateOrderOnlyAfterAdminPaymentConfirmation = false,
         CleanupIntervalSeconds = 30
       }),
       NullLogger<ManualPaymentTimeoutHostedService>.Instance);

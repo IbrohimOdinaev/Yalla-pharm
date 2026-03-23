@@ -635,6 +635,23 @@ public sealed class ClientService : IClientService
         if (request.PharmacyId == Guid.Empty)
             throw new DomainArgumentException("PharmacyId can't be empty.");
 
+        var normalizedIdempotencyKey = (request.IdempotencyKey ?? string.Empty).Trim();
+
+        if (_paymentOptions.CreateOrderOnlyAfterAdminPaymentConfirmation)
+        {
+            if (normalizedIdempotencyKey.Length == 0)
+                throw new DomainArgumentException("IdempotencyKey can't be null or whitespace.");
+
+            var existingIntent = await _dbContext.PaymentIntents
+              .AsNoTracking()
+              .FirstOrDefaultAsync(
+                x => x.ClientId == request.ClientId && x.IdempotencyKey == normalizedIdempotencyKey,
+                cancellationToken);
+
+            if (existingIntent is not null)
+                return ToCheckoutPaymentIntentResponse(existingIntent);
+        }
+
         var client = await _dbContext.Clients
           .AsTracking()
           .Include(x => x.BasketPositions)
@@ -709,6 +726,18 @@ public sealed class ClientService : IClientService
         if (estimatedCost <= 0m)
             throw new InvalidOperationException("Checkout total amount must be greater than zero.");
 
+        if (_paymentOptions.CreateOrderOnlyAfterAdminPaymentConfirmation)
+        {
+            return await CheckoutWithPaymentIntentAsync(
+              request,
+              client,
+              effectiveDeliveryAddress,
+              evaluation,
+              acceptedPositions,
+              estimatedCost,
+              cancellationToken);
+        }
+
         var orderId = Guid.NewGuid();
         var paymentResponse = await _paymentService.PayForOrderAsync(new PayForOrderRequest
         {
@@ -719,7 +748,7 @@ public sealed class ClientService : IClientService
             Amount = estimatedCost,
             Currency = _paymentOptions.Currency,
             Description = $"Checkout for order '{orderId}'.",
-            IdempotencyKey = request.IdempotencyKey
+            IdempotencyKey = normalizedIdempotencyKey
         }, cancellationToken);
 
         if (!paymentResponse.IsPaid)
@@ -780,7 +809,7 @@ public sealed class ClientService : IClientService
                 PharmacyId = request.PharmacyId,
                 IsPickup = request.IsPickup,
                 DeliveryAddress = effectiveDeliveryAddress,
-                IdempotencyKey = request.IdempotencyKey,
+                IdempotencyKey = normalizedIdempotencyKey,
                 IgnoredPositionIds = request.IgnoredPositionIds ?? []
             };
 
@@ -814,6 +843,121 @@ public sealed class ClientService : IClientService
         }
 
         return order!.ToResponse(paymentResponse.PaymentUrl);
+    }
+
+    private async Task<CheckoutBasketResponse> CheckoutWithPaymentIntentAsync(
+      CheckoutBasketRequest request,
+      Client client,
+      string effectiveDeliveryAddress,
+      CheckoutEvaluation evaluation,
+      IReadOnlyCollection<BasketPosition> acceptedPositions,
+      decimal estimatedCost,
+      CancellationToken cancellationToken)
+    {
+        var normalizedIdempotencyKey = (request.IdempotencyKey ?? string.Empty).Trim();
+        if (normalizedIdempotencyKey.Length == 0)
+            throw new DomainArgumentException("IdempotencyKey can't be null or whitespace.");
+
+        var existingIntent = await _dbContext.PaymentIntents
+          .AsNoTracking()
+          .FirstOrDefaultAsync(
+            x => x.ClientId == request.ClientId && x.IdempotencyKey == normalizedIdempotencyKey,
+            cancellationToken);
+
+        if (existingIntent is not null)
+            return ToCheckoutPaymentIntentResponse(existingIntent);
+
+        var reservedOrderId = Guid.NewGuid();
+        var paymentResponse = await _paymentService.PayForOrderAsync(new PayForOrderRequest
+        {
+            OrderId = reservedOrderId,
+            ClientId = request.ClientId,
+            ClientPhoneNumber = client.PhoneNumber,
+            PharmacyId = request.PharmacyId,
+            Amount = estimatedCost,
+            Currency = _paymentOptions.Currency,
+            Description = $"Checkout payment intent for reserved order '{reservedOrderId}'.",
+            IdempotencyKey = normalizedIdempotencyKey
+        }, cancellationToken);
+
+        if (!paymentResponse.IsPaid)
+        {
+            var reason = string.IsNullOrWhiteSpace(paymentResponse.FailureReason)
+              ? paymentResponse.Status
+              : paymentResponse.FailureReason;
+
+            throw new InvalidOperationException(
+              $"Payment initialization failed for checkout. Reason: {reason}.");
+        }
+
+        var snapshotPositions = evaluation.Positions
+          .Where(x => !x.IsRejected)
+          .Select(x => new PaymentIntentPosition(
+            medicineId: x.BasketPosition.MedicineId,
+            offerPharmacyId: request.PharmacyId,
+            offerPrice: x.Price ?? 0m,
+            quantity: x.BasketPosition.Quantity))
+          .ToList();
+
+        if (snapshotPositions.Count == 0)
+            throw new InvalidOperationException("At least one accepted position is required to create payment intent.");
+
+        if (snapshotPositions.Any(x => x.OfferPrice <= 0m))
+            throw new InvalidOperationException("Payment intent snapshot contains invalid offer price.");
+
+        var nowUtc = DateTime.UtcNow;
+        var paymentIntent = new PaymentIntent(
+          reservedOrderId: reservedOrderId,
+          clientId: request.ClientId,
+          clientPhoneNumber: client.PhoneNumber,
+          pharmacyId: request.PharmacyId,
+          isPickup: request.IsPickup,
+          deliveryAddress: effectiveDeliveryAddress,
+          amount: estimatedCost,
+          currency: _paymentOptions.Currency,
+          paymentProvider: string.IsNullOrWhiteSpace(paymentResponse.Provider)
+            ? _paymentOptions.ProviderName
+            : paymentResponse.Provider,
+          paymentReceiverAccount: paymentResponse.ReceiverAccount ?? string.Empty,
+          paymentUrl: paymentResponse.PaymentUrl,
+          paymentComment: paymentResponse.PaymentComment,
+          idempotencyKey: normalizedIdempotencyKey,
+          positions: snapshotPositions,
+          createdAtUtc: nowUtc);
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            foreach (var basketPosition in acceptedPositions)
+                client.RemoveBasketPosition(basketPosition);
+
+            _dbContext.BasketPositions.RemoveRange(acceptedPositions);
+            _dbContext.PaymentIntents.Add(paymentIntent);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            var concurrentIntent = await _dbContext.PaymentIntents
+              .AsNoTracking()
+              .FirstOrDefaultAsync(
+                x => x.ClientId == request.ClientId && x.IdempotencyKey == normalizedIdempotencyKey,
+                cancellationToken);
+
+            if (concurrentIntent is not null)
+                return ToCheckoutPaymentIntentResponse(concurrentIntent);
+
+            throw;
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        return ToCheckoutPaymentIntentResponse(paymentIntent);
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
@@ -900,6 +1044,31 @@ public sealed class ClientService : IClientService
     {
         return await _dbContext.BasketPositions
           .CountAsync(x => x.ClientId == clientId, cancellationToken);
+    }
+
+    private static CheckoutBasketResponse ToCheckoutPaymentIntentResponse(PaymentIntent paymentIntent)
+    {
+        return new CheckoutBasketResponse
+        {
+            ClientId = paymentIntent.ClientId,
+            PaymentIntentId = paymentIntent.Id,
+            ReservedOrderId = paymentIntent.ReservedOrderId,
+            Currency = paymentIntent.Currency,
+            CreatedAtUtc = paymentIntent.CreatedAtUtc,
+            PaymentIntentState = paymentIntent.State,
+            OrderId = paymentIntent.ReservedOrderId,
+            OrderPlacedAt = paymentIntent.CreatedAtUtc,
+            IsPickup = paymentIntent.IsPickup,
+            DeliveryAddress = paymentIntent.DeliveryAddress,
+            Status = Status.New,
+            Cost = paymentIntent.Amount,
+            ReturnCost = 0m,
+            PaymentState = paymentIntent.State == PaymentIntentState.Confirmed
+              ? OrderPaymentState.Confirmed
+              : OrderPaymentState.PendingManualConfirmation,
+            PaymentExpiresAtUtc = null,
+            PaymentUrl = paymentIntent.PaymentUrl
+        };
     }
 
     private static void ValidateIgnoredPositionIds(

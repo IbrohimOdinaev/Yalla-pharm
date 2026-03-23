@@ -14,10 +14,12 @@ public static class DependencyInjection
     services.AddScoped<IPaymentService, StubPaymentService>();
     services.AddScoped<IAuthService, AuthService>();
     services.AddScoped<IClientService, ClientService>();
+    services.AddScoped<IPaymentIntentService, PaymentIntentService>();
     services.AddScoped<IMedicineService, MedicineService>();
     services.AddScoped<IOrderService, OrderService>();
     services.AddScoped<IRefundRequestService, RefundRequestService>();
     services.AddScoped<ISmsService, SmsService>();
+    services.AddScoped<IOrderStatusSmsService, OrderStatusSmsService>();
     services.AddScoped<IPharmacyWorkerService, PharmacyWorkerService>();
     services.AddScoped<IUserReadService, UserReadService>();
     services.AddTransient(typeof(IValidator<>), typeof(RequestDtoFluentValidator<>));

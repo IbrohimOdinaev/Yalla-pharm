@@ -17,9 +17,12 @@ public interface IAppDbContext
     DbSet<BasketPosition> BasketPositions { get; }
     DbSet<OrderPosition> OrderPositions { get; }
     DbSet<PaymentHistory> PaymentHistories { get; }
+    DbSet<PaymentIntent> PaymentIntents { get; }
+    DbSet<PaymentIntentPosition> PaymentIntentPositions { get; }
     DbSet<CheckoutRequest> CheckoutRequests { get; }
     DbSet<RefundRequest> RefundRequests { get; }
     DbSet<SmsVerificationSession> SmsVerificationSessions { get; }
+    DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
     DbSet<User> Users { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

@@ -29,6 +29,14 @@ const ROLE = {
   SUPER_ADMIN: "SuperAdmin"
 };
 
+const PAYMENT_INTENT_STATE = {
+  CREATED: 0,
+  AWAITING_ADMIN_CONFIRMATION: 1,
+  CONFIRMED: 2,
+  REJECTED: 3,
+  NEEDS_RESOLUTION: 4
+};
+
 const SUPERADMIN_INTERFACE = {
   PHARMACY_ADMIN: "pharmacy-admin",
   MEDICINE: "medicine",
@@ -198,14 +206,19 @@ function normalizeRegistrationVerificationState(rawValue) {
 function normalizePaymentAwaitState(rawValue) {
   if (!rawValue || typeof rawValue !== "object") return null;
 
-  const orderId = String(rawValue.orderId || "").trim();
-  if (!orderId) return null;
+  const paymentIntentId = String(rawValue.paymentIntentId || "").trim();
+  const reservedOrderId = String(rawValue.reservedOrderId || rawValue.orderId || "").trim();
+  if (!paymentIntentId && !reservedOrderId) return null;
 
   return {
-    orderId,
+    paymentIntentId,
+    reservedOrderId,
+    orderId: reservedOrderId,
     paymentUrl: String(rawValue.paymentUrl || "").trim(),
     paymentExpiresAtUtc: String(rawValue.paymentExpiresAtUtc || "").trim(),
-    createdAtUtc: String(rawValue.createdAtUtc || new Date().toISOString())
+    createdAtUtc: String(rawValue.createdAtUtc || new Date().toISOString()),
+    amount: Number(rawValue.amount || 0),
+    currency: String(rawValue.currency || "TJS").trim() || "TJS"
   };
 }
 
@@ -544,12 +557,11 @@ async function handleRouteChange() {
     !paymentAwaitEntryRedirectHandled
     && state.token
     && getRole() === ROLE.CLIENT
-    && getPaymentAwaitSecondsLeft() > 0
     && state.route.name !== "profile"
     && state.route.name !== "payment-await")
   {
     paymentAwaitEntryRedirectHandled = true;
-    showNotice("Возврат после оплаты: открылся профиль с текущим заказом и таймером подтверждения.", "success");
+    showNotice("Возврат после оплаты: открылся профиль с текущим заказом, ожидающим подтверждения SuperAdmin.", "success");
     setRoute("/profile");
     return;
   }
@@ -624,13 +636,7 @@ function syncRegisterVerifyCountdownTimer() {
 }
 
 function getPaymentAwaitSecondsLeft() {
-  const raw = state.paymentAwait?.paymentExpiresAtUtc;
-  if (!raw) return 0;
-
-  const expiresAt = Date.parse(raw);
-  if (!Number.isFinite(expiresAt)) return 0;
-
-  return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  return 0;
 }
 
 function formatSecondsToMinuteClock(totalSeconds) {
@@ -641,21 +647,11 @@ function formatSecondsToMinuteClock(totalSeconds) {
 }
 
 function getPaymentAwaitStatusCountdownText(totalSeconds) {
-  const secondsLeft = Math.max(0, Math.floor(Number(totalSeconds || 0)));
-  if (secondsLeft <= 0) {
-    return "Время ожидания оплаты истекло. Проверяем финальный статус...";
-  }
-
-  return `До автозавершения: ${formatSecondsToMinuteClock(secondsLeft)}`;
+  return "Ожидаем ручное подтверждение оплаты SuperAdmin.";
 }
 
 function getPaymentAwaitProfileCountdownText(totalSeconds) {
-  const secondsLeft = Math.max(0, Math.floor(Number(totalSeconds || 0)));
-  if (secondsLeft <= 0) {
-    return "Время оплаты истекло. Проверяем финальный статус...";
-  }
-
-  return `До автоотмены: ${formatSecondsToMinuteClock(secondsLeft)}`;
+  return "Оплата отправлена, ожидаем подтверждение SuperAdmin.";
 }
 
 function updatePaymentAwaitCountdownDisplays() {
@@ -673,7 +669,7 @@ function updatePaymentAwaitCountdownDisplays() {
   const pendingOrderId = String(state.paymentAwait?.orderId || "").trim();
   if (!pendingOrderId) return;
 
-  const orderTimerText = formatSecondsToMinuteClock(secondsLeft);
+  const orderTimerText = "Ожидание подтверждения";
   app.querySelectorAll("[data-payment-await-order-timer]").forEach(node => {
     const timerOrderId = String(node.getAttribute("data-payment-await-order-timer") || "").trim();
     if (timerOrderId !== pendingOrderId) return;
@@ -696,7 +692,7 @@ function refreshPaymentAwaitStatusRegions() {
 
 function syncPaymentAwaitPolling() {
   const shouldRun = (state.route.name === "payment-await" || state.route.name === "profile")
-    && Boolean(state.paymentAwait?.orderId)
+    && Boolean(state.paymentAwait?.paymentIntentId || state.paymentAwait?.orderId)
     && Boolean(state.token)
     && getRole() === ROLE.CLIENT;
 
@@ -734,40 +730,57 @@ function syncPaymentAwaitPolling() {
 async function pollPaymentAwaitStatus() {
   if (paymentAwaitPollInProgress) return;
   if (state.route.name !== "payment-await" && state.route.name !== "profile") return;
-  if (!state.paymentAwait?.orderId) return;
+  if (!state.paymentAwait?.paymentIntentId && !state.paymentAwait?.orderId) return;
   if (!state.token || getRole() !== ROLE.CLIENT) return;
 
   paymentAwaitPollInProgress = true;
   try {
     const pendingState = state.paymentAwait;
-    const historyResponse = await apiFetch("/api/orders/client-history");
-    const orders = Array.isArray(historyResponse?.orders) ? historyResponse.orders : [];
-    const currentOrder = orders.find(order => String(order?.orderId || "").trim() === pendingState.orderId);
 
-    if (currentOrder) {
-      const paymentState = formatPaymentStateLabel(currentOrder.paymentState);
-      const orderStatus = formatStatusLabel(currentOrder.status);
-      const isSuccessfulPostPaymentStatus = orderStatus === "UnderReview"
-        || orderStatus === "Preparing"
-        || orderStatus === "Ready"
-        || orderStatus === "OnTheWay"
-        || orderStatus === "Delivered"
-        || orderStatus === "Returned";
+    if (pendingState?.paymentIntentId) {
+      const paymentIntentResponse = await apiFetch(`/api/clients/payment-intents/${pendingState.paymentIntentId}`);
+      const paymentIntent = paymentIntentResponse?.paymentIntent || null;
+      const paymentIntentState = Number(paymentIntent?.state ?? NaN);
 
-      if (paymentState === "Confirmed" || isSuccessfulPostPaymentStatus) {
-        await finalizePaymentAwaitSuccess(currentOrder);
+      if (paymentIntentState === PAYMENT_INTENT_STATE.CONFIRMED && paymentIntentResponse?.orderId) {
+        await finalizePaymentAwaitSuccess({ orderId: paymentIntentResponse.orderId });
         return;
       }
 
-      if (paymentState === "Expired" || orderStatus === "Cancelled") {
-        await finalizePaymentAwaitFailure();
+      if (paymentIntentState === PAYMENT_INTENT_STATE.REJECTED) {
+        await finalizePaymentAwaitFailure("Оплата отклонена SuperAdmin.");
         return;
       }
-    }
 
-    if (getPaymentAwaitSecondsLeft() <= 0) {
-      await finalizePaymentAwaitFailure();
-      return;
+      if (paymentIntentState === PAYMENT_INTENT_STATE.NEEDS_RESOLUTION) {
+        await finalizePaymentAwaitFailure("Оплату нельзя автоматически завершить: нужна ручная проверка SuperAdmin.");
+        return;
+      }
+    } else {
+      const historyResponse = await apiFetch("/api/orders/client-history");
+      const orders = Array.isArray(historyResponse?.orders) ? historyResponse.orders : [];
+      const currentOrder = orders.find(order => String(order?.orderId || "").trim() === pendingState.orderId);
+
+      if (currentOrder) {
+        const paymentState = formatPaymentStateLabel(currentOrder.paymentState);
+        const orderStatus = formatStatusLabel(currentOrder.status);
+        const isSuccessfulPostPaymentStatus = orderStatus === "UnderReview"
+          || orderStatus === "Preparing"
+          || orderStatus === "Ready"
+          || orderStatus === "OnTheWay"
+          || orderStatus === "Delivered"
+          || orderStatus === "Returned";
+
+        if (paymentState === "Confirmed" || isSuccessfulPostPaymentStatus) {
+          await finalizePaymentAwaitSuccess(currentOrder);
+          return;
+        }
+
+        if (paymentState === "Expired" || orderStatus === "Cancelled") {
+          await finalizePaymentAwaitFailure("Оплата не подтверждена.");
+          return;
+        }
+      }
     }
 
     refreshPaymentAwaitStatusRegions();
@@ -805,7 +818,7 @@ async function finalizePaymentAwaitSuccess(order) {
   setRoute("/profile");
 }
 
-async function finalizePaymentAwaitFailure() {
+async function finalizePaymentAwaitFailure(reason = "Оплата не подтверждена.") {
   const orderId = String(state.paymentAwait?.orderId || "").trim();
   const shortOrderId = orderId.slice(0, 8);
 
@@ -821,8 +834,8 @@ async function finalizePaymentAwaitFailure() {
 
   showNotice(
     shortOrderId
-      ? `Не получилось оформить заказ ${shortOrderId}: время оплаты истекло.`
-      : "Не получилось оформить заказ: время оплаты истекло.",
+      ? `Не получилось оформить заказ ${shortOrderId}: ${reason}`
+      : `Не получилось оформить заказ: ${reason}`,
     "warning"
   );
 
@@ -1497,6 +1510,18 @@ async function handleClick(event) {
       return;
     }
 
+    if (action === "payment-intent-confirm") {
+      const confirmed = window.confirm("Подтвердить оплату и создать заказ?");
+      if (!confirmed) return;
+      await confirmPaymentIntentAsSuperAdmin(actionTarget.dataset.paymentIntentId);
+      return;
+    }
+
+    if (action === "payment-intent-reject") {
+      await rejectPaymentIntentAsSuperAdmin(actionTarget.dataset.paymentIntentId);
+      return;
+    }
+
     if (action === "client-delete-by-id") {
       const clientId = String(actionTarget.dataset.clientId || "").trim();
       await deleteClientAsSuperAdminById(clientId);
@@ -2128,19 +2153,35 @@ async function checkoutBasket(formData) {
   clearGuestBasket();
   setGuestCheckoutIntent(false);
 
-  const shortOrderId = String(checkoutResponse.orderId || "").slice(0, 8);
+  const reservedOrderId = String(checkoutResponse.reservedOrderId || checkoutResponse.orderId || "").trim();
+  const paymentIntentId = String(checkoutResponse.paymentIntentId || "").trim();
+  const shortOrderId = reservedOrderId.slice(0, 8);
   const paymentUrl = String(checkoutResponse.paymentUrl || "").trim();
 
   if (paymentUrl) {
     state.paymentAwait = normalizePaymentAwaitState({
-      orderId: String(checkoutResponse.orderId || "").trim(),
+      paymentIntentId,
+      reservedOrderId,
       paymentUrl,
       paymentExpiresAtUtc: String(checkoutResponse.paymentExpiresAtUtc || ""),
-      createdAtUtc: new Date().toISOString()
+      createdAtUtc: new Date().toISOString(),
+      amount: Number(checkoutResponse.cost || checkoutResponse.amount || 0),
+      currency: String(checkoutResponse.currency || "TJS")
     });
     paymentAwaitEntryRedirectHandled = false;
     persistSession();
 
+    if (!confirmExternalPaymentRedirect(paymentUrl)) {
+      showNotice("Редирект на внешний сайт оплаты отменен. Вы можете перейти к оплате позже из профиля.", "warning");
+      await Promise.all([
+        fetchBasket({ silent: true }),
+        fetchProfile({ silent: true })
+      ]);
+      setRoute("/profile");
+      return;
+    }
+
+    showNotice("Переходим на сайт оплаты DushanbeCity...", "success");
     window.location.assign(paymentUrl);
     return;
   }
@@ -2164,6 +2205,15 @@ function createCheckoutIdempotencyKey() {
   }
 
   return `checkout-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function confirmExternalPaymentRedirect(paymentUrl) {
+  const safeUrl = String(paymentUrl || "").trim();
+  if (!safeUrl) return false;
+
+  return window.confirm(
+    "Вы будете перенаправлены на внешний сайт оплаты DushanbeCity (QR). Продолжить переход?"
+  );
 }
 
 function formatCheckoutPreviewMessage(preview) {
@@ -2571,6 +2621,40 @@ async function performSuperAdminOrderNextStatus(orderId, currentStatus = "") {
     : "Заказ переведен в следующий статус.";
 
   showNotice(successMessage, "success");
+  await fetchWorkspace();
+}
+
+async function confirmPaymentIntentAsSuperAdmin(paymentIntentId) {
+  const normalizedId = String(paymentIntentId || "").trim();
+  if (!normalizedId) return;
+
+  await withLoading("Подтверждаем оплату и создаем заказ...", () => apiFetch(`/api/superadmin/payment-intents/${normalizedId}/confirm`, {
+    method: "POST"
+  }));
+
+  showNotice("Оплата подтверждена. Заказ создан или уже был создан.", "success");
+  await fetchWorkspace();
+}
+
+async function rejectPaymentIntentAsSuperAdmin(paymentIntentId) {
+  const normalizedId = String(paymentIntentId || "").trim();
+  if (!normalizedId) return;
+
+  const reason = window.prompt("Укажите причину отклонения оплаты:", "Оплата не подтверждена");
+  if (reason === null) return;
+
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) {
+    showNotice("Причина отклонения обязательна.", "warning");
+    return;
+  }
+
+  await withLoading("Отклоняем оплату...", () => apiFetch(`/api/superadmin/payment-intents/${normalizedId}/reject`, {
+    method: "POST",
+    body: { reason: normalizedReason }
+  }));
+
+  showNotice("Оплата отклонена.", "success");
   await fetchWorkspace();
 }
 
@@ -3530,12 +3614,13 @@ async function fetchSuperAdminWorkspace(options = {}) {
     ordersParams.set("status", state.superAdminOrderStatusFilter);
   }
 
-  const [adminsResponse, pharmaciesResponse, ordersResponse, refundsResponse, catalogResponse, clientsResponse] = await withLoading(
+  const [adminsResponse, pharmaciesResponse, ordersResponse, paymentIntentsResponse, refundsResponse, catalogResponse, clientsResponse] = await withLoading(
     options.silent ? "" : "Загружаем кабинет супер-админа...",
     () => Promise.all([
       apiFetch(`/api/admins?${adminsParams.toString()}`),
       apiFetch(`/api/pharmacies/all?${pharmaciesParams.toString()}`),
       apiFetch(`/api/orders/all?${ordersParams.toString()}`),
+      apiFetch("/api/superadmin/payment-intents?states=AwaitingAdminConfirmation&states=NeedsResolution&page=1&pageSize=50"),
       apiFetch("/api/refund-requests?page=1&pageSize=20"),
       apiFetch(`/api/medicines/all?${medicinesParams.toString()}`),
       apiFetch(`/api/clients?${clientsParams.toString()}`)
@@ -3558,6 +3643,7 @@ async function fetchSuperAdminWorkspace(options = {}) {
   }
 
   const orders = ordersResponse.orders || [];
+  const paymentIntents = paymentIntentsResponse.paymentIntents || [];
   orders.forEach(order => {
     (order.positions || []).forEach(position => rememberMedicine(position.medicine));
   });
@@ -3566,6 +3652,7 @@ async function fetchSuperAdminWorkspace(options = {}) {
     admins: adminsResponse.admins || [],
     pharmacies: pharmaciesResponse.pharmacies || [],
     orders,
+    paymentIntents,
     totalOrders: Number(ordersResponse.totalCount ?? orders.length),
     refunds: refundsResponse.refundRequests || [],
     clients: clientsResponse.clients || [],
@@ -3846,9 +3933,12 @@ async function fetchSuperAdminOrders(options = {}) {
     ordersParams.set("status", state.superAdminOrderStatusFilter);
   }
 
-  const ordersResponse = await withLoading(
+  const [ordersResponse, paymentIntentsResponse] = await withLoading(
     options.silent ? "" : "Обновляем список заказов...",
-    () => apiFetch(`/api/orders/all?${ordersParams.toString()}`),
+    () => Promise.all([
+      apiFetch(`/api/orders/all?${ordersParams.toString()}`),
+      apiFetch("/api/superadmin/payment-intents?states=AwaitingAdminConfirmation&states=NeedsResolution&page=1&pageSize=50")
+    ]),
     { silent: Boolean(options.silent) }
   );
 
@@ -3857,11 +3947,13 @@ async function fetchSuperAdminOrders(options = {}) {
   if (getRole() !== ROLE.SUPER_ADMIN) return;
 
   const orders = ordersResponse.orders || [];
+  const paymentIntents = paymentIntentsResponse.paymentIntents || [];
   orders.forEach(order => {
     (order.positions || []).forEach(position => rememberMedicine(position.medicine));
   });
 
   workspace.orders = orders;
+  workspace.paymentIntents = paymentIntents;
   workspace.totalOrders = Number(ordersResponse.totalCount ?? orders.length);
 
   if (options.partial && isSuperAdminOrdersManagerVisible()) {
@@ -4507,7 +4599,7 @@ function renderPaymentAwaitView() {
           <p class="eyebrow">Оплата заказа</p>
           <h2 style="font-size: 2rem; line-height: 1.15; margin-bottom: 1rem;">Ожидаем подтверждение оплаты</h2>
           <p class="muted">
-            Заказ <strong>#${escapeHtml(shortOrderId || "—")}</strong> создан. После подтверждения SuperAdmin вы автоматически вернетесь в приложение.
+            Платеж по заказу <strong>#${escapeHtml(shortOrderId || "—")}</strong> отправлен. После подтверждения SuperAdmin заказ будет создан автоматически.
           </p>
           <div data-region="${PAYMENT_AWAIT_STATUS_REGION}" style="margin-top: 1rem;">
             ${renderPaymentAwaitStatusRegion()}
@@ -5393,11 +5485,26 @@ function getCurrentSuperAdminInterface() {
 
 function renderSuperAdminOrdersResultsRegion(workspace) {
   const orders = Array.isArray(workspace?.orders) ? workspace.orders : [];
+  const paymentIntents = Array.isArray(workspace?.paymentIntents) ? workspace.paymentIntents : [];
   return `
-    <div class="workspace-order-list superadmin-order-list-grid partial-region-enter" data-region="superadmin-orders-results">
-      ${orders.length
-        ? orders.map(order => renderSuperAdminOrderCard(order)).join("")
-        : `<div class="panel empty-panel" style="grid-column: 1/-1; padding: 3rem;"><p class="muted">Заказов пока нет.</p></div>`}
+    <div class="partial-region-enter" data-region="superadmin-orders-results">
+      <div class="panel" style="margin-bottom: 1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem;">
+          <h4 style="margin:0;">Платежи к подтверждению</h4>
+          <span class="status-badge warning">${escapeHtml(String(paymentIntents.length))}</span>
+        </div>
+        <div class="workspace-order-list" style="margin-top:0.8rem;">
+          ${paymentIntents.length
+            ? paymentIntents.map(item => renderSuperAdminPaymentIntentCard(item)).join("")
+            : `<p class="muted">Нет оплат, ожидающих подтверждения.</p>`}
+        </div>
+      </div>
+
+      <div class="workspace-order-list superadmin-order-list-grid">
+        ${orders.length
+          ? orders.map(order => renderSuperAdminOrderCard(order)).join("")
+          : `<div class="panel empty-panel" style="grid-column: 1/-1; padding: 3rem;"><p class="muted">Заказов пока нет.</p></div>`}
+      </div>
     </div>
   `;
 }
@@ -6142,6 +6249,60 @@ function renderAdminOrderDetailView() {
   `;
 }
 
+function renderSuperAdminPaymentIntentCard(paymentIntent) {
+  const stateCode = Number(paymentIntent?.state ?? NaN);
+  const stateLabel = stateCode === PAYMENT_INTENT_STATE.NEEDS_RESOLUTION
+    ? "NeedsResolution"
+    : "AwaitingAdminConfirmation";
+  const badgeTone = stateCode === PAYMENT_INTENT_STATE.NEEDS_RESOLUTION ? "danger" : "warning";
+  const reservedOrderId = String(paymentIntent?.reservedOrderId || "").trim();
+  const paymentIntentId = String(paymentIntent?.id || "").trim();
+  const paymentUrl = String(paymentIntent?.paymentUrl || "").trim();
+  const rejectReason = String(paymentIntent?.rejectReason || "").trim();
+
+  return `
+    <article class="workspace-order-card">
+      <div class="superadmin-order-headline">
+        <div class="superadmin-order-title">
+          <strong>Intent ${escapeHtml(paymentIntentId.slice(0, 8) || "—")}</strong>
+          <span class="mono-text">${escapeHtml(paymentIntentId)}</span>
+        </div>
+        <div class="superadmin-order-badges">
+          <span class="status-badge ${badgeTone}">${escapeHtml(stateLabel)}</span>
+        </div>
+      </div>
+      <div class="superadmin-order-meta-grid">
+        <span>ReservedOrderId: ${escapeHtml(reservedOrderId.slice(0, 8) || "—")}</span>
+        <span>Клиент: ${escapeHtml(formatPhoneNumber(paymentIntent?.clientPhoneNumber || ""))}</span>
+        <span>Сумма: ${escapeHtml(formatMoney(paymentIntent?.amount || 0))} ${escapeHtml(paymentIntent?.currency || "TJS")}</span>
+        <span>Provider: ${escapeHtml(paymentIntent?.paymentProvider || "—")}</span>
+        <span>Дата: ${escapeHtml(formatDate(paymentIntent?.createdAtUtc || new Date().toISOString()))}</span>
+        <span>Позиций: ${escapeHtml(String((paymentIntent?.positions || []).length))}</span>
+        ${rejectReason ? `<span>Причина: ${escapeHtml(rejectReason)}</span>` : ""}
+      </div>
+      <div class="workspace-action-row">
+        <button
+          class="btn btn-primary"
+          type="button"
+          data-action="payment-intent-confirm"
+          data-payment-intent-id="${escapeHtml(paymentIntentId)}">
+          Подтвердить оплату
+        </button>
+        <button
+          class="btn btn-secondary"
+          type="button"
+          data-action="payment-intent-reject"
+          data-payment-intent-id="${escapeHtml(paymentIntentId)}">
+          Отклонить
+        </button>
+        ${paymentUrl
+          ? `<a class="btn btn-secondary btn-small" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noopener noreferrer">Открыть ссылку оплаты</a>`
+          : ""}
+      </div>
+    </article>
+  `;
+}
+
 function renderSuperAdminOrderCard(order) {
   const status = formatStatusLabel(order.status);
   const paymentState = formatPaymentStateLabel(order.paymentState);
@@ -6257,10 +6418,12 @@ function renderProfilePendingPaymentRegion() {
   const order = (state.clientOrderHistory || []).find(item => String(item?.orderId || "").trim() === orderId) || null;
   const paymentUrl = String(pending.paymentUrl || "").trim();
   const secondsLeft = getPaymentAwaitSecondsLeft();
+  const pendingAmount = Number(pending.amount || 0);
+  const pendingCurrency = String(pending.currency || "TJS");
 
   const statusLabel = order
     ? formatStatusUiLabel(order.status)
-    : "Ожидает обновления статуса";
+    : "Ожидает подтверждения оплаты";
   const isPending = order
     ? formatPaymentStateLabel(order.paymentState) === "PendingManualConfirmation" && formatStatusLabel(order.status) === "New"
     : true;
@@ -6270,13 +6433,15 @@ function renderProfilePendingPaymentRegion() {
       <p class="eyebrow">Ожидает оплаты</p>
       <h3 style="margin-top: 0.4rem;">Заказ ${escapeHtml(orderId.slice(0, 8) || "—")}</h3>
       <div class="order-history-meta" style="margin-top: 0.7rem;">
-        ${order ? `<span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>` : ""}
+        ${order
+          ? `<span>Сумма: ${escapeHtml(formatMoney(order.cost))}</span>`
+          : (pendingAmount > 0 ? `<span>Сумма: ${escapeHtml(formatMoney(pendingAmount))} ${escapeHtml(pendingCurrency)}</span>` : "")}
         <span>Статус: ${escapeHtml(statusLabel)}</span>
         <span data-payment-await-profile-countdown="true">${escapeHtml(getPaymentAwaitProfileCountdownText(secondsLeft))}</span>
       </div>
       <p class="muted" style="margin-top: 0.7rem;">
         ${isPending
-          ? "После подтверждения SuperAdmin заказ автоматически продолжит обычный путь. Если время истечет, заказ отменится и товары вернутся в корзину."
+          ? "После подтверждения SuperAdmin заказ будет создан и перейдет в стандартный путь обработки."
           : "Статус заказа обновлен. Проверяем, чтобы автоматически завершить сценарий оплаты."}
       </p>
       <div class="hero-actions" style="margin-top: 0.9rem;">
@@ -6700,10 +6865,6 @@ function renderClientOrderCard(order, options = {}) {
   const trackedPaymentUrl = isPaymentFocusCard
     ? String(state.paymentAwait?.paymentUrl || "").trim()
     : "";
-  const trackedSecondsLeft = isPaymentFocusCard ? getPaymentAwaitSecondsLeft() : 0;
-  const paymentDeadlineLabel = isPendingPayment && order.paymentExpiresAtUtc
-    ? formatDate(order.paymentExpiresAtUtc)
-    : "";
   const canCancel = canClientCancelOrder(order.status);
 
   const detailsMarkup = isLoading
@@ -6746,10 +6907,7 @@ function renderClientOrderCard(order, options = {}) {
           <strong>Заказ ${escapeHtml(String(order.orderId).slice(0, 8))}</strong>
           <p class="muted">${escapeHtml(pharmacyTitle)}</p>
           ${isPendingPayment
-            ? `<p class="muted" style="margin-top: 0.4rem;">Ожидает подтверждения оплаты SuperAdmin${paymentDeadlineLabel ? ` до ${escapeHtml(paymentDeadlineLabel)}` : ""}.</p>`
-            : ""}
-          ${isPaymentFocusCard && isPendingPayment
-            ? `<p class="muted" style="margin-top: 0.35rem;">Таймер оплаты: <span data-payment-await-order-timer="${escapeHtml(orderId)}">${escapeHtml(formatSecondsToMinuteClock(trackedSecondsLeft))}</span></p>`
+            ? `<p class="muted" style="margin-top: 0.4rem;">Ожидает подтверждения оплаты SuperAdmin.</p>`
             : ""}
         </div>
         <span class="status-badge ${isPendingPayment ? "warning" : "success"}">${escapeHtml(formatStatusUiLabel(order.status))}</span>

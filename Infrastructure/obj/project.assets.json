@@ -3686,7 +3686,7 @@
     ]
   },
   "packageFolders": {
-    "/tmp/.nuget/packages/": {}
+    "/home/agony/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
@@ -3694,11 +3694,11 @@
       "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
       "projectName": "Infrastructure",
       "projectPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
-      "packagesPath": "/tmp/.nuget/packages/",
+      "packagesPath": "/home/agony/.nuget/packages/",
       "outputPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/tmp/.nuget/NuGet/NuGet.Config"
+        "/home/agony/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net9.0"
