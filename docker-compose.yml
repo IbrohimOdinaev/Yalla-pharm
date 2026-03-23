@@ -2,7 +2,7 @@ services:
 
   front:
     build:
-      context: ./frontend-next
+      context: ./yalla-farm-front
       dockerfile: Dockerfile
     container_name: yalla-front
     ports:
@@ -16,7 +16,7 @@ services:
       - yalla-network
 
   api:
-    build: .
+    build: ./yalla-back
     container_name: yalla-api
     ports:
       - "5000:8080"
