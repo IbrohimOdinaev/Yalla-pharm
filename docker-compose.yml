@@ -1,5 +1,20 @@
 services:
 
+  front:
+    build:
+      context: ./frontend-next
+      dockerfile: Dockerfile
+    container_name: yalla-front
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
+      - NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=http://localhost:5000/hubs/updates
+    networks:
+      - yalla-network
+
   api:
     build: .
     container_name: yalla-api

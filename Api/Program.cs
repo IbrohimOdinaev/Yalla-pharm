@@ -1,5 +1,6 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using Api.Hubs;
 using Api.Middleware;
 using Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Yalla.Application;
+using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +54,19 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
     };
 });
 builder.Services.AddAuthorization();
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+  ?? ["http://localhost:3000"];
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendCors", policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+          .AllowAnyHeader()
+          .AllowAnyMethod()
+          .AllowCredentials();
+    });
+});
+builder.Services.AddSignalR();
 var smsVerificationSection = builder.Configuration.GetSection(SmsVerificationOptions.SectionName);
 var requestRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("RequestRateLimitPerMinute") ?? 10);
 var verifyRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("VerifyRateLimitPerMinute") ?? 30);
@@ -145,6 +160,7 @@ builder.Services
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddScoped<IRealtimeUpdatesPublisher, SignalRRealtimeUpdatesPublisher>();
 
 var app = builder.Build();
 
@@ -167,10 +183,12 @@ app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseCors("FrontendCors");
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<UpdatesHub>("/hubs/updates");
 app.MapFallbackToFile("index.html");
 
 app.Run();

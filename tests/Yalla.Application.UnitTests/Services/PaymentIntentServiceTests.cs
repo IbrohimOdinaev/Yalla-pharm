@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
@@ -44,7 +45,8 @@ public sealed class PaymentIntentServiceTests
     db.PaymentIntents.Add(intent);
     await db.SaveChangesAsync();
 
-    var service = CreateService(db);
+    var updatesPublisher = new RecordingRealtimeUpdatesPublisher();
+    var service = CreateService(db, updatesPublisher);
     var response = await service.ConfirmBySuperAdminAsync(new ConfirmPaymentIntentBySuperAdminRequest
     {
       SuperAdminId = superAdmin.Id,
@@ -65,6 +67,9 @@ public sealed class PaymentIntentServiceTests
     var smsOutboxMessage = await db.SmsOutboxMessages.AsNoTracking().FirstOrDefaultAsync(x => x.OrderId == reservedOrderId);
     Assert.NotNull(smsOutboxMessage);
     Assert.Contains(intent.Amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), smsOutboxMessage!.Message);
+    Assert.Contains(
+      updatesPublisher.Events,
+      x => x.PaymentIntentId == intent.Id && x.State == PaymentIntentState.Confirmed && x.OrderId == reservedOrderId);
   }
 
   [Fact]
@@ -98,7 +103,8 @@ public sealed class PaymentIntentServiceTests
     db.PaymentIntents.Add(intent);
     await db.SaveChangesAsync();
 
-    var service = CreateService(db);
+    var updatesPublisher = new RecordingRealtimeUpdatesPublisher();
+    var service = CreateService(db, updatesPublisher);
     var response = await service.ConfirmBySuperAdminAsync(new ConfirmPaymentIntentBySuperAdminRequest
     {
       SuperAdminId = superAdmin.Id,
@@ -109,6 +115,9 @@ public sealed class PaymentIntentServiceTests
     Assert.Equal(PaymentIntentState.NeedsResolution, response.PaymentIntentState);
     Assert.False(await db.Orders.AsNoTracking().AnyAsync(x => x.Id == reservedOrderId));
     Assert.False(await db.PaymentHistories.AsNoTracking().AnyAsync(x => x.OrderId == reservedOrderId));
+    Assert.Contains(
+      updatesPublisher.Events,
+      x => x.PaymentIntentId == intent.Id && x.State == PaymentIntentState.NeedsResolution && x.OrderId is null);
   }
 
   [Fact]
@@ -142,7 +151,8 @@ public sealed class PaymentIntentServiceTests
     db.PaymentIntents.Add(intent);
     await db.SaveChangesAsync();
 
-    var service = CreateService(db);
+    var updatesPublisher = new RecordingRealtimeUpdatesPublisher();
+    var service = CreateService(db, updatesPublisher);
     var response = await service.RejectBySuperAdminAsync(new RejectPaymentIntentBySuperAdminRequest
     {
       SuperAdminId = superAdmin.Id,
@@ -152,6 +162,9 @@ public sealed class PaymentIntentServiceTests
 
     Assert.Equal(PaymentIntentState.Rejected, response.PaymentIntentState);
     Assert.False(await db.Orders.AsNoTracking().AnyAsync(x => x.Id == reservedOrderId));
+    Assert.Contains(
+      updatesPublisher.Events,
+      x => x.PaymentIntentId == intent.Id && x.State == PaymentIntentState.Rejected && x.OrderId is null);
   }
 
   private static PaymentIntent BuildPaymentIntent(
@@ -188,7 +201,9 @@ public sealed class PaymentIntentServiceTests
       createdAtUtc: DateTime.UtcNow);
   }
 
-  private static PaymentIntentService CreateService(AppDbContext db)
+  private static PaymentIntentService CreateService(
+    AppDbContext db,
+    IRealtimeUpdatesPublisher? realtimeUpdatesPublisher = null)
   {
     var smsTemplates = Options.Create(new SmsTemplatesOptions
     {
@@ -199,8 +214,25 @@ public sealed class PaymentIntentServiceTests
     var orderStatusSmsService = new OrderStatusSmsService(smsTemplates);
     return new PaymentIntentService(
       db,
+      realtimeUpdatesPublisher ?? new NoOpRealtimeUpdatesPublisher(),
       orderStatusSmsService,
       smsTemplates,
       NullLogger<PaymentIntentService>.Instance);
+  }
+
+  private sealed class RecordingRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
+  {
+    public List<(Guid PaymentIntentId, Guid ClientId, PaymentIntentState State, Guid? OrderId)> Events { get; } = [];
+
+    public Task PublishPaymentIntentUpdatedAsync(
+      Guid paymentIntentId,
+      Guid clientId,
+      PaymentIntentState state,
+      Guid? orderId,
+      CancellationToken cancellationToken = default)
+    {
+      Events.Add((paymentIntentId, clientId, state, orderId));
+      return Task.CompletedTask;
+    }
   }
 }

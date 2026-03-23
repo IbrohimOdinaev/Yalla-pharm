@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-surface text-on-surface font-sans;
+}
+
+.stitch-card {
+  @apply rounded-2xl border border-surface-container-high bg-surface-container-lowest shadow-card;
+}
+
+.stitch-input {
+  @apply w-full rounded-xl border border-surface-container-high bg-surface-container-low px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20;
+}
+
+.stitch-button {
+  @apply rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.stitch-button-secondary {
+  @apply rounded-xl bg-surface-container-low px-4 py-3 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high;
+}

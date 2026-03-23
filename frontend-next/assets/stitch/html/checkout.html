@@ -1,0 +1,214 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Checkout - Clinical Sanctuary Pharmacy</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "error-container": "#ffdad6",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed": "#002019",
+                        "on-surface": "#161b29",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#4c3e00",
+                        "on-surface-variant": "#414755",
+                        "surface-dim": "#d5d9ec",
+                        "inverse-surface": "#2b303e",
+                        "primary-fixed-dim": "#adc6ff",
+                        "tertiary-fixed-dim": "#e5c441",
+                        "surface": "#faf8ff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#004493",
+                        "on-secondary-container": "#00725d",
+                        "outline-variant": "#c1c6d7",
+                        "secondary": "#006b57",
+                        "surface-container": "#eaedff",
+                        "secondary-container": "#65fbd6",
+                        "surface-container-low": "#f2f3ff",
+                        "surface-container-high": "#e3e7fb",
+                        "on-tertiary-fixed": "#221b00",
+                        "tertiary-container": "#c7a925",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-container-highest": "#dee2f5",
+                        "inverse-on-surface": "#eef0ff",
+                        "tertiary": "#705d00",
+                        "on-secondary-fixed-variant": "#005141",
+                        "surface-variant": "#dee2f5",
+                        "secondary-fixed": "#65fbd6",
+                        "on-primary-fixed": "#001a41",
+                        "tertiary-fixed": "#ffe171",
+                        "surface-bright": "#faf8ff",
+                        "background": "#faf8ff",
+                        "surface-tint": "#005bc1",
+                        "error": "#ba1a1a",
+                        "inverse-primary": "#adc6ff",
+                        "primary-container": "#0070eb",
+                        "outline": "#717786",
+                        "on-primary": "#ffffff",
+                        "on-tertiary-fixed-variant": "#554600",
+                        "on-background": "#161b29",
+                        "on-error": "#ffffff",
+                        "on-primary-container": "#fefcff",
+                        "primary": "#0058bc",
+                        "secondary-fixed-dim": "#41deba"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #faf8ff;
+            color: #161b29;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(16px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface antialiased pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#faf8ff]/80 dark:bg-slate-950/80 backdrop-blur-lg shadow-sm dark:shadow-none">
+<div class="flex justify-between items-center px-4 h-16 w-full">
+<div class="flex items-center gap-3">
+<button class="p-2 hover:bg-slate-100/50 rounded-full active:scale-95 duration-150 transition-colors" style="">
+<span class="material-symbols-outlined text-primary" style="">arrow_back</span>
+</button>
+<h1 class="text-[#0058bc] font-bold text-lg font-['Inter'] tracking-tight" style="">Оформление</h1>
+</div>
+<div class="flex items-center gap-2">
+<div class="bg-tertiary-fixed px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+<span class="material-symbols-outlined text-[16px] text-on-tertiary-fixed" style="">bolt</span>
+<span class="text-[11px] font-bold uppercase tracking-wider text-on-tertiary-fixed" style="">Душанбе</span>
+</div>
+</div>
+</div>
+</header>
+<main class="mt-20 px-4 max-w-2xl mx-auto space-y-6">
+<!-- Delivery Section -->
+<section class="space-y-4">
+<div class="flex items-center justify-between px-2">
+<h2 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant" style="">Детали доставки</h2>
+<button class="text-primary text-xs font-bold hover:underline" style="">редактировать</button>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl space-y-4 shadow-[0_4px_20px_rgba(22,27,41,0.03)] border border-outline-variant/10">
+<div class="flex items-start gap-4">
+<div class="bg-surface-container-high p-3 rounded-lg text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: &quot;FILL&quot; 1;">location_on</span>
+</div>
+<div>
+<p class="text-xs font-medium text-on-surface-variant mb-1" style="">Адрес доставки</p>
+<p class="text-base font-semibold leading-tight" style="">Rudaki Ave, Dushanbe</p>
+<p class="text-xs text-slate-500 mt-1" style="">Tajikistan, Central District</p>
+</div>
+</div>
+<div class="h-[140px] w-full rounded-lg overflow-hidden relative">
+<img alt="Location Map" class="w-full h-full object-cover grayscale opacity-80" data-alt="Map showing Rudaki Avenue in Dushanbe city" data-location="Dushanbe" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA76SkNFBXtfsz3dW2rFXQNrpIt0lmxZKn-FuJR_jjLVEmOD3yF2EPpDBRLsmBWDHhFHPJMbMaTJeXd9J3rYJ11HInFvNGKJypkCBh6q0MSO1rHi4hHEgf_cHadthC3hXGsTTvFF0ECBZfr_91ZXg6PuMCOkAaCprHQaGhx9cH0SQYE63Et96cFds-LlHEnIkegqczo7nvcCK9J1bxf69q7wftOFi5H32cmET20nQm5G8Rp4D3NhAJNu-1cy4P0sEAUK4hjgRRorYmk" style="">
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-8 h-8 bg-primary rounded-full border-4 border-white shadow-lg animate-pulse"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Customer Form -->
+<section class="space-y-4">
+<h2 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant px-2" style=""><span style="color: rgb(10, 10, 10); font-family: &quot;Google Sans&quot;, Arial, sans-serif; font-size: 16px; font-weight: 400; letter-spacing: normal; text-transform: none; background-color: rgb(255, 255, 255);">Дополнительная информация&nbsp;</span></h2>
+<div class="bg-surface-container-lowest p-6 rounded-xl space-y-5 shadow-[0_4px_20px_rgba(22,27,41,0.03)] border border-outline-variant/10">
+<div class="space-y-2">
+<label class="text-[11px] font-bold uppercase tracking-widest text-primary ml-1" style="">Как вам обращаться?</label>
+<input class="w-full bg-surface-container-low border-none rounded-lg p-4 focus:ring-2 focus:ring-primary/40 text-on-surface placeholder:text-slate-400 font-medium" placeholder="Акаи Сомон" type="text">
+</div>
+<div class="space-y-2">
+<label class="text-[11px] font-bold uppercase tracking-widest text-primary ml-1" style="">Ваши контакты:</label>
+<div class="relative">
+<span class="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface font-semibold" style="">+992</span>
+<input class="w-full bg-surface-container-low border-none rounded-lg p-4 pl-16 focus:ring-2 focus:ring-primary/40 text-on-surface placeholder:text-slate-400 font-medium tracking-widest" placeholder="XX XXXXXXX" type="tel">
+</div>
+</div>
+</div>
+</section>
+<!-- Payment Method -->
+<section class="space-y-4">
+<h2 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant px-2" style="">Метод оплаты</h2>
+<div class="bg-surface-container-lowest p-5 rounded-xl flex items-center justify-between border-2 border-primary shadow-[0_8px_24px_rgba(0,88,188,0.08)]">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-surface-container-highest flex items-center justify-center overflow-hidden">
+<img alt="Payment Logo" class="w-full h-full object-cover" data-alt="Dushanbe City card abstract payment logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDJVSphfpG4LKFCnJIlppxEbASS0NxGDXdnIr_UwusognjacOfGEwkRZ7Z2Mlmc6Izq3DlY9cfv0-Azt_U8YPn0_cnHoDZgtWmzjssd6yuEdVtQtbiaid3PEB7iiZFnY8-EjbfmxnkroB-yXG7zEB81jYDKffpuwbEp6QWgwWqZ1C-vOdobCGTSbvG21clc6QbTpj_x4bAkYHy9cWpwZ-j_ibcnqzudlrze_QcSjjiZHhkUz1_O-NxNVqHqsdcEMQgAuiWPZDgTq-da" style="">
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface leading-tight" style="">Онлайн-оплата с помощью Dushanbe city</p>
+<p class="text-xs text-primary font-medium mt-0.5" style=""><br></p>
+</div>
+</div>
+<div class="bg-primary text-white rounded-full p-1">
+<span class="material-symbols-outlined text-[18px]" style="">check</span>
+</div>
+</div>
+</section>
+<!-- Summary -->
+<section class="bg-surface-container-low p-6 rounded-xl space-y-3">
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant" style="">Под итог:</span>
+<span class="font-semibold" style="">145.00 TJS</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant" style="">Delivery Fee</span>
+<span class="text-secondary font-bold" style="">FREE</span>
+</div>
+<div class="pt-3 border-t border-outline-variant/20 flex justify-between items-center">
+<span class="text-base font-bold text-on-surface" style="">Total Amount</span>
+<span class="text-xl font-extrabold text-primary" style="">145.00 TJS</span>
+</div>
+</section>
+</main>
+<!-- Bottom Action Bar (Fixed) -->
+<div class="fixed bottom-20 left-0 w-full p-4 bg-white/80 backdrop-blur-xl z-40">
+<button class="w-full bg-gradient-to-br from-primary to-primary-container text-white py-5 rounded-xl font-bold text-lg shadow-[0_12px_32px_rgba(0,88,188,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2" style="">
+<span class="" style="">Оплатить сейчас</span>
+<span class="material-symbols-outlined" style="">chevron_right</span>
+</button>
+</div>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg flex justify-around items-center px-4 pb-2 rounded-t-3xl z-50 shadow-[0_-4px_24px_rgba(22,27,41,0.06)] border-t border-[#dee2f5]/10">
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="home" style="">home</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider mt-1" style="">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="search" style="">search</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider mt-1" style="">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-[#f2f3ff] dark:bg-blue-900/30 text-[#0058bc] dark:text-blue-300 rounded-2xl px-6 py-2 active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="shopping_cart" style="font-variation-settings: &quot;FILL&quot; 1;">shopping_cart</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1" style="">Cart</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="person" style="">person</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider mt-1" style="">Profile</span>
+</a>
+</nav>
+</body></html>

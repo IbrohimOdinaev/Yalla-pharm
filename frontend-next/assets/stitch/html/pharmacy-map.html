@@ -1,0 +1,281 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "error-container": "#ffdad6",
+              "on-secondary": "#ffffff",
+              "on-error-container": "#93000a",
+              "on-secondary-fixed": "#002019",
+              "on-surface": "#161b29",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary-container": "#4c3e00",
+              "on-surface-variant": "#414755",
+              "surface-dim": "#d5d9ec",
+              "inverse-surface": "#2b303e",
+              "primary-fixed-dim": "#adc6ff",
+              "tertiary-fixed-dim": "#e5c441",
+              "surface": "#faf8ff",
+              "on-tertiary": "#ffffff",
+              "on-primary-fixed-variant": "#004493",
+              "on-secondary-container": "#00725d",
+              "outline-variant": "#c1c6d7",
+              "secondary": "#006b57",
+              "surface-container": "#eaedff",
+              "secondary-container": "#65fbd6",
+              "surface-container-low": "#f2f3ff",
+              "surface-container-high": "#e3e7fb",
+              "on-tertiary-fixed": "#221b00",
+              "tertiary-container": "#c7a925",
+              "primary-fixed": "#d8e2ff",
+              "surface-container-highest": "#dee2f5",
+              "inverse-on-surface": "#eef0ff",
+              "tertiary": "#705d00",
+              "on-secondary-fixed-variant": "#005141",
+              "surface-variant": "#dee2f5",
+              "secondary-fixed": "#65fbd6",
+              "on-primary-fixed": "#001a41",
+              "tertiary-fixed": "#ffe171",
+              "surface-bright": "#faf8ff",
+              "background": "#faf8ff",
+              "surface-tint": "#005bc1",
+              "error": "#ba1a1a",
+              "inverse-primary": "#adc6ff",
+              "primary-container": "#0070eb",
+              "outline": "#717786",
+              "on-primary": "#ffffff",
+              "on-tertiary-fixed-variant": "#554600",
+              "on-background": "#161b29",
+              "on-error": "#ffffff",
+              "on-primary-container": "#fefcff",
+              "primary": "#0058bc",
+              "secondary-fixed-dim": "#41deba"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .map-gradient {
+            background: linear-gradient(to bottom, rgba(250, 248, 255, 0) 70%, rgba(250, 248, 255, 1) 100%);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #dee2f5;
+            border-radius: 10px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#faf8ff]/80 dark:bg-slate-950/80 backdrop-blur-lg shadow-sm dark:shadow-none h-16 flex justify-between items-center px-4">
+<div class="flex items-center gap-3">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100/50 transition-colors active:scale-95 duration-150" style="">
+<span class="material-symbols-outlined text-on-surface-variant" style="">arrow_back</span>
+</button>
+<div class="flex flex-col">
+<h1 class="font-['Inter'] text-sm font-semibold tracking-tight text-[#0058bc] dark:text-blue-400" style="">Dushanbe, RT</h1>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-widest font-bold" style="">Выберать аптеку</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100/50 transition-colors active:scale-95 duration-150" style="">
+<span class="material-symbols-outlined text-on-surface-variant" style="">notifications</span>
+</button>
+</div>
+</header>
+<main class="pt-16 min-h-screen pb-20 flex flex-col">
+<!-- Map View Section -->
+<section class="relative h-[397px] w-full overflow-hidden">
+<div class="absolute inset-0 bg-surface-container-highest" data-location="Dushanbe, Tajikistan" style="">
+<img alt="Detailed city map of Dushanbe with navigation pins" class="w-full h-full object-cover opacity-80" data-alt="Abstract aerial city map view of Dushanbe" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLb6Tg_v-nsUK3G2JvEPfepsAECSddvkiDVUXokNbTNIISeatnMzfZcQztCA1CMWZsORRAvzfXL2L351ZQK8m_XrCkvP4xHhkJLarBHEWtFuChbJ8CEuaIRRFK4QnMfcdKBuT7Jlwqet5bpZavu_bCTxvV_bNUFJaasaaOmi_4NLiZRU7W2NB05tRecPDwvHaL_Kc6DJiAjOroY40MU_tyELoGH0MnjzbHuONMBk8yVhrTH4zJSIpzpLFRebgAoNodZVgaH01D8nW4" style="">
+<div class="absolute inset-0 map-gradient"></div>
+</div>
+<!-- Custom Map Pins -->
+<!-- Pharmacy 1: Green Pin (Available) -->
+<div class="absolute top-1/4 left-1/3 -translate-x-1/2 -translate-y-1/2 group">
+<div class="relative flex flex-col items-center">
+<div class="bg-secondary text-on-secondary px-3 py-1 rounded-full text-[10px] font-bold shadow-lg mb-1 scale-0 group-hover:scale-100 transition-transform origin-bottom" style="">Apteka Vita</div>
+<span class="material-symbols-outlined text-secondary text-4xl drop-shadow-md" style="font-variation-settings: &quot;FILL&quot; 1;">location_on</span>
+<div class="w-2 h-2 bg-secondary/30 rounded-full animate-ping absolute bottom-1"></div>
+</div>
+</div>
+<!-- Pharmacy 2: Yellow Pin (Partial) -->
+<div class="absolute top-1/2 right-1/4 -translate-x-1/2 -translate-y-1/2 group">
+<div class="relative flex flex-col items-center">
+<div class="bg-tertiary text-on-tertiary px-3 py-1 rounded-full text-[10px] font-bold shadow-lg mb-1 scale-0 group-hover:scale-100 transition-transform origin-bottom" style="">Apteka Rigla</div>
+<span class="material-symbols-outlined text-tertiary text-4xl drop-shadow-md" style="font-variation-settings: &quot;FILL&quot; 1;">location_on</span>
+</div>
+</div>
+<!-- Pharmacy 3: Green Pin (Available) -->
+<div class="absolute bottom-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 group">
+<div class="relative flex flex-col items-center">
+<div class="bg-secondary text-on-secondary px-3 py-1 rounded-full text-[10px] font-bold shadow-lg mb-1 scale-0 group-hover:scale-100 transition-transform origin-bottom" style="">Apteka Ekonom</div>
+<span class="material-symbols-outlined text-secondary text-4xl drop-shadow-md" style="font-variation-settings: &quot;FILL&quot; 1;">location_on</span>
+</div>
+</div>
+<!-- Map Controls -->
+<div class="absolute right-4 bottom-12 flex flex-col gap-2">
+<button class="w-12 h-12 bg-surface-container-lowest rounded-xl shadow-lg flex items-center justify-center text-on-surface active:scale-90 transition-transform" style="">
+<span class="material-symbols-outlined" style="">my_location</span>
+</button>
+<button class="w-12 h-12 bg-surface-container-lowest rounded-xl shadow-lg flex items-center justify-center text-on-surface active:scale-90 transition-transform" style="">
+<span class="material-symbols-outlined" style="">layers</span>
+</button>
+</div>
+</section>
+<!-- Pharmacy List Section -->
+<section class="flex-1 bg-surface -mt-8 rounded-t-[32px] z-10 px-6 pt-8">
+<div class="flex justify-between items-end mb-8">
+<div>
+<span class="text-xs font-bold text-secondary tracking-widest uppercase mb-1 block" style="">Nearby locations</span>
+<h2 class="text-2xl font-extrabold tracking-tight text-on-surface" style="">Доступные аптеки</h2>
+</div>
+<div class="flex items-center gap-1 bg-tertiary-fixed text-on-tertiary-fixed px-3 py-1.5 rounded-full text-xs font-semibold" style="">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: &quot;FILL&quot; 1;">bolt</span>
+                    Душанбе</div>
+</div>
+<div class="space-y-4 pb-12">
+<!-- Pharmacy Card 1 -->
+<article class="bg-surface-container-lowest p-5 rounded-[24px] shadow-[0_4px_20px_rgba(22,27,41,0.04)] hover:shadow-[0_8px_30px_rgba(22,27,41,0.08)] transition-all duration-300 group cursor-pointer border border-transparent hover:border-primary/10">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-4">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-high flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: &quot;FILL&quot; 1;">local_pharmacy</span>
+</div>
+<div>
+<h3 class="font-bold text-lg text-on-surface" style="">Apteka Vita</h3>
+<div class="flex items-center gap-1 text-on-surface-variant text-sm mt-1">
+<span class="material-symbols-outlined text-sm" style="">location_on</span>
+<span class="" style="">Rudaki Ave, 45, Dushanbe</span>
+</div>
+</div>
+</div>
+<div class="text-right">
+<div class="text-xs font-bold text-secondary flex items-center justify-end gap-1" style="">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: &quot;FILL&quot; 1;">check_circle</span>
+                                4 из 4 все в наличии</div>
+<div class="text-[10px] text-on-surface-variant mt-1 font-medium" style="">Закрыто 22:00</div>
+</div>
+</div>
+<div class="flex items-center justify-between mt-6">
+<div class="flex flex-col">
+<span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold" style="">Стоимость доставки</span>
+<span class="text-sm font-bold text-secondary" style="">Free delivery</span>
+</div>
+<button class="bg-primary hover:bg-primary-container text-on-primary px-6 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-md shadow-primary/20" style="">
+                            Выберать аптеку</button>
+</div>
+</article>
+<!-- Pharmacy Card 2 -->
+<article class="bg-surface-container-lowest p-5 rounded-[24px] shadow-[0_4px_20px_rgba(22,27,41,0.04)] hover:shadow-[0_8px_30px_rgba(22,27,41,0.08)] transition-all duration-300 group cursor-pointer border border-transparent hover:border-primary/10">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-4">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-high flex items-center justify-center text-on-surface-variant group-hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: &quot;FILL&quot; 0;">medication</span>
+</div>
+<div>
+<h3 class="font-bold text-lg text-on-surface" style="">Apteka Rigla</h3>
+<div class="flex items-center gap-1 text-on-surface-variant text-sm mt-1">
+<span class="material-symbols-outlined text-sm" style="">location_on</span>
+<span class="" style="">Ayni Street, 12, Dushanbe</span>
+</div>
+</div>
+</div>
+<div class="text-right">
+<div class="text-xs font-bold text-tertiary flex items-center justify-end gap-1" style="">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: &quot;FILL&quot; 1;">info</span>
+                                3/4 Available
+                            </div>
+<div class="text-[10px] text-on-surface-variant mt-1 font-medium" style="">Closes 21:30</div>
+</div>
+</div>
+<div class="flex items-center justify-between mt-6">
+<div class="flex flex-col">
+<span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold" style="">Стоимость доставки</span>
+<span class="text-sm font-bold text-on-surface" style="">15 TJS</span>
+</div>
+<button class="bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant px-6 py-3 rounded-xl font-bold text-sm transition-all active:scale-95" style=""><span style="color: rgb(255, 255, 255); background-color: rgb(0, 112, 235);">Выберать аптеку</span></button>
+</div>
+</article>
+<!-- Pharmacy Card 3 -->
+<article class="bg-surface-container-lowest p-5 rounded-[24px] shadow-[0_4px_20px_rgba(22,27,41,0.04)] hover:shadow-[0_8px_30px_rgba(22,27,41,0.08)] transition-all duration-300 group cursor-pointer border border-transparent hover:border-primary/10">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-4">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-high flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: &quot;FILL&quot; 1;">local_pharmacy</span>
+</div>
+<div>
+<h3 class="font-bold text-lg text-on-surface" style="">Apteka Ekonom</h3>
+<div class="flex items-center gap-1 text-on-surface-variant text-sm mt-1">
+<span class="material-symbols-outlined text-sm" style="">location_on</span>
+<span class="" style="">N. Karabaev St, 8, Dushanbe</span>
+</div>
+</div>
+</div>
+<div class="text-right">
+<div class="text-xs font-bold text-secondary flex items-center justify-end gap-1" style="">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: &quot;FILL&quot; 1;">check_circle</span>
+                                4/4 Available
+                            </div>
+<div class="text-[10px] text-on-surface-variant mt-1 font-medium" style="">Open 24/7</div>
+</div>
+</div>
+<div class="flex items-center justify-between mt-6">
+<div class="flex flex-col">
+<span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold" style="">Стоимость доставки</span>
+<span class="text-sm font-bold text-on-surface" style="">12 TJS</span>
+</div>
+<button class="bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant px-6 py-3 rounded-xl font-bold text-sm transition-all active:scale-95" style=""><span style="color: rgb(255, 255, 255); background-color: rgb(0, 112, 235);">Выберать аптеку</span></button>
+</div>
+</article>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg flex justify-around items-center px-4 pb-2 z-50 rounded-t-3xl shadow-[0_-4px_24px_rgba(22,27,41,0.06)] border-t border-[#dee2f5]/10">
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] transition-transform duration-200 active:scale-90">
+<span class="material-symbols-outlined mb-1" style="">home</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider" style="">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-[#f2f3ff] dark:bg-blue-900/30 text-[#0058bc] dark:text-blue-300 rounded-2xl px-6 py-2 transition-transform duration-200 active:scale-90">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: &quot;FILL&quot; 1;">search</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider" style="">Search</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] transition-transform duration-200 active:scale-90">
+<span class="material-symbols-outlined mb-1" style="">shopping_cart</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider" style="">Cart</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] transition-transform duration-200 active:scale-90">
+<span class="material-symbols-outlined mb-1" style="">person</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider" style="">Profile</span>
+</div>
+</nav>
+</body></html>

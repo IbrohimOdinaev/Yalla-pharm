@@ -1,0 +1,251 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "error-container": "#ffdad6",
+              "on-secondary": "#ffffff",
+              "on-error-container": "#93000a",
+              "on-secondary-fixed": "#002019",
+              "on-surface": "#161b29",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary-container": "#4c3e00",
+              "on-surface-variant": "#414755",
+              "surface-dim": "#d5d9ec",
+              "inverse-surface": "#2b303e",
+              "primary-fixed-dim": "#adc6ff",
+              "tertiary-fixed-dim": "#e5c441",
+              "surface": "#faf8ff",
+              "on-tertiary": "#ffffff",
+              "on-primary-fixed-variant": "#004493",
+              "on-secondary-container": "#00725d",
+              "outline-variant": "#c1c6d7",
+              "secondary": "#006b57",
+              "surface-container": "#eaedff",
+              "secondary-container": "#65fbd6",
+              "surface-container-low": "#f2f3ff",
+              "surface-container-high": "#e3e7fb",
+              "on-tertiary-fixed": "#221b00",
+              "tertiary-container": "#c7a925",
+              "primary-fixed": "#d8e2ff",
+              "surface-container-highest": "#dee2f5",
+              "inverse-on-surface": "#eef0ff",
+              "tertiary": "#705d00",
+              "on-secondary-fixed-variant": "#005141",
+              "surface-variant": "#dee2f5",
+              "secondary-fixed": "#65fbd6",
+              "on-primary-fixed": "#001a41",
+              "tertiary-fixed": "#ffe171",
+              "surface-bright": "#faf8ff",
+              "background": "#faf8ff",
+              "surface-tint": "#005bc1",
+              "error": "#ba1a1a",
+              "inverse-primary": "#adc6ff",
+              "primary-container": "#0070eb",
+              "outline": "#717786",
+              "on-primary": "#ffffff",
+              "on-tertiary-fixed-variant": "#554600",
+              "on-background": "#161b29",
+              "on-error": "#ffffff",
+              "on-primary-container": "#fefcff",
+              "primary": "#0058bc",
+              "secondary-fixed-dim": "#41deba"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        .cart-overlay-shadow {
+            box-shadow: 0 -8px 40px -12px rgba(22, 27, 41, 0.15);
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-40">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 w-full z-50 bg-[#faf8ff]/80 dark:bg-slate-950/80 backdrop-blur-lg shadow-sm dark:shadow-none h-16 flex justify-between items-center px-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[#0058bc] dark:text-blue-400" data-icon="location_on" style="">location_on</span>
+<span class="font-['Inter'] text-sm font-semibold tracking-tight text-[#0058bc] dark:text-blue-400" style="">Dushanbe, RT</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors active:scale-95 duration-150 rounded-full" style="">
+<span class="material-symbols-outlined" data-icon="notifications" style="">notifications</span>
+</button>
+</div>
+</nav>
+<!-- Main Content Area (Blurred Background to simulate overlay) -->
+<main class="pt-20 px-6 max-w-2xl mx-auto space-y-8 opacity-40 select-none pointer-events-none">
+<section class="space-y-4">
+<div class="h-40 bg-surface-container-highest rounded-xl"></div>
+<div class="h-6 w-1/3 bg-surface-container-high rounded-lg"></div>
+<div class="grid grid-cols-2 gap-4">
+<div class="h-48 bg-surface-container-low rounded-xl"></div>
+<div class="h-48 bg-surface-container-low rounded-xl"></div>
+</div>
+</section>
+</main>
+<!-- Cart Slide-Over / Overlay -->
+<div class="fixed inset-0 z-[60] flex items-end justify-center pointer-events-none">
+<div class="w-full max-w-2xl bg-surface-container-lowest rounded-t-[2.5rem] cart-overlay-shadow pointer-events-auto flex flex-col max-h-[813px] overflow-hidden">
+<!-- Handle -->
+<div class="w-full flex justify-center py-3">
+<div class="w-12 h-1.5 bg-outline-variant/30 rounded-full"></div>
+</div>
+<!-- Cart Header -->
+<header class="px-6 pb-4 flex justify-between items-center border-b border-surface-container-high">
+<div>
+<h1 class="text-2xl font-bold tracking-tight text-on-surface" style="">Корзина</h1>
+<p class="text-sm text-on-surface-variant" style="">3 товара готовы к оформлению заказа</p>
+</div>
+<button class="flex items-center gap-1.5 px-4 py-2 text-error font-medium hover:bg-error-container/50 rounded-full transition-colors active:scale-95" style="">
+<span class="material-symbols-outlined text-sm" data-icon="delete" style="">delete</span>
+<span class="" style="">удалить</span>
+</button>
+</header>
+<!-- Cart List -->
+<div class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+<!-- Item: Otrivin Spray -->
+<div class="flex items-center gap-4 group">
+<div class="w-20 h-20 bg-surface-container-low rounded-xl flex-shrink-0 flex items-center justify-center p-2">
+<img alt="Otrivin Nasal Spray Bottle" class="max-w-full max-h-full object-contain mix-blend-multiply" data-alt="Nasal spray bottle in clinical packaging" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-V1Z0aeaNf7nG10tYoiTQwtNe7wnyShsR5sFuZDVJRwcDYw3mU9ciRLii6ygsa6txBAcEiifQfNy5wk7Lvhjsdn53IQjoYiOiMrehawkCxkZMKYa-9hogXSvzOSG5lMD0Zd7nZtzYFz9CWUCjOytUC718rpfNuRBtzYnMUBxmXkvb5VegD3TCTDu8L3JuZQTmkoYVfK2zsq4gxsv79vwYfjQE5i32B-HH0pMz15dygJ48efstij6cSdh_FsJzImBIxsQUrAR1NHVm" style="">
+</div>
+<div class="flex-1 min-w-0">
+<h3 class="font-semibold text-on-surface truncate" style="">Otrivin Spray</h3>
+<p class="text-xs text-secondary font-medium mt-0.5" style="">0.1% Solution, 10ml</p>
+<div class="mt-2 text-lg font-bold text-on-surface" style="">45 TJS</div>
+</div>
+<div class="flex items-center bg-surface-container-high rounded-full p-1 border border-outline-variant/10">
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-lowest transition-colors text-on-surface-variant" style="">
+<span class="material-symbols-outlined text-lg" data-icon="remove" style="">remove</span>
+</button>
+<span class="w-8 text-center font-bold text-sm" style="">1</span>
+<button class="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-sm active:scale-90 transition-transform" style="">
+<span class="material-symbols-outlined text-lg" data-icon="add" style="">add</span>
+</button>
+</div>
+</div>
+<!-- Item: Pentalgin Tablets -->
+<div class="flex items-center gap-4 group">
+<div class="w-20 h-20 bg-surface-container-low rounded-xl flex-shrink-0 flex items-center justify-center p-2">
+<img alt="Painkiller tablets pack" class="max-w-full max-h-full object-contain mix-blend-multiply" data-alt="Blister pack of white tablets" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBN8lQ85zwwyLee9Yje0YgCV5QghS88-7qWZeIZJlWtwrT3EohllO6rr0uM6CKgU-vepPP_Jisy6EdQmRzAqAyvH5cbweCwCcbRl5qc5LRk3961v_KaPxG67x8w_mzZfuEQvx0atD3i0kt38zDnHk3VmTcauCT6UhCQulweaa7G_-EDaHTRaVATSkF4Gvc-6c6jLRt3fWw0SLSTOzthlLpldsatyfQ2GifHqPaQ8H7MBSUCHEYdOcUhAF1hJCsj-tPKI8kfhNMx1gev" style="">
+</div>
+<div class="flex-1 min-w-0">
+<h3 class="font-semibold text-on-surface truncate" style="">Pentalgin Tablets</h3>
+<p class="text-xs text-secondary font-medium mt-0.5" style="">Relief Pack, 24 Tabs</p>
+<div class="mt-2 text-lg font-bold text-on-surface" style="">63 TJS</div>
+</div>
+<div class="flex items-center bg-surface-container-high rounded-full p-1 border border-outline-variant/10">
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-lowest transition-colors text-on-surface-variant" style="">
+<span class="material-symbols-outlined text-lg" data-icon="remove" style="">remove</span>
+</button>
+<span class="w-8 text-center font-bold text-sm" style="">2</span>
+<button class="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-sm active:scale-90 transition-transform" style="">
+<span class="material-symbols-outlined text-lg" data-icon="add" style="">add</span>
+</button>
+</div>
+</div>
+<!-- Item: Creon Capsules -->
+<div class="flex items-center gap-4 group">
+<div class="w-20 h-20 bg-surface-container-low rounded-xl flex-shrink-0 flex items-center justify-center p-2">
+<img alt="Medical supplement capsules" class="max-w-full max-h-full object-contain mix-blend-multiply" data-alt="Bottle of medical health capsules" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDrlplU6U14jPaNkQJfXucrdCfO6PKLiair2Lhna9E660SQiMf1hrWTNHL8Ba7DPXzP1KzHUXTtgDeoArjvR5MSdaSSuHlRiM6V8shalY7iVZFDKC5hpQneZ4HN8umvFphKsGJ-ETtGq4PaqeQDjrWP1vtCYo53QROrbkYYiccD1mt9KKv8wgs5i1pJ865AY3qTqZ4gXG7t2X2_h3_bWfbl1AQkVZ9h_O2ihqNI8z87pghahCyXkvCWfvkAyWjl8SPC_eMJSkJHcNjH" style="">
+</div>
+<div class="flex-1 min-w-0">
+<h3 class="font-semibold text-on-surface truncate" style="">Creon Capsules</h3>
+<p class="text-xs text-secondary font-medium mt-0.5" style="">10000 IU, 20 Caps</p>
+<div class="mt-2 text-lg font-bold text-on-surface" style="">1100 TJS</div>
+</div>
+<div class="flex items-center bg-surface-container-high rounded-full p-1 border border-outline-variant/10">
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-lowest transition-colors text-on-surface-variant" style="">
+<span class="material-symbols-outlined text-lg" data-icon="remove" style="">remove</span>
+</button>
+<span class="w-8 text-center font-bold text-sm" style="">1</span>
+<button class="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-sm active:scale-90 transition-transform" style="">
+<span class="material-symbols-outlined text-lg" data-icon="add" style="">add</span>
+</button>
+</div>
+</div>
+<!-- Local Delivery Context -->
+<div class="bg-tertiary-fixed/20 p-4 rounded-xl flex items-start gap-3 mt-4">
+<span class="material-symbols-outlined text-tertiary font-bold" data-icon="speed" style="">speed</span>
+<div>
+<p class="text-sm font-bold text-on-tertiary-fixed" style="">К сожалению, некоторых выбранных товаров может не оказаться в наличии по техническим причинам.&nbsp;</p>
+<p class="text-xs text-on-tertiary-fixed-variant" style=""><span style="color: rgb(34, 27, 0); font-size: 14.875px;">Об этом вам дополнительно сообщит наш оператор</span></p>
+</div>
+</div>
+</div>
+<!-- Footer Section -->
+<footer class="p-6 bg-surface-container-low border-t border-surface-container-high space-y-4">
+<div class="space-y-2">
+<div class="flex justify-between text-sm text-on-surface-variant">
+<span class="" style="">Под итог,</span>
+<span class="" style="">1208 TJS</span>
+</div>
+<div class="flex justify-between text-sm text-on-surface-variant">
+<span class="" style="">Стоимость доставки:</span>
+<span class="text-secondary font-medium" style="">Free</span>
+</div>
+<div class="flex justify-between items-end pt-2">
+<span class="text-lg font-semibold" style="">Итого:</span>
+<div class="text-2xl font-black text-primary tracking-tight" style="">1208 TJS</div>
+</div>
+</div>
+<button class="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary py-5 rounded-xl font-bold text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3" style="">
+<span class="" style="">Выберать аптеку</span>
+<span class="material-symbols-outlined" data-icon="arrow_forward" style="">arrow_forward</span>
+</button>
+</footer>
+</div>
+</div>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg flex justify-around items-center px-4 pb-2 z-50 border-t border-[#dee2f5]/10 shadow-[0_-4px_24px_rgba(22,27,41,0.06)] rounded-t-3xl">
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] dark:hover:text-blue-300 active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="home" style="">home</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider mt-1" style="">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] dark:hover:text-blue-300 active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="search" style="">search</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider mt-1" style="">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-[#f2f3ff] dark:bg-blue-900/30 text-[#0058bc] dark:text-blue-300 rounded-2xl px-6 py-2 active:scale-90 transition-transform duration-200 relative" href="#" style="">
+<span class="material-symbols-outlined" data-icon="shopping_cart" style="font-variation-settings: &quot;FILL&quot; 1;">shopping_cart</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1" style="">Cart</span>
+<!-- Badge -->
+<span class="absolute top-1 right-5 bg-primary text-on-primary text-[8px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-surface-container-low" style="">3</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:text-[#0058bc] dark:hover:text-blue-300 active:scale-90 transition-transform duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="person" style="">person</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-wider mt-1" style="">Profile</span>
+</a>
+</nav>
+</body></html>

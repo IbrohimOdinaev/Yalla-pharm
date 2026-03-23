@@ -15,6 +15,7 @@ namespace Yalla.Application.Services;
 public sealed class PaymentIntentService : IPaymentIntentService
 {
   private readonly IAppDbContext _dbContext;
+  private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
   private readonly IOrderStatusSmsService _orderStatusSmsService;
   private readonly SmsTemplatesOptions _smsTemplatesOptions;
   private readonly ILogger<PaymentIntentService> _logger;
@@ -22,6 +23,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
   public PaymentIntentService(IAppDbContext dbContext)
     : this(
       dbContext,
+      new NoOpRealtimeUpdatesPublisher(),
       new OrderStatusSmsService(Options.Create(new SmsTemplatesOptions())),
       Options.Create(new SmsTemplatesOptions()),
       NullLogger<PaymentIntentService>.Instance)
@@ -30,16 +32,19 @@ public sealed class PaymentIntentService : IPaymentIntentService
 
   public PaymentIntentService(
     IAppDbContext dbContext,
+    IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
     IOrderStatusSmsService orderStatusSmsService,
     IOptions<SmsTemplatesOptions> smsTemplatesOptions,
     ILogger<PaymentIntentService> logger)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
+    ArgumentNullException.ThrowIfNull(realtimeUpdatesPublisher);
     ArgumentNullException.ThrowIfNull(orderStatusSmsService);
     ArgumentNullException.ThrowIfNull(smsTemplatesOptions);
     ArgumentNullException.ThrowIfNull(logger);
 
     _dbContext = dbContext;
+    _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
     _orderStatusSmsService = orderStatusSmsService;
     _smsTemplatesOptions = smsTemplatesOptions.Value;
     _logger = logger;
@@ -183,6 +188,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
         paymentIntent.MarkConfirmed(superAdmin.Id, DateTime.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, existingOrder.Id, cancellationToken);
 
         return new ConfirmPaymentIntentBySuperAdminResponse
         {
@@ -214,6 +220,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
         paymentIntent.MarkNeedsResolution(reason, nowUtc);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
         return BuildNeedsResolutionResponse(paymentIntent, reason);
       }
 
@@ -224,6 +231,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
         paymentIntent.MarkNeedsResolution(reason, nowUtc);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
         return BuildNeedsResolutionResponse(paymentIntent, reason);
       }
 
@@ -242,6 +250,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
         paymentIntent.MarkNeedsResolution(reason, nowUtc);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
         return BuildNeedsResolutionResponse(paymentIntent, reason);
       }
 
@@ -315,6 +324,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
+      await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, order.Id, cancellationToken);
 
       _logger.LogInformation(
         "Payment intent confirmed. PaymentIntentId={PaymentIntentId}, ReservedOrderId={ReservedOrderId}, SuperAdminId={SuperAdminId}, SmsEnqueuedForPhone={Phone}",
@@ -374,6 +384,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
         var reason = $"Insufficient stock due to concurrent confirmation for medicine '{concurrentException.MedicineId}'.";
         trackedPaymentIntent.MarkNeedsResolution(reason, DateTime.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await PublishPaymentIntentUpdatedSafeAsync(trackedPaymentIntent, null, cancellationToken);
 
         return BuildNeedsResolutionResponse(trackedPaymentIntent, reason);
       }
@@ -438,6 +449,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
             {
               trackedPaymentIntent.MarkConfirmed(request.SuperAdminId, DateTime.UtcNow);
               await _dbContext.SaveChangesAsync(cancellationToken);
+              await PublishPaymentIntentUpdatedSafeAsync(trackedPaymentIntent, existingOrder.Id, cancellationToken);
             }
           }
 
@@ -478,6 +490,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
     var nowUtc = DateTime.UtcNow;
     paymentIntent.MarkRejected(request.Reason, nowUtc);
     await _dbContext.SaveChangesAsync(cancellationToken);
+    await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
 
     _logger.LogInformation(
       "Payment intent rejected. PaymentIntentId={PaymentIntentId}, SuperAdminId={SuperAdminId}",
@@ -523,6 +536,31 @@ public sealed class PaymentIntentService : IPaymentIntentService
       OrderStatus = null,
       Message = reason
     };
+  }
+
+  private async Task PublishPaymentIntentUpdatedSafeAsync(
+    PaymentIntent paymentIntent,
+    Guid? orderId,
+    CancellationToken cancellationToken)
+  {
+    try
+    {
+      await _realtimeUpdatesPublisher.PublishPaymentIntentUpdatedAsync(
+        paymentIntentId: paymentIntent.Id,
+        clientId: paymentIntent.ClientId,
+        state: paymentIntent.State,
+        orderId: orderId,
+        cancellationToken: cancellationToken);
+    }
+    catch (Exception exception)
+    {
+      _logger.LogWarning(
+        exception,
+        "Failed to publish payment intent update via realtime channel. PaymentIntentId={PaymentIntentId}, State={State}, ClientId={ClientId}",
+        paymentIntent.Id,
+        paymentIntent.State,
+        paymentIntent.ClientId);
+    }
   }
 
   private static string BuildInsufficientStockReason(
