@@ -33,10 +33,12 @@ export function MedicineCard({ medicine }: MedicineCardProps) {
           )}
         </div>
         <h3 className="line-clamp-1 text-sm font-bold">{getMedicineDisplayName(medicine)}</h3>
-        <p className="line-clamp-2 text-xs text-on-surface-variant">{medicine.description || "Описание временно недоступно"}</p>
+        <p className="line-clamp-1 text-xs text-on-surface-variant">{medicine.articul || medicine.description || ""}</p>
       </Link>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-sm font-extrabold text-primary">{formatMoney(medicine.price)}</span>
+        <span className="text-sm font-extrabold text-primary">
+          {medicine.price ? formatMoney(medicine.price) : medicine.offers?.[0]?.price ? formatMoney(medicine.offers[0].price) : "Цена в аптеке"}
+        </span>
         <button
           type="button"
           onClick={() => {

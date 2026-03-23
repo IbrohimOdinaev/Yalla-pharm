@@ -1,4 +1,5 @@
 import { apiFetch } from "@/shared/api/http-client";
+import { env } from "@/shared/config/env";
 import type { ApiMedicine, ApiPaginated } from "@/shared/types/api";
 
 export async function getCatalogMedicines(page = 1, pageSize = 24): Promise<ApiMedicine[]> {
@@ -19,7 +20,7 @@ export function resolveMedicineImageUrl(medicine?: ApiMedicine): string {
   const firstImage = medicine?.images?.[0];
   if (!firstImage) return "";
   if (firstImage.url) return firstImage.url;
-  if (firstImage.id) return `/api/medicines/images/${firstImage.id}/content`;
+  if (firstImage.id) return `${env.apiBaseUrl}/api/medicines/images/${firstImage.id}/content`;
   return "";
 }
 

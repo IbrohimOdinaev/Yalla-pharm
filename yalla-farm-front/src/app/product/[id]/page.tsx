@@ -69,22 +69,44 @@ export default function ProductDetailsPage() {
           <div className="stitch-card space-y-4 p-6">
             <div>
               <h1 className="text-2xl font-extrabold text-primary">{getMedicineDisplayName(medicine)}</h1>
-              <p className="mt-2 text-sm text-on-surface-variant">{medicine.description || "Описание временно недоступно."}</p>
+              {medicine.articul ? <p className="mt-1 text-xs font-mono text-on-surface-variant">{medicine.articul}</p> : null}
+              {medicine.description ? <p className="mt-2 text-sm text-on-surface-variant">{medicine.description}</p> : null}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-xl bg-surface-container-low p-3">
-                <p className="text-xs text-on-surface-variant">Дозировка</p>
-                <p className="font-semibold">{medicine.dosage || "—"}</p>
+            {/* Attributes from API */}
+            {(medicine.atributes ?? []).length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {medicine.atributes!.map((attr) => (
+                  <div key={attr.name} className="rounded-xl bg-surface-container-low p-3">
+                    <p className="text-xs text-on-surface-variant">{attr.name}</p>
+                    <p className="font-semibold">{attr.option}</p>
+                  </div>
+                ))}
               </div>
-              <div className="rounded-xl bg-surface-container-low p-3">
-                <p className="text-xs text-on-surface-variant">Производитель</p>
-                <p className="font-semibold">{medicine.manufacturer || "—"}</p>
+            ) : null}
+
+            {/* Offers from pharmacies */}
+            {(medicine.offers ?? []).length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold text-on-surface-variant">Цены в аптеках</h3>
+                {medicine.offers!.map((offer) => (
+                  <div key={offer.pharmacyId} className="flex items-center justify-between rounded-xl bg-surface-container-low px-4 py-3">
+                    <div>
+                      <p className="font-semibold text-sm">{offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}</p>
+                      <p className="text-xs text-on-surface-variant">В наличии: {offer.stockQuantity} шт.</p>
+                    </div>
+                    <p className="font-bold text-primary">{formatMoney(offer.price)}</p>
+                  </div>
+                ))}
               </div>
-            </div>
+            ) : null}
 
             <div className="flex items-center justify-between gap-4">
-              <p className="text-2xl font-black text-primary">{formatMoney(medicine.price)}</p>
+              <p className="text-2xl font-black text-primary">
+                {medicine.price ? formatMoney(medicine.price)
+                  : medicine.offers?.[0]?.price ? formatMoney(medicine.offers[0].price)
+                  : "Цена в аптеке"}
+              </p>
               <button
                 type="button"
                 className="stitch-button"

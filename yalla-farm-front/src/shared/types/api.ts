@@ -8,18 +8,37 @@ export type ApiPaginated<T> = {
 export type ApiMedicineImage = {
   id?: string;
   url?: string;
+  key?: string;
+  isMain?: boolean;
+  isMinimal?: boolean;
+};
+
+export type ApiMedicineAttribute = {
+  name: string;
+  option: string;
+};
+
+export type ApiMedicineOffer = {
+  pharmacyId: string;
+  pharmacyTitle?: string;
+  stockQuantity: number;
+  price: number;
 };
 
 export type ApiMedicine = {
   id: string;
   title?: string;
   name?: string;
+  articul?: string;
+  isActive?: boolean;
   description?: string;
   dosage?: string;
   releaseForm?: string;
   manufacturer?: string;
   price?: number;
   images?: ApiMedicineImage[];
+  atributes?: ApiMedicineAttribute[];
+  offers?: ApiMedicineOffer[];
 };
 
 export type ApiBasketPosition = {
