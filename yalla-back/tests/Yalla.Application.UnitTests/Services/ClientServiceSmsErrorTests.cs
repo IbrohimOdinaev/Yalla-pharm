@@ -104,7 +104,8 @@ public sealed class ClientServiceSmsErrorTests
       smsService ?? new FakeSmsService(),
       Options.Create(smsOptions ?? new SmsVerificationOptions()),
       Options.Create(new DushanbeCityPaymentOptions()),
-      logger);
+      logger,
+      new NoOpRealtimeUpdatesPublisher());
   }
 
   private sealed class FakeSmsService : ISmsService

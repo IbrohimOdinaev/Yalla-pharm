@@ -36,6 +36,7 @@ export type ApiMedicine = {
   releaseForm?: string;
   manufacturer?: string;
   price?: number;
+  minPrice?: number;
   images?: ApiMedicineImage[];
   atributes?: ApiMedicineAttribute[];
   offers?: ApiMedicineOffer[];
@@ -129,6 +130,9 @@ export type ApiOrder = {
   createdAtUtc?: string;
   cost?: number;
   currency?: string;
+  returnCost?: number;
+  clientPhoneNumber?: string;
+  orderPlacedAt?: string;
   positions?: ApiOrderPosition[];
   refundRequest?: ApiRefundRequest;
 };

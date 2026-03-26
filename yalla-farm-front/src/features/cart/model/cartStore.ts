@@ -9,7 +9,7 @@ type CartState = {
   isLoading: boolean;
   error: string | null;
   loadBasket: (token: string) => Promise<void>;
-  addItem: (token: string, medicineId: string) => Promise<void>;
+  addItem: (token: string, medicineId: string, quantity?: number) => Promise<void>;
   removeItem: (token: string, positionId: string) => Promise<void>;
   setQuantity: (token: string, positionId: string, quantity: number) => Promise<void>;
   reset: () => void;
@@ -49,7 +49,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     }
   },
 
-  addItem: async (token, medicineId) => {
+  addItem: async (token, medicineId, quantity = 1) => {
     set({ isLoading: true, error: null });
 
     try {
@@ -58,8 +58,8 @@ export const useCartStore = create<CartState>((set, get) => ({
       const existing = positions.find((item) => String(item.medicineId) === String(medicineId));
 
       const basket = existing
-        ? await updateBasketQuantity(token, existing.id, Math.max(1, Number(existing.quantity || 0) + 1))
-        : await addToBasket(token, medicineId, 1);
+        ? await updateBasketQuantity(token, existing.id, Math.max(1, Number(existing.quantity || 0) + quantity))
+        : await addToBasket(token, medicineId, quantity);
 
       set({ basket: normalizeBasket(basket), isLoading: false });
     } catch {

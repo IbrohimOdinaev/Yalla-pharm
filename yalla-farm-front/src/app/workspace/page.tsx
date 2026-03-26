@@ -7,34 +7,67 @@ import { formatMoney, formatPhone } from "@/shared/lib/format";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 
-import { updateAdminMe } from "@/entities/admin/api";
+import { updateAdminMe, getAdminMe } from "@/entities/admin/api";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { updatePharmacy } from "@/entities/pharmacy/admin-api";
-import { searchMedicines } from "@/entities/medicine/api";
+import { searchMedicines, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import type { ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
 import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions } from "@/entities/order/admin-api";
+import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 
 type Tab = "pharmacy" | "offers" | "orders";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "pharmacy", label: "Аптека" },
-  { id: "offers", label: "Предложения" },
-  { id: "orders", label: "Заказы" }
-];
-
-const KANBAN_COLUMNS = ["UnderReview", "Preparing", "Ready", "OnTheWay"] as const;
-const COLUMN_LABELS: Record<string, string> = {
-  UnderReview: "На рассмотрении",
-  Preparing: "Собирается",
-  Ready: "Готов",
-  OnTheWay: "В пути"
+const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "Delivered", "Cancelled", "Returned"];
+const STATUS_LABELS: Record<string, string> = {
+  New: "Новые", UnderReview: "На рассмотрении", Preparing: "Собирается",
+  Ready: "Готов", OnTheWay: "В пути", Delivered: "Доставлен",
+  Cancelled: "Отменён", Returned: "Возврат"
+};
+const STATUS_COLORS: Record<string, string> = {
+  New: "bg-blue-500", UnderReview: "bg-yellow-500", Preparing: "bg-orange-500",
+  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", Delivered: "bg-green-500",
+  Cancelled: "bg-red-500", Returned: "bg-gray-500"
 };
 
 export default function WorkspacePage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
   const [activeTab, setActiveTab] = useState<Tab>("pharmacy");
+
+  useEffect(() => {
+    function syncHash() {
+      const h = window.location.hash.replace("#", "") as Tab;
+      if (h === "offers") setActiveTab("offers");
+      else if (h === "orders") setActiveTab("orders");
+      else setActiveTab("pharmacy");
+    }
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  /* Feature 14: stat cards data */
+  const [orderCount, setOrderCount] = useState(0);
+  const [pharmacyName, setPharmacyName] = useState("");
+  const [adminIdentity, setAdminIdentity] = useState<{name: string; phoneNumber: string} | null>(null);
+  const [pharmacyActive, setPharmacyActive] = useState(true);
+
+  useEffect(() => {
+    if (!token || role !== "Admin") return;
+    getAdminOrders(token, "", 1, 1000)
+      .then((data) => setOrderCount(data.length))
+      .catch(() => undefined);
+    getActivePharmacies(token)
+      .then((pharmacies) => {
+        if (pharmacies.length > 0) {
+          setPharmacyName(pharmacies[0].title);
+          setPharmacyActive(pharmacies[0].isActive ?? true);
+        }
+      })
+      .catch(() => undefined);
+    getAdminMe(token).then(setAdminIdentity).catch(() => undefined);
+  }, [token, role]);
 
   if (!token || role !== "Admin") {
     return (
@@ -49,21 +82,32 @@ export default function WorkspacePage() {
   return (
     <AppShell top={<TopBar title="Workspace" backHref="/" />}>
       <div className="space-y-4">
-        {/* Tab bar */}
-        <nav className="flex gap-2 overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold transition ${
-                activeTab === tab.id ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        {/* Feature 14: Admin hero */}
+        <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-3">
+          <p className="text-xs font-bold uppercase tracking-wider opacity-80">Admin Dashboard</p>
+          <h1 className="text-2xl font-extrabold">
+            Кабинет аптеки{pharmacyName ? `: ${pharmacyName}` : ""}
+          </h1>
+          <p className="text-sm opacity-80">Управляйте аптекой, предложениями и заказами</p>
+        </div>
+
+        {/* Feature 14: Stat cards */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="stitch-card p-4 text-center">
+            <p className="text-2xl font-black text-primary">{orderCount}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Заказы в ленте</p>
+          </div>
+          <div className="stitch-card p-4 text-center">
+            <p className={`text-lg font-black ${pharmacyActive ? "text-emerald-600" : "text-red-600"}`}>
+              {pharmacyActive ? "Активна" : "Отключена"}
+            </p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Статус аптеки</p>
+          </div>
+          <div className="stitch-card p-4 text-center">
+            <p className="text-lg font-black text-primary truncate">{adminIdentity?.name || "Admin"}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Администратор</p>
+          </div>
+        </div>
 
         {activeTab === "pharmacy" ? <PharmacyTab token={token} /> : null}
         {activeTab === "offers" ? <OffersTab token={token} /> : null}
@@ -89,6 +133,10 @@ function PharmacyTab({ token }: { token: string }) {
 
   useEffect(() => {
     getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
+    getAdminMe(token).then((data) => {
+      setAdminName(data.name || "");
+      setAdminPhone(data.phoneNumber || "");
+    }).catch(() => undefined);
   }, [token]);
 
   const pharmacy = pharmacies[0];
@@ -129,9 +177,12 @@ function PharmacyTab({ token }: { token: string }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="grid gap-5 md:grid-cols-2">
       <form className="stitch-card space-y-4 p-6" onSubmit={onSaveAdmin}>
-        <h2 className="text-lg font-bold">Профиль администратора</h2>
+        <div>
+          <h2 className="text-lg font-bold">Профиль администратора</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">Ваши контактные данные и данные для входа.</p>
+        </div>
         <label className="block space-y-1">
           <span className="text-sm font-medium text-on-surface-variant">Имя</span>
           <input className="stitch-input" value={adminName} onChange={(e) => setAdminName(e.target.value)} required />
@@ -146,7 +197,10 @@ function PharmacyTab({ token }: { token: string }) {
 
       {pharmacy ? (
         <form className="stitch-card space-y-4 p-6" onSubmit={onSavePharmacy}>
-          <h2 className="text-lg font-bold">Настройки аптеки</h2>
+          <div>
+            <h2 className="text-lg font-bold">Управление аптекой</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">Название, адрес и статус видимости для клиентов.</p>
+          </div>
           <label className="block space-y-1">
             <span className="text-sm font-medium text-on-surface-variant">Название</span>
             <input className="stitch-input" value={pharmaTitle} onChange={(e) => setPharmaTitle(e.target.value)} required />
@@ -192,6 +246,11 @@ function OffersTab({ token }: { token: string }) {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-bold">Управление предложениями</h2>
+        <p className="mt-1 text-sm text-on-surface-variant">Найдите лекарство и задайте цену и остаток для вашей аптеки.</p>
+      </div>
+
       <input
         className="stitch-input w-full"
         placeholder="Поиск лекарств для добавления предложения..."
@@ -200,6 +259,10 @@ function OffersTab({ token }: { token: string }) {
       />
 
       {isSearching ? <div className="text-sm text-on-surface-variant">Поиск...</div> : null}
+
+      {results.length > 0 && !isSearching ? (
+        <p className="text-xs text-on-surface-variant">{results.length} товаров найдено</p>
+      ) : null}
 
       {results.map((medicine) => (
         <OfferCard key={medicine.id} token={token} medicine={medicine} />
@@ -212,6 +275,7 @@ function OfferCard({ token, medicine }: { token: string; medicine: ApiMedicine }
   const [stock, setStock] = useState("");
   const [price, setPrice] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const imageUrl = resolveMedicineImageUrl(medicine);
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -225,14 +289,27 @@ function OfferCard({ token, medicine }: { token: string; medicine: ApiMedicine }
   }
 
   return (
-    <form className="stitch-card space-y-3 p-4" onSubmit={onSave}>
-      <p className="font-bold">{medicine.title || medicine.name || medicine.id.slice(0, 8)}</p>
-      <div className="flex gap-2">
-        <input className="stitch-input flex-1" type="number" min="0" placeholder="Кол-во" value={stock} onChange={(e) => setStock(e.target.value)} required />
+    <form className="stitch-card overflow-hidden" onSubmit={onSave}>
+      <div className="flex gap-4 p-4">
+        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt={medicine.title || ""} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">Фото</div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold truncate">{medicine.title || medicine.name || medicine.id.slice(0, 8)}</p>
+          {medicine.articul ? <p className="text-[10px] font-mono text-on-surface-variant">{medicine.articul}</p> : null}
+        </div>
+      </div>
+      <div className="flex gap-2 px-4 pb-4">
+        <input className="stitch-input flex-1" type="number" min="0" placeholder="Остаток" value={stock} onChange={(e) => setStock(e.target.value)} required />
         <input className="stitch-input flex-1" type="number" min="0" step="0.01" placeholder="Цена" value={price} onChange={(e) => setPrice(e.target.value)} required />
         <button type="submit" className="stitch-button">OK</button>
       </div>
-      {msg ? <div className={`text-xs ${msg === "Сохранено." ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
+      {msg ? <div className={`px-4 pb-3 text-xs ${msg === "Сохранено." ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
     </form>
   );
 }
@@ -243,13 +320,16 @@ function OrdersTab({ token }: { token: string }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState("");
 
   const refresh = useCallback(() => {
     setIsLoading(true);
-    getAdminOrders(token)
+    getAdminOrders(token, "")
       .then((data) => { setOrders(data); setIsLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : "Ошибка."); setIsLoading(false); });
   }, [token]);
+
+  useOrderStatusLive(useCallback(() => { refresh(); }, [refresh]));
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -265,51 +345,67 @@ function OrdersTab({ token }: { token: string }) {
     }
   }
 
-  const grouped = KANBAN_COLUMNS.reduce<Record<string, ApiOrder[]>>((acc, col) => {
-    acc[col] = orders.filter((o) => o.status === col);
+  const filteredOrders = dateFilter
+    ? orders.filter((o) => o.createdAtUtc && new Date(o.createdAtUtc).toISOString().slice(0, 10) === dateFilter)
+    : orders;
+
+  const grouped = ALL_STATUSES.reduce<Record<string, ApiOrder[]>>((acc, status) => {
+    acc[status] = filteredOrders.filter((o) => o.status === status);
     return acc;
   }, {});
 
-  // Also include New orders at top
-  const newOrders = orders.filter((o) => o.status === "New");
-
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold">Управление заказами</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">Доска заказов по всем статусам{dateFilter ? ` · ${dateFilter}` : ""}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            className="stitch-input text-xs w-auto"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+          />
+          {dateFilter ? (
+            <button type="button" onClick={() => setDateFilter("")} className="text-xs text-on-surface-variant hover:text-red-600">Сбросить</button>
+          ) : null}
+        </div>
+      </div>
+
       {isLoading ? <div className="text-sm text-on-surface-variant">Загрузка...</div> : null}
       {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
-      {/* New orders */}
-      {newOrders.length > 0 ? (
-        <section>
-          <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Новые</h3>
-          <div className="space-y-2">
-            {newOrders.map((order) => (
-              <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} actions={[
-                { label: "Начать сборку", action: "assembly" },
-                { label: "Удалить", action: "delete", danger: true }
-              ]} onAction={onAction} />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <div className="flex gap-4 overflow-x-auto pb-4 snap-x md:grid md:grid-cols-2 md:overflow-x-visible xl:grid-cols-4">
+        {ALL_STATUSES.map((status) => {
+          const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean }[] => {
+            const a: { label: string; action: string; danger?: boolean }[] = [];
+            if (status === "UnderReview") a.push({ label: "Начать сборку", action: "assembly" });
+            if (status === "Preparing") a.push({ label: "Собран", action: "ready" });
+            if (status === "Ready") a.push({ label: order.isPickup ? "Выдан клиенту" : "В пути", action: "ontheway" });
+            // New, OnTheWay, Delivered, Cancelled, Returned — no actions for admin
+            return a;
+          };
 
-      {/* Kanban columns */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {KANBAN_COLUMNS.map((col) => (
-          <section key={col} className="rounded-xl bg-surface-container-low p-3">
-            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-on-surface-variant">{COLUMN_LABELS[col]}</h3>
-            <div className="space-y-2">
-              {(grouped[col] ?? []).map((order) => {
-                const actions: { label: string; action: string; danger?: boolean }[] = [];
-                if (col === "UnderReview") actions.push({ label: "Собирается", action: "assembly" });
-                if (col === "Preparing") actions.push({ label: "Готов", action: "ready" });
-                if (col === "Ready") actions.push({ label: "В пути", action: "ontheway" });
-                return <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} actions={actions} onAction={onAction} />;
-              })}
-              {(grouped[col] ?? []).length === 0 ? <p className="text-xs text-on-surface-variant">Пусто</p> : null}
+          return (
+            <div key={status} className="min-w-[260px] flex-shrink-0 snap-start rounded-2xl bg-surface-container-low p-3 space-y-3 md:min-w-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[status]}`} />
+                  <h4 className="text-sm font-bold">{STATUS_LABELS[status]}</h4>
+                </div>
+                <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-bold">{grouped[status].length}</span>
+              </div>
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {grouped[status].map((order) => (
+                  <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} actions={actions(order)} onAction={onAction} />
+                ))}
+                {grouped[status].length === 0 && <p className="text-xs text-on-surface-variant text-center py-4">Пусто</p>}
+              </div>
             </div>
-          </section>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -358,7 +454,21 @@ function OrderCard({
         <span className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
         <span className="font-bold text-sm">{formatMoney(order.cost, order.currency)}</span>
       </div>
+
+      {/* Feature 13: Order date */}
+      {order.createdAtUtc ? (
+        <p className="text-xs text-on-surface-variant">
+          {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+        </p>
+      ) : null}
+
       {order.deliveryAddress ? <p className="text-xs text-on-surface-variant">{order.isPickup ? "Самовывоз" : order.deliveryAddress}</p> : null}
+
+      {/* Feature 13: Position count and delivery type */}
+      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+        <span>{order.positions?.length ?? 0} поз.</span>
+        <span>{order.isPickup ? "Самовывоз" : "Доставка"}</span>
+      </div>
 
       {/* Position list with reject checkboxes for Preparing */}
       {showPositionReject ? (
@@ -377,8 +487,6 @@ function OrderCard({
             </button>
           ) : null}
         </div>
-      ) : (order.positions ?? []).length > 0 ? (
-        <p className="text-xs text-on-surface-variant">{order.positions!.length} поз.</p>
       ) : null}
 
       {actions.length > 0 ? (
@@ -398,6 +506,14 @@ function OrderCard({
           ))}
         </div>
       ) : null}
+
+      {/* Feature 13: "Подробнее" link */}
+      <Link
+        href={`/workspace/order/${order.orderId}`}
+        className="inline-block rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold text-on-surface-variant hover:bg-surface-container-high"
+      >
+        Подробнее
+      </Link>
     </div>
   );
 }

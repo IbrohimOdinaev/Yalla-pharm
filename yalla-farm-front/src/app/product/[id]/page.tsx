@@ -1,14 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getMedicineById, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
 import { useAppSelector } from "@/shared/lib/redux";
+import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 
@@ -22,9 +24,19 @@ export default function ProductDetailsPage() {
   const loadBasket = useCartStore((state) => state.loadBasket);
   const setDraft = useCheckoutDraftStore((state) => state.setDraft);
 
+  const role = useAppSelector((state) => state.auth.role);
+
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
+
+  useOfferLiveUpdates(useCallback((payload) => {
+    if (medicine && payload.medicineId === medicine.id) {
+      getMedicineById(id).then(setMedicine).catch(() => undefined);
+    }
+  }, [medicine, id]));
 
   useEffect(() => {
     if (token) loadBasket(token).catch(() => undefined);
@@ -48,7 +60,9 @@ export default function ProductDetailsPage() {
       });
   }, [id]);
 
-  const imageUrl = useMemo(() => resolveMedicineImageUrl(medicine ?? undefined), [medicine]);
+  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined), [medicine]);
+  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined);
+  const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
 
   return (
     <AppShell top={<TopBar title="Карточка товара" backHref="/" />}>
@@ -57,13 +71,33 @@ export default function ProductDetailsPage() {
 
       {medicine ? (
         <section className="space-y-5">
-          <div className="overflow-hidden rounded-2xl bg-surface-container-high shadow-card">
-            {imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt={getMedicineDisplayName(medicine)} className="h-[320px] w-full object-cover" />
-            ) : (
-              <div className="flex h-[320px] items-center justify-center text-on-surface-variant">Нет изображения</div>
-            )}
+          {/* Image gallery */}
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-2xl bg-surface-container-high shadow-card">
+              {activeImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={activeImage} alt={getMedicineDisplayName(medicine)} className="h-[250px] sm:h-[360px] w-full object-contain bg-white" />
+              ) : (
+                <div className="flex h-[250px] sm:h-[360px] items-center justify-center text-on-surface-variant">Нет изображения</div>
+              )}
+            </div>
+            {gallery.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                {gallery.map((url, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setActiveImageIdx(idx)}
+                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
+                      idx === activeImageIdx ? "border-primary shadow-sm" : "border-surface-container-high hover:border-on-surface-variant"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-full w-full object-contain bg-white" />
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="stitch-card space-y-4 p-6">
@@ -101,27 +135,40 @@ export default function ProductDetailsPage() {
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-2xl font-black text-primary">
-                {medicine.price ? formatMoney(medicine.price)
-                  : medicine.offers?.[0]?.price ? formatMoney(medicine.offers[0].price)
-                  : "Цена в аптеке"}
-              </p>
-              <button
-                type="button"
-                className="stitch-button"
-                onClick={() => {
-                  if (token) {
-                    addItem(token, medicine.id).catch(() => undefined);
-                  } else {
-                    addGuestItem(medicine.id);
-                  }
-                }}
-              >
-                Добавить в корзину
-              </button>
+            <p className="text-2xl font-black text-primary">
+              {cheapestPrice ? formatMoney(cheapestPrice) : "Цена в аптеке"}
+              {(medicine.offers ?? []).length > 1 ? <span className="ml-2 text-xs font-normal text-on-surface-variant">от</span> : null}
+            </p>
+
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setQuantity(q => Math.max(1, q - 1))} className="stitch-button-secondary px-3 py-2">−</button>
+              <span className="min-w-8 text-center font-semibold">{quantity}</span>
+              <button type="button" onClick={() => setQuantity(q => q + 1)} className="stitch-button-secondary px-3 py-2">+</button>
             </div>
+
+            <button
+              type="button"
+              className="stitch-button w-full"
+              onClick={() => {
+                if (token) {
+                  addItem(token, medicine.id, quantity).catch(() => undefined);
+                } else {
+                  addGuestItem(medicine.id, quantity);
+                }
+              }}
+            >
+              Добавить в корзину
+            </button>
           </div>
+
+          {/* Admin/SuperAdmin tip */}
+          {(role === "Admin" || role === "SuperAdmin") ? (
+            <div className="rounded-2xl bg-surface-container-low p-5 space-y-2">
+              <p className="text-sm font-bold text-on-surface-variant">Режим {role === "Admin" ? "Администратора" : "Суперадмина"}</p>
+              <p className="text-xs text-on-surface-variant">Управление этим товаром доступно в вашем кабинете.</p>
+              <Link href={role === "Admin" ? "/workspace" : "/superadmin"} className="stitch-button-secondary inline-block text-xs">Открыть кабинет</Link>
+            </div>
+          ) : null}
 
           {/* Pharmacy offers comparison */}
           {token && (basket.pharmacyOptions ?? []).length > 0 ? (

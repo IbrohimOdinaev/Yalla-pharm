@@ -169,7 +169,8 @@ public sealed class MedicineService : IMedicineService
 
         var query = _dbContext.Medicines
           .AsNoTracking()
-          .Where(x => x.IsActive);
+          .Where(x => x.IsActive)
+          .Where(x => x.Offers.Any(o => o.StockQuantity > 0));
 
         var normalizedQuery = (request.Query ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(normalizedQuery))
@@ -193,6 +194,9 @@ public sealed class MedicineService : IMedicineService
               Title = x.Title,
               Articul = x.Articul,
               IsActive = x.IsActive,
+              MinPrice = x.Offers.Any(o => o.Price > 0)
+                ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                : null,
               Images = x.Images
                 .OrderByDescending(i => i.IsMain)
                 .ThenByDescending(i => i.IsMinimal)
@@ -254,6 +258,9 @@ public sealed class MedicineService : IMedicineService
               Title = x.Title,
               Articul = x.Articul,
               IsActive = x.IsActive,
+              MinPrice = x.Offers.Any(o => o.Price > 0)
+                ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                : null,
               Images = x.Images
                 .OrderByDescending(i => i.IsMain)
                 .ThenByDescending(i => i.IsMinimal)
@@ -331,6 +338,7 @@ public sealed class MedicineService : IMedicineService
           .AsNoTracking()
           .Where(x =>
             x.IsActive &&
+            x.Offers.Any(o => o.StockQuantity > 0) &&
             (EF.Functions.Like(x.Title.ToLower(), containsPattern)
              || EF.Functions.Like(x.Articul.ToLower(), containsPattern)))
           .Select(x => new
@@ -375,6 +383,13 @@ public sealed class MedicineService : IMedicineService
           .GroupBy(x => x.MedicineId)
           .ToDictionary(x => x.Key, x => (IReadOnlyCollection<MedicineImageResponse>)x.Select(y => y.Image).ToList());
 
+        var minPrices = await _dbContext.Offers
+          .AsNoTracking()
+          .Where(x => medicineIds.Contains(x.MedicineId) && x.Price > 0)
+          .GroupBy(x => x.MedicineId)
+          .Select(g => new { MedicineId = g.Key, MinPrice = g.Min(x => x.Price) })
+          .ToDictionaryAsync(x => x.MedicineId, x => x.MinPrice, cancellationToken);
+
         return new SearchMedicinesResponse
         {
             Query = query,
@@ -386,6 +401,7 @@ public sealed class MedicineService : IMedicineService
                   Title = x.Title,
                   Articul = x.Articul,
                   IsActive = true,
+                  MinPrice = minPrices.TryGetValue(x.Id, out var mp) ? mp : null,
                   Images = imagesByMedicineId.TryGetValue(x.Id, out var value)
                     ? value
                     : []

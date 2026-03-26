@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { getMyProfile, updateMyProfile, deleteMyAccount, changePassword } from "@/entities/client/api";
-import type { ApiClient } from "@/shared/types/api";
+import { getClientOrderHistory } from "@/entities/order/api";
+import type { ApiClient, ApiOrder } from "@/shared/types/api";
 import { formatMoney, formatPhone } from "@/shared/lib/format";
 import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
 import { clearCredentials } from "@/features/auth/model/authSlice";
+import { useCartStore } from "@/features/cart/model/cartStore";
+import { useBasketLive } from "@/features/cart/model/useBasketLive";
+import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 
@@ -19,6 +23,28 @@ type PendingPayment = {
   paymentUrl: string;
   amount: number;
   currency: string;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  New: "Новый",
+  UnderReview: "На рассмотрении",
+  Preparing: "Собирается",
+  Ready: "Готов",
+  OnTheWay: "В пути",
+  Delivered: "Доставлен",
+  Returned: "Возврат",
+  Cancelled: "Отменён"
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  New: "bg-yellow-100 text-yellow-800",
+  UnderReview: "bg-blue-100 text-blue-800",
+  Preparing: "bg-blue-100 text-blue-800",
+  Ready: "bg-emerald-100 text-emerald-800",
+  OnTheWay: "bg-emerald-100 text-emerald-800",
+  Delivered: "bg-emerald-100 text-emerald-800",
+  Returned: "bg-gray-100 text-gray-600",
+  Cancelled: "bg-red-100 text-red-700"
 };
 
 export default function ProfilePage() {
@@ -50,6 +76,22 @@ export default function ProfilePage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  /* recent orders */
+  const [recentOrders, setRecentOrders] = useState<ApiOrder[]>([]);
+  const [ordersCount, setOrdersCount] = useState(0);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  /* cart */
+  const { basket, loadBasket } = useCartStore();
+
+  useBasketLive();
+  useOrderStatusLive(useCallback(() => {
+    if (token) getClientOrderHistory(token).then((data) => {
+      setOrdersCount(data.length);
+      setRecentOrders(data.slice(0, 5));
+    }).catch(() => undefined);
+  }, [token]));
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -75,13 +117,34 @@ export default function ProfilePage() {
         setError(err instanceof Error ? err.message : "Не удалось загрузить профиль.");
         setIsLoading(false);
       });
-  }, [token]);
+
+    // Load recent orders
+    getClientOrderHistory(token)
+      .then((data) => {
+        setOrdersCount(data.length);
+        setRecentOrders(data.slice(0, 5));
+      })
+      .catch(() => undefined);
+
+    // Load cart
+    loadBasket(token);
+  }, [token, loadBasket]);
 
   if (!token) {
     return (
       <AppShell top={<TopBar title="Профиль" backHref="/" />}>
-        <div className="stitch-card p-6 text-sm">
-          <Link href="/login" className="font-bold text-primary">Войдите</Link> чтобы видеть профиль.
+        <div className="stitch-card p-8 text-center space-y-4">
+          <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold">Требуется авторизация</h2>
+          <p className="text-sm text-on-surface-variant">Войдите или зарегистрируйтесь для доступа</p>
+          <div className="flex justify-center gap-3">
+            <Link href="/login" className="stitch-button text-sm">Войти</Link>
+            <Link href="/register" className="stitch-button-secondary text-sm">Регистрация</Link>
+          </div>
         </div>
       </AppShell>
     );
@@ -174,6 +237,27 @@ export default function ProfilePage() {
           </div>
         ) : null}
 
+        {/* Feature 10: Personalized hero */}
+        {profile ? (
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Мой профиль</p>
+                <h1 className="mt-1 text-2xl font-extrabold">Здравствуйте, {profile.name || "Клиент"}</h1>
+                <p className="mt-1.5 text-sm opacity-80 font-mono">{profile.phoneNumber}</p>
+              </div>
+              {ordersCount > 0 ? (
+                <div className="text-right">
+                  <p className="text-3xl font-black">{ordersCount}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider opacity-60">
+                    {ordersCount === 1 ? "заказ" : ordersCount < 5 ? "заказа" : "заказов"}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {profile ? (
           <>
             {/* Profile info */}
@@ -222,6 +306,80 @@ export default function ProfilePage() {
                 {isChangingPassword ? "Меняем..." : "Обновить пароль"}
               </button>
             </form>
+
+            {/* Feature 8: Recent orders */}
+            {recentOrders.length > 0 ? (
+              <div className="space-y-3">
+                <h2 className="text-lg font-bold">Последние заказы</h2>
+                {recentOrders.map((order) => {
+                  const isExpanded = expandedOrderId === order.orderId;
+                  const statusColor = STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-600";
+                  const statusLabel = STATUS_LABELS[order.status] ?? order.status;
+
+                  return (
+                    <article key={order.orderId} className="stitch-card overflow-hidden">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between p-4 text-left"
+                        onClick={() => setExpandedOrderId(isExpanded ? null : order.orderId)}
+                      >
+                        <div className="space-y-1">
+                          <p className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</p>
+                          <p className="font-bold">{formatMoney(order.cost, order.currency)}</p>
+                          {order.createdAtUtc ? (
+                            <p className="text-xs text-on-surface-variant">
+                              {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusColor}`}>{statusLabel}</span>
+                          <span className="text-on-surface-variant">{isExpanded ? "▲" : "▼"}</span>
+                        </div>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="px-4 pb-4 pt-1 space-y-2">
+                          {order.pharmacyTitle ? (
+                            <p className="text-sm"><span className="text-on-surface-variant">Аптека:</span> {order.pharmacyTitle}</p>
+                          ) : null}
+                          <p className="text-sm">
+                            <span className="text-on-surface-variant">Доставка:</span>{" "}
+                            {order.isPickup ? "Самовывоз" : order.deliveryAddress ?? "—"}
+                          </p>
+                          {(order.positions ?? []).length > 0 ? (
+                            <div className="space-y-1">
+                              {order.positions!.map((pos) => (
+                                <div key={pos.positionId} className="flex items-center justify-between rounded-lg bg-surface-container-low px-3 py-2 text-sm">
+                                  <Link href={`/product/${pos.medicineId}`} className={`hover:text-primary transition ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}>
+                                    {pos.medicine?.title ?? pos.medicineId.slice(0, 8)} × {pos.quantity}
+                                  </Link>
+                                  <span className="font-semibold">{formatMoney(pos.price * pos.quantity)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+                <Link href="/orders" className="block text-center text-sm font-bold text-primary">
+                  Все заказы →
+                </Link>
+              </div>
+            ) : null}
+
+            {/* Feature 9: Mini cart preview */}
+            {(basket.positions ?? []).length > 0 ? (
+              <div className="stitch-card p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold">Корзина</h2>
+                  <Link href="/cart" className="text-sm font-bold text-primary">Открыть</Link>
+                </div>
+                <p className="text-sm text-on-surface-variant">{basket.positions!.length} товаров в корзине</p>
+              </div>
+            ) : null}
 
             {/* Logout */}
             <button type="button" className="stitch-button-secondary w-full" onClick={onLogout}>

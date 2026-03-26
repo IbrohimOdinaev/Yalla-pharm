@@ -234,5 +234,9 @@ public sealed class PaymentIntentServiceTests
       Events.Add((paymentIntentId, clientId, state, orderId));
       return Task.CompletedTask;
     }
+
+    public Task PublishOfferUpdatedAsync(Guid medicineId, Guid pharmacyId, decimal price, int stockQuantity, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task PublishOrderStatusChangedAsync(Guid orderId, string status, Guid? clientId, Guid pharmacyId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task PublishBasketUpdatedAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
   }
 }

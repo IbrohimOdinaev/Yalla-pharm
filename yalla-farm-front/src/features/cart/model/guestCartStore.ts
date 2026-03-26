@@ -23,7 +23,9 @@ type GuestCartState = {
 function readStorage(): GuestItem[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    // Try cookie first, then localStorage fallback
+    const cookieRaw = document.cookie.split("; ").find((c) => c.startsWith(STORAGE_KEY + "="))?.split("=").slice(1).join("=");
+    const raw = cookieRaw ? decodeURIComponent(cookieRaw) : window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed?.items) ? parsed.items : [];
@@ -36,9 +38,13 @@ function writeStorage(items: GuestItem[]) {
   if (typeof window === "undefined") return;
   if (items.length === 0) {
     window.localStorage.removeItem(STORAGE_KEY);
+    document.cookie = `${STORAGE_KEY}=; path=/; max-age=0`;
     return;
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ items, updatedAt: new Date().toISOString() }));
+  const payload = JSON.stringify({ items, updatedAt: new Date().toISOString() });
+  // Write to both localStorage and cookie (30 days)
+  window.localStorage.setItem(STORAGE_KEY, payload);
+  document.cookie = `${STORAGE_KEY}=${encodeURIComponent(payload)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
 }
 
 export const useGuestCartStore = create<GuestCartState>((set, get) => ({

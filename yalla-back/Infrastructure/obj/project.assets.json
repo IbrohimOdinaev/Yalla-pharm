@@ -3691,11 +3691,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
+      "projectUniqueName": "/home/agony/Documents/work/yalla-farm/yalla-back/Infrastructure/Infrastructure.csproj",
       "projectName": "Infrastructure",
-      "projectPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/Infrastructure.csproj",
+      "projectPath": "/home/agony/Documents/work/yalla-farm/yalla-back/Infrastructure/Infrastructure.csproj",
       "packagesPath": "/home/agony/.nuget/packages/",
-      "outputPath": "/home/agony/Documents/work/yalla-farm/Infrastructure/obj/",
+      "outputPath": "/home/agony/Documents/work/yalla-farm/yalla-back/Infrastructure/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/home/agony/.nuget/NuGet/NuGet.Config"
@@ -3711,11 +3711,11 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "/home/agony/Documents/work/yalla-farm/Application/Application.csproj": {
-              "projectPath": "/home/agony/Documents/work/yalla-farm/Application/Application.csproj"
+            "/home/agony/Documents/work/yalla-farm/yalla-back/Application/Application.csproj": {
+              "projectPath": "/home/agony/Documents/work/yalla-farm/yalla-back/Application/Application.csproj"
             },
-            "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj": {
-              "projectPath": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj"
+            "/home/agony/Documents/work/yalla-farm/yalla-back/Domain/Domain.csproj": {
+              "projectPath": "/home/agony/Documents/work/yalla-farm/yalla-back/Domain/Domain.csproj"
             }
           }
         }

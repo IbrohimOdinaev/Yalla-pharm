@@ -25,3 +25,56 @@ body {
 .stitch-button-secondary {
   @apply rounded-xl bg-surface-container-low px-4 py-3 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high;
 }
+
+/* Dropdown animation */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-in {
+  animation: fadeInDown 0.15s ease-out;
+}
+
+/* Smooth scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Glass effect for elevated elements */
+.shadow-glass {
+  box-shadow: 0 8px 30px rgba(22, 27, 41, 0.08);
+}
+
+/* Mobile touch targets */
+@media (max-width: 640px) {
+  .stitch-button, .stitch-button-secondary {
+    @apply min-h-[44px];
+  }
+  .stitch-input {
+    @apply min-h-[44px] text-base;
+    /* text-base prevents iOS zoom on focus */
+  }
+}
+
+/* Safe area for bottom nav */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Prevent horizontal scroll on mobile */
+html, body {
+  overflow-x: hidden;
+}

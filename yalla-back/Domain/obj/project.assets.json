@@ -13,11 +13,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
+      "projectUniqueName": "/home/agony/Documents/work/yalla-farm/yalla-back/Domain/Domain.csproj",
       "projectName": "Domain",
-      "projectPath": "/home/agony/Documents/work/yalla-farm/Domain/Domain.csproj",
+      "projectPath": "/home/agony/Documents/work/yalla-farm/yalla-back/Domain/Domain.csproj",
       "packagesPath": "/home/agony/.nuget/packages/",
-      "outputPath": "/home/agony/Documents/work/yalla-farm/Domain/obj/",
+      "outputPath": "/home/agony/Documents/work/yalla-farm/yalla-back/Domain/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/home/agony/.nuget/NuGet/NuGet.Config"

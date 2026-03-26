@@ -104,7 +104,8 @@ public sealed class ClientServiceDeletionTests
         AllowRegistrationBypass = true
       }),
       Options.Create(new DushanbeCityPaymentOptions()),
-      logger);
+      logger,
+      new NoOpRealtimeUpdatesPublisher());
   }
 
   private sealed class FakeSmsService : ISmsService

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "YT5bgZ0aN+I=",
+  "dgSpecHash": "ZaNbpsCnmZE=",
   "success": true,
-  "projectFilePath": "/home/agony/Documents/work/yalla-farm/Application/Application.csproj",
+  "projectFilePath": "/home/agony/Documents/work/yalla-farm/yalla-back/Application/Application.csproj",
   "expectedPackageFiles": [
     "/home/agony/.nuget/packages/bcrypt.net-next/4.0.3/bcrypt.net-next.4.0.3.nupkg.sha512",
     "/home/agony/.nuget/packages/fluentvalidation/11.11.0/fluentvalidation.11.11.0.nupkg.sha512",

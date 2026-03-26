@@ -13,21 +13,25 @@ public sealed class OrderService : IOrderService
 {
   private readonly IAppDbContext _dbContext;
   private readonly ILogger<OrderService> _logger;
+  private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
 
   public OrderService(IAppDbContext dbContext)
-    : this(dbContext, NullLogger<OrderService>.Instance)
+    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher())
   {
   }
 
   public OrderService(
     IAppDbContext dbContext,
-    ILogger<OrderService> logger)
+    ILogger<OrderService> logger,
+    IRealtimeUpdatesPublisher realtimeUpdatesPublisher)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(logger);
+    ArgumentNullException.ThrowIfNull(realtimeUpdatesPublisher);
 
     _dbContext = dbContext;
     _logger = logger;
+    _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
   }
 
   public async Task<GetAllOrdersResponse> GetAllOrdersAsync(
@@ -258,6 +262,9 @@ public sealed class OrderService : IOrderService
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
 
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
       return new StartOrderAssemblyResponse
       {
         WorkerId = worker.Id,
@@ -356,6 +363,12 @@ public sealed class OrderService : IOrderService
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
 
+      if (oldStatus != order.Status)
+      {
+        await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+          order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+      }
+
       return new RejectOrderPositionsResponse
       {
         WorkerId = worker.Id,
@@ -395,6 +408,9 @@ public sealed class OrderService : IOrderService
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
 
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
       return new MarkOrderReadyResponse
       {
         WorkerId = worker.Id,
@@ -431,6 +447,9 @@ public sealed class OrderService : IOrderService
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
+
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
 
       return new MarkOrderOnTheWayResponse
       {
@@ -577,6 +596,9 @@ public sealed class OrderService : IOrderService
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
 
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
       return new CancelOrderResponse
       {
         ClientId = request.ClientId,
@@ -697,6 +719,9 @@ public sealed class OrderService : IOrderService
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
+
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
 
       return new MarkOrderDeliveredBySuperAdminResponse
       {

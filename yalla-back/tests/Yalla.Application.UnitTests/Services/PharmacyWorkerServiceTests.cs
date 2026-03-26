@@ -16,7 +16,7 @@ public class PharmacyWorkerServiceTests
     scope.Db.Users.Add(admin);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.RegisterPharmacyAsync(new RegisterPharmacyRequest
     {
       Title = "Ph-1",
@@ -32,7 +32,7 @@ public class PharmacyWorkerServiceTests
   public async Task RegisterPharmacyAsync_ThrowsWhenAdminMissing()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.RegisterPharmacyAsync(new RegisterPharmacyRequest
     {
@@ -54,7 +54,7 @@ public class PharmacyWorkerServiceTests
     scope.Db.Pharmacies.Add(pharmacy);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.RegisterPharmacyWorkerAsync(new RegisterPharmacyWorkerRequest
     {
       Name = "Worker",
@@ -83,7 +83,7 @@ public class PharmacyWorkerServiceTests
     scope.Db.PharmacyWorkers.Add(existingWorker);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.RegisterPharmacyWorkerAsync(new RegisterPharmacyWorkerRequest
     {
@@ -114,7 +114,7 @@ public class PharmacyWorkerServiceTests
     scope.Db.Offers.Add(offer);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     await service.DeletePharmacyAsync(new DeletePharmacyRequest { PharmacyId = pharmacy.Id });
 
     var updatedPharmacy = await scope.Db.Pharmacies.AsNoTracking().FirstAsync(x => x.Id == pharmacy.Id);
@@ -137,7 +137,7 @@ public class PharmacyWorkerServiceTests
     scope.Db.Pharmacies.AddRange(active, inactive);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.GetActivePharmaciesAsync();
 
     Assert.Single(response.Pharmacies);
@@ -163,7 +163,7 @@ public class PharmacyWorkerServiceTests
     scope.Db.PharmacyWorkers.AddRange(worker1, worker2);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.GetAdminsAsync(new GetAdminsRequest
     {
       Page = 1,

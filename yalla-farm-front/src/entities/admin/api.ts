@@ -32,3 +32,8 @@ export async function createAdminWithPharmacy(
 export async function deleteAdmin(token: string, pharmacyWorkerId: string): Promise<void> {
   await apiFetch<unknown>("/api/admins", { method: "DELETE", token, body: { pharmacyWorkerId } });
 }
+
+export async function getAdminMe(token: string): Promise<{name: string; phoneNumber: string}> {
+  const response = await apiFetch<{name?: string; phoneNumber?: string}>("/api/admins/me", { token, method: "GET" });
+  return { name: response?.name ?? "", phoneNumber: response?.phoneNumber ?? "" };
+}

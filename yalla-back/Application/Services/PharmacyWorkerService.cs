@@ -14,16 +14,20 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
 {
     private readonly IAppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
 
     public PharmacyWorkerService(
       IAppDbContext dbContext,
-      IPasswordHasher passwordHasher)
+      IPasswordHasher passwordHasher,
+      IRealtimeUpdatesPublisher realtimeUpdatesPublisher)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(passwordHasher);
+        ArgumentNullException.ThrowIfNull(realtimeUpdatesPublisher);
 
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
+        _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
     }
 
     public async Task<RegisterPharmacyResponse> RegisterPharmacyAsync(
@@ -358,6 +362,9 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimeUpdatesPublisher.PublishOfferUpdatedAsync(
+          request.MedicineId, pharmacyId, request.Price, request.StockQuantity, cancellationToken);
 
         return new UpsertOfferResponse
         {

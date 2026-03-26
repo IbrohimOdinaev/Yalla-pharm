@@ -13,7 +13,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task RegisterPharmacyAsync_ThrowsForNullRequest()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterPharmacyAsync(null!));
   }
@@ -22,7 +22,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task UpdatePharmacyAsync_ThrowsForNullRequest()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<ArgumentNullException>(() => service.UpdatePharmacyAsync(null!));
   }
@@ -31,7 +31,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task DeletePharmacyAsync_ThrowsForNullRequest()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<ArgumentNullException>(() => service.DeletePharmacyAsync(null!));
   }
@@ -40,7 +40,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task RegisterPharmacyWorkerAsync_ThrowsForNullRequest()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterPharmacyWorkerAsync(null!));
   }
@@ -49,7 +49,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task DeletePharmacyWorkerAsync_ThrowsForNullRequest()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<ArgumentNullException>(() => service.DeletePharmacyWorkerAsync(null!));
   }
@@ -58,7 +58,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task GetAdminsAsync_ThrowsForNullRequest()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<ArgumentNullException>(() => service.GetAdminsAsync(null!));
   }
@@ -71,7 +71,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.Users.Add(admin);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdatePharmacyAsync(new UpdatePharmacyRequest
     {
@@ -95,7 +95,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.Pharmacies.Add(pharmacy);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdatePharmacyAsync(new UpdatePharmacyRequest
     {
@@ -120,7 +120,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.Pharmacies.Add(pharmacy);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.UpdatePharmacyAsync(new UpdatePharmacyRequest
     {
       PharmacyId = pharmacy.Id,
@@ -140,7 +140,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task DeletePharmacyAsync_ThrowsWhenMissing()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeletePharmacyAsync(new DeletePharmacyRequest
     {
@@ -152,7 +152,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task RegisterPharmacyWorkerAsync_ThrowsForMissingPharmacy()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.RegisterPharmacyWorkerAsync(new RegisterPharmacyWorkerRequest
     {
@@ -173,7 +173,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     var pharmacy = TestDbFactory.CreatePharmacy("P", "A", admin.Id);
     scope.Db.Pharmacies.Add(pharmacy);
     await scope.Db.SaveChangesAsync();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<DomainArgumentException>(() => service.RegisterPharmacyWorkerAsync(new RegisterPharmacyWorkerRequest
     {
@@ -195,7 +195,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.Pharmacies.Add(pharmacy);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.RegisterPharmacyWorkerAsync(new RegisterPharmacyWorkerRequest
     {
       Name = "Worker",
@@ -211,7 +211,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task DeletePharmacyWorkerAsync_ThrowsWhenMissing()
   {
     using var scope = TestDbFactory.Create();
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeletePharmacyWorkerAsync(new DeletePharmacyWorkerRequest
     {
@@ -233,7 +233,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.PharmacyWorkers.Add(worker);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.DeletePharmacyWorkerAsync(new DeletePharmacyWorkerRequest
     {
       PharmacyWorkerId = worker.Id
@@ -260,7 +260,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.PharmacyWorkers.Add(worker);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
 
     await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeletePharmacyWorkerInPharmacyAsync(
       new DeletePharmacyWorkerRequest { PharmacyWorkerId = worker.Id },
@@ -283,7 +283,7 @@ public class PharmacyWorkerServiceRequestDrivenTests
     scope.Db.PharmacyWorkers.Add(worker);
     await scope.Db.SaveChangesAsync();
 
-    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher());
+    var service = new PharmacyWorkerService(scope.Db, new BCryptPasswordHasher(), new NoOpRealtimeUpdatesPublisher());
     var response = await service.DeletePharmacyWorkerInPharmacyAsync(
       new DeletePharmacyWorkerRequest { PharmacyWorkerId = worker.Id },
       pharmacy.Id);

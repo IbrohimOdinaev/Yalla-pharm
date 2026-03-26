@@ -17,6 +17,11 @@ public sealed class UpdatesHub : Hub
       await Groups.AddToGroupAsync(Context.ConnectionId, SuperAdminGroup);
     }
 
+    // Add admin to pharmacy group
+    var pharmacyId = Context.User?.FindFirst("pharmacy_id")?.Value;
+    if (!string.IsNullOrEmpty(pharmacyId))
+      await Groups.AddToGroupAsync(Context.ConnectionId, $"pharmacy:{pharmacyId}");
+
     await base.OnConnectedAsync();
   }
 }

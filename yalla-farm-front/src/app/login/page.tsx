@@ -28,7 +28,7 @@ export default function LoginPage() {
     try {
       const response = await apiFetch<{
         accessToken: string;
-        role: string;
+        role: string | number;
         userId: string;
       }>("/api/auth/login", {
         method: "POST",
@@ -38,16 +38,28 @@ export default function LoginPage() {
         }
       });
 
+      // Backend may return role as number (0=Client, 1=Admin, 2=SuperAdmin) or string
+      const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
+      const role = typeof response.role === "number" ? (ROLE_MAP[response.role] ?? "Client") : String(response.role);
+
       dispatch(
         setCredentials({
           token: response.accessToken,
-          role: response.role,
+          role,
           userId: response.userId
         })
       );
 
       const hadCheckoutIntent = consumeGuestCheckoutIntent();
-      router.push(hadCheckoutIntent ? "/checkout" : "/");
+      if (hadCheckoutIntent) {
+        router.push("/checkout");
+      } else if (role === "Admin") {
+        router.push("/workspace");
+      } else if (role === "SuperAdmin") {
+        router.push("/superadmin");
+      } else {
+        router.push("/");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось войти.");
     } finally {

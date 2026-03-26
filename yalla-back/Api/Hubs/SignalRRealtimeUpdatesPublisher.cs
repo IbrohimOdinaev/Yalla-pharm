@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using Yalla.Application.Abstractions;
 using Yalla.Domain.Enums;
 
@@ -7,11 +8,16 @@ namespace Api.Hubs;
 public sealed class SignalRRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
 {
   private readonly IHubContext<UpdatesHub> _hubContext;
+  private readonly ILogger<SignalRRealtimeUpdatesPublisher> _logger;
 
-  public SignalRRealtimeUpdatesPublisher(IHubContext<UpdatesHub> hubContext)
+  public SignalRRealtimeUpdatesPublisher(
+    IHubContext<UpdatesHub> hubContext,
+    ILogger<SignalRRealtimeUpdatesPublisher> logger)
   {
     ArgumentNullException.ThrowIfNull(hubContext);
+    ArgumentNullException.ThrowIfNull(logger);
     _hubContext = hubContext;
+    _logger = logger;
   }
 
   public async Task PublishPaymentIntentUpdatedAsync(
@@ -37,5 +43,58 @@ public sealed class SignalRRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
       .SendAsync("PaymentIntentUpdated", payload, cancellationToken);
 
     await Task.WhenAll(clientTask, superAdminTask);
+  }
+
+  public async Task PublishOfferUpdatedAsync(
+    Guid medicineId, Guid pharmacyId, decimal price, int stockQuantity,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      await _hubContext.Clients.All.SendAsync("OfferUpdated", new
+      {
+        medicineId, pharmacyId, price, stockQuantity
+      }, cancellationToken);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish OfferUpdated for medicine {MedicineId}", medicineId);
+    }
+  }
+
+  public async Task PublishOrderStatusChangedAsync(
+    Guid orderId, string status, Guid? clientId, Guid pharmacyId,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      var payload = new { orderId, status, clientId, pharmacyId };
+      var tasks = new List<Task>
+      {
+        _hubContext.Clients.Group(UpdatesHub.SuperAdminGroup).SendAsync("OrderStatusChanged", payload, cancellationToken),
+        _hubContext.Clients.Group($"pharmacy:{pharmacyId}").SendAsync("OrderStatusChanged", payload, cancellationToken)
+      };
+      if (clientId.HasValue)
+        tasks.Add(_hubContext.Clients.User(clientId.Value.ToString()).SendAsync("OrderStatusChanged", payload, cancellationToken));
+      await Task.WhenAll(tasks);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish OrderStatusChanged for order {OrderId}", orderId);
+    }
+  }
+
+  public async Task PublishBasketUpdatedAsync(
+    Guid userId,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      await _hubContext.Clients.User(userId.ToString()).SendAsync("BasketUpdated", new { userId }, cancellationToken);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish BasketUpdated for user {UserId}", userId);
+    }
   }
 }

@@ -4,14 +4,14 @@ services:
     build:
       context: ./yalla-farm-front
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
+        - NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=http://localhost:5000/hubs/updates
     container_name: yalla-front
     ports:
       - "3000:3000"
     depends_on:
       - api
-    environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
-      - NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=http://localhost:5000/hubs/updates
     networks:
       - yalla-network
 
@@ -26,9 +26,12 @@ services:
     environment:
       - Database__ApplyMigrationsOnStartup=true
       - ConnectionStrings__Default=Host=postgres;Port=5432;Database=app_db;Username=postgres;Password=postgres
-      - Minio__Endpoint=minio:9000
-      - Minio__AccessKey=minioadmin
-      - Minio__SecretKey=minioadmin
+      - MinIo__Endpoint=minio:9000
+      - MinIo__ContainerEndpoint=minio:9000
+      - MinIo__AccessKey=minioadmin
+      - MinIo__SecretKey=minioadmin
+      - MinIo__BucketName=yalla-farm-medicines
+      - MinIo__UseSsl=false
     networks:
       - yalla-network
 

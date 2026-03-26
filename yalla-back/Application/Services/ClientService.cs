@@ -22,6 +22,7 @@ public sealed class ClientService : IClientService
   private readonly SmsVerificationOptions _smsOptions;
   private readonly DushanbeCityPaymentOptions _paymentOptions;
   private readonly ILogger<ClientService> _logger;
+  private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
 
   public ClientService(
     IAppDbContext dbContext,
@@ -30,7 +31,8 @@ public sealed class ClientService : IClientService
     ISmsService smsService,
     IOptions<SmsVerificationOptions> smsOptions,
     IOptions<DushanbeCityPaymentOptions> paymentOptions,
-    ILogger<ClientService> logger)
+    ILogger<ClientService> logger,
+    IRealtimeUpdatesPublisher realtimeUpdatesPublisher)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(paymentService);
@@ -39,6 +41,7 @@ public sealed class ClientService : IClientService
     ArgumentNullException.ThrowIfNull(smsOptions);
     ArgumentNullException.ThrowIfNull(paymentOptions);
     ArgumentNullException.ThrowIfNull(logger);
+    ArgumentNullException.ThrowIfNull(realtimeUpdatesPublisher);
 
     _dbContext = dbContext;
     _paymentService = paymentService;
@@ -47,6 +50,7 @@ public sealed class ClientService : IClientService
     _smsOptions = smsOptions.Value;
     _paymentOptions = paymentOptions.Value;
     _logger = logger;
+    _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
   }
 
   public async Task<RegisterClientResponse> RegisterClientAsync(
@@ -322,6 +326,8 @@ public sealed class ClientService : IClientService
             existingPosition.SetQuantity(existingPosition.Quantity + request.Quantity);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            await _realtimeUpdatesPublisher.PublishBasketUpdatedAsync(request.ClientId, cancellationToken);
+
             var basketData = await LoadBasketByClientIdAsync(request.ClientId, cancellationToken);
 
             return new AddProductToBasketResponse
@@ -338,6 +344,8 @@ public sealed class ClientService : IClientService
 
         _dbContext.BasketPositions.Add(newPosition);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimeUpdatesPublisher.PublishBasketUpdatedAsync(request.ClientId, cancellationToken);
 
         var newBasketData = await LoadBasketByClientIdAsync(request.ClientId, cancellationToken);
 
@@ -374,6 +382,8 @@ public sealed class ClientService : IClientService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await _realtimeUpdatesPublisher.PublishBasketUpdatedAsync(request.ClientId, cancellationToken);
+
         return new RemoveProductFromBasketResponse
         {
             ClientId = request.ClientId,
@@ -407,6 +417,8 @@ public sealed class ClientService : IClientService
         basketPosition.SetQuantity(request.Quantity);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await _realtimeUpdatesPublisher.PublishBasketUpdatedAsync(request.ClientId, cancellationToken);
+
         var basketData = await LoadBasketByClientIdAsync(request.ClientId, cancellationToken);
 
         return new UpdateBasketPositionQuantityResponse
@@ -439,6 +451,8 @@ public sealed class ClientService : IClientService
             _dbContext.BasketPositions.RemoveRange(basketPositions);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
+
+        await _realtimeUpdatesPublisher.PublishBasketUpdatedAsync(request.ClientId, cancellationToken);
 
         return new ClearBasketResponse
         {

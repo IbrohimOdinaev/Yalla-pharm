@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import RegisterPage from "@/app/register/page";
+import { renderWithProviders } from "@/test/render";
 
 describe("register page integration", () => {
   it("shows backend validation errors on failed sms registration request", async () => {
@@ -26,7 +27,7 @@ describe("register page integration", () => {
     );
 
     const user = userEvent.setup();
-    render(<RegisterPage />);
+    renderWithProviders(<RegisterPage />);
 
     await user.type(screen.getByLabelText("Имя"), "Test User");
     await user.type(screen.getByLabelText("Телефон"), "911111111");

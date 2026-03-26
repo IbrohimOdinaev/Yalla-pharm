@@ -1,16 +1,17 @@
 import { apiFetch } from "@/shared/api/http-client";
 import type { ApiOrder } from "@/shared/types/api";
+import { normalizeOrder } from "./api";
 
 export async function getAdminOrders(token: string, status = "", page = 1, pageSize = 120): Promise<ApiOrder[]> {
   const s = status ? `&status=${encodeURIComponent(status)}` : "";
-  const response = await apiFetch<{ orders?: ApiOrder[] }>(`/api/orders/admin/history?page=${page}&pageSize=${pageSize}${s}`, { token });
-  return Array.isArray(response?.orders) ? response.orders : [];
+  const response = await apiFetch<{ orders?: Record<string, unknown>[] }>(`/api/orders/admin/history?page=${page}&pageSize=${pageSize}${s}`, { token });
+  return Array.isArray(response?.orders) ? response.orders.map(o => normalizeOrder(o)) : [];
 }
 
 export async function getAllOrders(token: string, status = "", page = 1, pageSize = 20): Promise<ApiOrder[]> {
   const s = status ? `&status=${encodeURIComponent(status)}` : "";
-  const response = await apiFetch<{ orders?: ApiOrder[] }>(`/api/orders/all?page=${page}&pageSize=${pageSize}${s}`, { token });
-  return Array.isArray(response?.orders) ? response.orders : [];
+  const response = await apiFetch<{ orders?: Record<string, unknown>[] }>(`/api/orders/all?page=${page}&pageSize=${pageSize}${s}`, { token });
+  return Array.isArray(response?.orders) ? response.orders.map(o => normalizeOrder(o)) : [];
 }
 
 export async function startAssembly(token: string, orderId: string): Promise<void> {

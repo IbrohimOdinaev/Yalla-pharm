@@ -21,7 +21,17 @@ function AuthPersistenceBridge() {
   useEffect(() => {
     const fromStorage = getStoredToken();
     if (fromStorage) {
-      dispatch(setCredentials({ token: fromStorage }));
+      // Decode JWT to extract role and userId
+      let role: string | undefined;
+      let userId: string | undefined;
+      try {
+        const payload = JSON.parse(atob(fromStorage.split(".")[1]));
+        const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
+        const rawRole = payload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
+        role = typeof rawRole === "number" ? ROLE_MAP[rawRole] : String(rawRole || "");
+        userId = payload.sub || payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] || undefined;
+      } catch { /* ignore decode errors */ }
+      dispatch(setCredentials({ token: fromStorage, role, userId }));
     }
   }, [dispatch]);
 
