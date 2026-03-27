@@ -18,21 +18,24 @@ type CartState = {
 const EMPTY_BASKET: ApiBasket = { positions: [] };
 
 function normalizeBasket(basket?: ApiBasket): ApiBasket {
+  const raw = Array.isArray(basket?.positions) ? basket?.positions : [];
+  // Deduplicate positions by medicineId — keep the one with highest quantity
+  const byMedicine = new Map<string, ApiBasketPosition>();
+  for (const pos of raw) {
+    const key = pos.medicineId;
+    const existing = byMedicine.get(key);
+    if (!existing || pos.quantity > existing.quantity) {
+      byMedicine.set(key, pos);
+    }
+  }
   return {
-    positions: Array.isArray(basket?.positions) ? basket?.positions : [],
+    positions: Array.from(byMedicine.values()),
     pharmacyOptions: Array.isArray(basket?.pharmacyOptions) ? basket.pharmacyOptions : []
   };
 }
 
-function mergeExistingPosition(positions: ApiBasketPosition[], medicineId: string): ApiBasketPosition[] {
-  const existing = positions.find((item) => String(item.medicineId) === String(medicineId));
-  if (!existing) return positions;
-
-  return positions.map((item) => {
-    if (item.id !== existing.id) return item;
-    return { ...item, quantity: Math.max(1, Number(item.quantity || 0) + 1) };
-  });
-}
+// Mutex to prevent concurrent addItem calls from creating duplicates
+let addItemQueue: Promise<void> = Promise.resolve();
 
 export const useCartStore = create<CartState>((set, get) => ({
   basket: EMPTY_BASKET,
@@ -50,25 +53,26 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   addItem: async (token, medicineId, quantity = 1) => {
-    set({ isLoading: true, error: null });
+    // Chain calls sequentially to prevent duplicate positions
+    const work = addItemQueue.then(async () => {
+      set({ isLoading: true, error: null });
+      try {
+        // Re-read state after awaiting queue — previous call may have added this item
+        const current = get().basket;
+        const positions = Array.isArray(current.positions) ? current.positions : [];
+        const existing = positions.find((item) => String(item.medicineId) === String(medicineId));
 
-    try {
-      const current = get().basket;
-      const positions = Array.isArray(current.positions) ? current.positions : [];
-      const existing = positions.find((item) => String(item.medicineId) === String(medicineId));
+        const basket = existing
+          ? await updateBasketQuantity(token, existing.id, Math.max(1, Number(existing.quantity || 0) + quantity))
+          : await addToBasket(token, medicineId, quantity);
 
-      const basket = existing
-        ? await updateBasketQuantity(token, existing.id, Math.max(1, Number(existing.quantity || 0) + quantity))
-        : await addToBasket(token, medicineId, quantity);
-
-      set({ basket: normalizeBasket(basket), isLoading: false });
-    } catch {
-      set((state) => ({
-        basket: { ...state.basket, positions: mergeExistingPosition(state.basket.positions ?? [], medicineId) },
-        error: "Сервер не ответил. Количество увеличено локально, обновите страницу для синхронизации.",
-        isLoading: false
-      }));
-    }
+        set({ basket: normalizeBasket(basket), isLoading: false });
+      } catch {
+        set({ error: "Не удалось добавить товар. Попробуйте снова.", isLoading: false });
+      }
+    });
+    addItemQueue = work.catch(() => undefined);
+    await work;
   },
 
   removeItem: async (token, positionId) => {

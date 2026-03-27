@@ -12,6 +12,8 @@ import { InfoBanner } from "@/shared/ui/InfoBanner";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
+import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
+import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
 
 function CatalogSidebar() {
   const token = useAppSelector((s) => s.auth.token);
@@ -77,6 +79,10 @@ function CatalogSidebar() {
 export default function HomePage() {
   const role = useAppSelector((s) => s.auth.role);
   const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
+  const deliveryAddress = useDeliveryAddressStore((s) => s.address);
+  const setDeliveryAddress = useDeliveryAddressStore((s) => s.setAddress);
+  const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
+  const [showAddressInput, setShowAddressInput] = useState(false);
   const [medicines, setMedicines] = useState<ApiMedicine[]>([]);
   const [isLoading, setIsLoading] = useState(true); // only for initial load
   const [isSearching, setIsSearching] = useState(false); // for live search (no flicker)
@@ -124,6 +130,8 @@ export default function HomePage() {
   useOfferLiveUpdates(useCallback(() => {
     fetchMedicines(query, page);
   }, [fetchMedicines, query, page]));
+
+  useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
   useEffect(() => {
     fetchMedicines("", 1);
@@ -187,13 +195,57 @@ export default function HomePage() {
 
           {!query.trim() ? (
             <>
-              <div className="stitch-card p-5">
-                <h2 className="text-lg font-bold">Куда доставить?</h2>
-                <p className="mt-1 text-sm text-on-surface-variant">Предоставьте доступ к геолокации или выберите аптеку вручную на карте.</p>
-                <div className="mt-4 flex gap-3">
-                  <button className="stitch-button">Разрешить доступ</button>
-                  <button className="stitch-button-secondary">Ввести адрес</button>
+              <div className="stitch-card p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold">Куда доставить?</h2>
+                  {deliveryAddress ? (
+                    <button type="button" className="text-xs text-primary font-bold" onClick={() => setShowAddressInput(true)}>Изменить</button>
+                  ) : null}
                 </div>
+
+                {deliveryAddress && !showAddressInput ? (
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary flex-shrink-0" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <p className="text-sm font-medium">{deliveryAddress}</p>
+                  </div>
+                ) : (
+                  <>
+                    {!showAddressInput ? (
+                      <div className="flex gap-3">
+                        <button type="button" className="stitch-button-secondary flex-1 text-sm" onClick={() => alert("Геолокация будет доступна в следующем обновлении")}>
+                          <span className="flex items-center justify-center gap-2">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+                            Геолокация
+                          </span>
+                        </button>
+                        <button type="button" className="stitch-button flex-1 text-sm" onClick={() => setShowAddressInput(true)}>
+                          Ввести адрес
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {showAddressInput ? (
+                      <div className="space-y-2">
+                        <AddressAutocomplete
+                          value={deliveryAddress}
+                          onChange={setDeliveryAddress}
+                          placeholder="Улица, дом, район..."
+                        />
+                        <div className="flex gap-2">
+                          <button type="button" className="stitch-button text-xs flex-1" onClick={() => setShowAddressInput(false)}>
+                            Готово
+                          </button>
+                          {deliveryAddress ? (
+                            <button type="button" className="stitch-button-secondary text-xs" onClick={() => { setDeliveryAddress(""); }}>
+                              Очистить
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+                {deliveryAddress ? <p className="text-xs text-on-surface-variant">Этот адрес будет использован по умолчанию при оформлении заказа</p> : null}
               </div>
 
               <HeroCarousel />

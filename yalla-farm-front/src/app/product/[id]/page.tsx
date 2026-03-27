@@ -88,7 +88,7 @@ export default function ProductDetailsPage() {
                     key={idx}
                     type="button"
                     onClick={() => setActiveImageIdx(idx)}
-                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
+                    className={`h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
                       idx === activeImageIdx ? "border-primary shadow-sm" : "border-surface-container-high hover:border-on-surface-variant"
                     }`}
                   >

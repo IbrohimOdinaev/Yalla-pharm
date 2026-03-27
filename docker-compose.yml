@@ -5,8 +5,7 @@ services:
       context: ./yalla-farm-front
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
-        - NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=http://localhost:5000/hubs/updates
+        - INTERNAL_API_URL=http://api:8080
     container_name: yalla-front
     ports:
       - "3000:3000"

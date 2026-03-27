@@ -166,7 +166,7 @@ export default function RegisterPage() {
             <label className="block space-y-1">
               <span className="text-sm font-medium text-on-surface-variant">Код ({session.codeLength} символов)</span>
               <input
-                className="stitch-input tracking-[0.3em]"
+                className="stitch-input tracking-widest sm:tracking-[0.3em]"
                 value={verificationCode}
                 onChange={(e) => setVerificationCode(e.target.value)}
                 maxLength={session.codeLength}

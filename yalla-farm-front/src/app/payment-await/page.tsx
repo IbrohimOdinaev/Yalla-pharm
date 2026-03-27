@@ -102,8 +102,8 @@ export default function PaymentAwaitPage() {
             <iframe
               title="Страница оплаты"
               src={pending.paymentUrl}
-              className="w-full border-0"
-              style={{ minHeight: "560px" }}
+              className="w-full border-0 sm:min-h-[560px]"
+              style={{ minHeight: "400px" }}
               loading="lazy"
             />
           </div>

@@ -19,6 +19,7 @@ import { getAllOrders, superAdminNextStatus } from "@/entities/order/admin-api";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
 import { getRefundRequests, initiateRefund } from "@/entities/refund/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
+import { useSignalREvent } from "@/shared/lib/useSignalR";
 
 type Tab = "pharmacies" | "medicines" | "orders";
 
@@ -27,15 +28,17 @@ export default function SuperAdminPage() {
   const role = useAppSelector((state) => state.auth.role);
   const [activeTab, setActiveTab] = useState<Tab>("pharmacies");
 
+  // Sync activeTab from URL hash — poll because hashchange is unreliable with SPA
   useEffect(() => {
-    function onHash() {
+    function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
       if (h === "medicines" || h === "orders") setActiveTab(h);
       else setActiveTab("pharmacies");
     }
-    onHash();
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    const interval = setInterval(syncHash, 150);
+    return () => { clearInterval(interval); window.removeEventListener("hashchange", syncHash); };
   }, []);
 
   if (!token || role !== "SuperAdmin") {
@@ -711,6 +714,9 @@ function OrdersTab({ token }: { token: string }) {
 
   useOrderStatusLive(useCallback(() => { load(); }, [load]));
 
+  // Also reload when payment intents change (confirm/reject)
+  useSignalREvent("PaymentIntentUpdated", useCallback(() => { load(); }, [load]), token);
+
   useEffect(() => { load(); }, [load]);
 
   const filteredOrders = dateFilter
@@ -782,7 +788,7 @@ function OrdersTab({ token }: { token: string }) {
             // Show payment intents in the New column
             const showIntentsHere = status === "New";
             return (
-              <div key={status} className="min-w-[280px] flex-shrink-0 rounded-2xl bg-surface-container-low p-3 space-y-3">
+              <div key={status} className="min-w-[260px] sm:min-w-[280px] flex-shrink-0 rounded-2xl bg-surface-container-low p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[status]}`} />
@@ -798,16 +804,22 @@ function OrdersTab({ token }: { token: string }) {
                     <PaymentIntentCard key={intent.paymentIntentId} token={token} intent={intent} onDone={load} />
                   ))}
                   {/* Orders */}
-                  {statusOrders.map(order => (
-                    <div key={order.orderId} className="stitch-card p-3 cursor-pointer hover:ring-1 hover:ring-primary transition" onClick={() => setSelectedOrder(order)}>
-                      <span className="text-[10px] text-on-surface-variant font-mono">#{order.orderId.slice(0, 8)}</span>
-                      <div className="flex items-center justify-between text-sm mt-1">
-                        <span className="truncate max-w-[140px]">{order.pharmacyTitle ?? "—"}</span>
-                        <span className="font-bold">{formatMoney(order.cost, order.currency)}</span>
+                  {statusOrders.map(order => {
+                    const phone = order.clientPhoneNumber?.replace(/^\+?992/, "") ?? "";
+                    return (
+                      <div key={order.orderId} className="stitch-card p-3 cursor-pointer hover:ring-1 hover:ring-primary transition" onClick={() => setSelectedOrder(order)}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-on-surface-variant font-mono">#{order.orderId.slice(0, 8)}</span>
+                          {phone ? <span className="text-[10px] font-mono text-on-surface-variant">{phone}</span> : null}
+                        </div>
+                        <div className="flex items-center justify-between text-sm mt-1">
+                          <span className="truncate max-w-[140px]">{order.pharmacyTitle ?? "—"}</span>
+                          <span className="font-bold">{formatMoney(order.cost, order.currency)}</span>
+                        </div>
+                        {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant mt-0.5">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : null}
                       </div>
-                      {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant mt-0.5">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : null}
-                    </div>
-                  ))}
+                    );
+                  })}
                   {statusOrders.length === 0 && (!showIntentsHere || intents.length === 0) && (
                     <p className="text-xs text-on-surface-variant text-center py-4">Пусто</p>
                   )}
@@ -834,7 +846,7 @@ function OrdersTab({ token }: { token: string }) {
             </div>
 
             {/* Order info grid */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 text-sm">
               <div className="rounded-xl bg-surface-container-low p-3">
                 <p className="text-[10px] text-on-surface-variant uppercase">Статус</p>
                 <p className="font-bold">{STATUS_LABELS[selectedOrder.status] ?? selectedOrder.status}</p>
@@ -907,13 +919,13 @@ function OrdersTab({ token }: { token: string }) {
               </div>
             ) : null}
 
-            {/* Actions - TASK 4: exclude Returned as well */}
-            {selectedOrder.status !== "Delivered" && selectedOrder.status !== "Cancelled" && selectedOrder.status !== "Returned" ? (
+            {/* SuperAdmin can only advance: New→UnderReview, OnTheWay→Delivered */}
+            {(selectedOrder.status === "New" || selectedOrder.status === "OnTheWay") ? (
               <button type="button" className="stitch-button w-full" onClick={async () => {
                 await superAdminNextStatus(token, selectedOrder.orderId).catch(() => undefined);
                 load();
                 setSelectedOrder(null);
-              }}>Следующий статус</button>
+              }}>{selectedOrder.status === "New" ? "Подтвердить и передать аптеке" : "Подтвердить доставку"}</button>
             ) : null}
           </div>
         </div>
@@ -950,7 +962,14 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
         <div className="flex gap-2">
           <button type="button" className="stitch-button text-xs" disabled={isProcessing} onClick={async () => {
             setIsProcessing(true); setActionError(null);
-            try { await confirmPaymentIntent(token, intent.paymentIntentId); onDone(); }
+            try {
+              await confirmPaymentIntent(token, intent.paymentIntentId);
+              // After confirm, order is created with status New — advance to UnderReview
+              if (intent.reservedOrderId) {
+                await superAdminNextStatus(token, intent.reservedOrderId).catch(() => undefined);
+              }
+              onDone();
+            }
             catch (err) { setActionError(err instanceof Error ? err.message : "Ошибка подтверждения"); }
             finally { setIsProcessing(false); }
           }}>{isProcessing ? "..." : "Подтвердить"}</button>

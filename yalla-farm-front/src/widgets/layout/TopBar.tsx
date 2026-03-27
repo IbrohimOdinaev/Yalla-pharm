@@ -42,13 +42,13 @@ export function TopBar({ title, location = "Dushanbe, RT", backHref }: TopBarPro
       <div className="mx-auto flex h-14 sm:h-16 max-w-5xl items-center justify-between px-4">
         <div className="flex items-center gap-3">
           {backHref ? (
-            <Link href={backHref} className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-low text-primary transition hover:bg-surface-container-high">
+            <Link href={backHref} className="flex items-center justify-center w-10 h-10 rounded-full bg-surface-container-low text-primary transition hover:bg-surface-container-high">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
             </Link>
           ) : null}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-surface-variant">{location}</p>
-            <h1 className="text-base sm:text-lg font-bold text-on-surface truncate max-w-[180px] sm:max-w-none">{title}</h1>
+            <h1 className="text-base sm:text-lg font-bold text-on-surface truncate max-w-[140px] xs:max-w-[180px] sm:max-w-none">{title}</h1>
           </div>
         </div>
 
@@ -74,7 +74,7 @@ export function TopBar({ title, location = "Dushanbe, RT", backHref }: TopBarPro
 
             {/* Dropdown menu */}
             {menuOpen ? (
-              <div className="absolute right-0 top-12 w-56 rounded-2xl bg-surface-container-lowest shadow-glass border border-surface-container-high p-2 space-y-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="absolute right-0 top-12 w-56 max-w-[85vw] rounded-2xl bg-surface-container-lowest shadow-glass border border-surface-container-high p-2 space-y-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                 {token ? (
                   <>
                     <div className="px-3 py-2">

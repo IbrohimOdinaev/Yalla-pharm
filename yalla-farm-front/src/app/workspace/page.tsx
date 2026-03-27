@@ -15,6 +15,7 @@ import type { ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
 import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions } from "@/entities/order/admin-api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
+import { useSignalREvent } from "@/shared/lib/useSignalR";
 
 type Tab = "pharmacy" | "offers" | "orders";
 
@@ -44,7 +45,8 @@ export default function WorkspacePage() {
     }
     syncHash();
     window.addEventListener("hashchange", syncHash);
-    return () => window.removeEventListener("hashchange", syncHash);
+    const interval = setInterval(syncHash, 150);
+    return () => { clearInterval(interval); window.removeEventListener("hashchange", syncHash); };
   }, []);
 
   /* Feature 14: stat cards data */
@@ -92,18 +94,18 @@ export default function WorkspacePage() {
         </div>
 
         {/* Feature 14: Stat cards */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="stitch-card p-4 text-center">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
+          <div className="stitch-card p-4 flex sm:block items-center sm:text-center gap-3 sm:gap-0">
             <p className="text-2xl font-black text-primary">{orderCount}</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Заказы в ленте</p>
           </div>
-          <div className="stitch-card p-4 text-center">
+          <div className="stitch-card p-4 flex sm:block items-center sm:text-center gap-3 sm:gap-0">
             <p className={`text-lg font-black ${pharmacyActive ? "text-emerald-600" : "text-red-600"}`}>
               {pharmacyActive ? "Активна" : "Отключена"}
             </p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Статус аптеки</p>
           </div>
-          <div className="stitch-card p-4 text-center">
+          <div className="stitch-card p-4 flex sm:block items-center sm:text-center gap-3 sm:gap-0">
             <p className="text-lg font-black text-primary truncate">{adminIdentity?.name || "Admin"}</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Администратор</p>
           </div>
@@ -330,6 +332,7 @@ function OrdersTab({ token }: { token: string }) {
   }, [token]);
 
   useOrderStatusLive(useCallback(() => { refresh(); }, [refresh]));
+  useSignalREvent("PaymentIntentUpdated", useCallback(() => { refresh(); }, [refresh]), token);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -448,14 +451,18 @@ function OrderCard({
     setIsRejecting(false);
   }
 
+  const phoneDisplay = order.clientPhoneNumber
+    ? order.clientPhoneNumber.replace(/^\+?992/, "")
+    : undefined;
+
   return (
     <div className="stitch-card space-y-2 p-3">
       <div className="flex items-center justify-between">
         <span className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
         <span className="font-bold text-sm">{formatMoney(order.cost, order.currency)}</span>
       </div>
+      {phoneDisplay ? <p className="text-xs font-mono text-on-surface-variant">{phoneDisplay}</p> : null}
 
-      {/* Feature 13: Order date */}
       {order.createdAtUtc ? (
         <p className="text-xs text-on-surface-variant">
           {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}

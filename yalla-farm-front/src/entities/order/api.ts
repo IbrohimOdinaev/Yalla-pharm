@@ -38,6 +38,15 @@ export function normalizeOrder(raw: RawOrder): ApiOrder {
   const paymentState = typeof rawPaymentState === "number" ? (PAYMENT_STATE_MAP[rawPaymentState] ?? String(rawPaymentState)) : (rawPaymentState ? String(rawPaymentState) : undefined);
 
   const rawPositions = Array.isArray(raw.positions) ? raw.positions : [];
+  const positions = rawPositions.map((p: Record<string, unknown>) => normalizePosition(p));
+
+  // Backend may return cost=0 due to a bug; compute from positions as fallback
+  let cost = Number(raw.cost || 0);
+  if (cost <= 0 && positions.length > 0) {
+    cost = positions
+      .filter((p) => !p.isRejected)
+      .reduce((sum, p) => sum + (p.price ?? 0) * (p.quantity ?? 0), 0);
+  }
 
   return {
     orderId: String(raw.orderId || raw.id || ""),
@@ -50,11 +59,11 @@ export function normalizeOrder(raw: RawOrder): ApiOrder {
     deliveryAddress: raw.deliveryAddress ? String(raw.deliveryAddress) : undefined,
     isPickup: Boolean(raw.isPickup),
     createdAtUtc: String(raw.createdAtUtc || raw.orderPlacedAt || ""),
-    cost: Number(raw.cost || 0),
+    cost,
     currency: String(raw.currency || raw.paymentCurrency || "TJS"),
     returnCost: Number(raw.returnCost || 0),
     orderPlacedAt: String(raw.orderPlacedAt || raw.createdAtUtc || ""),
-    positions: rawPositions.map((p: Record<string, unknown>) => normalizePosition(p)),
+    positions,
     refundRequest: raw.refundRequest ? raw.refundRequest as ApiOrder["refundRequest"] : undefined,
   };
 }

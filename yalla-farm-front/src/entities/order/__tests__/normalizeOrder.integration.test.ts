@@ -52,4 +52,25 @@ describe("normalizeOrder", () => {
   it("maps id to orderId if orderId missing", () => {
     expect(normalizeOrder({ id: "abc", status: 0, cost: 0 }).orderId).toBe("abc");
   });
+
+  it("computes cost from positions when backend cost is 0", () => {
+    const order = normalizeOrder({
+      orderId: "o1", status: 0, cost: 0,
+      positions: [
+        { positionId: "p1", quantity: 2, price: 50, isRejected: false },
+        { positionId: "p2", quantity: 1, price: 30, isRejected: false },
+        { positionId: "p3", quantity: 1, price: 20, isRejected: true },
+      ]
+    });
+    // 2×50 + 1×30 = 130 (rejected p3 excluded)
+    expect(order.cost).toBe(130);
+  });
+
+  it("uses backend cost when it is > 0", () => {
+    const order = normalizeOrder({
+      orderId: "o1", status: 0, cost: 430,
+      positions: [{ positionId: "p1", quantity: 10, price: 43 }]
+    });
+    expect(order.cost).toBe(430);
+  });
 });

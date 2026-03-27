@@ -14,7 +14,7 @@ describe("OrdersPage", () => {
     expect(screen.getByText("Требуется авторизация")).toBeInTheDocument();
   });
 
-  it("authenticated: shows filter buttons", async () => {
+  it("authenticated: shows title", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -27,10 +27,7 @@ describe("OrdersPage", () => {
     renderWithProviders(<OrdersPage />, {
       preloadedAuth: { token: "t", role: "Client" },
     });
-    expect(await screen.findByText("Все")).toBeInTheDocument();
-    expect(screen.getByText("В процессе")).toBeInTheDocument();
-    expect(screen.getByText("Выполнены")).toBeInTheDocument();
-    expect(screen.getByText("Отменены")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Мои заказы" })).toBeInTheDocument();
   });
 
   it("authenticated: shows empty state when no orders", async () => {
@@ -51,8 +48,58 @@ describe("OrdersPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows order with computed cost from positions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            orders: [{
+              orderId: "order-1",
+              status: 0,
+              cost: 0,
+              orderPlacedAt: "2026-03-25T10:00:00Z",
+              positions: [
+                { positionId: "p1", medicineTitle: "Aspirin", quantity: 2, price: 50 }
+              ]
+            }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    renderWithProviders(<OrdersPage />, {
+      preloadedAuth: { token: "t", role: "Client" },
+    });
+    // Cost should be computed from positions: 2 × 50 = 100
+    expect(await screen.findByText("100.00 TJS")).toBeInTheDocument();
+  });
+
+  it("shows awaiting confirmation for unpaid orders", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            orders: [{
+              orderId: "order-2",
+              status: 0,
+              cost: 200,
+              paymentState: 1,
+              orderPlacedAt: "2026-03-25T10:00:00Z",
+            }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    renderWithProviders(<OrdersPage />, {
+      preloadedAuth: { token: "t", role: "Client" },
+    });
+    expect(await screen.findByText("Ожидает подтверждения")).toBeInTheDocument();
+  });
+
   it("clears pending payment when order appears in history", async () => {
-    // Set pending payment
     window.localStorage.setItem(
       "yalla.front.pending.payment.intent",
       JSON.stringify({
@@ -69,14 +116,12 @@ describe("OrdersPage", () => {
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
-            orders: [
-              {
-                orderId: "order-123",
-                status: 1,
-                cost: 100,
-                orderPlacedAt: "2026-03-25T10:00:00Z",
-              },
-            ],
+            orders: [{
+              orderId: "order-123",
+              status: 1,
+              cost: 100,
+              orderPlacedAt: "2026-03-25T10:00:00Z",
+            }],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
@@ -87,8 +132,7 @@ describe("OrdersPage", () => {
       preloadedAuth: { token: "t", role: "Client" },
     });
 
-    // Wait for orders to load and cleanup effect to run
-    await screen.findByText("Все");
+    await screen.findByText("100.00 TJS");
     await new Promise((r) => setTimeout(r, 200));
 
     expect(

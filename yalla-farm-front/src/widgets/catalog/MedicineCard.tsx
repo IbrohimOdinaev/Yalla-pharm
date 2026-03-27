@@ -137,7 +137,7 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
               <button
                 type="button"
                 onClick={onDecrement}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-primary hover:bg-primary/20 transition"
+                className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-full text-primary hover:bg-primary/20 transition"
                 aria-label="Уменьшить"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -148,7 +148,7 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
               <button
                 type="button"
                 onClick={onIncrement}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-primary hover:bg-primary/20 transition"
+                className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-full text-primary hover:bg-primary/20 transition"
                 aria-label="Увеличить"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -164,7 +164,7 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
               <span className="pl-3 text-sm font-bold text-on-surface">
                 {price ? formatMoney(price) : "Цена в аптеке"}
               </span>
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition group-hover/btn:bg-primary-container" aria-label="Добавить в корзину">
+              <span className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary text-white transition group-hover/btn:bg-primary-container" aria-label="Добавить в корзину">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </span>
             </button>
