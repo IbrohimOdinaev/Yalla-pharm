@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Yalla.Infrastructure;
@@ -11,9 +12,11 @@ using Yalla.Infrastructure;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260328094822_AddCategoriesAndUpdateMedicine")]
+    partial class AddCategoriesAndUpdateMedicine
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -187,6 +190,7 @@ namespace Infrastructure.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("Articul")
+                        .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("articul");
@@ -194,13 +198,6 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("category_id");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("text")
-                        .HasDefaultValue("")
-                        .HasColumnName("description");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -222,8 +219,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("Articul")
                         .IsUnique()
-                        .HasDatabaseName("ix_medicines_articul")
-                        .HasFilter("articul IS NOT NULL");
+                        .HasDatabaseName("ix_medicines_articul");
 
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_medicines_category_id");

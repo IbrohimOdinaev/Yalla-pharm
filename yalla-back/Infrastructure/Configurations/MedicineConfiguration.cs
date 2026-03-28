@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
 
 namespace Yalla.Infrastructure.Configurations;
 
@@ -28,7 +29,12 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .HasColumnName("articul")
           .HasColumnType("character varying(128)")
           .HasMaxLength(128)
-          .IsRequired();
+          .IsRequired(false);
+
+        builder.Property(x => x.Description)
+          .HasColumnName("description")
+          .HasColumnType("text")
+          .HasDefaultValue(string.Empty);
 
         builder.Property(x => x.IsActive)
           .HasColumnName("is_active")
@@ -36,9 +42,34 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .HasDefaultValue(true)
           .IsRequired();
 
+        builder.Property(x => x.WooCommerceId)
+          .HasColumnName("woo_commerce_id")
+          .HasColumnType("integer")
+          .IsRequired(false);
+
+        builder.Property(x => x.CategoryId)
+          .HasColumnName("category_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
+        builder.HasOne(x => x.Category)
+          .WithMany(x => x.Medicines)
+          .HasForeignKey(x => x.CategoryId)
+          .OnDelete(DeleteBehavior.SetNull)
+          .IsRequired(false);
+
         builder.HasIndex(x => x.Articul)
           .IsUnique()
+          .HasFilter("articul IS NOT NULL")
           .HasDatabaseName("ix_medicines_articul");
+
+        builder.HasIndex(x => x.WooCommerceId)
+          .IsUnique()
+          .HasFilter("woo_commerce_id IS NOT NULL")
+          .HasDatabaseName("ix_medicines_woo_commerce_id");
+
+        builder.HasIndex(x => x.CategoryId)
+          .HasDatabaseName("ix_medicines_category_id");
 
         builder.OwnsMany(x => x.Atributes, attr =>
         {
@@ -53,14 +84,15 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
 
             attr.HasKey("id");
 
-            attr.Property(a => a.Name)
-          .HasColumnName("name")
-          .HasColumnType("character varying(200)")
-          .HasMaxLength(200)
+            attr.Property(a => a.Type)
+          .HasColumnName("type")
+          .HasColumnType("character varying(64)")
+          .HasConversion<string>()
+          .HasMaxLength(64)
           .IsRequired();
 
-            attr.Property(a => a.Option)
-          .HasColumnName("option")
+            attr.Property(a => a.Value)
+          .HasColumnName("value")
           .HasColumnType("character varying(500)")
           .HasMaxLength(500)
           .IsRequired();

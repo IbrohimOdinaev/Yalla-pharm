@@ -24,6 +24,7 @@ public interface IAppDbContext
     DbSet<SmsVerificationSession> SmsVerificationSessions { get; }
     DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
     DbSet<User> Users { get; }
+    DbSet<Category> Categories { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

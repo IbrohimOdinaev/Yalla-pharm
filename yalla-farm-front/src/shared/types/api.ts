@@ -14,8 +14,21 @@ export type ApiMedicineImage = {
 };
 
 export type ApiMedicineAttribute = {
+  type: string;
+  value: string;
+  name?: string;
+  option?: string;
+};
+
+export type ApiCategory = {
+  id: string;
   name: string;
-  option: string;
+  slug: string;
+  parentId?: string | null;
+  type?: string | null;
+  wooCommerceId: number;
+  isActive: boolean;
+  children: ApiCategory[];
 };
 
 export type ApiMedicineOffer = {
@@ -37,6 +50,8 @@ export type ApiMedicine = {
   manufacturer?: string;
   price?: number;
   minPrice?: number;
+  categoryId?: string;
+  categoryName?: string;
   images?: ApiMedicineImage[];
   atributes?: ApiMedicineAttribute[];
   offers?: ApiMedicineOffer[];

@@ -3,6 +3,7 @@ using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
 using Yalla.Application.UnitTests.TestInfrastructure;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
 
 namespace Yalla.Application.UnitTests.Services;
 
@@ -20,7 +21,7 @@ public class MedicineServiceTests
     {
       Title = "Paracetamol",
       Articul = "P-1",
-      Atributes = [new MedicineAtributeRequest { Name = "form", Option = "tablet" }]
+      Atributes = [new MedicineAtributeRequest { Type = AttributeType.ReleaseForm, Value = "tablet" }]
     });
 
     Assert.Equal("Paracetamol", response.Medicine.Title);

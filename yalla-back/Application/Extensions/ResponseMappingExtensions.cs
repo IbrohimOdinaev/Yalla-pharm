@@ -10,8 +10,8 @@ public static class ResponseMappingExtensions
     {
         return new MedicineAtributeResponse
         {
-            Name = atribute.Name,
-            Option = atribute.Option
+            Type = atribute.Type.ToString(),
+            Value = atribute.Value
         };
     }
 
@@ -40,7 +40,11 @@ public static class ResponseMappingExtensions
             Id = medicine.Id,
             Title = medicine.Title,
             Articul = medicine.Articul,
+            Description = medicine.Description,
             IsActive = medicine.IsActive,
+            WooCommerceId = medicine.WooCommerceId,
+            CategoryId = medicine.CategoryId,
+            CategoryName = medicine.Category?.Name,
             Images = medicine.Images.Select(x => x.ToResponse()).ToList(),
             Atributes = medicine.Atributes.Select(x => x.ToResponse()).ToList(),
             Offers = offers

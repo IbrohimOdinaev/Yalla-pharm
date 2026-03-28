@@ -10,9 +10,16 @@ public class Medicine
 
     public string Title { get; private set; } = string.Empty;
 
-    public string Articul { get; private set; } = string.Empty;
+    public string? Articul { get; private set; }
+
+    public string Description { get; private set; } = string.Empty;
 
     public bool IsActive { get; private set; } = true;
+
+    public int? WooCommerceId { get; private set; }
+
+    public Guid? CategoryId { get; private set; }
+    public Category? Category { get; private set; }
 
     private readonly List<Atribute> _atributes = new();
 
@@ -27,17 +34,14 @@ public class Medicine
 
     private Medicine() { }
 
-    public Medicine(string title, string articul, List<Atribute> atributes)
+    public Medicine(string title, string? articul, List<Atribute> atributes)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
 
-        if (string.IsNullOrWhiteSpace(articul))
-            throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
-
         Id = Guid.NewGuid();
         Title = title;
-        Articul = articul;
+        Articul = string.IsNullOrWhiteSpace(articul) ? null : articul;
         IsActive = true;
         _atributes.AddRange(atributes);
     }
@@ -45,7 +49,7 @@ public class Medicine
     public Medicine(
       Guid id,
       string title,
-      string articul,
+      string? articul,
       List<Atribute> atributes,
       List<Offer> offers,
       List<MedicineImage> images,
@@ -56,9 +60,6 @@ public class Medicine
 
         if (string.IsNullOrWhiteSpace(title))
             throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
-
-        if (string.IsNullOrWhiteSpace(articul))
-            throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
 
         if (atributes is null)
             throw new DomainArgumentException("Medicine.Atributes can't be null.");
@@ -71,7 +72,7 @@ public class Medicine
 
         Id = id;
         Title = title;
-        Articul = articul;
+        Articul = string.IsNullOrWhiteSpace(articul) ? null : articul;
         IsActive = isActive;
         _atributes.Clear();
         _atributes.AddRange(atributes);
@@ -89,17 +90,29 @@ public class Medicine
         Title = title;
     }
 
-    public void SetArticul(string articul)
+    public void SetArticul(string? articul)
     {
-        if (string.IsNullOrWhiteSpace(articul))
-            throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
+        Articul = string.IsNullOrWhiteSpace(articul) ? null : articul;
+    }
 
-        Articul = articul;
+    public void SetDescription(string description)
+    {
+        Description = description ?? string.Empty;
     }
 
     public void SetIsActive(bool isActive)
     {
         IsActive = isActive;
+    }
+
+    public void SetWooCommerceId(int? wooCommerceId)
+    {
+        WooCommerceId = wooCommerceId;
+    }
+
+    public void SetCategoryId(Guid? categoryId)
+    {
+        CategoryId = categoryId;
     }
 
     public void AddAtribute(Atribute? atribute)

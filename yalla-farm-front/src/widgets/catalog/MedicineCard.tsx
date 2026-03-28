@@ -109,8 +109,8 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
           {attrs.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {attrs.map((attr) => (
-                <span key={attr.name} className="text-[10px] text-on-surface-variant">
-                  {attr.option}
+                <span key={attr.type || attr.name} className="text-[10px] text-on-surface-variant">
+                  {attr.value || attr.option}
                 </span>
               ))}
             </div>

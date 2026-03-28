@@ -110,8 +110,7 @@ public sealed class RequestDtoValidatorAllCasesTests
 
     AssertHasErrors(
       request,
-      nameof(CreateMedicineRequest.Title),
-      nameof(CreateMedicineRequest.Articul));
+      nameof(CreateMedicineRequest.Title));
   }
 
   [Fact]
@@ -137,15 +136,14 @@ public sealed class RequestDtoValidatorAllCasesTests
       Atributes =
       [
         null!,
-        new MedicineAtributeRequest { Name = " ", Option = " " }
+        new MedicineAtributeRequest { Type = AttributeType.Dosage, Value = " " }
       ]
     };
 
     AssertHasErrors(
       request,
       $"{nameof(CreateMedicineRequest.Atributes)}[0]",
-      $"{nameof(CreateMedicineRequest.Atributes)}[1].{nameof(MedicineAtributeRequest.Name)}",
-      $"{nameof(CreateMedicineRequest.Atributes)}[1].{nameof(MedicineAtributeRequest.Option)}");
+      $"{nameof(CreateMedicineRequest.Atributes)}[1].{nameof(MedicineAtributeRequest.Value)}");
   }
 
   [Fact]
@@ -155,7 +153,7 @@ public sealed class RequestDtoValidatorAllCasesTests
     {
       Title = "M",
       Articul = "A-1",
-      Atributes = [new MedicineAtributeRequest { Name = "dosage", Option = "500mg" }]
+      Atributes = [new MedicineAtributeRequest { Type = AttributeType.Dosage, Value = "500mg" }]
     };
 
     AssertNoErrors(request);
@@ -480,8 +478,7 @@ public sealed class RequestDtoValidatorAllCasesTests
     AssertHasErrors(
       request,
       nameof(UpdateMedicineRequest.MedicineId),
-      nameof(UpdateMedicineRequest.Title),
-      nameof(UpdateMedicineRequest.Articul));
+      nameof(UpdateMedicineRequest.Title));
   }
 
   [Fact]

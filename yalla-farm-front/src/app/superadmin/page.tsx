@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
 import { AppShell } from "@/widgets/layout/AppShell";
@@ -12,7 +12,8 @@ import { getAllPharmacies, updatePharmacy, deletePharmacy } from "@/entities/pha
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
 import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage } from "@/entities/medicine/admin-api";
 import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl } from "@/entities/medicine/api";
-import type { ApiMedicine, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
+import { getCategories, flattenCategories } from "@/entities/category/api";
+import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
 import { getClients, deleteClient } from "@/entities/client/admin-api";
 import type { ApiClient } from "@/shared/types/api";
 import { getAllOrders, superAdminNextStatus } from "@/entities/order/admin-api";
@@ -81,7 +82,7 @@ function StatsDashboard({ token }: { token: string }) {
     Promise.all([
       getAdmins(token).then((a) => a.length),
       getAllPharmacies(token).then((p) => p.length),
-      getAllMedicines(token).then((m) => m.length),
+      getAllMedicines(token, "", 1, 1).then((r) => r.totalCount),
       getClients(token).then((c) => c.length)
     ])
       .then(([admins, pharmacies, medicines, clients]) => setStats({ admins, pharmacies, medicines, clients }))
@@ -318,31 +319,42 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
 
 /* ── Medicines Tab ── */
 
-type StockFilter = "all" | "in-stock" | "out-of-stock";
+type ActiveFilter = "all" | "active" | "inactive";
 
 function MedicinesTab({ token }: { token: string }) {
   const [medicines, setMedicines] = useState<ApiMedicine[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
+  const [categoryId, setCategoryId] = useState<string>("");
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [flatCats, setFlatCats] = useState<ApiCategory[]>([]);
   const [selected, setSelected] = useState<ApiMedicine | null>(null);
   const [selectedDetails, setSelectedDetails] = useState<ApiMedicine | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageSize = 50;
 
-  const load = useCallback((q = "") => {
-    getAllMedicines(token, q).then(setMedicines).catch(() => undefined);
+  useEffect(() => {
+    getCategories().then((cats) => {
+      setCategories(cats);
+      setFlatCats(flattenCategories(cats));
+    }).catch(() => undefined);
+  }, []);
+
+  const load = useCallback((q = "", p = 1, filter: ActiveFilter = "all", catId = "") => {
+    const isActive = filter === "active" ? true : filter === "inactive" ? false : undefined;
+    getAllMedicines(token, q, p, pageSize, isActive, catId || undefined).then((r) => {
+      setMedicines(r.medicines);
+      setTotalCount(r.totalCount);
+    }).catch(() => undefined);
   }, [token]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(query, page, activeFilter, categoryId); }, [load, page, activeFilter, categoryId]);
 
-  const filteredMedicines = useMemo(() => {
-    if (stockFilter === "all") return medicines;
-    return medicines.filter((m) => {
-      const hasStock = (m.offers ?? []).some((o) => o.stockQuantity > 0);
-      return stockFilter === "in-stock" ? hasStock : !hasStock;
-    });
-  }, [medicines, stockFilter]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   /* Fetch full details when selected changes */
   useEffect(() => {
@@ -357,7 +369,17 @@ function MedicinesTab({ token }: { token: string }) {
   function onSearchChange(v: string) {
     setQuery(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => load(v), 300);
+    debounceRef.current = setTimeout(() => { setPage(1); load(v, 1, activeFilter, categoryId); }, 300);
+  }
+
+  function onFilterChange(f: ActiveFilter) {
+    setActiveFilter(f);
+    setPage(1);
+  }
+
+  function onCategoryChange(catId: string) {
+    setCategoryId(catId);
+    setPage(1);
   }
 
   /* Create medicine */
@@ -370,13 +392,13 @@ function MedicinesTab({ token }: { token: string }) {
     setMsg(null);
     try {
       const atributes = newAttrs.split(",").filter(Boolean).map((pair) => {
-        const [name, option] = pair.split(":").map((s) => s.trim());
-        return { name: name || "", option: option || "" };
-      }).filter((a) => a.name);
-      await createMedicine(token, { title: newTitle, articul: newArticul, atributes: atributes.length > 0 ? atributes : undefined });
+        const [type, value] = pair.split(":").map((s) => s.trim());
+        return { type: type || "", value: value || "" };
+      }).filter((a) => a.type);
+      await createMedicine(token, { title: newTitle, articul: newArticul || undefined, atributes: atributes.length > 0 ? atributes : undefined });
       setMsg("Товар создан.");
       setNewTitle(""); setNewArticul(""); setNewAttrs("");
-      load(query);
+      load(query, page, activeFilter, categoryId);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
     }
@@ -393,7 +415,7 @@ function MedicinesTab({ token }: { token: string }) {
     try {
       await uploadMedicineImage(token, selected.id, fileRef.current.files[0], uploadIsMain, uploadIsMinimal);
       setMsg("Изображение загружено.");
-      load(query);
+      load(query, page, activeFilter, categoryId);
       // Re-fetch details to show new image
       getMedicineById(selected.id).then(setSelectedDetails).catch(() => undefined);
     } catch (err) {
@@ -428,30 +450,44 @@ function MedicinesTab({ token }: { token: string }) {
         {/* Search */}
         <input className="stitch-input w-full" placeholder="Поиск лекарств..." value={query} onChange={(e) => onSearchChange(e.target.value)} />
 
-        {/* Stock filter */}
-        <div className="flex gap-2">
+        {/* Category filter */}
+        <select
+          className="stitch-input w-full"
+          value={categoryId}
+          onChange={(e) => onCategoryChange(e.target.value)}
+        >
+          <option value="">Все категории</option>
+          {flatCats.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.parentId ? "  └ " : ""}{cat.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Active filter */}
+        <div className="flex flex-wrap gap-2">
           {([
-            { id: "all" as StockFilter, label: "Все" },
-            { id: "in-stock" as StockFilter, label: "В наличии" },
-            { id: "out-of-stock" as StockFilter, label: "Нет в наличии" },
+            { id: "all" as ActiveFilter, label: "Все" },
+            { id: "active" as ActiveFilter, label: "Активные" },
+            { id: "inactive" as ActiveFilter, label: "Неактивные" },
           ]).map((f) => (
             <button
               key={f.id}
               type="button"
-              onClick={() => setStockFilter(f.id)}
+              onClick={() => onFilterChange(f.id)}
               className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                stockFilter === f.id ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant"
+                activeFilter === f.id ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant"
               }`}
             >
               {f.label}
             </button>
           ))}
-          <span className="ml-auto text-xs text-on-surface-variant self-center">{filteredMedicines.length} из {medicines.length}</span>
+          <span className="ml-auto text-xs text-on-surface-variant self-center">{medicines.length} из {totalCount}</span>
         </div>
 
         {/* List */}
         <div className="grid gap-3 md:grid-cols-2">
-          {filteredMedicines.map((m) => (
+          {medicines.map((m) => (
             <button
               key={m.id}
               type="button"
@@ -478,6 +514,47 @@ function MedicinesTab({ token }: { token: string }) {
             </button>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold bg-surface-container-low text-on-surface-variant disabled:opacity-30"
+            >
+              &larr;
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let p: number;
+              if (totalPages <= 7) { p = i + 1; }
+              else if (page <= 4) { p = i + 1; }
+              else if (page >= totalPages - 3) { p = totalPages - 6 + i; }
+              else { p = page - 3 + i; }
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPage(p)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                    page === p ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant"
+                  }`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold bg-surface-container-low text-on-surface-variant disabled:opacity-30"
+            >
+              &rarr;
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Right column - details */}
@@ -503,6 +580,7 @@ function MedicinesTab({ token }: { token: string }) {
               <div className="space-y-1">
                 <h3 className="text-lg font-bold">{getMedicineDisplayName(detail)}</h3>
                 {detail.articul ? <p className="text-sm text-on-surface-variant">Артикул: {detail.articul}</p> : null}
+                {detail.categoryName ? <p className="text-sm text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{detail.categoryName}</span></p> : null}
                 <div className="flex items-center gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${detail.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>
                     {detail.isActive !== false ? "Активный" : "Неактивный"}
@@ -518,7 +596,7 @@ function MedicinesTab({ token }: { token: string }) {
                   <div className="flex flex-wrap gap-2">
                     {detail.atributes.map((attr, i) => (
                       <span key={i} className="rounded-full bg-surface-container-low px-3 py-1 text-xs font-medium">
-                        {attr.name}: {attr.option}
+                        {attr.type || attr.name}: {attr.value || attr.option}
                       </span>
                     ))}
                   </div>
@@ -547,7 +625,7 @@ function MedicinesTab({ token }: { token: string }) {
               <div>
                 <h4 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Редактирование</h4>
                 <EditMedicineForm token={token} medicine={detail} onDone={() => {
-                  load(query);
+                  load(query, page, activeFilter, categoryId);
                   getMedicineById(detail.id).then(setSelectedDetails).catch(() => undefined);
                 }} />
               </div>
@@ -577,12 +655,12 @@ function MedicinesTab({ token }: { token: string }) {
               <div className="flex gap-2">
                 <button type="button" className="rounded-xl bg-yellow-100 px-4 py-2 text-sm font-bold text-yellow-800" onClick={async () => {
                   await deleteMedicine(token, selected.id, false).catch(() => undefined);
-                  setSelected(null); load(query);
+                  setSelected(null); load(query, page, activeFilter, categoryId);
                 }}>Деактивировать</button>
                 <button type="button" className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700" onClick={async () => {
                   if (!confirm("Удалить товар полностью?")) return;
                   await deleteMedicine(token, selected.id, true).catch(() => undefined);
-                  setSelected(null); load(query);
+                  setSelected(null); load(query, page, activeFilter, categoryId);
                 }}>Удалить полностью</button>
               </div>
             </>

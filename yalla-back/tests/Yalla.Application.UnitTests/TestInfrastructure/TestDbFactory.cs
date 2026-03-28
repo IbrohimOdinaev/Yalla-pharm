@@ -63,7 +63,7 @@ internal static class TestDbFactory
     var medicine = new Medicine(
       title,
       articul,
-      [new Atribute("dosage", "500mg")]);
+      [new Atribute(AttributeType.Dosage, "500mg")]);
 
     if (!isActive)
       medicine.SetIsActive(false);

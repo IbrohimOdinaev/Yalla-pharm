@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getCatalogMedicinesPaginated, searchMedicines } from "@/entities/medicine/api";
-import type { ApiMedicine } from "@/shared/types/api";
+import { getCategories } from "@/entities/category/api";
+import type { ApiMedicine, ApiCategory } from "@/shared/types/api";
 import { HeroCarousel } from "@/widgets/catalog/HeroCarousel";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { AppShell } from "@/widgets/layout/AppShell";
@@ -84,17 +85,25 @@ export default function HomePage() {
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const [showAddressInput, setShowAddressInput] = useState(false);
   const [medicines, setMedicines] = useState<ApiMedicine[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // only for initial load
-  const [isSearching, setIsSearching] = useState(false); // for live search (no flicker)
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string>("");
+  const [showCategories, setShowCategories] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
 
-  const fetchMedicines = useCallback((searchQuery: string, p = 1) => {
+  useEffect(() => {
+    getCategories().then(setCategories).catch(() => undefined);
+  }, []);
+
+  const fetchMedicines = useCallback((searchQuery: string, p = 1, catId = "") => {
     // Only show full loading state on initial load / pagination
     if (isInitialLoad.current) setIsLoading(true);
     else setIsSearching(true);
@@ -112,7 +121,7 @@ export default function HomePage() {
         })
         .finally(() => { setIsLoading(false); setIsSearching(false); isInitialLoad.current = false; });
     } else {
-      getCatalogMedicinesPaginated(p, 24)
+      getCatalogMedicinesPaginated(p, 24, catId || undefined)
         .then((data) => {
           setMedicines(Array.isArray(data?.medicines) ? data.medicines : []);
           const total = data?.totalCount ?? 0;
@@ -128,25 +137,32 @@ export default function HomePage() {
   }, []);
 
   useOfferLiveUpdates(useCallback(() => {
-    fetchMedicines(query, page);
-  }, [fetchMedicines, query, page]));
+    fetchMedicines(query, page, selectedCategoryId);
+  }, [fetchMedicines, query, page, selectedCategoryId]));
 
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
   useEffect(() => {
-    fetchMedicines("", 1);
-  }, [fetchMedicines]);
+    fetchMedicines("", 1, selectedCategoryId);
+  }, [fetchMedicines, selectedCategoryId]);
 
   function onSearchChange(value: string) {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchMedicines(value, 1), 300);
+    debounceRef.current = setTimeout(() => fetchMedicines(value, 1, selectedCategoryId), 300);
+  }
+
+  function onCategorySelect(catId: string) {
+    const newId = catId === selectedCategoryId ? "" : catId;
+    setSelectedCategoryId(newId);
+    setPage(1);
+    fetchMedicines(query, 1, newId);
   }
 
   function goToPage(p: number) {
     if (p < 1 || p > totalPages) return;
     setPage(p);
-    fetchMedicines(query, p);
+    fetchMedicines(query, p, selectedCategoryId);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -172,7 +188,7 @@ export default function HomePage() {
               ) : null}
               <button
                 type="button"
-                onClick={() => { setSearchOpen(false); setQuery(""); fetchMedicines("", 1); }}
+                onClick={() => { setSearchOpen(false); setQuery(""); fetchMedicines("", 1, selectedCategoryId); }}
                 className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition"
                 aria-label="Закрыть поиск"
               >
@@ -250,13 +266,91 @@ export default function HomePage() {
 
               <HeroCarousel />
 
+              {/* Categories */}
+              {categories.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCategories(!showCategories)}
+                      className={`stitch-button-secondary text-sm flex items-center gap-2 ${showCategories ? "ring-2 ring-primary" : ""}`}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                      Категории
+                    </button>
+                    {selectedCategoryId && (
+                      <button
+                        type="button"
+                        onClick={() => onCategorySelect("")}
+                        className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary flex items-center gap-1"
+                      >
+                        {[...categories, ...categories.flatMap((c) => c.children ?? [])].find((c) => c.id === selectedCategoryId)?.name}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {showCategories && (
+                    <div className="stitch-card p-3 space-y-1 max-h-[60vh] overflow-y-auto">
+                      <button
+                        type="button"
+                        onClick={() => { onCategorySelect(""); setShowCategories(false); }}
+                        className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                          !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low"
+                        }`}
+                      >
+                        Все товары
+                      </button>
+                      {categories.map((cat) => (
+                        <div key={cat.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (cat.children?.length) {
+                                setExpandedCategoryId(expandedCategoryId === cat.id ? "" : cat.id);
+                              }
+                              onCategorySelect(cat.id);
+                              if (!cat.children?.length) setShowCategories(false);
+                            }}
+                            className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition flex items-center justify-between ${
+                              selectedCategoryId === cat.id ? "bg-primary text-white" : "hover:bg-surface-container-low"
+                            }`}
+                          >
+                            {cat.name}
+                            {cat.children?.length ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition ${expandedCategoryId === cat.id ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9"/></svg>
+                            ) : null}
+                          </button>
+                          {expandedCategoryId === cat.id && cat.children?.length ? (
+                            <div className="pl-3 space-y-0.5">
+                              {cat.children.map((sub) => (
+                                <button
+                                  key={sub.id}
+                                  type="button"
+                                  onClick={() => { onCategorySelect(sub.id); setShowCategories(false); }}
+                                  className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
+                                    selectedCategoryId === sub.id ? "bg-primary/80 text-white font-bold" : "text-on-surface-variant hover:bg-surface-container-low"
+                                  }`}
+                                >
+                                  {sub.name}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <InfoBanner text="Быстрая доставка по Душанбе: 30-45 минут" />
             </>
           ) : null}
 
           <section>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-bold">{query.trim() ? "Результаты поиска" : "Трендовые товары"}</h3>
+              <h3 className="text-lg font-bold">{query.trim() ? "Результаты поиска" : selectedCategoryId ? [...categories, ...categories.flatMap((c) => c.children ?? [])].find((c) => c.id === selectedCategoryId)?.name ?? "Товары" : "Трендовые товары"}</h3>
             </div>
 
             {isLoading ? <div className="stitch-card p-6 text-sm">Загружаем товары...</div> : null}

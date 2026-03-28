@@ -1,17 +1,42 @@
 import { apiFetch } from "@/shared/api/http-client";
 import type { ApiMedicine } from "@/shared/types/api";
 
-export async function getAllMedicines(token: string, query = "", page = 1, pageSize = 50): Promise<ApiMedicine[]> {
-  const q = query ? `&query=${encodeURIComponent(query)}` : "";
-  const response = await apiFetch<{ medicines?: ApiMedicine[] }>(`/api/medicines/all?page=${page}&pageSize=${pageSize}${q}`, { token });
-  return Array.isArray(response?.medicines) ? response.medicines : [];
+export type AllMedicinesResponse = {
+  medicines: ApiMedicine[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function getAllMedicines(
+  token: string,
+  query = "",
+  page = 1,
+  pageSize = 50,
+  isActive?: boolean,
+  categoryId?: string
+): Promise<AllMedicinesResponse> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (query) params.set("query", query);
+  if (isActive !== undefined) params.set("isActive", String(isActive));
+  if (categoryId) params.set("categoryId", categoryId);
+  const response = await apiFetch<{ medicines?: ApiMedicine[]; totalCount?: number; page?: number; pageSize?: number }>(
+    `/api/medicines/all?${params}`,
+    { token }
+  );
+  return {
+    medicines: Array.isArray(response?.medicines) ? response.medicines : [],
+    totalCount: response?.totalCount ?? 0,
+    page: response?.page ?? page,
+    pageSize: response?.pageSize ?? pageSize,
+  };
 }
 
-export async function createMedicine(token: string, data: { title: string; articul: string; atributes?: Array<{ name: string; option: string }> }): Promise<void> {
+export async function createMedicine(token: string, data: { title: string; articul?: string; atributes?: Array<{ type: string; value: string }> }): Promise<void> {
   await apiFetch<unknown>("/api/medicines", { method: "POST", token, body: data });
 }
 
-export async function updateMedicine(token: string, data: { medicineId: string; title: string; articul: string }): Promise<void> {
+export async function updateMedicine(token: string, data: { medicineId: string; title: string; articul?: string }): Promise<void> {
   await apiFetch<unknown>("/api/medicines", { method: "PUT", token, body: data });
 }
 

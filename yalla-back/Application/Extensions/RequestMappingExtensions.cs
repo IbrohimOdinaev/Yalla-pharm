@@ -12,13 +12,22 @@ public static class RequestMappingExtensions
     public static Medicine ToDomain(this CreateMedicineRequest request)
     {
         var normalizedTitle = request.Title.Trim();
-        var normalizedArticul = request.Articul.Trim();
+        var normalizedArticul = request.Articul?.Trim();
 
         var atributes = request.Atributes
-          .Select(x => new Atribute(x.Name, x.Option))
+          .Select(x => new Atribute(x.Type, x.Value))
           .ToList();
 
         var medicine = new Medicine(normalizedTitle, normalizedArticul, atributes);
+
+        if (!string.IsNullOrEmpty(request.Description))
+            medicine.SetDescription(request.Description);
+
+        if (request.CategoryId.HasValue)
+            medicine.SetCategoryId(request.CategoryId.Value);
+
+        if (request.WooCommerceId.HasValue)
+            medicine.SetWooCommerceId(request.WooCommerceId.Value);
 
         return medicine;
     }
@@ -82,7 +91,8 @@ public static class RequestMappingExtensions
       Medicine medicine)
     {
         medicine.SetTitle(request.Title.Trim());
-        medicine.SetArticul(request.Articul.Trim());
+        medicine.SetArticul(request.Articul?.Trim());
+        medicine.SetCategoryId(request.CategoryId);
 
     }
 

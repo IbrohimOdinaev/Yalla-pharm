@@ -1,6 +1,7 @@
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Extensions;
 using Yalla.Application.UnitTests.TestInfrastructure;
+using Yalla.Domain.Enums;
 using Yalla.Domain.Exceptions;
 
 namespace Yalla.Application.UnitTests.Extensions;
@@ -16,7 +17,7 @@ public class RequestMappingExtensionsTests
             Articul = "  ART-1  ",
             Atributes =
           [
-            new MedicineAtributeRequest { Name = "form", Option = "pill" }
+            new MedicineAtributeRequest { Type = AttributeType.ReleaseForm, Value = "pill" }
           ]
         };
 

@@ -175,7 +175,6 @@ internal static class RequestDtoValidator
     List<ValidationError> errors)
   {
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
-    RequireNotWhiteSpace(request.Articul, nameof(request.Articul), errors);
     RequireOptionalNotWhiteSpace(request.Url, nameof(request.Url), errors);
 
     if (request.Atributes is null)
@@ -194,8 +193,9 @@ internal static class RequestDtoValidator
         continue;
       }
 
-      RequireNotWhiteSpace(attribute.Name, $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Name)}", errors);
-      RequireNotWhiteSpace(attribute.Option, $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Option)}", errors);
+      if (!Enum.IsDefined(attribute.Type))
+        errors.Add(new ValidationError($"{nameof(request.Atributes)}[{index}].{nameof(attribute.Type)}", "Invalid attribute type."));
+      RequireNotWhiteSpace(attribute.Value, $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Value)}", errors);
       index++;
     }
   }
@@ -401,7 +401,6 @@ internal static class RequestDtoValidator
   {
     RequireNotEmpty(request.MedicineId, nameof(request.MedicineId), errors);
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
-    RequireNotWhiteSpace(request.Articul, nameof(request.Articul), errors);
     RequireOptionalNotWhiteSpace(request.Url, nameof(request.Url), errors);
   }
 

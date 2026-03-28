@@ -47,8 +47,8 @@ describe("MedicineCard", () => {
   it("shows attributes", () => {
     const med = makeMedicine({
       atributes: [
-        { name: "Форма", option: "Таблетки" },
-        { name: "Дозировка", option: "500мг" },
+        { type: "ReleaseForm", value: "Таблетки", name: "Форма", option: "Таблетки" },
+        { type: "Dosage", value: "500мг", name: "Дозировка", option: "500мг" },
       ],
     });
     renderWithProviders(<MedicineCard medicine={med} />);

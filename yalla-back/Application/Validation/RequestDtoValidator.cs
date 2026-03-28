@@ -187,8 +187,8 @@ public static class RequestDtoValidator
   {
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
     RequireMaxLength(request.Title, nameof(request.Title), MedicineTitleMaxLength, errors);
-    RequireNotWhiteSpace(request.Articul, nameof(request.Articul), errors);
-    RequireMaxLength(request.Articul, nameof(request.Articul), MedicineArticulMaxLength, errors);
+    if (!string.IsNullOrWhiteSpace(request.Articul))
+      RequireMaxLength(request.Articul, nameof(request.Articul), MedicineArticulMaxLength, errors);
 
     if (request.Atributes is null)
     {
@@ -206,16 +206,12 @@ public static class RequestDtoValidator
         continue;
       }
 
-      RequireNotWhiteSpace(attribute.Name, $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Name)}", errors);
+      if (!Enum.IsDefined(attribute.Type))
+        errors.Add(new ValidationError($"{nameof(request.Atributes)}[{index}].{nameof(attribute.Type)}", "Invalid attribute type."));
+      RequireNotWhiteSpace(attribute.Value, $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Value)}", errors);
       RequireMaxLength(
-        attribute.Name,
-        $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Name)}",
-        MedicineAttributeNameMaxLength,
-        errors);
-      RequireNotWhiteSpace(attribute.Option, $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Option)}", errors);
-      RequireMaxLength(
-        attribute.Option,
-        $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Option)}",
+        attribute.Value,
+        $"{nameof(request.Atributes)}[{index}].{nameof(attribute.Value)}",
         MedicineAttributeOptionMaxLength,
         errors);
       index++;
@@ -445,8 +441,8 @@ public static class RequestDtoValidator
     RequireNotEmpty(request.MedicineId, nameof(request.MedicineId), errors);
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
     RequireMaxLength(request.Title, nameof(request.Title), MedicineTitleMaxLength, errors);
-    RequireNotWhiteSpace(request.Articul, nameof(request.Articul), errors);
-    RequireMaxLength(request.Articul, nameof(request.Articul), MedicineArticulMaxLength, errors);
+    if (!string.IsNullOrWhiteSpace(request.Articul))
+      RequireMaxLength(request.Articul, nameof(request.Articul), MedicineArticulMaxLength, errors);
   }
 
   private static void ValidateUpdatePharmacy(

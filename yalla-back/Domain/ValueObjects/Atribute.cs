@@ -1,21 +1,19 @@
+using Yalla.Domain.Enums;
 using Yalla.Domain.Exceptions;
 
 namespace Yalla.Domain.ValueObjects;
 
 public record Atribute
 {
-  public string Name { get; private set; } = string.Empty;
-  public string Option { get; private set; } = string.Empty;
+  public AttributeType Type { get; private set; }
+  public string Value { get; private set; } = string.Empty;
 
-  public Atribute(string name, string option)
+  public Atribute(AttributeType type, string value)
   {
-    if (string.IsNullOrWhiteSpace(name))
-      throw new DomainArgumentException("Atribute.Name can't be null or whitespace.");
+    if (string.IsNullOrWhiteSpace(value))
+      throw new DomainArgumentException("Atribute.Value can't be null or whitespace.");
 
-    if (string.IsNullOrWhiteSpace(option))
-      throw new DomainArgumentException("Atribute.Option can't be null or whitespace.");
-
-    Name = name;
-    Option = option;
+    Type = type;
+    Value = value;
   }
 }

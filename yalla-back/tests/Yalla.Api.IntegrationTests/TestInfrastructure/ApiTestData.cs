@@ -152,7 +152,7 @@ public static class ApiTestData
       Medicine1Id,
       "Paracetamol",
       "ART-001",
-      [new Atribute("dosage", "500mg")],
+      [new Atribute(AttributeType.Dosage, "500mg")],
       [],
       [],
       true);
@@ -161,7 +161,7 @@ public static class ApiTestData
       Medicine2Id,
       "Vitamin C",
       "ART-002",
-      [new Atribute("form", "tablet")],
+      [new Atribute(AttributeType.ReleaseForm, "tablet")],
       [],
       [],
       false);

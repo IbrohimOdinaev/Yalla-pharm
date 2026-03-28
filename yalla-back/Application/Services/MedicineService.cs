@@ -42,12 +42,15 @@ public sealed class MedicineService : IMedicineService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var articul = request.Articul.Trim();
-        var articulExists = await _dbContext.Medicines
-          .AnyAsync(x => x.Articul == articul, cancellationToken);
+        var articul = request.Articul?.Trim();
+        if (!string.IsNullOrWhiteSpace(articul))
+        {
+            var articulExists = await _dbContext.Medicines
+              .AnyAsync(x => x.Articul == articul, cancellationToken);
 
-        if (articulExists)
-            throw new InvalidOperationException($"Medicine with articul '{articul}' already exists.");
+            if (articulExists)
+                throw new InvalidOperationException($"Medicine with articul '{articul}' already exists.");
+        }
 
         var medicine = request.ToDomain();
 
@@ -66,12 +69,15 @@ public sealed class MedicineService : IMedicineService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var articul = request.Articul.Trim();
-        var articulExists = await _dbContext.Medicines
-          .AnyAsync(x => x.Articul == articul && x.Id != request.MedicineId, cancellationToken);
+        var articul = request.Articul?.Trim();
+        if (!string.IsNullOrWhiteSpace(articul))
+        {
+            var articulExists = await _dbContext.Medicines
+              .AnyAsync(x => x.Articul == articul && x.Id != request.MedicineId, cancellationToken);
 
-        if (articulExists)
-            throw new InvalidOperationException($"Medicine with articul '{articul}' already exists.");
+            if (articulExists)
+                throw new InvalidOperationException($"Medicine with articul '{articul}' already exists.");
+        }
 
         var medicine = await _dbContext.Medicines
           .AsTracking()
@@ -172,6 +178,14 @@ public sealed class MedicineService : IMedicineService
           .Where(x => x.IsActive)
           .Where(x => x.Offers.Any(o => o.StockQuantity > 0));
 
+        if (request.CategoryId.HasValue)
+        {
+            var catId = request.CategoryId.Value;
+            query = query.Where(x =>
+                x.CategoryId == catId
+                || x.Category!.ParentId == catId);
+        }
+
         var normalizedQuery = (request.Query ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(normalizedQuery))
         {
@@ -236,6 +250,14 @@ public sealed class MedicineService : IMedicineService
         if (request.IsActive.HasValue)
             query = query.Where(x => x.IsActive == request.IsActive.Value);
 
+        if (request.CategoryId.HasValue)
+        {
+            var catId = request.CategoryId.Value;
+            query = query.Where(x =>
+                x.CategoryId == catId
+                || x.Category!.ParentId == catId);
+        }
+
         var normalizedQuery = (request.Query ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(normalizedQuery))
         {
@@ -298,6 +320,7 @@ public sealed class MedicineService : IMedicineService
           .AsNoTracking()
           .Include(x => x.Atributes)
           .Include(x => x.Images)
+          .Include(x => x.Category)
           .FirstOrDefaultAsync(
             x => x.Id == request.MedicineId && (request.IncludeInactive || x.IsActive),
             cancellationToken)
