@@ -14,6 +14,9 @@ public class Pharmacy
 
     public bool IsActive { get; private set; } = true;
 
+    public double? Latitude { get; private set; }
+    public double? Longitude { get; private set; }
+
     private readonly List<Order> _orders = new();
     public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
 
@@ -75,6 +78,12 @@ public class Pharmacy
             throw new DomainArgumentException("AdminId can't be empty.");
 
         AdminId = adminId;
+    }
+
+    public void SetCoordinates(double? latitude, double? longitude)
+    {
+        Latitude = latitude;
+        Longitude = longitude;
     }
 
     public void ChangeActivity()

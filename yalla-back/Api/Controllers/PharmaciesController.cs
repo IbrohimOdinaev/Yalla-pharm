@@ -19,7 +19,7 @@ public sealed class PharmaciesController : ControllerBase
   }
 
   [HttpGet]
-  [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [AllowAnonymous]
   public async Task<IActionResult> GetActive(CancellationToken cancellationToken)
   {
     var response = await _pharmacyWorkerService.GetActivePharmaciesAsync(cancellationToken);
@@ -63,7 +63,9 @@ public sealed class PharmaciesController : ControllerBase
         Title = request.Title,
         Address = request.Address,
         AdminId = User.GetRequiredUserId(),
-        IsActive = request.IsActive
+        IsActive = request.IsActive,
+        Latitude = request.Latitude,
+        Longitude = request.Longitude
       };
     }
 

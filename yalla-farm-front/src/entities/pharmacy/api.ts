@@ -5,11 +5,13 @@ export type ActivePharmacy = {
   title: string;
   address: string;
   isActive?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
-export async function getActivePharmacies(token: string): Promise<ActivePharmacy[]> {
+export async function getActivePharmacies(token?: string): Promise<ActivePharmacy[]> {
   const response = await apiFetch<{ pharmacies?: ActivePharmacy[] }>("/api/pharmacies", {
-    token
+    ...(token ? { token } : {})
   });
 
   return Array.isArray(response?.pharmacies) ? response.pharmacies : [];

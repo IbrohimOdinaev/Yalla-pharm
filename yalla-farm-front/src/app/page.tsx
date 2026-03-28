@@ -15,6 +15,11 @@ import { useCartStore } from "@/features/cart/model/cartStore";
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
+import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { getBrowserGeolocation, reverseGeocode, type GeoResult } from "@/shared/lib/yandex-maps";
+import dynamic from "next/dynamic";
+
+const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
 function CatalogSidebar() {
   const token = useAppSelector((s) => s.auth.token);
@@ -96,11 +101,18 @@ export default function HomePage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [expandedCategoryId, setExpandedCategoryId] = useState<string>("");
   const [showCategories, setShowCategories] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [showDeliveryMap, setShowDeliveryMap] = useState(false);
+  const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
 
   useEffect(() => {
     getCategories().then(setCategories).catch(() => undefined);
+    getActivePharmacies().then(setPharmacies).catch(() => undefined);
   }, []);
 
   const fetchMedicines = useCallback((searchQuery: string, p = 1, catId = "") => {
@@ -227,16 +239,57 @@ export default function HomePage() {
                 ) : (
                   <>
                     {!showAddressInput ? (
-                      <div className="flex gap-3">
-                        <button type="button" className="stitch-button-secondary flex-1 text-sm" onClick={() => alert("Геолокация будет доступна в следующем обновлении")}>
-                          <span className="flex items-center justify-center gap-2">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
-                            Геолокация
-                          </span>
-                        </button>
-                        <button type="button" className="stitch-button flex-1 text-sm" onClick={() => setShowAddressInput(true)}>
-                          Ввести адрес
-                        </button>
+                      <div className="space-y-2">
+                        <div className="flex gap-3">
+                          <button type="button" className={`stitch-button-secondary flex-1 text-sm ${geoLoading ? "opacity-50" : ""}`} disabled={geoLoading} onClick={async () => {
+                            setGeoLoading(true);
+                            setGeoError(null);
+                            try {
+                              const coords = await getBrowserGeolocation();
+                              setUserCoords(coords);
+                              const result = await reverseGeocode(coords.lat, coords.lng);
+                              if (result) {
+                                setDeliveryAddress(result.address);
+                              }
+                            } catch (err) {
+                              setGeoError(err instanceof Error ? err.message : "Ошибка геолокации");
+                            }
+                            setGeoLoading(false);
+                          }}>
+                            <span className="flex items-center justify-center gap-2">
+                              {geoLoading ? (
+                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                              ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+                              )}
+                              Геолокация
+                            </span>
+                          </button>
+                          <button type="button" className="stitch-button-secondary flex-1 text-sm" onClick={() => setShowDeliveryMap(!showDeliveryMap)}>
+                            <span className="flex items-center justify-center gap-2">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                              На карте
+                            </span>
+                          </button>
+                          <button type="button" className="stitch-button flex-1 text-sm" onClick={() => setShowAddressInput(true)}>
+                            Ввести адрес
+                          </button>
+                        </div>
+                        {geoError ? <p className="text-xs text-red-600">{geoError}</p> : null}
+                        {showDeliveryMap && (
+                          <PharmacyMap
+                            className="h-[250px]"
+                            pharmacies={pharmacies
+                              .filter((p) => p.latitude && p.longitude)
+                              .map((p) => ({ id: p.id, title: p.title, address: p.address, lat: p.latitude!, lng: p.longitude! }))}
+                            userLocation={userCoords}
+                            pickMode
+                            onMapClick={async (result: GeoResult) => {
+                              setDeliveryAddress(result.address);
+                              setUserCoords({ lat: result.lat, lng: result.lng });
+                            }}
+                          />
+                        )}
                       </div>
                     ) : null}
 
@@ -277,6 +330,14 @@ export default function HomePage() {
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                       Категории
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowMap(!showMap)}
+                      className={`stitch-button-secondary text-sm flex items-center gap-2 ${showMap ? "ring-2 ring-primary" : ""}`}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      На карте
                     </button>
                     {selectedCategoryId && (
                       <button
@@ -340,6 +401,28 @@ export default function HomePage() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* Map */}
+              {showMap && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-on-surface-variant">Аптеки на карте</h3>
+                  <PharmacyMap
+                    className="h-[300px] sm:h-[400px]"
+                    pharmacies={pharmacies
+                      .filter((p) => p.latitude && p.longitude)
+                      .map((p) => ({
+                        id: p.id,
+                        title: p.title,
+                        address: p.address,
+                        lat: p.latitude!,
+                        lng: p.longitude!,
+                      }))}
+                  />
+                  {pharmacies.filter((p) => p.latitude && p.longitude).length === 0 && (
+                    <p className="text-xs text-on-surface-variant">Координаты аптек ещё не заданы.</p>
                   )}
                 </div>
               )}

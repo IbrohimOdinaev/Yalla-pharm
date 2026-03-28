@@ -41,6 +41,16 @@ public class PharmacyConfiguration : IEntityTypeConfiguration<Pharmacy>
           .HasDefaultValue(true)
           .IsRequired();
 
+        builder.Property(x => x.Latitude)
+          .HasColumnName("latitude")
+          .HasColumnType("double precision")
+          .IsRequired(false);
+
+        builder.Property(x => x.Longitude)
+          .HasColumnName("longitude")
+          .HasColumnType("double precision")
+          .IsRequired(false);
+
         builder.HasIndex(x => x.AdminId)
           .HasDatabaseName("ix_pharmacies_admin_id");
 

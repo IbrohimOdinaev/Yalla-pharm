@@ -21,6 +21,10 @@ import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, ty
 import { getRefundRequests, initiateRefund } from "@/entities/refund/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
+import type { GeoResult } from "@/shared/lib/yandex-maps";
+import dynamic from "next/dynamic";
+
+const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
 type Tab = "pharmacies" | "medicines" | "orders";
 
@@ -266,13 +270,20 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
   const [title, setTitle] = useState(pharmacy.title);
   const [address, setAddress] = useState(pharmacy.address);
   const [isActive, setIsActive] = useState(pharmacy.isActive ?? true);
+  const [lat, setLat] = useState(pharmacy.latitude?.toString() ?? "");
+  const [lng, setLng] = useState(pharmacy.longitude?.toString() ?? "");
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
     try {
-      await updatePharmacy(token, { pharmacyId: pharmacy.id, title, address, isActive });
+      await updatePharmacy(token, {
+        pharmacyId: pharmacy.id, title, address, isActive,
+        latitude: lat ? parseFloat(lat) : undefined,
+        longitude: lng ? parseFloat(lng) : undefined,
+      });
       setMsg("Обновлено.");
       setIsEditing(false);
       onDone();
@@ -284,8 +295,28 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
   if (isEditing) {
     return (
       <form className="stitch-card space-y-3 p-4" onSubmit={onSave}>
-        <input className="stitch-input" value={title} onChange={(e) => setTitle(e.target.value)} required />
-        <input className="stitch-input" value={address} onChange={(e) => setAddress(e.target.value)} required />
+        <input className="stitch-input" placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input className="stitch-input" placeholder="Адрес" value={address} onChange={(e) => setAddress(e.target.value)} required />
+        <div className="grid grid-cols-2 gap-2">
+          <input className="stitch-input" placeholder="Широта (lat)" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} />
+          <input className="stitch-input" placeholder="Долгота (lng)" type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} />
+        </div>
+        <button type="button" className="stitch-button-secondary text-xs w-full" onClick={() => setShowMapPicker(!showMapPicker)}>
+          {showMapPicker ? "Скрыть карту" : "Выбрать на карте"}
+        </button>
+        {showMapPicker && (
+          <PharmacyMap
+            className="h-[250px]"
+            pharmacies={lat && lng ? [{ id: pharmacy.id, title, address, lat: parseFloat(lat), lng: parseFloat(lng) }] : []}
+            selectedPoint={lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : null}
+            pickMode
+            onMapClick={(result: GeoResult) => {
+              setLat(result.lat.toFixed(6));
+              setLng(result.lng.toFixed(6));
+              if (result.address && !result.address.match(/^\d/)) setAddress(result.address);
+            }}
+          />
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Активна
         </label>
@@ -303,6 +334,11 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
       <div>
         <p className="font-bold">{pharmacy.title}</p>
         <p className="text-xs text-on-surface-variant">{pharmacy.address} · {pharmacy.isActive ? "Активна" : "Неактивна"}</p>
+        {pharmacy.latitude && pharmacy.longitude ? (
+          <p className="text-[10px] text-on-surface-variant">Координаты: {pharmacy.latitude}, {pharmacy.longitude}</p>
+        ) : (
+          <p className="text-[10px] text-yellow-600">Координаты не заданы</p>
+        )}
         <p className="text-[10px] text-on-surface-variant font-mono break-all">{pharmacy.id}</p>
       </div>
       <div className="flex gap-1">

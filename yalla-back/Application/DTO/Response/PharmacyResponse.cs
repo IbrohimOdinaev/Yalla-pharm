@@ -7,4 +7,6 @@ public sealed class PharmacyResponse
   public string Address { get; init; } = string.Empty;
   public Guid AdminId { get; init; }
   public bool IsActive { get; init; }
+  public double? Latitude { get; init; }
+  public double? Longitude { get; init; }
 }

@@ -9,7 +9,7 @@ export async function getAllPharmacies(token: string, query = "", page = 1, page
 
 export async function updatePharmacy(
   token: string,
-  data: { pharmacyId: string; adminId?: string; title: string; address: string; isActive: boolean }
+  data: { pharmacyId: string; adminId?: string; title: string; address: string; isActive: boolean; latitude?: number; longitude?: number }
 ): Promise<void> {
   await apiFetch<unknown>("/api/pharmacies", { method: "PUT", token, body: data });
 }
