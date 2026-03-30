@@ -1,81 +1,19 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { env } from "@/shared/config/env";
-
-type SuggestItem = {
-  title: string;
-  subtitle?: string;
-  uri?: string;
-};
+import { getMapProvider, type GeoPoint } from "@/shared/lib/map";
 
 type Props = {
   value: string;
   onChange: (address: string) => void;
   onValidChange?: (isValid: boolean) => void;
-  onCoordinatesChange?: (coords: { lat: number; lng: number } | null) => void;
+  onCoordinatesChange?: (coords: GeoPoint | null) => void;
   placeholder?: string;
   className?: string;
 };
 
-async function yandexSuggest(query: string): Promise<SuggestItem[]> {
-  const apiKey = env.yandexMapsApiKey;
-  if (!apiKey) return nominatimFallback(query);
-
-  const encoded = encodeURIComponent(`Душанбе, ${query.trim()}`);
-  const url = `https://suggest-maps.yandex.ru/v1/suggest?apikey=${apiKey}&text=${encoded}&lang=ru&types=geo&print_address=1&bbox=68.65,38.50~68.90,38.65`;
-
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    return (data?.results ?? []).map((r: { title?: { text?: string }; subtitle?: { text?: string }; uri?: string }) => ({
-      title: r.title?.text ?? "",
-      subtitle: r.subtitle?.text ?? "",
-      uri: r.uri ?? "",
-    }));
-  } catch {
-    return nominatimFallback(query);
-  }
-}
-
-async function yandexGeocode(address: string): Promise<{ lat: number; lng: number } | null> {
-  const apiKey = env.yandexMapsApiKey;
-  if (!apiKey) return null;
-
-  const encoded = encodeURIComponent(address);
-  const url = `https://geocode-maps.yandex.ru/v1/?apikey=${apiKey}&geocode=${encoded}&format=json&lang=ru_RU&results=1`;
-
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    const pos = data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos;
-    if (!pos) return null;
-    const [lng, lat] = pos.split(" ").map(Number);
-    return { lat, lng };
-  } catch {
-    return null;
-  }
-}
-
-// Fallback to Nominatim if no Yandex key
-async function nominatimFallback(query: string): Promise<SuggestItem[]> {
-  const encoded = encodeURIComponent(`${query.trim()}, Душанбе`);
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=5&countrycodes=tj&viewbox=68.65,38.50,68.85,38.62&bounded=1`;
-  try {
-    const res = await fetch(url, { headers: { "Accept-Language": "ru" } });
-    const data = await res.json();
-    return (data || []).map((item: Record<string, string>) => {
-      const parts = (item.display_name || "").split(",").map((s: string) => s.trim());
-      const filtered = parts.filter((p: string) => !/^(Tajikistan|Таджикистан|TJ|\d{5,6})$/i.test(p));
-      return { title: filtered[0] || "", subtitle: filtered.slice(1, 3).join(", ") };
-    });
-  } catch {
-    return [];
-  }
-}
-
 export function AddressAutocomplete({ value, onChange, onValidChange, onCoordinatesChange, placeholder = "Введите адрес...", className = "" }: Props) {
-  const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
+  const [suggestions, setSuggestions] = useState<{ title: string; subtitle?: string }[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
   const [isValidated, setIsValidated] = useState<boolean | null>(value ? true : null);
@@ -118,7 +56,8 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const options = await yandexSuggest(val);
+        const provider = getMapProvider();
+        const options = await provider.suggest(val);
         setSuggestions(options);
         setIsOpen(options.length > 0);
       } catch {
@@ -128,7 +67,7 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
     }, 350);
   }
 
-  async function onSelect(item: SuggestItem) {
+  async function onSelect(item: { title: string; subtitle?: string }) {
     const fullAddress = item.subtitle ? `${item.title}, ${item.subtitle}` : item.title;
     setInputValue(fullAddress);
     onChange(fullAddress);
@@ -137,8 +76,8 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
     selectedRef.current = true;
     setValid(true);
 
-    // Geocode to get coordinates
-    const coords = await yandexGeocode(fullAddress);
+    const provider = getMapProvider();
+    const coords = await provider.geocode(fullAddress);
     onCoordinatesChange?.(coords);
   }
 
@@ -186,9 +125,6 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
               </div>
             </button>
           ))}
-          <div className="px-4 py-1.5 text-[9px] text-on-surface-variant/50 border-t border-surface-container-high">
-            Яндекс Карты
-          </div>
         </div>
       ) : null}
     </div>

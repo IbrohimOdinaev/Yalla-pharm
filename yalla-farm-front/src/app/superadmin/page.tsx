@@ -21,7 +21,7 @@ import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, ty
 import { getRefundRequests, initiateRefund } from "@/entities/refund/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
-import type { GeoResult } from "@/shared/lib/yandex-maps";
+import type { GeoResult } from "@/shared/lib/map";
 import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });

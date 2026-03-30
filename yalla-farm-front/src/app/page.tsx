@@ -16,7 +16,7 @@ import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdate
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
-import { getBrowserGeolocation, reverseGeocode, type GeoResult } from "@/shared/lib/yandex-maps";
+import { getMapProvider, getBrowserGeolocation, type GeoResult } from "@/shared/lib/map";
 import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
@@ -247,7 +247,7 @@ export default function HomePage() {
                             try {
                               const coords = await getBrowserGeolocation();
                               setUserCoords(coords);
-                              const result = await reverseGeocode(coords.lat, coords.lng);
+                              const result = await getMapProvider().reverseGeocode(coords);
                               if (result) {
                                 setDeliveryAddress(result.address);
                               }

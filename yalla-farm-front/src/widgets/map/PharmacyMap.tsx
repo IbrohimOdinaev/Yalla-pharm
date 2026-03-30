@@ -1,9 +1,7 @@
 "use client";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { useEffect, useRef, useState, useCallback } from "react";
-import { loadYandexMaps, reverseGeocode, DUSHANBE_CENTER, type GeoResult } from "@/shared/lib/yandex-maps";
+import { getMapProvider, DUSHANBE_CENTER, type GeoPoint, type GeoResult, type MapInstance } from "@/shared/lib/map";
 
 export type PharmacyMarker = {
   id: string;
@@ -18,8 +16,8 @@ type PharmacyMapProps = {
   className?: string;
   onPharmacyClick?: (id: string) => void;
   onMapClick?: (result: GeoResult) => void;
-  userLocation?: { lat: number; lng: number } | null;
-  selectedPoint?: { lat: number; lng: number } | null;
+  userLocation?: GeoPoint | null;
+  selectedPoint?: GeoPoint | null;
   pickMode?: boolean;
 };
 
@@ -33,21 +31,17 @@ export function PharmacyMap({
   pickMode = false,
 }: PharmacyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const pickMarkerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<MapInstance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const ymapsRef = useRef<any>(null);
 
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
 
-  const handleMapClick = useCallback(async (object: any, event: any) => {
+  const handleMapClick = useCallback(async (point: GeoPoint) => {
     if (!onMapClickRef.current) return;
-    const coords = event?.coordinates;
-    if (!coords) return;
-    const [lng, lat] = coords;
-    const result = await reverseGeocode(lat, lng);
+    const provider = getMapProvider();
+    const result = await provider.reverseGeocode(point);
     if (result) onMapClickRef.current(result);
   }, []);
 
@@ -55,28 +49,20 @@ export function PharmacyMap({
     if (!containerRef.current) return;
     let destroyed = false;
 
-    loadYandexMaps()
-      .then(async (ymaps: any) => {
-        if (destroyed || !containerRef.current) return;
-        ymapsRef.current = ymaps;
+    const provider = getMapProvider();
 
-        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker, YMapListener } = ymaps;
+    const center = pharmacies.length > 0
+      ? { lat: pharmacies[0].lat, lng: pharmacies[0].lng }
+      : DUSHANBE_CENTER;
 
-        const center: [number, number] = pharmacies.length > 0
-          ? [pharmacies[0].lng, pharmacies[0].lat]
-          : [DUSHANBE_CENTER.lng, DUSHANBE_CENTER.lat];
+    provider
+      .createMap({ container: containerRef.current!, center, zoom: 13 })
+      .then((mapInstance) => {
+        if (destroyed) { mapInstance.destroy(); return; }
 
-        const map = new YMap(containerRef.current!, {
-          location: { center, zoom: 13 },
-        });
-
-        map.addChild(new YMapDefaultSchemeLayer({}));
-        map.addChild(new YMapDefaultFeaturesLayer({}));
-
-        // Click listener for picking points
+        // Click handler for pick mode
         if (pickMode) {
-          const listener = new YMapListener({ layer: "any", onClick: handleMapClick });
-          map.addChild(listener);
+          mapInstance.onClick(handleMapClick);
         }
 
         // Pharmacy markers
@@ -97,7 +83,7 @@ export function PharmacyMap({
             e.stopPropagation();
             onPharmacyClick?.(pharmacy.id);
           });
-          map.addChild(new YMapMarker({ coordinates: [pharmacy.lng, pharmacy.lat] }, el));
+          mapInstance.addMarker({ coordinates: { lat: pharmacy.lat, lng: pharmacy.lng }, content: el });
         }
 
         // User location marker
@@ -112,7 +98,7 @@ export function PharmacyMap({
               transform: translate(-50%, -50%);
             "></div>
           `;
-          map.addChild(new YMapMarker({ coordinates: [userLocation.lng, userLocation.lat] }, userEl));
+          mapInstance.addMarker({ coordinates: userLocation, content: userEl });
         }
 
         // Selected point marker
@@ -127,12 +113,10 @@ export function PharmacyMap({
               transform: translate(-50%, -50%);
             "></div>
           `;
-          const marker = new YMapMarker({ coordinates: [selectedPoint.lng, selectedPoint.lat] }, pickEl);
-          map.addChild(marker);
-          pickMarkerRef.current = marker;
+          mapInstance.addMarker({ coordinates: selectedPoint, content: pickEl });
         }
 
-        mapRef.current = map;
+        mapInstanceRef.current = mapInstance;
         setLoading(false);
       })
       .catch((err: Error) => {
@@ -144,9 +128,9 @@ export function PharmacyMap({
 
     return () => {
       destroyed = true;
-      if (mapRef.current) {
-        mapRef.current.destroy();
-        mapRef.current = null;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.destroy();
+        mapInstanceRef.current = null;
       }
     };
   }, [pharmacies, userLocation, selectedPoint, onPharmacyClick, pickMode, handleMapClick]);
