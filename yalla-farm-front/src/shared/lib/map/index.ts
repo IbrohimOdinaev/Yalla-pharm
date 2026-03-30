@@ -1,16 +1,24 @@
 export type { MapProvider, MapInstance, MapOptions, MapMarkerOptions, MapClickHandler, GeoPoint, GeoResult, SuggestItem } from "./types";
 
 import type { MapProvider } from "./types";
-import { YandexMapProvider } from "./yandex-provider";
+import { env } from "@/shared/config/env";
 
-// Change this line to switch to a different map provider (e.g. GoogleMapProvider, LeafletMapProvider)
+// Auto-detect provider based on which API key is set, or change manually:
+// import { YandexMapProvider } from "./yandex-provider";
+// import { GoogleMapProvider } from "./google-provider";
 let _provider: MapProvider | null = null;
 
 export function getMapProvider(): MapProvider {
   if (!_provider) {
-    _provider = new YandexMapProvider();
+    if (env.googleMapsApiKey) {
+      const { GoogleMapProvider } = require("./google-provider");
+      _provider = new GoogleMapProvider();
+    } else {
+      const { YandexMapProvider } = require("./yandex-provider");
+      _provider = new YandexMapProvider();
+    }
   }
-  return _provider;
+  return _provider!;
 }
 
 // Dushanbe center
