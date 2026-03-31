@@ -98,7 +98,9 @@ public sealed class ClientsController : ControllerBase
     {
       ClientId = User.GetRequiredUserId(),
       Name = request.Name,
-      PhoneNumber = request.PhoneNumber
+      PhoneNumber = request.PhoneNumber,
+      Gender = request.Gender,
+      DateOfBirth = request.DateOfBirth
     }, cancellationToken);
 
     return Ok(response);

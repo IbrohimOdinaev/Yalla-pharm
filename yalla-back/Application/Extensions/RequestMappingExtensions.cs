@@ -70,8 +70,14 @@ public static class RequestMappingExtensions
       Client client,
       string normalizedPhoneNumber)
     {
-        client.SetName(request.Name);
-        client.SetPhoneNumber(normalizedPhoneNumber);
+        if (request.Name != null)
+            client.SetName(request.Name);
+        if (!string.IsNullOrWhiteSpace(normalizedPhoneNumber))
+            client.SetPhoneNumber(normalizedPhoneNumber);
+        if (request.Gender.HasValue)
+            client.SetGender((Domain.Enums.Gender)request.Gender.Value);
+        if (request.DateOfBirth != null && DateOnly.TryParse(request.DateOfBirth, out var dob))
+            client.SetDateOfBirth(dob);
     }
 
     public static void ApplyToDomain(

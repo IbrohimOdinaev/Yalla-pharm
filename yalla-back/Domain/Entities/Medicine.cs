@@ -18,6 +18,8 @@ public class Medicine
 
     public int? WooCommerceId { get; private set; }
 
+    public Guid? Id1C { get; private set; }
+
     public Guid? CategoryId { get; private set; }
     public Category? Category { get; private set; }
 
@@ -108,6 +110,11 @@ public class Medicine
     public void SetWooCommerceId(int? wooCommerceId)
     {
         WooCommerceId = wooCommerceId;
+    }
+
+    public void SetId1C(Guid? id1C)
+    {
+        Id1C = id1C;
     }
 
     public void SetCategoryId(Guid? categoryId)

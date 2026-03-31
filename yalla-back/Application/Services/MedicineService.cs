@@ -208,6 +208,7 @@ public sealed class MedicineService : IMedicineService
               Title = x.Title,
               Articul = x.Articul,
               IsActive = x.IsActive,
+              CategoryName = x.Category != null ? x.Category.Name : null,
               MinPrice = x.Offers.Any(o => o.Price > 0)
                 ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
                 : null,
@@ -280,6 +281,7 @@ public sealed class MedicineService : IMedicineService
               Title = x.Title,
               Articul = x.Articul,
               IsActive = x.IsActive,
+              CategoryName = x.Category != null ? x.Category.Name : null,
               MinPrice = x.Offers.Any(o => o.Price > 0)
                 ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
                 : null,

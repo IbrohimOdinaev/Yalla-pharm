@@ -15,6 +15,10 @@ public class User
 
     public Role Role { get; init; }
 
+    public Gender? Gender { get; private protected set; }
+
+    public DateOnly? DateOfBirth { get; private protected set; }
+
     private protected User() { }
 
     public User(
@@ -27,9 +31,6 @@ public class User
         if (id == Guid.Empty)
             throw new DomainArgumentException("User.Id can't be empty.");
 
-        if (string.IsNullOrWhiteSpace(name))
-            throw new DomainArgumentException("User.Name can't be null or whitespace.");
-
         if (string.IsNullOrWhiteSpace(phoneNumber))
             throw new DomainArgumentException("User.PhoneNumber can't be null or whitespace.");
 
@@ -40,19 +41,16 @@ public class User
             throw new DomainArgumentException("User.PasswordHash can't be null or whitespace.");
 
         Id = id;
-        Name = name;
+        Name = name ?? string.Empty;
         PasswordHash = passwordHash;
         if (role is null) Role = Role.SuperAdmin;
         else Role = role.Value;
         PhoneNumber = phoneNumber;
     }
 
-    public void SetName(string name)
+    public void SetName(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new DomainArgumentException("User.Name can't be null or whitespace.");
-
-        Name = name;
+        Name = name ?? string.Empty;
     }
 
     public void SetPhoneNumber(string phoneNumber)
@@ -72,6 +70,16 @@ public class User
             throw new DomainArgumentException("User.PasswordHash can't be null or whitespace.");
 
         PasswordHash = passwordHash;
+    }
+
+    public void SetGender(Gender? gender)
+    {
+        Gender = gender;
+    }
+
+    public void SetDateOfBirth(DateOnly? dateOfBirth)
+    {
+        DateOfBirth = dateOfBirth;
     }
 
 }

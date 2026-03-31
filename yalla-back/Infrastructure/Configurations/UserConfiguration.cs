@@ -49,6 +49,17 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .ValueGeneratedNever()
       .IsRequired();
 
+    builder.Property(x => x.Gender)
+      .HasColumnName("gender")
+      .HasColumnType("integer")
+      .HasConversion<int?>()
+      .IsRequired(false);
+
+    builder.Property(x => x.DateOfBirth)
+      .HasColumnName("date_of_birth")
+      .HasColumnType("date")
+      .IsRequired(false);
+
     builder.HasIndex(x => x.PhoneNumber)
       .IsUnique()
       .HasDatabaseName("ix_users_phone_number");

@@ -15,10 +15,20 @@ type RegistrationSession = {
   codeLength: number;
 };
 
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  );
+}
+
 export default function RegisterPage() {
-  const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [verifyBySms, setVerifyBySms] = useState(true);
   const [verificationCode, setVerificationCode] = useState("");
   const [session, setSession] = useState<RegistrationSession | null>(null);
@@ -32,6 +42,16 @@ export default function RegisterPage() {
     event.preventDefault();
     setError(null);
     setMessage(null);
+
+    if (password !== confirmPassword) {
+      setError("Пароли не совпадают.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Пароль должен содержать минимум 6 символов.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -39,21 +59,21 @@ export default function RegisterPage() {
         await apiFetch("/api/clients/register", {
           method: "POST",
           body: {
-            name,
+            name: "",
             phoneNumber: normalizedPhone,
             password,
             skipPhoneVerification: true
           }
         });
 
-        setMessage("Аккаунт создан без SMS-подтверждения. Теперь можно войти.");
+        setMessage("Аккаунт создан. Теперь можно войти.");
         return;
       }
 
       const response = await apiFetch<RegistrationSession>("/api/clients/register/request", {
         method: "POST",
         body: {
-          name,
+          name: "",
           phoneNumber: normalizedPhone,
           password,
           skipPhoneVerification: false
@@ -122,21 +142,31 @@ export default function RegisterPage() {
     <AppShell top={<TopBar title="Регистрация" backHref="/" />}>
       <div className="mx-auto max-w-md space-y-4">
         <form className="stitch-card space-y-4 p-6" onSubmit={startRegistration}>
-          <h2 className="text-xl font-bold">Создать аккаунт клиента</h2>
-
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant">Имя</span>
-            <input className="stitch-input" value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
+          <h2 className="text-xl font-bold">Создать аккаунт</h2>
 
           <label className="block space-y-1">
             <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
-            <input className="stitch-input" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required />
+            <input className="stitch-input" placeholder="+992 XXX XX XX XX" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required />
           </label>
 
           <label className="block space-y-1">
             <span className="text-sm font-medium text-on-surface-variant">Пароль</span>
-            <input className="stitch-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <div className="relative">
+              <input className="stitch-input w-full pr-10" type={showPassword ? "text" : "password"} placeholder="Минимум 6 символов" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <button type="button" tabIndex={-1} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition" onClick={() => setShowPassword(!showPassword)}>
+                <EyeIcon open={showPassword} />
+              </button>
+            </div>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-on-surface-variant">Подтвердите пароль</span>
+            <div className="relative">
+              <input className="stitch-input w-full pr-10" type={showConfirm ? "text" : "password"} placeholder="Повторите пароль" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+              <button type="button" tabIndex={-1} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition" onClick={() => setShowConfirm(!showConfirm)}>
+                <EyeIcon open={showConfirm} />
+              </button>
+            </div>
           </label>
 
           <label className="flex items-center gap-2 rounded-xl bg-surface-container-low p-3 text-sm font-medium">

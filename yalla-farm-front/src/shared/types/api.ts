@@ -110,6 +110,8 @@ export type ApiClient = {
   clientId: string;
   name: string;
   phoneNumber: string;
+  gender?: number | null;
+  dateOfBirth?: string | null;
 };
 
 /* ── Orders ── */

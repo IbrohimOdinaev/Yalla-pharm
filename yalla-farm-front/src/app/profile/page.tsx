@@ -35,6 +35,8 @@ export default function ProfilePage() {
   /* profile edit */
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editGender, setEditGender] = useState<string>("");
+  const [editDob, setEditDob] = useState("");
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
@@ -76,6 +78,8 @@ export default function ProfilePage() {
         setProfile(client);
         setEditName(client.name);
         setEditPhone(client.phoneNumber);
+        setEditGender(client.gender != null ? String(client.gender) : "");
+        setEditDob(client.dateOfBirth ?? "");
         setIsLoading(false);
       })
       .catch((err) => {
@@ -113,7 +117,12 @@ export default function ProfilePage() {
     setIsSavingProfile(true);
     setProfileMsg(null);
     try {
-      await updateMyProfile(token, { name: editName, phoneNumber: formatPhone(editPhone) });
+      await updateMyProfile(token, {
+        name: editName || undefined,
+        phoneNumber: editPhone ? formatPhone(editPhone) : undefined,
+        gender: editGender ? Number(editGender) : null,
+        dateOfBirth: editDob || null,
+      });
       setProfileMsg("Профиль обновлён.");
       const updated = await getMyProfile(token);
       setProfile(updated);
@@ -215,12 +224,26 @@ export default function ProfilePage() {
 
               <label className="block space-y-1">
                 <span className="text-sm font-medium text-on-surface-variant">Имя</span>
-                <input className="stitch-input" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                <input className="stitch-input" placeholder="Ваше имя" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-medium text-on-surface-variant">Пол</span>
+                <select className="stitch-input" value={editGender} onChange={(e) => setEditGender(e.target.value)}>
+                  <option value="">Не указан</option>
+                  <option value="1">Мужской</option>
+                  <option value="2">Женский</option>
+                </select>
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-medium text-on-surface-variant">Дата рождения</span>
+                <input className="stitch-input" type="date" value={editDob} onChange={(e) => setEditDob(e.target.value)} />
               </label>
 
               <label className="block space-y-1">
                 <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
-                <input className="stitch-input" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} required />
+                <input className="stitch-input" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
               </label>
 
               {profileMsg ? (

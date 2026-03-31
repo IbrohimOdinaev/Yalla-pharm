@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { getMedicineDisplayName, getMinimalImageUrl, getCheapestPrice } from "@/entities/medicine/api";
+import { getMedicineDisplayName, getMinimalImageUrl, getCheapestPrice, imageUrl } from "@/entities/medicine/api";
 
 type MedicineCardProps = {
   medicine: ApiMedicine;
@@ -26,7 +26,22 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
   const removeServerItem = useCartStore((state) => state.removeItem);
 
   const thumbUrl = useMemo(() => getMinimalImageUrl(medicine), [medicine]);
+  const allImages = useMemo(() => {
+    const imgs = (medicine.images ?? []).map((i) => imageUrl(i)).filter(Boolean);
+    return imgs.length > 0 ? imgs : thumbUrl ? [thumbUrl] : [];
+  }, [medicine, thumbUrl]);
   const price = getCheapestPrice(medicine);
+  const [imgIndex, setImgIndex] = useState(0);
+
+  const onSwipe = useCallback((e: React.TouchEvent) => {
+    const touch = e.changedTouches[0];
+    const startX = (e.currentTarget as HTMLElement).dataset.touchX;
+    if (!startX) return;
+    const diff = touch.clientX - Number(startX);
+    if (Math.abs(diff) < 30) return;
+    if (diff < 0 && imgIndex < allImages.length - 1) setImgIndex((i) => i + 1);
+    if (diff > 0 && imgIndex > 0) setImgIndex((i) => i - 1);
+  }, [imgIndex, allImages.length]);
 
   // Get quantity in cart (guest or authenticated)
   const cartState = useMemo(() => {
@@ -82,11 +97,19 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
   return (
     <Link href={`/product/${medicine.id}`} className="block group">
       <article className="rounded-2xl bg-surface-container-lowest shadow-card overflow-hidden transition hover:shadow-glass hover:-translate-y-0.5">
-        {/* Image with quantity badge */}
-        <div className="relative aspect-square overflow-hidden bg-surface-container">
-          {thumbUrl ? (
+        {/* Image gallery with swipe */}
+        <div
+          className="relative aspect-square overflow-hidden bg-surface-container"
+          onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
+          onTouchEnd={onSwipe}
+        >
+          {allImages.length > 0 ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumbUrl} alt={getMedicineDisplayName(medicine)} className="h-full w-full object-cover transition group-hover:scale-105 duration-300" />
+            <img
+              src={allImages[imgIndex] ?? allImages[0]}
+              alt={getMedicineDisplayName(medicine)}
+              className="h-full w-full object-cover transition group-hover:scale-105 duration-300"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-outline-variant opacity-40">
@@ -94,7 +117,18 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
               </svg>
             </div>
           )}
-          {/* Quantity badge on image */}
+          {/* Dots indicator */}
+          {allImages.length > 1 ? (
+            <div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">
+              {allImages.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 w-1.5 rounded-full transition ${i === imgIndex ? "bg-white shadow" : "bg-white/40"}`}
+                />
+              ))}
+            </div>
+          ) : null}
+          {/* Quantity badge */}
           {cartState.inCart ? (
             <span className="absolute top-2 left-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-white shadow-md">
               {cartState.quantity}
@@ -106,14 +140,8 @@ export function MedicineCard({ medicine, hideCart }: MedicineCardProps) {
         <div className="p-3 space-y-1">
           <h3 className="text-sm font-bold leading-tight line-clamp-2 min-h-[2.5rem]">{getMedicineDisplayName(medicine)}</h3>
 
-          {attrs.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {attrs.map((attr) => (
-                <span key={attr.type || attr.name} className="text-[10px] text-on-surface-variant">
-                  {attr.value || attr.option}
-                </span>
-              ))}
-            </div>
+          {medicine.categoryName ? (
+            <p className="text-[10px] text-primary/70 font-medium">{medicine.categoryName}</p>
           ) : null}
 
           {medicine.articul ? (

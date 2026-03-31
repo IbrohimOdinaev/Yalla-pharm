@@ -6,6 +6,7 @@ services:
       dockerfile: Dockerfile
       args:
         - INTERNAL_API_URL=http://api:8080
+        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSyDwe4qz8CZecxem2_hnL3iv_GbIZbC0kGM
     container_name: yalla-front
     ports:
       - "3000:3000"

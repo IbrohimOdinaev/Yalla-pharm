@@ -9,6 +9,9 @@ using Yalla.Infrastructure.Payments;
 using Yalla.Infrastructure.Security;
 using Yalla.Infrastructure.Sms;
 using Yalla.Infrastructure.Storage;
+using Yalla.Infrastructure.WooCommerce;
+using Yalla.Application.Common;
+using Yalla.Application.Services;
 
 namespace Yalla.Infrastructure;
 
@@ -174,6 +177,15 @@ public static class DependencyInjection
     services.AddHostedService<OrderStatusSmsEnqueueHostedService>();
     services.AddHostedService<SmsOutboxDispatcherHostedService>();
     services.AddHostedService<ManualPaymentTimeoutHostedService>();
+
+    // WooCommerce sync
+    services.Configure<WooCommerceOptions>(config.GetSection(WooCommerceOptions.SectionName));
+    services.AddHttpClient<WooCommerceSyncService>(client =>
+    {
+      client.Timeout = TimeSpan.FromSeconds(30);
+    });
+    services.AddScoped<IWooCommerceSyncService, WooCommerceSyncService>();
+    services.AddHostedService<WooCommercePollHostedService>();
 
     return services;
   }

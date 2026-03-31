@@ -7,7 +7,7 @@ export async function getMyProfile(token: string): Promise<ApiClient> {
   return response.client;
 }
 
-export async function updateMyProfile(token: string, data: { name?: string; phoneNumber?: string }): Promise<void> {
+export async function updateMyProfile(token: string, data: { name?: string; phoneNumber?: string; gender?: number | null; dateOfBirth?: string | null }): Promise<void> {
   await apiFetch<unknown>("/api/clients/me", { method: "PUT", token, body: data });
 }
 

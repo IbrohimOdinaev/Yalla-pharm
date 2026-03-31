@@ -73,13 +73,44 @@ export default function ProductDetailsPage() {
         <section className="space-y-5">
           {/* Image gallery */}
           <div className="space-y-3">
-            <div className="overflow-hidden rounded-2xl bg-surface-container-high shadow-card">
+            <div
+              className="relative overflow-hidden rounded-2xl bg-surface-container-high shadow-card"
+              onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
+              onTouchEnd={(e) => {
+                const startX = (e.currentTarget as HTMLElement).dataset.touchX;
+                if (!startX) return;
+                const diff = e.changedTouches[0].clientX - Number(startX);
+                if (Math.abs(diff) < 40) return;
+                if (diff < 0 && activeImageIdx < gallery.length - 1) setActiveImageIdx((i) => i + 1);
+                if (diff > 0 && activeImageIdx > 0) setActiveImageIdx((i) => i - 1);
+              }}
+            >
               {activeImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={activeImage} alt={getMedicineDisplayName(medicine)} className="h-[250px] sm:h-[360px] w-full object-contain bg-white" />
               ) : (
                 <div className="flex h-[250px] sm:h-[360px] items-center justify-center text-on-surface-variant">Нет изображения</div>
               )}
+              {/* Arrow buttons */}
+              {gallery.length > 1 ? (
+                <>
+                  {activeImageIdx > 0 && (
+                    <button type="button" onClick={() => setActiveImageIdx((i) => i - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 transition">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                  )}
+                  {activeImageIdx < gallery.length - 1 && (
+                    <button type="button" onClick={() => setActiveImageIdx((i) => i + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 transition">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  )}
+                  <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+                    {gallery.map((_, i) => (
+                      <span key={i} className={`h-2 w-2 rounded-full transition ${i === activeImageIdx ? "bg-primary shadow" : "bg-white/50"}`} />
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
             {gallery.length > 1 ? (
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -104,16 +135,19 @@ export default function ProductDetailsPage() {
             <div>
               <h1 className="text-2xl font-extrabold text-primary">{getMedicineDisplayName(medicine)}</h1>
               {medicine.articul ? <p className="mt-1 text-xs font-mono text-on-surface-variant">{medicine.articul}</p> : null}
-              {medicine.description ? <p className="mt-2 text-sm text-on-surface-variant">{medicine.description}</p> : null}
+              {medicine.categoryName ? <p className="mt-1 text-sm text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{medicine.categoryName}</span></p> : null}
+              {medicine.description ? (
+                <div className="mt-2 text-sm text-on-surface-variant prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: medicine.description }} />
+              ) : null}
             </div>
 
-            {/* Attributes from API */}
+            {/* Attributes */}
             {(medicine.atributes ?? []).length > 0 ? (
               <div className="grid grid-cols-2 gap-3 text-sm">
-                {medicine.atributes!.map((attr) => (
-                  <div key={attr.name} className="rounded-xl bg-surface-container-low p-3">
-                    <p className="text-xs text-on-surface-variant">{attr.name}</p>
-                    <p className="font-semibold">{attr.option}</p>
+                {medicine.atributes!.map((attr, i) => (
+                  <div key={i} className="rounded-xl bg-surface-container-low p-3">
+                    <p className="text-xs text-on-surface-variant">{attr.type || attr.name}</p>
+                    <p className="font-semibold">{attr.value || attr.option}</p>
                   </div>
                 ))}
               </div>

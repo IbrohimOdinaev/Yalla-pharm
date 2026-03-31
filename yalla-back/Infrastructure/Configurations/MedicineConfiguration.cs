@@ -47,6 +47,11 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .HasColumnType("integer")
           .IsRequired(false);
 
+        builder.Property(x => x.Id1C)
+          .HasColumnName("id_1c")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
         builder.Property(x => x.CategoryId)
           .HasColumnName("category_id")
           .HasColumnType("uuid")
@@ -67,6 +72,11 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .IsUnique()
           .HasFilter("woo_commerce_id IS NOT NULL")
           .HasDatabaseName("ix_medicines_woo_commerce_id");
+
+        builder.HasIndex(x => x.Id1C)
+          .IsUnique()
+          .HasFilter("id_1c IS NOT NULL")
+          .HasDatabaseName("ix_medicines_id_1c");
 
         builder.HasIndex(x => x.CategoryId)
           .HasDatabaseName("ix_medicines_category_id");

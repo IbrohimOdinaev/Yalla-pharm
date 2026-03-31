@@ -112,6 +112,8 @@ public static class ResponseMappingExtensions
             Id = client.Id,
             Name = client.Name,
             PhoneNumber = client.PhoneNumber,
+            Gender = client.Gender.HasValue ? (int)client.Gender.Value : null,
+            DateOfBirth = client.DateOfBirth?.ToString("yyyy-MM-dd"),
             BasketPositions = basketPositions,
             Orders = orders,
             PharmacyOptions = []
@@ -129,6 +131,8 @@ public static class ResponseMappingExtensions
             Id = client.Id,
             Name = client.Name,
             PhoneNumber = client.PhoneNumber,
+            Gender = client.Gender.HasValue ? (int)client.Gender.Value : null,
+            DateOfBirth = client.DateOfBirth?.ToString("yyyy-MM-dd"),
             BasketPositions = basketPositions,
             Orders = orders,
             PharmacyOptions = pharmacyOptions
