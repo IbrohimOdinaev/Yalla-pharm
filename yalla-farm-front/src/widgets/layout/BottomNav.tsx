@@ -32,7 +32,7 @@ const GUEST_ITEMS = [
 ];
 
 function NavIcon({ type, className = "" }: { type: string; className?: string }) {
-  const cn = `w-5 h-5 ${className}`;
+  const cn = `w-3.5 h-3.5 xs:w-4 xs:h-4 sm:w-5 sm:h-5 ${className}`;
   switch (type) {
     case "catalog":
       return <svg className={cn} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>;
@@ -64,18 +64,22 @@ export function BottomNav() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  // Only show for Admin and SuperAdmin — Client/Guest use header navigation
+  const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
+
   const items = useMemo(() => {
-    if (!token) return GUEST_ITEMS;
     if (role === "Admin") return ADMIN_ITEMS;
     if (role === "SuperAdmin") return SUPERADMIN_ITEMS;
-    return CLIENT_ITEMS;
-  }, [token, role]);
+    return [];
+  }, [role]);
+
+  if (!isAdminOrSA) return null;
 
   const gridCols = items.length === 3 ? "grid-cols-3" : "grid-cols-4";
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-surface-container-high bg-surface/95 backdrop-blur-xl safe-bottom">
-      <div className={`mx-auto grid h-16 max-w-5xl ${gridCols} gap-1 px-3 py-1.5`}>
+      <div className={`mx-auto grid h-12 xs:h-14 sm:h-16 max-w-5xl ${gridCols} gap-0.5 xs:gap-1 px-1 xs:px-2 sm:px-3 py-0.5 xs:py-1`}>
         {items.map((item) => {
           const active = (() => {
             if (item.href.includes("#")) {
@@ -90,7 +94,7 @@ export function BottomNav() {
             }
             return item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           })();
-          const cls = `flex flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold transition ${
+          const cls = `flex flex-col items-center justify-center gap-0.5 rounded-xl text-[8px] xs:text-[9px] sm:text-[10px] font-semibold truncate transition ${
             active
               ? "bg-primary/10 text-primary"
               : "text-on-surface-variant hover:bg-surface-container-low"

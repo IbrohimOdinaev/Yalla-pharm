@@ -183,22 +183,14 @@ public sealed class PaymentIntentService : IPaymentIntentService
           $"PaymentIntent '{paymentIntent.Id}' must be in '{PaymentIntentState.AwaitingAdminConfirmation}' state to confirm.");
       }
 
-      if (existingOrder is not null)
+      if (existingOrder is not null && existingOrder.Status == Status.Cancelled)
       {
-        paymentIntent.MarkConfirmed(superAdmin.Id, DateTime.UtcNow);
+        var expiredReason = $"Order '{existingOrder.Id}' was cancelled/expired before payment confirmation.";
+        paymentIntent.MarkNeedsResolution(expiredReason, DateTime.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, existingOrder.Id, cancellationToken);
-
-        return new ConfirmPaymentIntentBySuperAdminResponse
-        {
-          PaymentIntentId = paymentIntent.Id,
-          ReservedOrderId = paymentIntent.ReservedOrderId,
-          OrderCreated = false,
-          PaymentIntentState = paymentIntent.State,
-          OrderStatus = existingOrder.Status,
-          Message = "Order already exists for reserved order id."
-        };
+        await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
+        return BuildNeedsResolutionResponse(paymentIntent, expiredReason);
       }
 
       var nowUtc = DateTime.UtcNow;
@@ -218,6 +210,8 @@ public sealed class PaymentIntentService : IPaymentIntentService
       {
         var reason = $"Missing medicines for payment intent '{paymentIntent.Id}': {string.Join(", ", missingMedicines)}.";
         paymentIntent.MarkNeedsResolution(reason, nowUtc);
+        if (existingOrder is not null && existingOrder.Status != Status.Cancelled)
+            existingOrder.Cancel();
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
@@ -229,6 +223,8 @@ public sealed class PaymentIntentService : IPaymentIntentService
         var inactiveIds = medicineById.Values.Where(x => !x.IsActive).Select(x => x.Id).ToList();
         var reason = $"Inactive medicines for payment intent '{paymentIntent.Id}': {string.Join(", ", inactiveIds)}.";
         paymentIntent.MarkNeedsResolution(reason, nowUtc);
+        if (existingOrder is not null && existingOrder.Status != Status.Cancelled)
+            existingOrder.Cancel();
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
@@ -248,6 +244,8 @@ public sealed class PaymentIntentService : IPaymentIntentService
       {
         var reason = BuildInsufficientStockReason(paymentIntent.Id, insufficient, offers);
         paymentIntent.MarkNeedsResolution(reason, nowUtc);
+        if (existingOrder is not null && existingOrder.Status != Status.Cancelled)
+            existingOrder.Cancel();
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
@@ -273,40 +271,50 @@ public sealed class PaymentIntentService : IPaymentIntentService
         }
       }
 
-      var orderPositions = paymentIntent.Positions
-        .Select(x => new OrderPosition(
-          orderId: paymentIntent.ReservedOrderId,
-          medicineId: x.MedicineId,
-          medicine: medicineById[x.MedicineId],
-          offerSnapshot: new OfferSnapshot(x.OfferPharmacyId, x.OfferPrice),
-          quantity: x.Quantity,
-          isRejected: false))
-        .ToList();
+      if (existingOrder is not null)
+      {
+        existingOrder.ConfirmManualPayment(superAdmin.Id, nowUtc);
+        existingOrder.MarkStockDeducted();
+        existingOrder.NextStage(true);
+      }
+      else
+      {
+        var orderPositions = paymentIntent.Positions
+          .Select(x => new OrderPosition(
+            orderId: paymentIntent.ReservedOrderId,
+            medicineId: x.MedicineId,
+            medicine: medicineById[x.MedicineId],
+            offerSnapshot: new OfferSnapshot(x.OfferPharmacyId, x.OfferPrice),
+            quantity: x.Quantity,
+            isRejected: false))
+          .ToList();
 
-      var order = new Order(
-        id: paymentIntent.ReservedOrderId,
-        clientId: paymentIntent.ClientId,
-        clientPhoneNumber: paymentIntent.ClientPhoneNumber,
-        pharmacyId: paymentIntent.PharmacyId,
-        deliveryAddress: paymentIntent.DeliveryAddress,
-        positions: orderPositions,
-        idempotencyKey: paymentIntent.IdempotencyKey,
-        orderPlacedAt: nowUtc,
-        isPickup: paymentIntent.IsPickup);
+        existingOrder = new Order(
+          id: paymentIntent.ReservedOrderId,
+          clientId: paymentIntent.ClientId,
+          clientPhoneNumber: paymentIntent.ClientPhoneNumber,
+          pharmacyId: paymentIntent.PharmacyId,
+          deliveryAddress: paymentIntent.DeliveryAddress,
+          positions: orderPositions,
+          idempotencyKey: paymentIntent.IdempotencyKey,
+          orderPlacedAt: nowUtc,
+          isPickup: paymentIntent.IsPickup);
 
-      order.MarkManualPaymentConfirmed(
-        amount: paymentIntent.Amount,
-        currency: paymentIntent.Currency,
-        provider: paymentIntent.PaymentProvider,
-        receiverAccount: paymentIntent.PaymentReceiverAccount,
-        paymentUrl: paymentIntent.PaymentUrl,
-        paymentComment: paymentIntent.PaymentComment,
-        confirmedByUserId: superAdmin.Id,
-        confirmedAtUtc: nowUtc);
+        existingOrder.MarkManualPaymentConfirmed(
+          amount: paymentIntent.Amount,
+          currency: paymentIntent.Currency,
+          provider: paymentIntent.PaymentProvider,
+          receiverAccount: paymentIntent.PaymentReceiverAccount,
+          paymentUrl: paymentIntent.PaymentUrl,
+          paymentComment: paymentIntent.PaymentComment,
+          confirmedByUserId: superAdmin.Id,
+          confirmedAtUtc: nowUtc);
 
-      _dbContext.Orders.Add(order);
+        _dbContext.Orders.Add(existingOrder);
+      }
+
       _dbContext.PaymentHistories.Add(new PaymentHistory(
-        orderId: order.Id,
+        orderId: existingOrder.Id,
         userId: paymentIntent.ClientId,
         userPhoneNumber: paymentIntent.ClientPhoneNumber,
         amount: paymentIntent.Amount,
@@ -320,11 +328,11 @@ public sealed class PaymentIntentService : IPaymentIntentService
         paidAtUtc: nowUtc));
 
       paymentIntent.MarkConfirmed(superAdmin.Id, nowUtc);
-      EnqueuePaymentConfirmedSms(order, paymentIntent.ClientPhoneNumber, nowUtc);
+      EnqueuePaymentConfirmedSms(existingOrder, paymentIntent.ClientPhoneNumber, nowUtc);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
-      await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, order.Id, cancellationToken);
+      await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, existingOrder.Id, cancellationToken);
 
       _logger.LogInformation(
         "Payment intent confirmed. PaymentIntentId={PaymentIntentId}, ReservedOrderId={ReservedOrderId}, SuperAdminId={SuperAdminId}, SmsEnqueuedForPhone={Phone}",
@@ -339,8 +347,8 @@ public sealed class PaymentIntentService : IPaymentIntentService
         ReservedOrderId = paymentIntent.ReservedOrderId,
         OrderCreated = true,
         PaymentIntentState = paymentIntent.State,
-        OrderStatus = order.Status,
-        Message = "Order created after payment confirmation."
+        OrderStatus = existingOrder!.Status,
+        Message = "Payment confirmed and order updated."
       };
     }
     catch (ConcurrentStockUpdateException concurrentException)
@@ -489,8 +497,27 @@ public sealed class PaymentIntentService : IPaymentIntentService
 
     var nowUtc = DateTime.UtcNow;
     paymentIntent.MarkRejected(request.Reason, nowUtc);
+
+    var order = await _dbContext.Orders
+      .AsTracking()
+      .Include(x => x.Positions)
+      .FirstOrDefaultAsync(x => x.Id == paymentIntent.ReservedOrderId, cancellationToken);
+
+    if (order is not null && order.Status != Status.Cancelled)
+    {
+        order.MarkManualPaymentExpired(nowUtc);
+        order.Cancel();
+        await RestoreBasketPositionsFromOrderAsync(order, cancellationToken);
+    }
+
     await _dbContext.SaveChangesAsync(cancellationToken);
     await PublishPaymentIntentUpdatedSafeAsync(paymentIntent, null, cancellationToken);
+
+    if (order is not null)
+    {
+        await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+          order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+    }
 
     _logger.LogInformation(
       "Payment intent rejected. PaymentIntentId={PaymentIntentId}, SuperAdminId={SuperAdminId}",
@@ -652,6 +679,46 @@ public sealed class PaymentIntentService : IPaymentIntentService
   {
     if (_dbContext is DbContext efDbContext)
       efDbContext.ChangeTracker.Clear();
+  }
+
+  private async Task RestoreBasketPositionsFromOrderAsync(
+    Order order,
+    CancellationToken cancellationToken)
+  {
+    if (!order.ClientId.HasValue)
+      return;
+
+    var clientId = order.ClientId.Value;
+    var acceptedByMedicine = order.Positions
+      .Where(x => !x.IsRejected)
+      .GroupBy(x => x.MedicineId)
+      .ToDictionary(x => x.Key, x => x.Sum(y => y.Quantity));
+
+    if (acceptedByMedicine.Count == 0)
+      return;
+
+    var medicineIds = acceptedByMedicine.Keys.ToList();
+    var existingPositions = await _dbContext.BasketPositions
+      .AsTracking()
+      .Where(x => x.ClientId == clientId && medicineIds.Contains(x.MedicineId))
+      .ToListAsync(cancellationToken);
+
+    var existingByMedicine = existingPositions.ToDictionary(x => x.MedicineId, x => x);
+    foreach (var item in acceptedByMedicine)
+    {
+      if (existingByMedicine.TryGetValue(item.Key, out var position))
+      {
+        position.SetQuantity(position.Quantity + item.Value);
+      }
+      else
+      {
+        _dbContext.BasketPositions.Add(new BasketPosition(
+          clientId,
+          item.Key,
+          medicine: null,
+          quantity: item.Value));
+      }
+    }
   }
 
   private sealed class ConcurrentStockUpdateException : Exception

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Api.Extensions;
+using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
@@ -13,10 +14,12 @@ namespace Api.Controllers;
 public sealed class MedicinesController : ControllerBase
 {
   private readonly IMedicineService _medicineService;
+  private readonly IMedicineSearchEngine _searchEngine;
 
-  public MedicinesController(IMedicineService medicineService)
+  public MedicinesController(IMedicineService medicineService, IMedicineSearchEngine searchEngine)
   {
     _medicineService = medicineService;
+    _searchEngine = searchEngine;
   }
 
   [HttpGet]
@@ -98,6 +101,49 @@ public sealed class MedicinesController : ControllerBase
   {
     var response = await _medicineService.SearchMedicinesAsync(request, cancellationToken);
     return Ok(response);
+  }
+
+  [HttpPost("search-by-pharmacy")]
+  [AllowAnonymous]
+  public async Task<IActionResult> SearchByPharmacy(
+    [FromBody] SearchByPharmacyRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _medicineService.SearchByPharmacyAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpGet("live-search")]
+  [AllowAnonymous]
+  public async Task<IActionResult> LiveSearch(
+    [FromQuery] string q = "",
+    [FromQuery] int limit = 10,
+    CancellationToken cancellationToken = default)
+  {
+    if (string.IsNullOrWhiteSpace(q))
+      return Ok(new { suggestions = Array.Empty<object>() });
+
+    var results = await _searchEngine.SearchAsync(q.Trim(), Math.Min(limit, 20), cancellationToken);
+    return Ok(new
+    {
+      suggestions = results.Select(r => new
+      {
+        r.Id,
+        r.Title,
+        r.Articul,
+        r.CategoryName,
+        r.MinPrice,
+        r.Score
+      })
+    });
+  }
+
+  [HttpPost("reindex")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> Reindex(CancellationToken cancellationToken)
+  {
+    await _searchEngine.ReindexAllAsync(cancellationToken);
+    return Ok(new { message = "Reindex completed" });
   }
 
   [HttpPost("images")]

@@ -94,10 +94,11 @@ public sealed class ManualPaymentTimeoutHostedServiceTests
 
     db.ChangeTracker.Clear();
 
-    var exists = await db.Orders
+    var cancelledOrder = await db.Orders
       .AsNoTracking()
-      .AnyAsync(x => x.Id == orderId);
-    Assert.False(exists);
+      .FirstOrDefaultAsync(x => x.Id == orderId);
+    Assert.NotNull(cancelledOrder);
+    Assert.Equal(Status.Cancelled, cancelledOrder!.Status);
 
     var restoredOffer = await db.Offers
       .AsNoTracking()

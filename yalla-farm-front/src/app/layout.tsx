@@ -5,6 +5,10 @@ import { StoreProvider } from "@/app/providers/StoreProvider";
 export const metadata: Metadata = {
   title: "Yalla Farm | Pharmacy Dushanbe",
   description: "Онлайн-аптека Душанбе: доставка лекарств",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

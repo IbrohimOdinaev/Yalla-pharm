@@ -452,7 +452,8 @@ public static class RequestDtoValidator
     RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
     RequireNotWhiteSpace(request.Address, nameof(request.Address), errors);
-    RequireNotEmpty(request.AdminId, nameof(request.AdminId), errors);
+    if (request.AdminId.HasValue)
+      RequireNotEmpty(request.AdminId.Value, nameof(request.AdminId), errors);
   }
 
   private static void RequireNotEmpty(Guid value, string field, List<ValidationError> errors)

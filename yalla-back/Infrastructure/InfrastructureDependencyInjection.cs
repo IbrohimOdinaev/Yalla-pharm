@@ -10,6 +10,8 @@ using Yalla.Infrastructure.Security;
 using Yalla.Infrastructure.Sms;
 using Yalla.Infrastructure.Storage;
 using Yalla.Infrastructure.WooCommerce;
+using Yalla.Infrastructure.Jura;
+using Yalla.Infrastructure.Search;
 using Yalla.Application.Common;
 using Yalla.Application.Services;
 
@@ -186,6 +188,39 @@ public static class DependencyInjection
     });
     services.AddScoped<IWooCommerceSyncService, WooCommerceSyncService>();
     services.AddHostedService<WooCommercePollHostedService>();
+
+    // Jura delivery service
+    services.Configure<JuraOptions>(options =>
+    {
+      options.BaseUrl = config[$"{JuraOptions.SectionName}:BaseUrl"] ?? string.Empty;
+      options.Login = config[$"{JuraOptions.SectionName}:Login"] ?? string.Empty;
+      options.Password = config[$"{JuraOptions.SectionName}:Password"] ?? string.Empty;
+      options.DivisionId = int.TryParse(config[$"{JuraOptions.SectionName}:DivisionId"], out var divisionId)
+        ? divisionId
+        : 6;
+      options.DefaultTariffId = int.TryParse(config[$"{JuraOptions.SectionName}:DefaultTariffId"], out var tariffId)
+        ? tariffId
+        : 37;
+    });
+    services.AddHttpClient<JuraService>((provider, client) =>
+    {
+      var juraOptions = provider.GetRequiredService<IOptions<JuraOptions>>().Value;
+      if (!string.IsNullOrEmpty(juraOptions.BaseUrl))
+        client.BaseAddress = new Uri(juraOptions.BaseUrl);
+      client.Timeout = TimeSpan.FromSeconds(15);
+    });
+    services.AddScoped<IJuraService>(provider => provider.GetRequiredService<JuraService>());
+
+    // Elasticsearch
+    var esUrl = config["Elasticsearch:Url"] ?? "http://localhost:9200";
+    var esIndex = config["Elasticsearch:MedicineIndex"] ?? "medicines";
+    services.AddScoped<IMedicineSearchEngine>(sp =>
+        new ElasticsearchMedicineSearchEngine(
+            esUrl,
+            sp.GetRequiredService<IAppDbContext>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ElasticsearchMedicineSearchEngine>>(),
+            esIndex));
+    services.AddHostedService<ElasticsearchReindexHostedService>();
 
     return services;
   }

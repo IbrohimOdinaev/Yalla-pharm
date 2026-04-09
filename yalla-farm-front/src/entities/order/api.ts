@@ -63,6 +63,8 @@ export function normalizeOrder(raw: RawOrder): ApiOrder {
     currency: String(raw.currency || raw.paymentCurrency || "TJS"),
     returnCost: Number(raw.returnCost || 0),
     orderPlacedAt: String(raw.orderPlacedAt || raw.createdAtUtc || ""),
+    paymentUrl: raw.paymentUrl ? String(raw.paymentUrl) : undefined,
+    paymentExpiresAtUtc: raw.paymentExpiresAtUtc ? String(raw.paymentExpiresAtUtc) : undefined,
     positions,
     refundRequest: raw.refundRequest ? raw.refundRequest as ApiOrder["refundRequest"] : undefined,
   };

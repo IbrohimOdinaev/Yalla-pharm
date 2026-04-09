@@ -1,8 +1,11 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
+using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
 using Yalla.Domain.Exceptions;
 
@@ -13,11 +16,15 @@ public sealed class AuthService : IAuthService
   private readonly IAppDbContext _dbContext;
   private readonly IPasswordHasher _passwordHasher;
   private readonly IJwtTokenProvider _jwtTokenProvider;
+  private readonly string _telegramBotToken;
+  private readonly int _telegramMaxAgeSec;
 
   public AuthService(
     IAppDbContext dbContext,
     IPasswordHasher passwordHasher,
-    IJwtTokenProvider jwtTokenProvider)
+    IJwtTokenProvider jwtTokenProvider,
+    string telegramBotToken = "",
+    int telegramMaxAgeSec = 86400)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(passwordHasher);
@@ -26,6 +33,8 @@ public sealed class AuthService : IAuthService
     _dbContext = dbContext;
     _passwordHasher = passwordHasher;
     _jwtTokenProvider = jwtTokenProvider;
+    _telegramBotToken = telegramBotToken;
+    _telegramMaxAgeSec = telegramMaxAgeSec;
   }
 
   public async Task<LoginResponse> LoginAsync(
@@ -146,5 +155,73 @@ public sealed class AuthService : IAuthService
       PhoneNumber = admin.PhoneNumber,
       Role = admin.Role
     };
+  }
+
+  public async Task<LoginResponse> TelegramLoginAsync(
+    TelegramLoginRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    if (string.IsNullOrEmpty(_telegramBotToken))
+      throw new InvalidOperationException("Telegram auth is not configured.");
+
+    VerifyTelegramHash(request);
+
+    var authDateUtc = DateTimeOffset.FromUnixTimeSeconds(request.AuthDate).UtcDateTime;
+    if ((DateTime.UtcNow - authDateUtc).TotalSeconds > _telegramMaxAgeSec)
+      throw new InvalidOperationException("Telegram auth data is expired.");
+
+    var user = await _dbContext.Users
+      .AsTracking()
+      .FirstOrDefaultAsync(x => x.TelegramId == request.Id, cancellationToken);
+
+    if (user is null)
+    {
+      var name = string.IsNullOrWhiteSpace(request.LastName)
+        ? request.FirstName
+        : $"{request.FirstName} {request.LastName}";
+
+      var client = new Client(name.Trim(), request.Id);
+      _dbContext.Clients.Add(client);
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      user = client;
+    }
+
+    var token = _jwtTokenProvider.GenerateToken(
+      user.Id, user.Name, user.PhoneNumber, user.Role);
+
+    return new LoginResponse
+    {
+      UserId = user.Id,
+      Name = user.Name,
+      PhoneNumber = user.PhoneNumber,
+      Role = user.Role,
+      AccessToken = token.AccessToken,
+      ExpiresAtUtc = token.ExpiresAtUtc
+    };
+  }
+
+  private void VerifyTelegramHash(TelegramLoginRequest request)
+  {
+    var fields = new SortedDictionary<string, string>(StringComparer.Ordinal);
+    fields["id"] = request.Id.ToString();
+    fields["first_name"] = request.FirstName;
+    if (!string.IsNullOrEmpty(request.LastName)) fields["last_name"] = request.LastName;
+    if (!string.IsNullOrEmpty(request.Username)) fields["username"] = request.Username;
+    if (!string.IsNullOrEmpty(request.PhotoUrl)) fields["photo_url"] = request.PhotoUrl;
+    fields["auth_date"] = request.AuthDate.ToString();
+
+    var dataCheckString = string.Join('\n', fields.Select(kv => $"{kv.Key}={kv.Value}"));
+
+    using var sha256 = SHA256.Create();
+    var secretKey = sha256.ComputeHash(Encoding.UTF8.GetBytes(_telegramBotToken));
+
+    using var hmac = new HMACSHA256(secretKey);
+    var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(dataCheckString));
+    var computedHashHex = Convert.ToHexString(computedHash).ToLowerInvariant();
+
+    if (!string.Equals(computedHashHex, request.Hash, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidOperationException("Invalid Telegram login hash.");
   }
 }

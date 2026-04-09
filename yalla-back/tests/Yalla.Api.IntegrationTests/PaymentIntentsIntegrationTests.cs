@@ -39,7 +39,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     Assert.Equal(HttpStatusCode.OK, clientIntentResponse.StatusCode);
     var clientIntentPayload = await ReadJsonAsync(clientIntentResponse);
     Assert.Equal((int)PaymentIntentState.AwaitingAdminConfirmation, clientIntentPayload.GetProperty("paymentIntent").GetProperty("state").GetInt32());
-    Assert.Equal(JsonValueKind.Null, clientIntentPayload.GetProperty("orderId").ValueKind);
+    Assert.Equal(reservedOrderId, clientIntentPayload.GetProperty("orderId").GetGuid());
 
     var confirmResponse = await superAdminActor.PostAsync(
       $"/api/superadmin/payment-intents/{paymentIntentId}/confirm",
@@ -137,7 +137,11 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
 
     Assert.NotNull(paymentIntent);
     Assert.Equal(PaymentIntentState.AwaitingAdminConfirmation, paymentIntent!.State);
-    Assert.False(await dbContext.Orders.AsNoTracking().AnyAsync(x => x.Id == reservedOrderId));
+    var order = await dbContext.Orders.AsNoTracking().FirstOrDefaultAsync(x => x.Id == reservedOrderId);
+    Assert.NotNull(order);
+    Assert.Equal(Status.New, order!.Status);
+    Assert.Equal(OrderPaymentState.PendingManualConfirmation, order.PaymentState);
+    Assert.False(order.IsStockDeducted);
   }
 
   [Fact]
@@ -198,7 +202,9 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
 
     using var scope = Factory.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    Assert.False(await dbContext.Orders.AsNoTracking().AnyAsync(x => x.Id == reservedOrderId));
+    var order = await dbContext.Orders.AsNoTracking().FirstOrDefaultAsync(x => x.Id == reservedOrderId);
+    Assert.NotNull(order);
+    Assert.Equal(Status.Cancelled, order!.Status);
 
     var intent = await dbContext.PaymentIntents
       .AsNoTracking()

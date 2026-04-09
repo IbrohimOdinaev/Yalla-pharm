@@ -262,22 +262,15 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
       JsonContent.Create(new { }));
     Assert.Equal(HttpStatusCode.OK, confirmPaymentResponse.StatusCode);
 
-    var nextStatusResponse = await superAdminActor.PostAsJsonAsync("/api/orders/superadmin/next-status", new
-    {
-      OrderId = orderId
-    });
-
-    Assert.Equal(HttpStatusCode.OK, nextStatusResponse.StatusCode);
-    var payload = await ReadJsonAsync(nextStatusResponse);
-    Assert.Equal((int)Status.UnderReview, payload.GetProperty("status").GetInt32());
-
     using var scope = Factory.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var updatedOrder = await dbContext.Orders
       .AsNoTracking()
       .FirstAsync(x => x.Id == orderId);
+    Assert.Equal(Status.UnderReview, updatedOrder.Status);
     Assert.Equal(OrderPaymentState.Confirmed, updatedOrder.PaymentState);
     Assert.NotNull(updatedOrder.PaymentConfirmedAtUtc);
+    Assert.True(updatedOrder.IsStockDeducted);
 
     var paymentHistory = await dbContext.PaymentHistories
       .AsNoTracking()
@@ -305,11 +298,6 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var paymentIntentId = checkoutPayload.GetProperty("paymentIntentId").GetGuid();
     var orderId = checkoutPayload.GetProperty("reservedOrderId").GetGuid();
     Assert.Equal((int)Status.New, checkoutPayload.GetProperty("status").GetInt32());
-
-    var confirmPaymentResponse = await superAdminActor.PostAsync(
-      $"/api/superadmin/payment-intents/{paymentIntentId}/confirm",
-      JsonContent.Create(new { }));
-    Assert.Equal(HttpStatusCode.OK, confirmPaymentResponse.StatusCode);
 
     var deleteResponse = await adminActor.PostAsJsonAsync("/api/orders/admin/new/delete", new
     {
@@ -355,7 +343,10 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var historyPayload = await ReadJsonAsync(historyResponse);
     var historyOrders = historyPayload.GetProperty("orders").EnumerateArray().ToList();
-    Assert.DoesNotContain(historyOrders, x => x.GetProperty("orderId").GetGuid() == orderId);
+    var pendingOrder = historyOrders.FirstOrDefault(x => x.GetProperty("orderId").GetGuid() == orderId);
+    Assert.NotEqual(default, pendingOrder);
+    Assert.Equal((int)Status.New, pendingOrder.GetProperty("status").GetInt32());
+    Assert.Equal((int)OrderPaymentState.PendingManualConfirmation, pendingOrder.GetProperty("paymentState").GetInt32());
 
     var confirmPaymentResponse = await superAdminActor.PostAsync(
       $"/api/superadmin/payment-intents/{paymentIntentId}/confirm",

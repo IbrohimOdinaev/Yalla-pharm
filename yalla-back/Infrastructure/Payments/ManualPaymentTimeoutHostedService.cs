@@ -33,13 +33,6 @@ public sealed class ManualPaymentTimeoutHostedService : BackgroundService
 
   protected override async Task ExecuteAsync(CancellationToken stoppingToken)
   {
-    if (_options.CreateOrderOnlyAfterAdminPaymentConfirmation)
-    {
-      _logger.LogInformation(
-        "Manual payment timeout worker is disabled. Checkout mode uses PaymentIntent confirmation before order creation.");
-      return;
-    }
-
     var intervalSeconds = Math.Max(5, _options.CleanupIntervalSeconds);
     using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
 
@@ -86,10 +79,13 @@ public sealed class ManualPaymentTimeoutHostedService : BackgroundService
         {
           order.MarkManualPaymentExpired(nowUtc);
 
-          await RestoreStockAsync(dbContext, order, cancellationToken);
-          await RestoreBasketAsync(dbContext, order, cancellationToken);
+          if (order.IsStockDeducted)
+          {
+            await RestoreStockAsync(dbContext, order, cancellationToken);
+          }
 
-          dbContext.Orders.Remove(order);
+          await RestoreBasketAsync(dbContext, order, cancellationToken);
+          order.Cancel();
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

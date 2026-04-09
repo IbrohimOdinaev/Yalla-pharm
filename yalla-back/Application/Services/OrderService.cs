@@ -14,16 +14,18 @@ public sealed class OrderService : IOrderService
   private readonly IAppDbContext _dbContext;
   private readonly ILogger<OrderService> _logger;
   private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
+  private readonly IJuraService? _juraService;
 
   public OrderService(IAppDbContext dbContext)
-    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher())
+    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null)
   {
   }
 
   public OrderService(
     IAppDbContext dbContext,
     ILogger<OrderService> logger,
-    IRealtimeUpdatesPublisher realtimeUpdatesPublisher)
+    IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
+    IJuraService? juraService = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(logger);
@@ -32,6 +34,7 @@ public sealed class OrderService : IOrderService
     _dbContext = dbContext;
     _logger = logger;
     _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
+    _juraService = juraService;
   }
 
   public async Task<GetAllOrdersResponse> GetAllOrdersAsync(
@@ -131,9 +134,12 @@ public sealed class OrderService : IOrderService
       .Where(x => x.Id == request.OrderId && x.ClientId == request.ClientId)
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+      .Include(x => x.DeliveryData)
       .FirstOrDefaultAsync(cancellationToken)
       ?? throw new InvalidOperationException(
         $"Order '{request.OrderId}' for client '{request.ClientId}' was not found.");
+
+    var delivery = order.DeliveryData;
 
     return new GetClientOrderDetailsResponse
     {
@@ -142,12 +148,17 @@ public sealed class OrderService : IOrderService
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
       IsPickup = order.IsPickup,
-      DeliveryAddress = order.DeliveryAddress,
+      DeliveryAddress = delivery?.ToAddress ?? order.DeliveryAddress,
       Status = order.Status,
       PaymentState = order.PaymentState,
       PaymentExpiresAtUtc = order.PaymentExpiresAtUtc,
+      PaymentUrl = order.PaymentUrl,
       Cost = order.Cost,
       ReturnCost = order.ReturnCost,
+      DeliveryCost = delivery?.DeliveryCost ?? 0m,
+      DriverName = delivery?.DriverName,
+      DriverPhone = delivery?.DriverPhone,
+      JuraStatus = delivery?.JuraStatus,
       Positions = order.Positions
         .Select(x => new ClientOrderDetailsPositionResponse
         {
@@ -411,6 +422,11 @@ public sealed class OrderService : IOrderService
       await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
         order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
 
+      if (!order.IsPickup && _juraService != null)
+      {
+        await DispatchJuraDeliveryAsync(order, cancellationToken);
+      }
+
       return new MarkOrderReadyResponse
       {
         WorkerId = worker.Id,
@@ -422,6 +438,62 @@ public sealed class OrderService : IOrderService
     {
       await transaction.RollbackAsync(cancellationToken);
       throw;
+    }
+  }
+
+  private async Task DispatchJuraDeliveryAsync(Order order, CancellationToken ct)
+  {
+    try
+    {
+      var deliveryData = await _dbContext.DeliveryData
+        .FirstOrDefaultAsync(d => d.OrderId == order.Id, ct);
+
+      if (deliveryData == null)
+      {
+        _logger.LogWarning("No DeliveryData found for order {OrderId}, skipping JURA dispatch", order.Id);
+        return;
+      }
+
+      var from = new JuraAddress
+      {
+        Title = deliveryData.FromTitle,
+        Address = deliveryData.FromAddress,
+        Lat = deliveryData.FromLatitude,
+        Lng = deliveryData.FromLongitude,
+        Id = deliveryData.FromAddressId
+      };
+
+      var to = new JuraAddress
+      {
+        Title = deliveryData.ToTitle,
+        Address = deliveryData.ToAddress,
+        Lat = deliveryData.ToLatitude,
+        Lng = deliveryData.ToLongitude,
+        Id = deliveryData.ToAddressId
+      };
+
+      var clientPhone = !string.IsNullOrEmpty(order.ClientPhoneNumber)
+        ? $"992{order.ClientPhoneNumber}"
+        : null;
+
+      var result = await _juraService!.CreateDeliveryOrderAsync(from, to, tariffId: null, clientPhone, ct);
+
+      deliveryData.SetJuraOrder(result.OrderId, result.Status, result.StatusId);
+
+      if (result.PerformerDeviceId.HasValue)
+      {
+        var driverName = $"{result.PerformerFirstName} {result.PerformerLastName}".Trim();
+        deliveryData.SetDriverInfo(result.PerformerDeviceId, driverName, result.PerformerPhone);
+      }
+
+      await _dbContext.SaveChangesAsync(ct);
+
+      _logger.LogInformation("JURA delivery dispatched for order {OrderId}, JURA order {JuraOrderId}",
+        order.Id, result.OrderId);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Failed to dispatch JURA delivery for order {OrderId}", order.Id);
     }
   }
 
@@ -520,7 +592,7 @@ public sealed class OrderService : IOrderService
         .Where(x => !x.IsRejected)
         .ToList();
 
-      if (positionsToRestore.Count > 0)
+      if (order.IsStockDeducted && positionsToRestore.Count > 0)
       {
         await RestoreStockForPositionsAsync(
           order.PharmacyId,
@@ -578,7 +650,7 @@ public sealed class OrderService : IOrderService
         .Where(x => !x.IsRejected)
         .ToList();
 
-      if (positionsToRestore.Count > 0)
+      if (order.IsStockDeducted && positionsToRestore.Count > 0)
       {
         await RestoreStockForPositionsAsync(
           order.PharmacyId,

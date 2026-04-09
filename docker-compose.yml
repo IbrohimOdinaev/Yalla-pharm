@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
       args:
         - INTERNAL_API_URL=http://api:8080
-        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSyDwe4qz8CZecxem2_hnL3iv_GbIZbC0kGM
+        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSyCiMKUxv6jKAzDC_ncZvgHP0c-6mRBczYY
     container_name: yalla-front
     ports:
       - "3000:3000"
@@ -23,7 +23,9 @@ services:
     depends_on:
       - postgres
       - minio
+      - elasticsearch
     environment:
+      - Elasticsearch__Url=http://elasticsearch:9200
       - Database__ApplyMigrationsOnStartup=true
       - ConnectionStrings__Default=Host=postgres;Port=5432;Database=app_db;Username=postgres;Password=postgres
       - MinIo__Endpoint=minio:9000
@@ -50,6 +52,20 @@ services:
     networks:
       - yalla-network
 
+  elasticsearch:
+    image: elasticsearch:8.13.0
+    container_name: yalla-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - yalla-network
+
   minio:
     image: minio/minio
     container_name: yalla-minio
@@ -73,3 +89,4 @@ volumes:
     external: true
   minio-data:
     external: true
+  elasticsearch-data:

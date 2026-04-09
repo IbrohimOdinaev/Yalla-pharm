@@ -5,23 +5,12 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { getMyProfile, updateMyProfile, deleteMyAccount, changePassword } from "@/entities/client/api";
 import type { ApiClient } from "@/shared/types/api";
-import { formatMoney, formatPhone } from "@/shared/lib/format";
+import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
 import { clearCredentials } from "@/features/auth/model/authSlice";
 import { useCartStore } from "@/features/cart/model/cartStore";
-import { useBasketLive } from "@/features/cart/model/useBasketLive";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-
-const PENDING_KEY = "yalla.front.pending.payment.intent";
-
-type PendingPayment = {
-  paymentIntentId: string;
-  reservedOrderId: string;
-  paymentUrl: string;
-  amount: number;
-  currency: string;
-};
 
 export default function ProfilePage() {
   const token = useAppSelector((state) => state.auth.token);
@@ -47,28 +36,12 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  /* pending payment */
-  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
-
   /* delete */
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   /* cart */
   const { basket, loadBasket } = useCartStore();
-
-  useBasketLive();
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(PENDING_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as PendingPayment;
-        if (parsed.paymentIntentId) setPendingPayment(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -93,16 +66,16 @@ export default function ProfilePage() {
 
   if (!token) {
     return (
-      <AppShell top={<TopBar title="Профиль" backHref="/" />}>
-        <div className="stitch-card p-8 text-center space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+      <AppShell top={<TopBar title="Профиль" backHref="back" />}>
+        <div className="stitch-card p-4 xs:p-6 sm:p-8 text-center space-y-2 xs:space-y-3 sm:space-y-4">
+          <div className="mx-auto w-14 h-14 xs:w-16 xs:h-16 rounded-full bg-primary/10 flex items-center justify-center">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
             </svg>
           </div>
-          <h2 className="text-lg font-bold">Требуется авторизация</h2>
-          <p className="text-sm text-on-surface-variant">Войдите или зарегистрируйтесь для доступа</p>
-          <div className="flex justify-center gap-3">
+          <h2 className="text-base xs:text-lg font-bold">Требуется авторизация</h2>
+          <p className="text-xs xs:text-sm text-on-surface-variant">Войдите или зарегистрируйтесь для доступа</p>
+          <div className="flex justify-center gap-2 xs:gap-3">
             <Link href="/login" className="stitch-button text-sm">Войти</Link>
             <Link href="/register" className="stitch-button-secondary text-sm">Регистрация</Link>
           </div>
@@ -180,37 +153,19 @@ export default function ProfilePage() {
   }
 
   return (
-    <AppShell top={<TopBar title="Профиль" backHref="/" />}>
-      <div className="mx-auto max-w-md space-y-5">
-        {isLoading ? <div className="stitch-card p-6 text-sm">Загрузка...</div> : null}
+    <AppShell top={<TopBar title="Профиль" backHref="back" />}>
+      <div className="mx-auto max-w-md px-0 xs:px-2 sm:px-4 space-y-2 xs:space-y-3 sm:space-y-5">
+        {isLoading ? <div className="stitch-card p-3 xs:p-4 sm:p-6 text-xs xs:text-sm">Загрузка...</div> : null}
         {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
-        {/* Pending payment banner */}
-        {pendingPayment ? (
-          <div className="stitch-card space-y-3 p-5 ring-2 ring-yellow-400">
-            <h2 className="text-lg font-bold text-yellow-800">Ожидающая оплата</h2>
-            <p className="text-sm text-on-surface-variant">
-              Заказ #{pendingPayment.reservedOrderId.slice(0, 8)} · {formatMoney(pendingPayment.amount, pendingPayment.currency)}
-            </p>
-            <div className="flex gap-2">
-              {pendingPayment.paymentUrl ? (
-                <a href={pendingPayment.paymentUrl} className="stitch-button text-sm" target="_blank" rel="noreferrer">
-                  Оплатить
-                </a>
-              ) : null}
-              <Link href="/checkout" className="stitch-button-secondary text-sm">Перейти к оформлению</Link>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Feature 10: Personalized hero */}
+        {/* Personalized hero */}
         {profile ? (
-          <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white">
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-3 xs:p-4 sm:p-6 text-white">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Мой профиль</p>
-                <h1 className="mt-1 text-2xl font-extrabold">Здравствуйте, {profile.name || "Клиент"}</h1>
-                <p className="mt-1.5 text-sm opacity-80 font-mono">{profile.phoneNumber}</p>
+                <h1 className="mt-1 text-base xs:text-lg sm:text-2xl font-extrabold truncate">Здравствуйте, {profile.name || "Клиент"}</h1>
+                <p className="mt-1.5 text-xs xs:text-sm opacity-80 font-mono">{profile.phoneNumber}</p>
               </div>
             </div>
           </div>
@@ -219,16 +174,16 @@ export default function ProfilePage() {
         {profile ? (
           <>
             {/* Profile info */}
-            <form className="stitch-card space-y-4 p-6" onSubmit={onSaveProfile}>
-              <h2 className="text-lg font-bold">Личные данные</h2>
+            <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSaveProfile}>
+              <h2 className="text-base xs:text-lg font-bold">Личные данные</h2>
 
               <label className="block space-y-1">
-                <span className="text-sm font-medium text-on-surface-variant">Имя</span>
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Имя</span>
                 <input className="stitch-input" placeholder="Ваше имя" value={editName} onChange={(e) => setEditName(e.target.value)} />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-sm font-medium text-on-surface-variant">Пол</span>
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Пол</span>
                 <select className="stitch-input" value={editGender} onChange={(e) => setEditGender(e.target.value)}>
                   <option value="">Не указан</option>
                   <option value="1">Мужской</option>
@@ -237,12 +192,12 @@ export default function ProfilePage() {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-sm font-medium text-on-surface-variant">Дата рождения</span>
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Дата рождения</span>
                 <input className="stitch-input" type="date" value={editDob} onChange={(e) => setEditDob(e.target.value)} />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Телефон</span>
                 <input className="stitch-input" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
               </label>
 
@@ -252,53 +207,53 @@ export default function ProfilePage() {
                 </div>
               ) : null}
 
-              <button type="submit" className="stitch-button w-full" disabled={isSavingProfile}>
+              <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSavingProfile}>
                 {isSavingProfile ? "Сохраняем..." : "Сохранить"}
               </button>
             </form>
 
             {/* Change password */}
-            <form className="stitch-card space-y-4 p-6" onSubmit={onChangePassword}>
-              <h2 className="text-lg font-bold">Смена пароля</h2>
+            <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onChangePassword}>
+              <h2 className="text-base xs:text-lg font-bold">Смена пароля</h2>
 
               <label className="block space-y-1">
-                <span className="text-sm font-medium text-on-surface-variant">Текущий пароль</span>
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Текущий пароль</span>
                 <input className="stitch-input" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-sm font-medium text-on-surface-variant">Новый пароль</span>
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Новый пароль</span>
                 <input className="stitch-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Минимум 8 символов" required />
               </label>
 
               {passwordError ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{passwordError}</div> : null}
               {passwordMsg ? <div className="rounded-xl bg-emerald-100 p-3 text-sm text-emerald-700">{passwordMsg}</div> : null}
 
-              <button type="submit" className="stitch-button w-full" disabled={isChangingPassword}>
+              <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isChangingPassword}>
                 {isChangingPassword ? "Меняем..." : "Обновить пароль"}
               </button>
             </form>
 
             {/* Mini cart preview */}
             {(basket.positions ?? []).length > 0 ? (
-              <div className="stitch-card p-5 space-y-3">
+              <div className="stitch-card p-3 xs:p-4 sm:p-5 space-y-2 xs:space-y-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold">Корзина</h2>
+                  <h2 className="text-base xs:text-lg font-bold">Корзина</h2>
                   <Link href="/cart" className="text-sm font-bold text-primary">Открыть</Link>
                 </div>
-                <p className="text-sm text-on-surface-variant">{basket.positions!.length} товаров в корзине</p>
+                <p className="text-xs xs:text-sm text-on-surface-variant">{basket.positions!.length} товаров в корзине</p>
               </div>
             ) : null}
 
             {/* Logout */}
-            <button type="button" className="stitch-button-secondary w-full" onClick={onLogout}>
+            <button type="button" className="stitch-button-secondary w-full min-h-[44px]" onClick={onLogout}>
               Выйти из аккаунта
             </button>
 
             {/* Delete account */}
-            <div className="stitch-card space-y-3 p-6">
-              <h2 className="text-lg font-bold text-red-700">Удаление аккаунта</h2>
-              <p className="text-sm text-on-surface-variant">История заказов сохранится, но доступ к профилю будет потерян.</p>
+            <div className="stitch-card space-y-2 xs:space-y-3 p-3 xs:p-4 sm:p-6">
+              <h2 className="text-base xs:text-lg font-bold text-red-700">Удаление аккаунта</h2>
+              <p className="text-xs xs:text-sm text-on-surface-variant">История заказов сохранится, но доступ к профилю будет потерян.</p>
 
               {!showDeleteConfirm ? (
                 <button type="button" className="rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700" onClick={() => setShowDeleteConfirm(true)}>

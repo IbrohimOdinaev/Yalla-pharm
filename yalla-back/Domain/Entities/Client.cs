@@ -21,6 +21,11 @@ public class Client : User
     {
     }
 
+    public Client(string name, long telegramId)
+      : base(Guid.NewGuid(), name, telegramId, Role.Client)
+    {
+    }
+
     public Client(
       Guid id,
       string name,

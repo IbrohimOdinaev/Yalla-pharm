@@ -19,6 +19,8 @@ public class User
 
     public DateOnly? DateOfBirth { get; private protected set; }
 
+    public long? TelegramId { get; private protected set; }
+
     private protected User() { }
 
     public User(
@@ -47,6 +49,21 @@ public class User
         else Role = role.Value;
         PhoneNumber = phoneNumber;
     }
+
+    internal User(Guid id, string name, long telegramId, Role role)
+    {
+        if (id == Guid.Empty)
+            throw new DomainArgumentException("User.Id can't be empty.");
+
+        Id = id;
+        Name = name ?? string.Empty;
+        PhoneNumber = $"tg_{telegramId}";
+        PasswordHash = "TELEGRAM_AUTH";
+        TelegramId = telegramId;
+        Role = role;
+    }
+
+    public void SetTelegramId(long? telegramId) => TelegramId = telegramId;
 
     public void SetName(string? name)
     {

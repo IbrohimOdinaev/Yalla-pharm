@@ -11,14 +11,8 @@ public sealed class OrderStatusSmsService : IOrderStatusSmsService
 
   private static readonly IReadOnlyDictionary<Status, string> DefaultTemplates = new Dictionary<Status, string>
   {
-    [Status.New] = "Заказ {orderId} создан и ожидает подтверждения.",
-    [Status.UnderReview] = "Заказ {orderId} принят и передан в обработку.",
-    [Status.Preparing] = "Заказ {orderId} готовится аптекой.",
-    [Status.Ready] = "Заказ {orderId} собран и готов к выдаче/доставке.",
-    [Status.OnTheWay] = "Заказ {orderId} передан курьеру и в пути.",
-    [Status.Delivered] = "Заказ {orderId} успешно доставлен.",
-    [Status.Cancelled] = "Заказ {orderId} отменен.",
-    [Status.Returned] = "Заказ {orderId} переведен в статус возврата."
+    [Status.UnderReview] = "Ваш заказ с Id: {orderId} на сумму: {amount} {currency} подтверждён.",
+    [Status.OnTheWay] = "Заказ с Id: {orderId} на сумму: {amount} {currency} уже едет к вам.",
   };
 
   private readonly SmsTemplatesOptions _options;
@@ -30,15 +24,19 @@ public sealed class OrderStatusSmsService : IOrderStatusSmsService
     _options = options.Value;
   }
 
-  public string? BuildMessage(Guid orderId, Status status)
+  public string? BuildMessage(Guid orderId, Status status, decimal cost = 0, string? currency = null)
   {
     var template = ResolveTemplate(status);
     if (string.IsNullOrWhiteSpace(template))
       return null;
 
+    var cur = string.IsNullOrWhiteSpace(currency) ? "TJS" : currency.Trim().ToUpperInvariant();
+
     return template
       .Replace("{orderId}", orderId.ToString("D"), StringComparison.OrdinalIgnoreCase)
-      .Replace("{status}", status.ToString(), StringComparison.OrdinalIgnoreCase);
+      .Replace("{status}", status.ToString(), StringComparison.OrdinalIgnoreCase)
+      .Replace("{amount}", cost.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+      .Replace("{currency}", cur, StringComparison.OrdinalIgnoreCase);
   }
 
   public string? BuildPaymentConfirmedMessage(Guid orderId, decimal amount, string currency)

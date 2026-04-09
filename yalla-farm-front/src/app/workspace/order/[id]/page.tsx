@@ -74,7 +74,7 @@ export default function AdminOrderDetailPage() {
 
   if (!token || role !== "Admin") {
     return (
-      <AppShell top={<TopBar title="Заказ" backHref="/workspace" />}>
+      <AppShell top={<TopBar title="Заказ" backHref="back" />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm">Доступ запрещён.</div>
       </AppShell>
     );
@@ -130,7 +130,7 @@ export default function AdminOrderDetailPage() {
 
   if (isLoading) {
     return (
-      <AppShell top={<TopBar title="Заказ" backHref="/workspace" />}>
+      <AppShell top={<TopBar title="Заказ" backHref="back" />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm">Загрузка...</div>
       </AppShell>
     );
@@ -138,7 +138,7 @@ export default function AdminOrderDetailPage() {
 
   if (!order) {
     return (
-      <AppShell top={<TopBar title="Заказ" backHref="/workspace" />}>
+      <AppShell top={<TopBar title="Заказ" backHref="back" />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm text-on-surface-variant">
           {error ?? "Заказ не найден."}
         </div>
@@ -152,14 +152,14 @@ export default function AdminOrderDetailPage() {
   const statusColor = STATUS_COLORS[status] ?? "bg-gray-100 text-gray-800";
 
   return (
-    <AppShell top={<TopBar title={`Заказ #${orderId.slice(0, 8)}`} backHref="/workspace" />}>
+    <AppShell top={<TopBar title={`Заказ #${orderId.slice(0, 8)}`} backHref="back" />} hideGlobalNav>
       <div className="space-y-4">
         {error && <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div>}
 
         {/* Order info */}
         <section className="stitch-card space-y-3 p-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold">Информация о заказе</h2>
+            <h2 className="text-sm xs:text-base sm:text-lg font-bold">Информация о заказе</h2>
             <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusColor}`}>
               {statusLabel}
             </span>
@@ -231,7 +231,7 @@ export default function AdminOrderDetailPage() {
 
         {/* Positions */}
         <section className="stitch-card space-y-3 p-5">
-          <h3 className="text-lg font-bold">Позиции ({positions.length})</h3>
+          <h3 className="text-sm xs:text-base sm:text-lg font-bold">Позиции ({positions.length})</h3>
           {positions.length === 0 ? (
             <p className="text-sm text-on-surface-variant">Нет позиций.</p>
           ) : (
@@ -244,7 +244,7 @@ export default function AdminOrderDetailPage() {
                 return (
                   <div
                     key={pos.positionId}
-                    className={`flex items-center gap-3 rounded-xl p-3 transition ${isRejected ? "bg-red-50 opacity-60" : "bg-surface-container-low"}`}
+                    className={`flex items-center gap-1.5 xs:gap-2 sm:gap-3 rounded-xl p-2 xs:p-2.5 sm:p-3 transition ${isRejected ? "bg-red-50 opacity-60" : "bg-surface-container-low"}`}
                   >
                     {canSelect && (
                       <input
@@ -295,7 +295,7 @@ export default function AdminOrderDetailPage() {
         {/* Refund request */}
         {order.refundRequest && (
           <section className="stitch-card space-y-2 p-5">
-            <h3 className="text-lg font-bold">Запрос на возврат</h3>
+            <h3 className="text-sm xs:text-base sm:text-lg font-bold">Запрос на возврат</h3>
             <div className="text-sm space-y-1">
               <p><span className="text-on-surface-variant">Статус:</span> {order.refundRequest.status}</p>
               {order.refundRequest.reason && (
@@ -310,7 +310,7 @@ export default function AdminOrderDetailPage() {
 
         {/* Actions */}
         <section className="stitch-card space-y-3 p-5">
-          <h3 className="text-lg font-bold">Действия</h3>
+          <h3 className="text-sm xs:text-base sm:text-lg font-bold">Действия</h3>
           <div className="flex flex-wrap gap-2">
             {(status === "New" || status === "UnderReview") && (
               <button

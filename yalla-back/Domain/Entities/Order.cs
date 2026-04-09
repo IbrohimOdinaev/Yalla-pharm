@@ -49,9 +49,13 @@ public class Order
 
     public Guid? PaymentConfirmedByUserId { get; private set; }
 
+    public bool IsStockDeducted { get; private set; } = true;
+
     private readonly List<OrderPosition> _positions = new();
 
     public IReadOnlyCollection<OrderPosition> Positions => _positions.AsReadOnly();
+
+    public DeliveryData? DeliveryData { get; private set; }
 
     private Order() { }
 
@@ -207,6 +211,29 @@ public class Order
         PaymentConfirmedByUserId = null;
     }
 
+    public void MarkManualPaymentPendingIndefinitely(
+      decimal amount,
+      string currency,
+      string provider,
+      string receiverAccount,
+      string? paymentUrl,
+      string? paymentComment)
+    {
+        if (amount <= 0)
+            throw new DomainArgumentException("Payment amount must be greater than zero.");
+
+        PaymentAmount = amount;
+        PaymentCurrency = NormalizeRequiredString(currency, 8, "PaymentCurrency").ToUpperInvariant();
+        PaymentProvider = NormalizeRequiredString(provider, 64, "PaymentProvider");
+        PaymentReceiverAccount = NormalizeRequiredString(receiverAccount, 128, "PaymentReceiverAccount");
+        PaymentUrl = NormalizeOptionalString(paymentUrl, 2048, "PaymentUrl");
+        PaymentComment = NormalizeOptionalString(paymentComment, 512, "PaymentComment");
+        PaymentState = OrderPaymentState.PendingManualConfirmation;
+        PaymentExpiresAtUtc = null;
+        PaymentConfirmedAtUtc = null;
+        PaymentConfirmedByUserId = null;
+    }
+
     public void ConfirmManualPayment(Guid confirmedByUserId, DateTime confirmedAtUtc)
     {
         if (confirmedByUserId == Guid.Empty)
@@ -264,6 +291,10 @@ public class Order
           ? confirmedAtUtc
           : confirmedAtUtc.ToUniversalTime();
     }
+
+    public void MarkStockNotDeducted() => IsStockDeducted = false;
+
+    public void MarkStockDeducted() => IsStockDeducted = true;
 
     private static DateTime GetUtcPlus5NowToSeconds()
     {

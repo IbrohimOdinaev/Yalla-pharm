@@ -1,74 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, getCheapestPrice } from "@/entities/medicine/api";
+import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, getCheapestPrice, getCatalogMedicinesPaginated } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { buildCheckoutIdempotencyKey } from "@/shared/lib/idempotency";
-import { apiFetch } from "@/shared/api/http-client";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
-import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
 import { useBasketLive } from "@/features/cart/model/useBasketLive";
-import type { ApiCheckoutResponse } from "@/shared/types/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
-import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
-
-const PENDING_KEY = "yalla.front.pending.payment.intent";
-
-type PharmacyOption = {
-  pharmacyId: string;
-  pharmacyTitle: string;
-  pharmacyAddress: string;
-  totalCost: number;
-  availableCount: number;
-  totalCount: number;
-  /** medicine IDs available in full quantity at this pharmacy */
-  availableMedicineIds: Set<string>;
-};
+import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 
 export default function CartPage() {
   const token = useAppSelector((state) => state.auth.token);
   const router = useRouter();
   const { basket, loadBasket, removeItem, setQuantity, isLoading, error } = useCartStore((state) => state);
-  const { pharmacyId: selectedPharmacyId, deliveryAddress, isPickup, setDraft } = useCheckoutDraftStore((state) => state);
-
-  const savedDeliveryAddress = useDeliveryAddressStore((s) => s.address);
-  const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
+  const addItem = useCartStore((state) => state.addItem);
 
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isAddressValid, setIsAddressValid] = useState(true);
+  const [recommendations, setRecommendations] = useState<ApiMedicine[]>([]);
 
   useBasketLive();
 
   const isGuest = !token;
-
   const guestItems = useGuestCartStore((s) => s.items);
   const loadGuestCart = useGuestCartStore((s) => s.load);
   const removeGuestItem = useGuestCartStore((s) => s.removeItem);
   const setGuestQuantity = useGuestCartStore((s) => s.setQuantity);
-
-  useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
+  const addGuestItem = useGuestCartStore((s) => s.addItem);
 
   useEffect(() => {
     if (!token) { loadGuestCart(); return; }
     loadBasket(token).catch(() => undefined);
   }, [token, loadBasket, loadGuestCart]);
 
-  // Set saved address as default if checkout draft is empty
-  useEffect(() => {
-    if (!deliveryAddress && savedDeliveryAddress) {
-      setDraft({ deliveryAddress: savedDeliveryAddress });
-    }
-  }, [savedDeliveryAddress, deliveryAddress, setDraft]);
-
+  // Load medicine details
   useEffect(() => {
     const serverIds = (basket.positions ?? []).map((item) => item.medicineId);
     const guestIds = isGuest ? guestItems.map((item) => item.medicineId) : [];
@@ -83,347 +52,205 @@ export default function CartPage() {
       .catch(() => undefined);
   }, [basket.positions, guestItems, isGuest]);
 
-  // Unified cart items
-  const cartItems = isGuest
-    ? guestItems.map((item) => ({ id: item.medicineId, medicineId: item.medicineId, quantity: item.quantity }))
-    : (basket.positions ?? []).map((p) => ({ id: p.id, medicineId: p.medicineId, quantity: p.quantity }));
+  // Unified cart items — sorted by medicine name
+  const cartItems = useMemo(() => {
+    const items = isGuest
+      ? guestItems.map((item) => ({ id: item.medicineId, medicineId: item.medicineId, quantity: item.quantity }))
+      : (basket.positions ?? []).map((p) => ({ id: p.id, medicineId: p.medicineId, quantity: p.quantity }));
+    return [...items].sort((a, b) => {
+      const nameA = (medicineMap[a.medicineId]?.title ?? "").toLowerCase();
+      const nameB = (medicineMap[b.medicineId]?.title ?? "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [isGuest, guestItems, basket.positions, medicineMap]);
 
-  // ── Build pharmacy options with per-item availability ──
-  const options = useMemo((): PharmacyOption[] => {
-    if (cartItems.length === 0 || Object.keys(medicineMap).length === 0) return [];
-
-    const pharmacyMap = new Map<string, {
-      pharmacyId: string; pharmacyTitle: string; pharmacyAddress: string;
-      totalCost: number; availableMedicineIds: Set<string>;
-    }>();
-
-    for (const item of cartItems) {
-      const medicine = medicineMap[item.medicineId];
-      if (!medicine?.offers) continue;
-      for (const offer of medicine.offers) {
-        if (offer.price <= 0) continue;
-        if (offer.stockQuantity < item.quantity) continue; // not enough stock
-        const entry = pharmacyMap.get(offer.pharmacyId) ?? {
-          pharmacyId: offer.pharmacyId,
-          pharmacyTitle: offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8),
-          pharmacyAddress: "",
-          totalCost: 0,
-          availableMedicineIds: new Set<string>(),
-        };
-        entry.availableMedicineIds.add(item.medicineId);
-        entry.totalCost += offer.price * item.quantity;
-        pharmacyMap.set(offer.pharmacyId, entry);
-      }
-    }
-
-    const total = cartItems.length;
-    return Array.from(pharmacyMap.values())
-      .filter((p) => p.availableMedicineIds.size > 0)
-      .map((p) => ({
-        pharmacyId: p.pharmacyId,
-        pharmacyTitle: p.pharmacyTitle,
-        pharmacyAddress: p.pharmacyAddress,
-        totalCost: p.totalCost,
-        availableCount: p.availableMedicineIds.size,
-        totalCount: total,
-        availableMedicineIds: p.availableMedicineIds,
-      }))
-      .sort((a, b) => b.availableCount - a.availableCount || a.totalCost - b.totalCost);
-  }, [cartItems, medicineMap]);
-
-  // Auto-select best pharmacy (most items available)
-  useEffect(() => {
-    if (selectedPharmacyId && options.some((o) => o.pharmacyId === selectedPharmacyId)) return;
-    const best = options[0]; // sorted: most items first
-    if (best) setDraft({ pharmacyId: best.pharmacyId });
-  }, [options, selectedPharmacyId, setDraft]);
-
-  const selectedOption = useMemo(() => {
-    return options.find((o) => o.pharmacyId === selectedPharmacyId);
-  }, [options, selectedPharmacyId]);
-
-  // Items that WILL be ordered from selected pharmacy
-  const includedItems = useMemo(() => {
-    if (!selectedOption) return [];
-    return cartItems.filter((item) => selectedOption.availableMedicineIds.has(item.medicineId));
-  }, [cartItems, selectedOption]);
-
-  // Items that will NOT be ordered (stay in cart)
-  const excludedItems = useMemo(() => {
-    if (!selectedOption) return cartItems;
-    return cartItems.filter((item) => !selectedOption.availableMedicineIds.has(item.medicineId));
-  }, [cartItems, selectedOption]);
-
-  // Position IDs to ignore in backend checkout (server basket positions not available at selected pharmacy)
-  const ignoredPositionIds = useMemo(() => {
-    if (isGuest || !selectedOption) return [];
-    return (basket.positions ?? [])
-      .filter((p) => !selectedOption.availableMedicineIds.has(p.medicineId))
-      .map((p) => p.id);
-  }, [isGuest, basket.positions, selectedOption]);
-
-  // Cost of items being ordered
-  const checkoutCost = useMemo(() => {
-    return includedItems.reduce((sum, item) => {
-      const medicine = medicineMap[item.medicineId];
-      if (!medicine?.offers) return sum;
-      const offer = medicine.offers.find((o) =>
-        o.pharmacyId === selectedPharmacyId && o.stockQuantity >= item.quantity && o.price > 0
-      );
-      return sum + (offer ? offer.price * item.quantity : 0);
-    }, 0);
-  }, [includedItems, medicineMap, selectedPharmacyId]);
-
-  const cartTotalCost = useMemo(() => {
+  // Min total price across all pharmacies
+  const cartMinTotal = useMemo(() => {
     return cartItems.reduce((sum, item) => {
       const price = getCheapestPrice(medicineMap[item.medicineId]) ?? 0;
       return sum + price * item.quantity;
     }, 0);
   }, [cartItems, medicineMap]);
 
-  async function onCheckout() {
+  // Load recommendations once based on cart categories
+  const recommendationsLoaded = useRef(false);
+  useEffect(() => {
+    if (recommendationsLoaded.current) return;
+    const cartMedicineIds = new Set(cartItems.map((i) => i.medicineId));
+    const categories = new Set<string>();
+    for (const item of cartItems) {
+      const m = medicineMap[item.medicineId];
+      if (m?.categoryId) categories.add(m.categoryId);
+    }
+    if (categories.size === 0) return;
+    recommendationsLoaded.current = true;
+    const catId = [...categories][0];
+    getCatalogMedicinesPaginated(1, 12, catId)
+      .then((data) => {
+        const meds = (data?.medicines ?? []).filter((m: ApiMedicine) => !cartMedicineIds.has(m.id));
+        setRecommendations(meds.slice(0, 10));
+      })
+      .catch(() => undefined);
+  }, [cartItems, medicineMap]);
+
+  // Handlers
+  const onDecrement = useCallback((itemId: string, medicineId: string, qty: number) => {
+    if (qty <= 1) {
+      if (isGuest) removeGuestItem(medicineId);
+      else if (token) removeItem(token, itemId).catch(() => undefined);
+    } else {
+      if (isGuest) setGuestQuantity(medicineId, qty - 1);
+      else if (token) setQuantity(token, itemId, qty - 1).catch(() => undefined);
+    }
+  }, [isGuest, token, removeGuestItem, removeItem, setGuestQuantity, setQuantity]);
+
+  const onIncrement = useCallback((itemId: string, medicineId: string, qty: number) => {
+    if (isGuest) setGuestQuantity(medicineId, qty + 1);
+    else if (token) setQuantity(token, itemId, qty + 1).catch(() => undefined);
+  }, [isGuest, token, setGuestQuantity, setQuantity]);
+
+  const onRemove = useCallback((itemId: string, medicineId: string) => {
+    if (isGuest) removeGuestItem(medicineId);
+    else if (token) removeItem(token, itemId).catch(() => undefined);
+  }, [isGuest, token, removeGuestItem, removeItem]);
+
+  const clearAll = useCallback(async () => {
     if (isGuest) {
-      localStorage.setItem("yalla.guest.checkout.intent.v1", "1");
-      router.push("/login");
-      return;
-    }
-    if (!token) return;
-
-    // Check for existing pending payment
-    const existingPending = localStorage.getItem(PENDING_KEY);
-    if (existingPending) {
-      try {
-        const parsed = JSON.parse(existingPending);
-        if (parsed.paymentUrl) {
-          if (confirm("У вас есть неоплаченный заказ. Перейти к оплате?")) {
-            window.location.assign(parsed.paymentUrl);
-            return;
-          }
-          localStorage.removeItem(PENDING_KEY);
-        }
-      } catch { /* ignore */ }
-    }
-
-    setIsSubmitting(true);
-    setCheckoutError(null);
-
-    try {
-      if (!selectedPharmacyId) throw new Error("Выберите аптеку перед оформлением.");
-      if (includedItems.length === 0) throw new Error("В выбранной аптеке нет доступных товаров.");
-
-      const idempotencyKey = buildCheckoutIdempotencyKey();
-      const payload = {
-        pharmacyId: selectedPharmacyId,
-        isPickup,
-        deliveryAddress,
-        idempotencyKey,
-        ignoredPositionIds,
-      };
-
-      await apiFetch("/api/clients/checkout/preview", { method: "POST", token, body: payload });
-
-      const checkout = await apiFetch<ApiCheckoutResponse>("/api/clients/checkout", {
-        method: "POST", token, body: payload,
-      });
-
-      const paymentUrl = String(checkout.paymentUrl || "").trim();
-      const pending = {
-        paymentIntentId: String(checkout.paymentIntentId || ""),
-        reservedOrderId: String(checkout.reservedOrderId || checkout.orderId || ""),
-        paymentUrl,
-        amount: Number(checkout.cost || checkout.amount || 0),
-        currency: String(checkout.currency || "TJS"),
-        paymentExpiresAtUtc: checkout.paymentExpiresAtUtc ?? null,
-      };
-      localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
-
-      // For guest: remove only ordered items from guest cart
-      if (isGuest) {
-        for (const item of includedItems) removeGuestItem(item.medicineId);
+      for (const item of guestItems) removeGuestItem(item.medicineId);
+    } else if (token) {
+      // Remove items one by one (clearBasket not exposed in store)
+      for (const p of basket.positions ?? []) {
+        await removeItem(token, p.id).catch(() => undefined);
       }
-
-      if (paymentUrl) {
-        window.location.assign(paymentUrl);
-      } else {
-        router.push("/payment-await");
-      }
-    } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : "Не удалось оформить заказ.");
-    } finally {
-      setIsSubmitting(false);
     }
-  }
+  }, [isGuest, token, guestItems, removeGuestItem, basket.positions, removeItem]);
 
+  // Empty cart
   if (cartItems.length === 0 && !isLoading) {
     return (
-      <AppShell top={<TopBar title="Корзина" backHref="/" />}>
-        <div className="stitch-card p-6 text-sm">Корзина пустая. Добавьте товары из каталога.</div>
+      <AppShell top={<TopBar title="Корзина" backHref="back" />}>
+        <div className="flex flex-col items-center gap-4 py-12">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-on-surface-variant/40">
+            <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+          </svg>
+          <p className="text-sm text-on-surface-variant">Корзина пустая</p>
+          <Link href="/" className="stitch-button text-sm">Перейти в каталог</Link>
+        </div>
       </AppShell>
     );
   }
 
   return (
-    <AppShell top={<TopBar title="Корзина" backHref="/" />}>
-      <div className="space-y-4">
-        {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
-        {checkoutError ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{checkoutError}</div> : null}
+    <AppShell top={
+      <TopBar title="Заказ" backHref="back" />
+    }>
+      <div className="space-y-1">
+        {/* Header with total + clear */}
+        <div className="flex items-center justify-between px-1 pb-2">
+          <p className="text-xs xs:text-sm text-on-surface-variant">
+            от <span className="font-bold text-on-surface">{formatMoney(cartMinTotal)}</span>
+          </p>
+          <button type="button" onClick={clearAll} className="text-on-surface-variant hover:text-red-600 transition p-1" aria-label="Очистить корзину">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
 
-        {/* Cart items */}
-        {cartItems.map((item) => {
-          const medicine = medicineMap[item.medicineId];
-          const image = resolveMedicineImageUrl(medicine);
-          const name = medicine ? getMedicineDisplayName(medicine) : `Товар ${item.medicineId.slice(0, 8)}`;
-          const unitPrice = getCheapestPrice(medicine) ?? 0;
-          const lineCost = unitPrice * item.quantity;
-          const isExcluded = selectedOption ? !selectedOption.availableMedicineIds.has(item.medicineId) : false;
+        {error ? <div className="rounded-xl bg-red-100 p-2 xs:p-3 text-xs text-red-700">{error}</div> : null}
 
-          return (
-            <article key={item.id} className={`stitch-card flex gap-4 p-4 transition ${isExcluded ? "opacity-40" : ""}`}>
-              <Link href={`/product/${item.medicineId}`} className="h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
-                {image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={image} alt={name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-on-surface-variant">Нет фото</div>
-                )}
-              </Link>
-              <div className="flex-1 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <Link href={`/product/${item.medicineId}`} className="font-bold hover:text-primary transition">{name}</Link>
-                  {isExcluded ? (
-                    <span className="flex-shrink-0 rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-800">Нет в аптеке</span>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-on-surface-variant">{formatMoney(unitPrice)} × {item.quantity}</span>
-                  <span className="font-bold text-primary">{formatMoney(lineCost)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" className="stitch-button-secondary px-3 py-2"
-                    onClick={() => { if (isGuest) setGuestQuantity(item.medicineId, Math.max(1, item.quantity - 1)); else if (token) setQuantity(token, item.id, Math.max(1, item.quantity - 1)).catch(() => undefined); }}
-                    disabled={!isGuest && isLoading}>&#8722;</button>
-                  <span className="min-w-8 text-center font-semibold">{item.quantity}</span>
-                  <button type="button" className="stitch-button-secondary px-3 py-2"
-                    onClick={() => { if (isGuest) setGuestQuantity(item.medicineId, item.quantity + 1); else if (token) setQuantity(token, item.id, item.quantity + 1).catch(() => undefined); }}
-                    disabled={!isGuest && isLoading}>+</button>
-                  <button type="button" className="ml-auto rounded-lg bg-red-100 px-3 py-2 text-xs font-bold text-red-700"
-                    onClick={() => { if (isGuest) removeGuestItem(item.medicineId); else if (token) removeItem(token, item.id).catch(() => undefined); }}
-                    disabled={!isGuest && isLoading}>Удалить</button>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+        {/* Cart items — clean list */}
+        <div className="divide-y divide-surface-container-high">
+          {cartItems.map((item) => {
+            const medicine = medicineMap[item.medicineId];
+            const image = resolveMedicineImageUrl(medicine);
+            const name = medicine ? getMedicineDisplayName(medicine) : `Товар...`;
+            const minPrice = getCheapestPrice(medicine);
 
-        {/* Summary */}
-        <section className="stitch-card space-y-3 p-5">
-          <h3 className="text-lg font-bold">Итого в корзине</h3>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-on-surface-variant">Всего товаров</span>
-            <span className="font-semibold">{cartItems.length} · {formatMoney(cartTotalCost)}</span>
-          </div>
-          {selectedOption && excludedItems.length > 0 ? (
-            <div className="flex items-center justify-between text-sm text-yellow-700">
-              <span>Не войдёт в заказ</span>
-              <span className="font-semibold">{excludedItems.length} товаров (останутся в корзине)</span>
-            </div>
-          ) : null}
-          {selectedOption ? (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-on-surface-variant font-bold">К оформлению</span>
-              <span className="font-extrabold text-primary">{includedItems.length} · {formatMoney(checkoutCost)}</span>
-            </div>
-          ) : null}
-        </section>
-
-        {/* Pharmacy selection */}
-        {options.length > 0 ? (
-          <section className="stitch-card space-y-4 p-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold">Выбор аптеки</h3>
-              <span className="text-xs text-on-surface-variant">{options.length} аптек</span>
-            </div>
-            {options.map((option) => {
-              const isSelected = selectedPharmacyId === option.pharmacyId;
-              const allAvailable = option.availableCount === option.totalCount;
-              return (
-                <div key={option.pharmacyId}
-                  className={`rounded-2xl p-4 space-y-2 cursor-pointer transition ${isSelected ? "bg-primary/5 ring-2 ring-primary" : "bg-surface-container-low hover:bg-surface-container-high"}`}
-                  onClick={() => setDraft({ pharmacyId: option.pharmacyId })}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-bold">{option.pharmacyTitle}</p>
-                      {option.pharmacyAddress ? <p className="text-xs text-on-surface-variant">{option.pharmacyAddress}</p> : null}
+            return (
+              <div key={item.id} className="flex items-center gap-1.5 xs:gap-2.5 py-2.5 xs:py-3.5">
+                {/* Image */}
+                <Link href={`/product/${item.medicineId}`} className="h-12 w-12 xs:h-14 xs:w-14 sm:h-16 sm:w-16 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                  {image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={image} alt={name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-outline opacity-40">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+                      </svg>
                     </div>
-                    <p className="text-lg font-black text-primary">{formatMoney(option.totalCost)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${allAvailable ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800"}`}>
-                      {option.availableCount}/{option.totalCount} в наличии
-                    </span>
-                    {isSelected ? <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white">Выбрано</span> : null}
-                  </div>
+                  )}
+                </Link>
+
+                {/* Name + price */}
+                <div className="flex-1 min-w-0">
+                  <Link href={`/product/${item.medicineId}`} className="text-xs xs:text-sm font-bold leading-tight line-clamp-2 hover:text-primary transition">
+                    {name}
+                  </Link>
+                  <p className="text-xs xs:text-sm text-on-surface-variant mt-0.5">
+                    от <span className="font-bold text-on-surface">{minPrice ? formatMoney(minPrice) : "—"}</span>
+                  </p>
                 </div>
-              );
-            })}
-          </section>
-        ) : cartItems.length > 0 ? (
-          <div className="stitch-card p-5 text-sm text-on-surface-variant text-center">
-            Ни одна аптека не имеет товары из вашей корзины в нужном количестве.
-          </div>
-        ) : null}
 
-        {/* Checkout panel */}
-        <section className="stitch-card space-y-4 p-5">
-          <h3 className="text-lg font-bold">Оформление заказа</h3>
-
-          <div className="flex gap-3">
-            <button type="button" onClick={() => setDraft({ isPickup: false })}
-              className={`flex-1 rounded-xl p-3 text-sm font-bold transition ${!isPickup ? "bg-primary text-white" : "bg-surface-container-low"}`}>
-              Доставка
-            </button>
-            <button type="button" onClick={() => setDraft({ isPickup: true })}
-              className={`flex-1 rounded-xl p-3 text-sm font-bold transition ${isPickup ? "bg-primary text-white" : "bg-surface-container-low"}`}>
-              Самовывоз
-            </button>
-          </div>
-
-          {!isPickup && (
-            <AddressAutocomplete
-              value={deliveryAddress}
-              onChange={(v) => setDraft({ deliveryAddress: v })}
-              onValidChange={setIsAddressValid}
-              placeholder="Адрес доставки"
-            />
-          )}
-
-          <div className="flex items-center justify-between">
-            <span className="text-on-surface-variant">К оплате:</span>
-            <span className="text-xl font-black text-primary">{formatMoney(checkoutCost)}</span>
-          </div>
-
-          {excludedItems.length > 0 && selectedOption ? (
-            <p className="text-xs text-yellow-700 text-center">
-              {excludedItems.length} товаров нет в {selectedOption.pharmacyTitle} — они останутся в корзине
-            </p>
-          ) : null}
-
-          {isGuest ? (
-            <div className="space-y-3 pt-2">
-              <p className="text-sm text-on-surface-variant text-center">Для оформления заказа необходимо войти в аккаунт. Корзина сохранится.</p>
-              <div className="flex gap-3">
-                <Link href="/login" className="stitch-button flex-1 text-center">Войти и оформить</Link>
-                <Link href="/register" className="stitch-button-secondary flex-1 text-center">Регистрация</Link>
+                {/* Quantity controls */}
+                <div className="flex items-center gap-0 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
+                    disabled={!isGuest && isLoading}
+                    className="flex h-7 w-7 xs:h-9 xs:w-9 sm:h-10 sm:w-10 items-center justify-center rounded-l-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition text-base xs:text-lg font-bold"
+                  >
+                    &#8722;
+                  </button>
+                  <span className="flex h-7 xs:h-9 sm:h-10 min-w-[1.5rem] xs:min-w-[2rem] items-center justify-center bg-surface-container-low text-[10px] xs:text-xs sm:text-sm font-bold">
+                    {item.quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
+                    disabled={!isGuest && isLoading}
+                    className="flex h-7 w-7 xs:h-9 xs:w-9 sm:h-10 sm:w-10 items-center justify-center rounded-r-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition text-base xs:text-lg font-bold"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+            );
+          })}
+        </div>
+
+        {/* Recommendations */}
+        {recommendations.length > 0 && (
+          <div className="pt-4 xs:pt-5 space-y-2 xs:space-y-3">
+            <div className="h-px bg-surface-container-high" />
+            <h3 className="text-base xs:text-lg font-black pt-1">Что-то ещё?</h3>
+            <div className="flex gap-1.5 xs:gap-2 overflow-x-auto pb-2 scrollbar-hide scroll-touch -mx-1.5 px-1.5 xs:-mx-3 xs:px-3 snap-x">
+              {recommendations.map((med) => (
+                <div key={med.id} className="w-[120px] xs:w-[130px] sm:w-[155px] max-w-[160px] flex-shrink-0 snap-start">
+                  <MedicineCard medicine={med} compact />
+                </div>
+              ))}
             </div>
-          ) : (
-            <button type="button" className="stitch-button w-full py-4 text-base" onClick={onCheckout}
-              disabled={isSubmitting || includedItems.length === 0 || (!isPickup && !isAddressValid)}>
-              {isSubmitting ? "Оформляем..." : includedItems.length === 0 ? "Нет товаров для оформления" : !isPickup && !isAddressValid ? "Укажите корректный адрес" : `Оформить заказ (${includedItems.length} товаров)`}
-            </button>
-          )}
-        </section>
+          </div>
+        )}
+
+        {/* Spacer for sticky button */}
+        <div className="h-16 xs:h-20" />
+      </div>
+
+      {/* Sticky bottom button */}
+      <div className="fixed bottom-14 xs:bottom-16 left-0 right-0 z-30 px-1.5 xs:px-3 sm:px-4 pb-1.5 xs:pb-3">
+        <div className="mx-auto max-w-5xl">
+          <button
+            type="button"
+            onClick={() => router.push("/cart/pharmacy")}
+            className="stitch-button w-full py-3 xs:py-4 text-sm xs:text-base font-bold rounded-2xl shadow-glass"
+            disabled={cartItems.length === 0}
+          >
+            Выбрать аптеку
+          </button>
+        </div>
       </div>
     </AppShell>
   );

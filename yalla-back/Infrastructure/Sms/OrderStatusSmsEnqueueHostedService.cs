@@ -72,9 +72,17 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
         ? "OsonSms"
         : _templatesOptions.Provider.Trim();
 
+      // Only send SMS for confirmed (UnderReview) and on-the-way statuses
+      var notifiableStatuses = new[]
+      {
+        Yalla.Domain.Enums.Status.UnderReview,
+        Yalla.Domain.Enums.Status.OnTheWay
+      };
+
       var candidates = await dbContext.Orders
         .AsNoTracking()
         .Where(x => !string.IsNullOrWhiteSpace(x.ClientPhoneNumber))
+        .Where(x => notifiableStatuses.Contains(x.Status))
         .Where(x => !dbContext.SmsOutboxMessages.Any(m =>
           m.OrderId == x.Id
           && m.StatusSnapshot == x.Status
@@ -85,7 +93,9 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
         {
           x.Id,
           x.ClientPhoneNumber,
-          x.Status
+          x.Status,
+          x.Cost,
+          x.PaymentCurrency
         })
         .ToListAsync(cancellationToken);
 
@@ -95,7 +105,7 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
       var insertedCount = 0;
       foreach (var candidate in candidates)
       {
-        var message = orderStatusSmsService.BuildMessage(candidate.Id, candidate.Status);
+        var message = orderStatusSmsService.BuildMessage(candidate.Id, candidate.Status, candidate.Cost, candidate.PaymentCurrency);
         if (string.IsNullOrWhiteSpace(message))
           continue;
 

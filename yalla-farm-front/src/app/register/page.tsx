@@ -139,18 +139,29 @@ export default function RegisterPage() {
   }
 
   return (
-    <AppShell top={<TopBar title="Регистрация" backHref="/" />}>
-      <div className="mx-auto max-w-md space-y-4">
-        <form className="stitch-card space-y-4 p-6" onSubmit={startRegistration}>
-          <h2 className="text-xl font-bold">Создать аккаунт</h2>
+    <AppShell top={<TopBar title="Регистрация" backHref="back" />}>
+      <div className="mx-auto max-w-md px-3 xs:px-4 space-y-2 xs:space-y-3 sm:space-y-4">
+        <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={startRegistration}>
+          <h2 className="text-lg xs:text-xl sm:text-2xl font-bold">Создать аккаунт</h2>
 
           <label className="block space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
-            <input className="stitch-input" placeholder="+992 XXX XX XX XX" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required />
+            <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Телефон</span>
+            <div className="flex items-center stitch-input p-0 overflow-hidden">
+              <span className="pl-3 pr-1 text-on-surface-variant font-medium select-none flex-shrink-0">+992</span>
+              <input
+                className="flex-1 bg-transparent border-none outline-none py-2 pr-3 text-on-surface"
+                type="tel"
+                inputMode="numeric"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                placeholder="900123456"
+                required
+              />
+            </div>
           </label>
 
           <label className="block space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant">Пароль</span>
+            <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Пароль</span>
             <div className="relative">
               <input className="stitch-input w-full pr-10" type={showPassword ? "text" : "password"} placeholder="Минимум 6 символов" value={password} onChange={(e) => setPassword(e.target.value)} required />
               <button type="button" tabIndex={-1} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition" onClick={() => setShowPassword(!showPassword)}>
@@ -160,7 +171,7 @@ export default function RegisterPage() {
           </label>
 
           <label className="block space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant">Подтвердите пароль</span>
+            <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Подтвердите пароль</span>
             <div className="relative">
               <input className="stitch-input w-full pr-10" type={showConfirm ? "text" : "password"} placeholder="Повторите пароль" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
               <button type="button" tabIndex={-1} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition" onClick={() => setShowConfirm(!showConfirm)}>
@@ -169,7 +180,7 @@ export default function RegisterPage() {
             </div>
           </label>
 
-          <label className="flex items-center gap-2 rounded-xl bg-surface-container-low p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-xl bg-surface-container-low p-2 xs:p-3 text-xs xs:text-sm font-medium">
             <input type="checkbox" checked={verifyBySms} onChange={(e) => setVerifyBySms(e.target.checked)} />
             Регистрация с SMS-подтверждением
           </label>
@@ -177,24 +188,24 @@ export default function RegisterPage() {
           {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
           {message ? <div className="rounded-xl bg-emerald-100 p-3 text-sm text-emerald-700">{message}</div> : null}
 
-          <button type="submit" className="stitch-button w-full" disabled={isSubmitting}>
+          <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSubmitting}>
             {isSubmitting ? "Обрабатываем..." : verifyBySms ? "Получить код" : "Создать аккаунт"}
           </button>
 
-          <p className="text-sm text-on-surface-variant">
+          <p className="text-xs xs:text-sm text-on-surface-variant">
             Уже зарегистрированы? <Link className="font-bold text-primary" href="/login">Войти</Link>
           </p>
         </form>
 
         {session ? (
-          <form className="stitch-card space-y-4 p-6" onSubmit={verifyRegistration}>
-            <h3 className="text-lg font-bold">Подтвердите номер</h3>
-            <p className="text-sm text-on-surface-variant">
+          <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={verifyRegistration}>
+            <h3 className="text-base xs:text-lg font-bold">Подтвердите номер</h3>
+            <p className="text-xs xs:text-sm text-on-surface-variant">
               Введите код из SMS для {session.phoneNumber}. Срок действия до {new Date(session.expiresAtUtc).toLocaleTimeString("ru-RU")}
             </p>
 
             <label className="block space-y-1">
-              <span className="text-sm font-medium text-on-surface-variant">Код ({session.codeLength} символов)</span>
+              <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Код ({session.codeLength} символов)</span>
               <input
                 className="stitch-input tracking-widest sm:tracking-[0.3em]"
                 value={verificationCode}
@@ -204,11 +215,11 @@ export default function RegisterPage() {
               />
             </label>
 
-            <button type="submit" className="stitch-button w-full" disabled={isSubmitting}>
+            <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSubmitting}>
               {isSubmitting ? "Проверяем..." : "Подтвердить"}
             </button>
 
-            <button type="button" className="stitch-button-secondary w-full" onClick={resendCode} disabled={isSubmitting}>
+            <button type="button" className="stitch-button-secondary w-full min-h-[44px]" onClick={resendCode} disabled={isSubmitting}>
               Отправить код повторно
             </button>
           </form>

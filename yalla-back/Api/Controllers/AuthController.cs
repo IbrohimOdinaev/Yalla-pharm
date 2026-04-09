@@ -28,6 +28,16 @@ public sealed class AuthController : ControllerBase
     return Ok(response);
   }
 
+  [HttpPost("telegram")]
+  [AllowAnonymous]
+  public async Task<IActionResult> TelegramLogin(
+    [FromBody] TelegramLoginRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.TelegramLoginAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
   [HttpPost("change-password")]
   [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> ChangePassword(

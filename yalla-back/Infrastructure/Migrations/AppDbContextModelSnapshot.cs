@@ -179,6 +179,115 @@ namespace Infrastructure.Migrations
                     b.ToTable("checkout_requests", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.DeliveryData", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("DeliveryCost")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("delivery_cost");
+
+                    b.Property<double?>("Distance")
+                        .HasColumnType("double precision")
+                        .HasColumnName("distance");
+
+                    b.Property<long?>("DriverDeviceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("driver_device_id");
+
+                    b.Property<string>("DriverName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("driver_name");
+
+                    b.Property<string>("DriverPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("driver_phone");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("from_address");
+
+                    b.Property<long?>("FromAddressId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("from_address_id");
+
+                    b.Property<double>("FromLatitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("from_latitude");
+
+                    b.Property<double>("FromLongitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("from_longitude");
+
+                    b.Property<string>("FromTitle")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("from_title");
+
+                    b.Property<long?>("JuraOrderId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("jura_order_id");
+
+                    b.Property<string>("JuraStatus")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("jura_status");
+
+                    b.Property<int?>("JuraStatusId")
+                        .HasColumnType("integer")
+                        .HasColumnName("jura_status_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("ToAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("to_address");
+
+                    b.Property<long?>("ToAddressId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("to_address_id");
+
+                    b.Property<double>("ToLatitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("to_latitude");
+
+                    b.Property<double>("ToLongitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("to_longitude");
+
+                    b.Property<string>("ToTitle")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("to_title");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JuraOrderId")
+                        .HasDatabaseName("ix_delivery_data_jura_order_id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_delivery_data_order_id");
+
+                    b.ToTable("delivery_data", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
                 {
                     b.Property<Guid>("Id")
@@ -365,6 +474,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("is_pickup");
+
+                    b.Property<bool>("IsStockDeducted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_stock_deducted");
 
                     b.Property<DateTime>("OrderPlacedAt")
                         .HasColumnType("timestamp without time zone")
@@ -779,6 +894,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("admin_id");
 
+                    b.Property<string>("IconUrl")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -1102,6 +1220,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("Role");
 
+                    b.Property<long?>("TelegramId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("telegram_id");
+
                     b.Property<string>("user_type")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -1113,6 +1235,11 @@ namespace Infrastructure.Migrations
                     b.HasIndex("PhoneNumber")
                         .IsUnique()
                         .HasDatabaseName("ix_users_phone_number");
+
+                    b.HasIndex("TelegramId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_users_telegram_id")
+                        .HasFilter("telegram_id IS NOT NULL");
 
                     b.ToTable("users", (string)null);
 
@@ -1192,6 +1319,17 @@ namespace Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.DeliveryData", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Order", "Order")
+                        .WithOne("DeliveryData")
+                        .HasForeignKey("Yalla.Domain.Entities.DeliveryData", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
@@ -1435,6 +1573,8 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Yalla.Domain.Entities.Order", b =>
                 {
+                    b.Navigation("DeliveryData");
+
                     b.Navigation("Positions");
                 });
 

@@ -60,9 +60,19 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .HasColumnType("date")
       .IsRequired(false);
 
+    builder.Property(x => x.TelegramId)
+      .HasColumnName("telegram_id")
+      .HasColumnType("bigint")
+      .IsRequired(false);
+
     builder.HasIndex(x => x.PhoneNumber)
       .IsUnique()
       .HasDatabaseName("ix_users_phone_number");
+
+    builder.HasIndex(x => x.TelegramId)
+      .IsUnique()
+      .HasFilter("telegram_id IS NOT NULL")
+      .HasDatabaseName("ix_users_telegram_id");
 
     builder.HasDiscriminator<string>("user_type")
       .HasValue<User>("User")

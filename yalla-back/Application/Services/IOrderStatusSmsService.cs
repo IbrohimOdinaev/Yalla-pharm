@@ -4,6 +4,6 @@ namespace Yalla.Application.Services;
 
 public interface IOrderStatusSmsService
 {
-  string? BuildMessage(Guid orderId, Status status);
+  string? BuildMessage(Guid orderId, Status status, decimal cost = 0, string? currency = null);
   string? BuildPaymentConfirmedMessage(Guid orderId, decimal amount, string currency);
 }

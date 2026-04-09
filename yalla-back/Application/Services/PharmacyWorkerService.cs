@@ -63,11 +63,14 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
           request.PharmacyId,
           cancellationToken);
 
-        var adminExists = await _dbContext.Users
-          .AnyAsync(x => x.Id == request.AdminId, cancellationToken);
+        if (request.AdminId.HasValue && request.AdminId.Value != Guid.Empty)
+        {
+            var adminExists = await _dbContext.Users
+              .AnyAsync(x => x.Id == request.AdminId.Value, cancellationToken);
 
-        if (!adminExists)
-            throw new InvalidOperationException($"Admin user with id '{request.AdminId}' was not found.");
+            if (!adminExists)
+                throw new InvalidOperationException($"Admin user with id '{request.AdminId}' was not found.");
+        }
 
         request.ApplyToDomain(pharmacy);
 
@@ -237,6 +240,13 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         var worker = request.ToDomain(pharmacy, normalizedPhoneNumber, passwordHash);
 
         _dbContext.PharmacyWorkers.Add(worker);
+
+        // Auto-assign admin to pharmacy if it has no admin yet
+        if (pharmacy.AdminId == Guid.Empty)
+        {
+            pharmacy.SetAdminId(worker.Id);
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new RegisterPharmacyWorkerResponse

@@ -7,6 +7,7 @@ export type ActivePharmacy = {
   isActive?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  iconUrl?: string | null;
 };
 
 export async function getActivePharmacies(token?: string): Promise<ActivePharmacy[]> {

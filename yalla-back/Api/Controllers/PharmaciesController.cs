@@ -1,6 +1,7 @@
 using Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Yalla.Application.Abstractions;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
 using Yalla.Domain.Enums;
@@ -12,10 +13,17 @@ namespace Api.Controllers;
 public sealed class PharmaciesController : ControllerBase
 {
   private readonly IPharmacyWorkerService _pharmacyWorkerService;
+  private readonly IMedicineImageStorage _imageStorage;
+  private readonly IAppDbContext _db;
 
-  public PharmaciesController(IPharmacyWorkerService pharmacyWorkerService)
+  public PharmaciesController(
+    IPharmacyWorkerService pharmacyWorkerService,
+    IMedicineImageStorage imageStorage,
+    IAppDbContext db)
   {
     _pharmacyWorkerService = pharmacyWorkerService;
+    _imageStorage = imageStorage;
+    _db = db;
   }
 
   [HttpGet]
@@ -65,7 +73,8 @@ public sealed class PharmaciesController : ControllerBase
         AdminId = User.GetRequiredUserId(),
         IsActive = request.IsActive,
         Latitude = request.Latitude,
-        Longitude = request.Longitude
+        Longitude = request.Longitude,
+        IconUrl = request.IconUrl
       };
     }
 
@@ -81,5 +90,72 @@ public sealed class PharmaciesController : ControllerBase
   {
     var response = await _pharmacyWorkerService.DeletePharmacyAsync(request, cancellationToken);
     return Ok(response);
+  }
+
+  [HttpPost("icon")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> UploadIcon(
+    [FromForm] Guid pharmacyId,
+    [FromForm] IFormFile image,
+    CancellationToken cancellationToken)
+  {
+    if (image is null || image.Length <= 0)
+      throw new InvalidOperationException("Image file is required.");
+
+    if (image.Length > 5 * 1024 * 1024)
+      throw new InvalidOperationException("Icon file is too large. Maximum 5 MB.");
+
+    var pharmacy = await _db.Pharmacies.FindAsync([pharmacyId], cancellationToken)
+      ?? throw new InvalidOperationException("Pharmacy not found.");
+
+    // Delete old icon if exists
+    if (!string.IsNullOrEmpty(pharmacy.IconUrl))
+    {
+      try { await _imageStorage.DeleteAsync(pharmacy.IconUrl, cancellationToken); }
+      catch { /* ignore */ }
+    }
+
+    var contentType = string.IsNullOrWhiteSpace(image.ContentType) ? "application/octet-stream" : image.ContentType;
+    using var stream = image.OpenReadStream();
+    var key = await _imageStorage.UploadAsync(stream, contentType, $"pharmacy-icon-{pharmacyId}{Path.GetExtension(image.FileName)}", cancellationToken);
+
+    pharmacy.SetIconUrl(key);
+    await _db.SaveChangesAsync(cancellationToken);
+
+    return Ok(new { iconUrl = key });
+  }
+
+  [HttpGet("icon/{pharmacyId:guid}/content")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GetIconContent(Guid pharmacyId, CancellationToken cancellationToken)
+  {
+    var pharmacy = await _db.Pharmacies.FindAsync([pharmacyId], cancellationToken)
+      ?? throw new InvalidOperationException("Pharmacy not found.");
+
+    if (string.IsNullOrEmpty(pharmacy.IconUrl))
+      return NotFound();
+
+    var content = await _imageStorage.GetContentAsync(pharmacy.IconUrl, cancellationToken);
+    return File(content.Content, content.ContentType);
+  }
+
+  [HttpDelete("icon")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> DeleteIcon(
+    [FromBody] DeletePharmacyRequest request,
+    CancellationToken cancellationToken)
+  {
+    var pharmacy = await _db.Pharmacies.FindAsync([request.PharmacyId], cancellationToken)
+      ?? throw new InvalidOperationException("Pharmacy not found.");
+
+    if (!string.IsNullOrEmpty(pharmacy.IconUrl))
+    {
+      try { await _imageStorage.DeleteAsync(pharmacy.IconUrl, cancellationToken); }
+      catch { /* ignore */ }
+      pharmacy.SetIconUrl(null);
+      await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    return Ok(new { deleted = true });
   }
 }

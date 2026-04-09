@@ -73,7 +73,7 @@ export default function WorkspacePage() {
 
   if (!token || role !== "Admin") {
     return (
-      <AppShell top={<TopBar title="Workspace" backHref="/" />}>
+      <AppShell top={<TopBar title="Workspace" />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm">
           Доступ только для администраторов. <Link href="/login" className="font-bold text-primary">Войти</Link>
         </div>
@@ -82,7 +82,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <AppShell top={<TopBar title="Workspace" backHref="/" />}>
+    <AppShell top={<TopBar title="Workspace" />} hideGlobalNav>
       <div className="space-y-4">
         {/* Feature 14: Admin hero */}
         <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-3">
@@ -94,20 +94,20 @@ export default function WorkspacePage() {
         </div>
 
         {/* Feature 14: Stat cards */}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
-          <div className="stitch-card p-4 flex sm:block items-center sm:text-center gap-3 sm:gap-0">
-            <p className="text-2xl font-black text-primary">{orderCount}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Заказы в ленте</p>
+        <div className="grid grid-cols-2 gap-1.5 xs:gap-2 sm:grid-cols-3 sm:gap-3">
+          <div className="stitch-card p-1.5 xs:p-2 sm:p-4 flex sm:block items-center sm:text-center gap-1.5 xs:gap-2 sm:gap-0">
+            <p className="text-base xs:text-lg sm:text-2xl font-black text-primary">{orderCount}</p>
+            <p className="text-[9px] xs:text-[10px] sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Заказы</p>
           </div>
-          <div className="stitch-card p-4 flex sm:block items-center sm:text-center gap-3 sm:gap-0">
-            <p className={`text-lg font-black ${pharmacyActive ? "text-emerald-600" : "text-red-600"}`}>
+          <div className="stitch-card p-1.5 xs:p-2 sm:p-4 flex sm:block items-center sm:text-center gap-1.5 xs:gap-2 sm:gap-0">
+            <p className={`text-base xs:text-lg sm:text-2xl font-black ${pharmacyActive ? "text-emerald-600" : "text-red-600"}`}>
               {pharmacyActive ? "Активна" : "Отключена"}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Статус аптеки</p>
+            <p className="text-[10px] xs:text-xs sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Статус аптеки</p>
           </div>
-          <div className="stitch-card p-4 flex sm:block items-center sm:text-center gap-3 sm:gap-0">
-            <p className="text-lg font-black text-primary truncate">{adminIdentity?.name || "Admin"}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Администратор</p>
+          <div className="stitch-card p-2 xs:p-3 sm:p-4 flex sm:block items-center sm:text-center gap-2 xs:gap-3 sm:gap-0">
+            <p className="text-lg xs:text-xl sm:text-2xl font-black text-primary truncate">{adminIdentity?.name || "Admin"}</p>
+            <p className="text-[10px] xs:text-xs sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Администратор</p>
           </div>
         </div>
 
@@ -180,10 +180,10 @@ function PharmacyTab({ token }: { token: string }) {
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
-      <form className="stitch-card space-y-4 p-6" onSubmit={onSaveAdmin}>
+      <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSaveAdmin}>
         <div>
-          <h2 className="text-lg font-bold">Профиль администратора</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Ваши контактные данные и данные для входа.</p>
+          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Профиль администратора</h2>
+          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Ваши контактные данные и данные для входа.</p>
         </div>
         <label className="block space-y-1">
           <span className="text-sm font-medium text-on-surface-variant">Имя</span>
@@ -198,10 +198,10 @@ function PharmacyTab({ token }: { token: string }) {
       </form>
 
       {pharmacy ? (
-        <form className="stitch-card space-y-4 p-6" onSubmit={onSavePharmacy}>
+        <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSavePharmacy}>
           <div>
-            <h2 className="text-lg font-bold">Управление аптекой</h2>
-            <p className="mt-1 text-sm text-on-surface-variant">Название, адрес и статус видимости для клиентов.</p>
+            <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление аптекой</h2>
+            <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Название, адрес и статус видимости для клиентов.</p>
           </div>
           <label className="block space-y-1">
             <span className="text-sm font-medium text-on-surface-variant">Название</span>
@@ -247,10 +247,10 @@ function OffersTab({ token }: { token: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 xs:space-y-3 sm:space-y-4">
       <div>
-        <h2 className="text-lg font-bold">Управление предложениями</h2>
-        <p className="mt-1 text-sm text-on-surface-variant">Найдите лекарство и задайте цену и остаток для вашей аптеки.</p>
+        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление предложениями</h2>
+        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Найдите лекарство и задайте цену и остаток для вашей аптеки.</p>
       </div>
 
       <input
@@ -336,6 +336,7 @@ function OrdersTab({ token }: { token: string }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+
   async function onAction(action: string, orderId: string) {
     try {
       if (action === "assembly") await startAssembly(token, orderId);
@@ -358,11 +359,11 @@ function OrdersTab({ token }: { token: string }) {
   }, {});
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 xs:space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold">Управление заказами</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Доска заказов по всем статусам{dateFilter ? ` · ${dateFilter}` : ""}</p>
+          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление заказами</h2>
+          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Доска заказов по всем статусам{dateFilter ? ` · ${dateFilter}` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -392,11 +393,11 @@ function OrdersTab({ token }: { token: string }) {
           };
 
           return (
-            <div key={status} className="min-w-[260px] flex-shrink-0 snap-start rounded-2xl bg-surface-container-low p-3 space-y-3 md:min-w-0">
+            <div key={status} className="min-w-[220px] xs:min-w-[250px] sm:min-w-[280px] flex-shrink-0 snap-start rounded-2xl bg-surface-container-low p-3 space-y-3 md:min-w-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[status]}`} />
-                  <h4 className="text-sm font-bold">{STATUS_LABELS[status]}</h4>
+                  <h4 className="text-[10px] xs:text-xs sm:text-sm font-bold">{STATUS_LABELS[status]}</h4>
                 </div>
                 <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-bold">{grouped[status].length}</span>
               </div>

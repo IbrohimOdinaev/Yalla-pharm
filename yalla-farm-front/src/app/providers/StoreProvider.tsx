@@ -6,6 +6,7 @@ import { store, type RootState } from "@/app/store";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { getStoredToken, setStoredToken } from "@/shared/lib/auth-storage";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
+import { useCartStore } from "@/features/cart/model/cartStore";
 
 function AuthPersistenceBridge() {
   const dispatch = useDispatch();
@@ -35,15 +36,21 @@ function AuthPersistenceBridge() {
     }
   }, [dispatch]);
 
+  const loadServerCart = useCartStore((state) => state.loadBasket);
+
   useEffect(() => {
     setStoredToken(token);
 
-    // merge guest cart when user just logged in
+    // merge guest cart and load server cart when user just logged in
     if (token && !prevTokenRef.current) {
       guestMerge(token).catch(() => undefined);
     }
+    // Load server cart whenever token is available
+    if (token) {
+      loadServerCart(token).catch(() => undefined);
+    }
     prevTokenRef.current = token;
-  }, [token, guestMerge]);
+  }, [token, guestMerge, loadServerCart]);
 
   return null;
 }

@@ -28,6 +28,7 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<SmsVerificationSession> SmsVerificationSessions => Set<SmsVerificationSession>();
   public DbSet<SmsOutboxMessage> SmsOutboxMessages => Set<SmsOutboxMessage>();
   public DbSet<Category> Categories => Set<Category>();
+  public DbSet<DeliveryData> DeliveryData => Set<DeliveryData>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

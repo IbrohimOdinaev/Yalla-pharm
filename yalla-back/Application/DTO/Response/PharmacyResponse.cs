@@ -9,4 +9,5 @@ public sealed class PharmacyResponse
   public bool IsActive { get; init; }
   public double? Latitude { get; init; }
   public double? Longitude { get; init; }
+  public string? IconUrl { get; init; }
 }

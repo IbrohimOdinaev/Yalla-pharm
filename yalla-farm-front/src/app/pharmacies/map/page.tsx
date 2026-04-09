@@ -35,7 +35,7 @@ export default function PharmaciesMapPage() {
   }, [token]);
 
   return (
-    <AppShell top={<TopBar title="Выбор аптеки" backHref="/cart" />}>
+    <AppShell top={<TopBar title="Выбор аптеки" backHref="back" />}>
       {!token ? (
         <div className="stitch-card p-6 text-sm">
           Чтобы выбрать аптеку, нужно <Link href="/login" className="font-bold text-primary">войти в аккаунт</Link>.

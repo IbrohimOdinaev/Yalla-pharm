@@ -4,16 +4,22 @@ import type { MapProvider } from "./types";
 import { env } from "@/shared/config/env";
 import { GoogleMapProvider } from "./google-provider";
 import { YandexMapProvider } from "./yandex-provider";
+import { JuraMapProvider } from "./jura-provider";
 
-let _provider: MapProvider | null = null;
+let _provider: JuraMapProvider | null = null;
 
 export function getMapProvider(): MapProvider {
   if (!_provider) {
-    _provider = env.googleMapsApiKey
+    const baseProvider = env.googleMapsApiKey
       ? new GoogleMapProvider()
       : new YandexMapProvider();
+    _provider = new JuraMapProvider(baseProvider);
   }
   return _provider;
+}
+
+export function getLastSelectedAddress() {
+  return _provider?.getLastSelectedSuggestion() ?? null;
 }
 
 // Dushanbe center

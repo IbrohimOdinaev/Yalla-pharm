@@ -18,4 +18,8 @@ public interface IAuthService
     Guid adminId,
     UpdateAdminProfileRequest request,
     CancellationToken cancellationToken = default);
+
+  Task<LoginResponse> TelegramLoginAsync(
+    TelegramLoginRequest request,
+    CancellationToken cancellationToken = default);
 }

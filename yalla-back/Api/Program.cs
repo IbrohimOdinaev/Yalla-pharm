@@ -12,6 +12,7 @@ using Serilog;
 using Yalla.Application;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
+using Yalla.Application.Services;
 using Yalla.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -161,6 +162,17 @@ builder.Services
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IRealtimeUpdatesPublisher, SignalRRealtimeUpdatesPublisher>();
+
+// Override AuthService with Telegram config
+var tgBotToken = builder.Configuration["Telegram:BotToken"] ?? "";
+var tgMaxAge = builder.Configuration.GetValue<int?>("Telegram:LoginWidgetMaxAgeSeconds") ?? 86400;
+builder.Services.AddScoped<IAuthService>(sp =>
+    new AuthService(
+        sp.GetRequiredService<IAppDbContext>(),
+        sp.GetRequiredService<IPasswordHasher>(),
+        sp.GetRequiredService<IJwtTokenProvider>(),
+        tgBotToken,
+        tgMaxAge));
 
 var app = builder.Build();
 

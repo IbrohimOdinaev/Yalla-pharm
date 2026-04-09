@@ -57,14 +57,19 @@ body {
 }
 
 /* Mobile touch targets */
-@media (max-width: 640px) {
+@media (max-width: 639px) {
   .stitch-button, .stitch-button-secondary {
-    @apply min-h-[44px];
+    @apply min-h-[40px];
   }
   .stitch-input {
-    @apply min-h-[44px] text-base;
-    /* text-base prevents iOS zoom on focus */
+    @apply min-h-[40px] text-base;
+    /* text-base (16px) prevents iOS zoom on focus */
   }
+}
+
+/* Smooth momentum scroll on iOS */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Safe area for bottom nav */

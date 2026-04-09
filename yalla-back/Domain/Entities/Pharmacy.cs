@@ -17,6 +17,8 @@ public class Pharmacy
     public double? Latitude { get; private set; }
     public double? Longitude { get; private set; }
 
+    public string? IconUrl { get; private set; }
+
     private readonly List<Order> _orders = new();
     public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
 
@@ -84,6 +86,11 @@ public class Pharmacy
     {
         Latitude = latitude;
         Longitude = longitude;
+    }
+
+    public void SetIconUrl(string? iconUrl)
+    {
+        IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl.Trim();
     }
 
     public void ChangeActivity()

@@ -25,6 +25,7 @@ public interface IAppDbContext
     DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
     DbSet<User> Users { get; }
     DbSet<Category> Categories { get; }
+    DbSet<DeliveryData> DeliveryData { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

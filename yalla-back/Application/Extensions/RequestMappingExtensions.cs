@@ -86,8 +86,11 @@ public static class RequestMappingExtensions
     {
         pharmacy.SetTitle(request.Title);
         pharmacy.SetAddress(request.Address);
-        pharmacy.SetAdminId(request.AdminId);
+        if (request.AdminId.HasValue && request.AdminId.Value != Guid.Empty)
+            pharmacy.SetAdminId(request.AdminId.Value);
         pharmacy.SetCoordinates(request.Latitude, request.Longitude);
+        if (request.IconUrl is not null)
+            pharmacy.SetIconUrl(request.IconUrl);
 
         if (pharmacy.IsActive != request.IsActive)
             pharmacy.ChangeActivity();

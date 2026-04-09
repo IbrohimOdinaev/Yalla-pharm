@@ -65,19 +65,31 @@ export type ApiBasketPosition = {
   price?: number;
 };
 
+export type ApiBasketPharmacyItem = {
+  medicineId: string;
+  requestedQuantity: number;
+  isFound: boolean;
+  foundQuantity: number;
+  hasEnoughQuantity: boolean;
+  price?: number | null;
+};
+
+export type ApiBasketPharmacyOption = {
+  pharmacyId: string;
+  pharmacyTitle?: string;
+  pharmacyIsActive?: boolean;
+  totalCost?: number;
+  isAvailable?: boolean;
+  foundMedicinesCount?: number;
+  totalMedicinesCount?: number;
+  enoughQuantityMedicinesCount?: number;
+  foundMedicinesRatio?: string;
+  items?: ApiBasketPharmacyItem[];
+};
+
 export type ApiBasket = {
   positions?: ApiBasketPosition[];
-  pharmacyOptions?: Array<{
-    pharmacyId: string;
-    pharmacyTitle?: string;
-    pharmacyAddress?: string;
-    totalCost?: number;
-    isAvailable?: boolean;
-    foundMedicinesCount?: number;
-    totalMedicinesCount?: number;
-    enoughQuantityMedicinesCount?: number;
-    foundMedicinesRatio?: string;
-  }>;
+  pharmacyOptions?: ApiBasketPharmacyOption[];
 };
 
 export type ApiCheckoutResponse = {
@@ -150,6 +162,8 @@ export type ApiOrder = {
   returnCost?: number;
   clientPhoneNumber?: string;
   orderPlacedAt?: string;
+  paymentUrl?: string;
+  paymentExpiresAtUtc?: string | null;
   positions?: ApiOrderPosition[];
   refundRequest?: ApiRefundRequest;
 };
@@ -161,4 +175,19 @@ export type ApiSearchResult = {
   totalCount?: number;
   page?: number;
   pageSize?: number;
+};
+
+/* ── Search by pharmacy ── */
+
+export type ApiPharmacyMedicinesGroup = {
+  pharmacyId: string;
+  pharmacyTitle: string;
+  totalInPharmacy: number;
+  medicines: ApiMedicine[];
+};
+
+export type ApiSearchByPharmacyResponse = {
+  query: string;
+  totalCount: number;
+  pharmacies: ApiPharmacyMedicinesGroup[];
 };

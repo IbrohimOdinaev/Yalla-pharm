@@ -1,6 +1,6 @@
 import { apiFetch } from "@/shared/api/http-client";
 import { env } from "@/shared/config/env";
-import type { ApiMedicine, ApiPaginated } from "@/shared/types/api";
+import type { ApiMedicine, ApiPaginated, ApiSearchByPharmacyResponse } from "@/shared/types/api";
 
 export async function getCatalogMedicines(page = 1, pageSize = 24): Promise<ApiMedicine[]> {
   const response = await apiFetch<ApiPaginated<ApiMedicine>>(`/api/medicines?page=${page}&pageSize=${pageSize}`);
@@ -81,5 +81,27 @@ export async function searchMedicines(query: string, limit = 24): Promise<ApiMed
     body: { query, limit }
   });
   return Array.isArray(response?.medicines) ? response.medicines : [];
+}
+
+export type LiveSearchSuggestion = {
+  id: string;
+  title: string;
+  articul: string;
+  categoryName?: string;
+  minPrice?: number;
+  score: number;
+};
+
+export async function liveSearch(query: string, limit = 10): Promise<LiveSearchSuggestion[]> {
+  const response = await apiFetch<{ suggestions?: LiveSearchSuggestion[] }>(`/api/medicines/live-search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  return Array.isArray(response?.suggestions) ? response.suggestions : [];
+}
+
+export async function searchByPharmacy(query: string, limit = 20): Promise<ApiSearchByPharmacyResponse> {
+  const response = await apiFetch<ApiSearchByPharmacyResponse>("/api/medicines/search-by-pharmacy", {
+    method: "POST",
+    body: { query, limit }
+  });
+  return response ?? { query, totalCount: 0, pharmacies: [] };
 }
 

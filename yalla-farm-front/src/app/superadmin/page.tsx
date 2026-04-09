@@ -8,7 +8,7 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 
 import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, type ApiAdmin } from "@/entities/admin/api";
-import { getAllPharmacies, updatePharmacy, deletePharmacy } from "@/entities/pharmacy/admin-api";
+import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon } from "@/entities/pharmacy/admin-api";
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
 import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage } from "@/entities/medicine/admin-api";
 import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl } from "@/entities/medicine/api";
@@ -48,7 +48,7 @@ export default function SuperAdminPage() {
 
   if (!token || role !== "SuperAdmin") {
     return (
-      <AppShell top={<TopBar title="SuperAdmin" backHref="/" />}>
+      <AppShell top={<TopBar title="SuperAdmin" />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm">
           Доступ только для суперадминистраторов. <Link href="/login" className="font-bold text-primary">Войти</Link>
         </div>
@@ -57,7 +57,7 @@ export default function SuperAdminPage() {
   }
 
   return (
-    <AppShell top={<TopBar title="SuperAdmin" backHref="/" />}>
+    <AppShell top={<TopBar title="SuperAdmin" />} hideGlobalNav>
       <div className="space-y-4">
         {/* Hero */}
         <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-2">
@@ -101,11 +101,11 @@ function StatsDashboard({ token }: { token: string }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-1 xs:gap-2 sm:gap-3 md:grid-cols-4">
       {items.map((item) => (
-        <div key={item.label} className="stitch-card p-4 text-center">
-          <p className="text-2xl font-black text-primary">{item.value}</p>
-          <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">{item.label}</p>
+        <div key={item.label} className="stitch-card p-1.5 xs:p-2 sm:p-4 text-center">
+          <p className="text-base xs:text-lg sm:text-2xl font-black text-primary">{item.value}</p>
+          <p className="text-[8px] xs:text-[10px] sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">{item.label}</p>
         </div>
       ))}
     </div>
@@ -141,6 +141,9 @@ function PharmaciesTab({ token }: { token: string }) {
   const [newAdminPass, setNewAdminPass] = useState("");
   const [newPharmaTitle, setNewPharmaTitle] = useState("");
   const [newPharmaAddr, setNewPharmaAddr] = useState("");
+  const [showCreateMap, setShowCreateMap] = useState(false);
+  const [newPharmaLat, setNewPharmaLat] = useState("");
+  const [newPharmaLng, setNewPharmaLng] = useState("");
 
   async function onCreateAdminPharmacy(e: FormEvent) {
     e.preventDefault();
@@ -152,6 +155,7 @@ function PharmaciesTab({ token }: { token: string }) {
       });
       setMsg("Админ и аптека созданы.");
       setNewAdminName(""); setNewAdminPhone(""); setNewAdminPass(""); setNewPharmaTitle(""); setNewPharmaAddr("");
+      setNewPharmaLat(""); setNewPharmaLng(""); setShowCreateMap(false);
       load(query);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
@@ -159,19 +163,19 @@ function PharmaciesTab({ token }: { token: string }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-2 xs:space-y-3 sm:space-y-4">
       <div>
-        <h2 className="text-lg font-bold">Управление аптеками и администраторами</h2>
-        <p className="mt-1 text-sm text-on-surface-variant">Структурированный обзор, создание и изменение сущностей</p>
+        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление аптеками и администраторами</h2>
+        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Структурированный обзор, создание и изменение сущностей</p>
       </div>
 
       <input className="stitch-input w-full" placeholder="Поиск по аптекам и админам..." value={query} onChange={(e) => onSearchChange(e.target.value)} />
 
       {/* Create form */}
-      <form className="stitch-card space-y-3 p-5" onSubmit={onCreateAdminPharmacy}>
+      <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onCreateAdminPharmacy}>
         <div>
-          <h3 className="font-bold">Создать админа + аптеку</h3>
-          <p className="mt-0.5 text-xs text-on-surface-variant">Новый администратор с новой аптекой</p>
+          <h3 className="text-sm xs:text-base sm:text-lg font-bold">Создать админа + аптеку</h3>
+          <p className="mt-0.5 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Новый администратор с новой аптекой</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           <input className="stitch-input" placeholder="Имя админа" value={newAdminName} onChange={(e) => setNewAdminName(e.target.value)} required />
@@ -180,6 +184,26 @@ function PharmaciesTab({ token }: { token: string }) {
           <input className="stitch-input" placeholder="Название аптеки" value={newPharmaTitle} onChange={(e) => setNewPharmaTitle(e.target.value)} required />
           <input className="stitch-input md:col-span-2" placeholder="Адрес аптеки" value={newPharmaAddr} onChange={(e) => setNewPharmaAddr(e.target.value)} required />
         </div>
+        <button type="button" className="stitch-button-secondary text-xs w-full" onClick={() => setShowCreateMap(!showCreateMap)}>
+          {showCreateMap ? "Скрыть карту" : "Выбрать адрес на карте"}
+        </button>
+        {showCreateMap && (
+          <div className="space-y-1">
+            <PharmacyMap
+              className="h-[220px] xs:h-[260px] rounded-xl overflow-hidden"
+              pharmacies={newPharmaLat && newPharmaLng ? [{ id: "new", title: newPharmaTitle || "Новая аптека", address: newPharmaAddr, lat: parseFloat(newPharmaLat), lng: parseFloat(newPharmaLng) }] : []}
+              pickMode
+              onMapClick={(result: GeoResult) => {
+                setNewPharmaLat(result.lat.toFixed(6));
+                setNewPharmaLng(result.lng.toFixed(6));
+                if (result.address) setNewPharmaAddr(result.address);
+              }}
+            />
+            {newPharmaLat && newPharmaLng && (
+              <p className="text-[10px] text-on-surface-variant">Координаты: {newPharmaLat}, {newPharmaLng}</p>
+            )}
+          </div>
+        )}
         {msg ? <div className={`text-sm ${msg.includes("созданы") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
         <button type="submit" className="stitch-button">Создать</button>
       </form>
@@ -213,7 +237,7 @@ function PharmaciesTab({ token }: { token: string }) {
         <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Аптеки ({pharmacies.length})</h3>
         <div className="space-y-2">
           {pharmacies.map((p) => (
-            <EditablePharmacyCard key={p.id} token={token} pharmacy={p} onDone={() => load(query)} />
+            <EditablePharmacyCard key={p.id} token={token} pharmacy={p} admins={admins} onDone={() => load(query)} />
           ))}
         </div>
       </section>
@@ -245,10 +269,10 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
   }
 
   return (
-    <form className="stitch-card space-y-3 p-5" onSubmit={onSubmit}>
+    <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSubmit}>
       <div>
-        <h3 className="font-bold">Создать админа в существующую аптеку</h3>
-        <p className="mt-0.5 text-xs text-on-surface-variant">Привязать нового админа к существующей аптеке</p>
+        <h3 className="text-sm xs:text-base sm:text-lg font-bold">Создать админа в существующую аптеку</h3>
+        <p className="mt-0.5 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Привязать нового админа к существующей аптеке</p>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
         <input className="stitch-input" placeholder="Имя" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -265,7 +289,7 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
   );
 }
 
-function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; pharmacy: ActivePharmacy; onDone: () => void }) {
+function EditablePharmacyCard({ token, pharmacy, admins, onDone }: { token: string; pharmacy: ActivePharmacy; admins: ApiAdmin[]; onDone: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(pharmacy.title);
   const [address, setAddress] = useState(pharmacy.address);
@@ -274,6 +298,15 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
   const [lng, setLng] = useState(pharmacy.longitude?.toString() ?? "");
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [iconUploading, setIconUploading] = useState(false);
+  const iconFileRef = useRef<HTMLInputElement>(null);
+
+  // Find current admin for this pharmacy
+  const pharmacyAdmin = admins.find((a) => a.pharmacyId === pharmacy.id);
+
+  const iconSrc = pharmacy.iconUrl
+    ? (pharmacy.iconUrl.startsWith("http") ? pharmacy.iconUrl : `/api/pharmacies/icon/${pharmacy.id}/content`)
+    : null;
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -292,9 +325,47 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
     }
   }
 
+  async function onIconUpload() {
+    const file = iconFileRef.current?.files?.[0];
+    if (!file) return;
+    setIconUploading(true);
+    setMsg(null);
+    try {
+      await uploadPharmacyIcon(token, pharmacy.id, file);
+      setMsg("Иконка загружена.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка загрузки.");
+    } finally {
+      setIconUploading(false);
+      if (iconFileRef.current) iconFileRef.current.value = "";
+    }
+  }
+
+  async function onIconDelete() {
+    if (!confirm("Удалить иконку аптеки?")) return;
+    try {
+      await deletePharmacyIcon(token, pharmacy.id);
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    }
+  }
+
+  async function onRemoveAdmin() {
+    if (!pharmacyAdmin) return;
+    if (!confirm(`Удалить админа ${pharmacyAdmin.name} из аптеки?`)) return;
+    try {
+      await deleteAdmin(token, pharmacyAdmin.adminId);
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    }
+  }
+
   if (isEditing) {
     return (
-      <form className="stitch-card space-y-3 p-4" onSubmit={onSave}>
+      <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSave}>
         <input className="stitch-input" placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <input className="stitch-input" placeholder="Адрес" value={address} onChange={(e) => setAddress(e.target.value)} required />
         <div className="grid grid-cols-2 gap-2">
@@ -317,10 +388,49 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
             }}
           />
         )}
+
+        {/* Icon upload */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-on-surface-variant">Иконка аптеки</label>
+          <div className="flex gap-2 items-center">
+            {iconSrc ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={iconSrc} alt="Иконка" className="h-10 w-10 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
+                <button type="button" onClick={onIconDelete} className="text-xs text-red-600 font-semibold">Удалить</button>
+              </>
+            ) : (
+              <span className="text-xs text-on-surface-variant">Не загружена</span>
+            )}
+          </div>
+          <div className="flex gap-2 items-center">
+            <input ref={iconFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-xs flex-1" onChange={onIconUpload} />
+            {iconUploading && <span className="text-xs text-primary">Загрузка...</span>}
+          </div>
+        </div>
+
+        {/* Admin section */}
+        <div className="space-y-1.5 rounded-xl bg-surface-container-low p-2.5 xs:p-3">
+          <label className="text-xs font-semibold text-on-surface-variant">Администратор</label>
+          {pharmacyAdmin ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold">{pharmacyAdmin.name}</p>
+                <p className="text-[10px] text-on-surface-variant">{pharmacyAdmin.phoneNumber}</p>
+              </div>
+              <button type="button" onClick={onRemoveAdmin} className="rounded-lg bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700">
+                Удалить админа
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-yellow-600">Нет администратора. Создайте нового в форме ниже.</p>
+          )}
+        </div>
+
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Активна
         </label>
-        {msg ? <div className="text-xs text-red-700">{msg}</div> : null}
+        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("загружена") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
         <div className="flex gap-2">
           <button type="submit" className="stitch-button text-xs">Сохранить</button>
           <button type="button" className="stitch-button-secondary text-xs" onClick={() => setIsEditing(false)}>Отмена</button>
@@ -330,18 +440,29 @@ function EditablePharmacyCard({ token, pharmacy, onDone }: { token: string; phar
   }
 
   return (
-    <div className="stitch-card flex items-center justify-between p-3">
-      <div>
-        <p className="font-bold">{pharmacy.title}</p>
-        <p className="text-xs text-on-surface-variant">{pharmacy.address} · {pharmacy.isActive ? "Активна" : "Неактивна"}</p>
-        {pharmacy.latitude && pharmacy.longitude ? (
-          <p className="text-[10px] text-on-surface-variant">Координаты: {pharmacy.latitude}, {pharmacy.longitude}</p>
+    <div className="stitch-card flex items-center justify-between gap-3 p-3">
+      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+        {iconSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={iconSrc} alt="" className="h-10 w-10 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
         ) : (
-          <p className="text-[10px] text-yellow-600">Координаты не заданы</p>
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg>
+          </div>
         )}
-        <p className="text-[10px] text-on-surface-variant font-mono break-all">{pharmacy.id}</p>
+        <div className="min-w-0">
+          <p className="font-bold truncate">{pharmacy.title}</p>
+          <p className="text-xs text-on-surface-variant truncate">{pharmacy.address} · {pharmacy.isActive ? "Активна" : "Неактивна"}</p>
+          {pharmacyAdmin && <p className="text-[10px] text-on-surface-variant">Админ: {pharmacyAdmin.name}</p>}
+          {!pharmacyAdmin && <p className="text-[10px] text-yellow-600">Нет админа</p>}
+          {pharmacy.latitude && pharmacy.longitude ? (
+            <p className="text-[10px] text-on-surface-variant">Координаты: {pharmacy.latitude}, {pharmacy.longitude}</p>
+          ) : (
+            <p className="text-[10px] text-yellow-600">Координаты не заданы</p>
+          )}
+        </div>
       </div>
-      <div className="flex gap-1">
+      <div className="flex gap-1 flex-shrink-0">
         <button type="button" className="rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold" onClick={() => setIsEditing(true)}>Изменить</button>
         <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={async () => {
           if (!confirm(`Удалить аптеку ${pharmacy.title}?`)) return;
@@ -463,17 +584,17 @@ function MedicinesTab({ token }: { token: string }) {
   const imageUrl = detail ? resolveMedicineImageUrl(detail) : "";
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
-      {/* Left column - list */}
+    <div className="relative">
+      {/* Medicine list */}
       <div className="space-y-5">
         <div>
-          <h2 className="text-lg font-bold">Управление каталогом товаров</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Создание, поиск, редактирование и управление изображениями.</p>
+          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление каталогом товаров</h2>
+          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Создание, поиск, редактирование и управление изображениями.</p>
         </div>
 
         {/* Create */}
-        <form className="stitch-card space-y-3 p-5" onSubmit={onCreateMedicine}>
-          <h3 className="font-bold">Создать товар</h3>
+        <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onCreateMedicine}>
+          <h3 className="text-sm xs:text-base sm:text-lg font-bold">Создать товар</h3>
           <div className="grid gap-2">
             <input className="stitch-input" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required />
             <input className="stitch-input" placeholder="Артикул" value={newArticul} onChange={(e) => setNewArticul(e.target.value)} required />
@@ -522,7 +643,7 @@ function MedicinesTab({ token }: { token: string }) {
         </div>
 
         {/* List */}
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {medicines.map((m) => (
             <button
               key={m.id}
@@ -593,120 +714,126 @@ function MedicinesTab({ token }: { token: string }) {
         )}
       </div>
 
-      {/* Right column - details */}
+      {/* Detail overlay */}
       {selected && detail ? (
-        <div className="stitch-card space-y-5 p-5">
-          {detailsLoading ? (
-            <div className="text-sm text-on-surface-variant">Загрузка...</div>
-          ) : (
-            <>
-              {/* Image preview */}
-              {imageUrl ? (
-                <div className="overflow-hidden rounded-xl bg-surface-container-low">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imageUrl} alt={getMedicineDisplayName(detail)} className="mx-auto max-h-64 object-contain" />
-                </div>
-              ) : (
-                <div className="flex h-40 items-center justify-center rounded-xl bg-surface-container-low text-sm text-on-surface-variant">
-                  Нет изображения
-                </div>
-              )}
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 xs:pt-16 sm:pt-20">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} />
+          {/* Panel */}
+          <div className="relative mx-2 xs:mx-4 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-surface shadow-glass space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5">
+            {/* Close */}
+            <button type="button" onClick={() => setSelected(null)} className="absolute top-2 right-2 xs:top-3 xs:right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition" aria-label="Закрыть">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
 
-              {/* Title, articul, status, ID */}
-              <div className="space-y-1">
-                <h3 className="text-lg font-bold">{getMedicineDisplayName(detail)}</h3>
-                {detail.articul ? <p className="text-sm text-on-surface-variant">Артикул: {detail.articul}</p> : null}
-                {detail.categoryName ? <p className="text-sm text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{detail.categoryName}</span></p> : null}
-                <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${detail.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>
-                    {detail.isActive !== false ? "Активный" : "Неактивный"}
-                  </span>
-                </div>
-                <p className="text-[10px] text-on-surface-variant font-mono break-all">ID: {detail.id}</p>
-              </div>
-
-              {/* Attributes */}
-              {detail.atributes && detail.atributes.length > 0 ? (
-                <div>
-                  <h4 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Атрибуты</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {detail.atributes.map((attr, i) => (
-                      <span key={i} className="rounded-full bg-surface-container-low px-3 py-1 text-xs font-medium">
-                        {attr.type || attr.name}: {attr.value || attr.option}
-                      </span>
-                    ))}
+            {detailsLoading ? (
+              <div className="text-sm text-on-surface-variant">Загрузка...</div>
+            ) : (
+              <>
+                {/* Image preview */}
+                {imageUrl ? (
+                  <div className="overflow-hidden rounded-xl bg-surface-container-low">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrl} alt={getMedicineDisplayName(detail)} className="mx-auto max-h-48 xs:max-h-56 sm:max-h-64 object-contain" />
                   </div>
-                </div>
-              ) : null}
+                ) : (
+                  <div className="flex h-32 xs:h-36 sm:h-40 items-center justify-center rounded-xl bg-surface-container-low text-sm text-on-surface-variant">
+                    Нет изображения
+                  </div>
+                )}
 
-              {/* Pharmacy offers */}
-              {detail.offers && detail.offers.length > 0 ? (
-                <div>
-                  <h4 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Предложения аптек ({detail.offers.length})</h4>
-                  <div className="space-y-2">
-                    {detail.offers.map((offer, i) => (
-                      <div key={i} className="flex items-center justify-between rounded-xl bg-surface-container-low p-3 text-sm">
-                        <span className="font-medium">{offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}</span>
-                        <div className="flex items-center gap-3 text-xs">
-                          <span className="text-on-surface-variant">Остаток: {offer.stockQuantity}</span>
-                          <span className="font-bold">{formatMoney(offer.price)}</span>
+                {/* Title, articul, status, ID */}
+                <div className="space-y-1">
+                  <h3 className="text-sm xs:text-base sm:text-lg font-bold pr-8">{getMedicineDisplayName(detail)}</h3>
+                  {detail.articul ? <p className="text-xs xs:text-sm text-on-surface-variant">Артикул: {detail.articul}</p> : null}
+                  {detail.categoryName ? <p className="text-xs xs:text-sm text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{detail.categoryName}</span></p> : null}
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${detail.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>
+                      {detail.isActive !== false ? "Активный" : "Неактивный"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant font-mono break-all">ID: {detail.id}</p>
+                </div>
+
+                {/* Attributes */}
+                {detail.atributes && detail.atributes.length > 0 ? (
+                  <div>
+                    <h4 className="mb-2 text-xs xs:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Атрибуты</h4>
+                    <div className="flex flex-wrap gap-1.5 xs:gap-2">
+                      {detail.atributes.map((attr, i) => (
+                        <span key={i} className="rounded-full bg-surface-container-low px-2 xs:px-3 py-0.5 xs:py-1 text-[10px] xs:text-xs font-medium">
+                          {attr.type || attr.name}: {attr.value || attr.option}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Pharmacy offers */}
+                {detail.offers && detail.offers.length > 0 ? (
+                  <div>
+                    <h4 className="mb-2 text-xs xs:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Предложения аптек ({detail.offers.length})</h4>
+                    <div className="space-y-1.5 xs:space-y-2">
+                      {detail.offers.map((offer, i) => (
+                        <div key={i} className="flex items-center justify-between rounded-xl bg-surface-container-low p-2 xs:p-3 text-xs xs:text-sm">
+                          <span className="font-medium truncate mr-2">{offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}</span>
+                          <div className="flex items-center gap-2 xs:gap-3 text-[10px] xs:text-xs flex-shrink-0">
+                            <span className="text-on-surface-variant">Ост: {offer.stockQuantity}</span>
+                            <span className="font-bold">{formatMoney(offer.price)}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+                ) : null}
+
+                {/* Edit medicine */}
+                <div>
+                  <h4 className="mb-2 text-xs xs:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Редактирование</h4>
+                  <EditMedicineForm token={token} medicine={detail} onDone={() => {
+                    load(query, page, activeFilter, categoryId);
+                    getMedicineById(detail.id).then(setSelectedDetails).catch(() => undefined);
+                  }} />
                 </div>
-              ) : null}
 
-              {/* Edit medicine */}
-              <div>
-                <h4 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Редактирование</h4>
-                <EditMedicineForm token={token} medicine={detail} onDone={() => {
-                  load(query, page, activeFilter, categoryId);
-                  getMedicineById(detail.id).then(setSelectedDetails).catch(() => undefined);
-                }} />
-              </div>
+                {/* Upload image */}
+                <div>
+                  <h4 className="mb-2 text-xs xs:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Загрузка изображения</h4>
+                  <form className="space-y-2 xs:space-y-3" onSubmit={onUploadImage}>
+                    <div className="flex flex-wrap gap-3 xs:gap-4">
+                      <label className="flex items-center gap-1.5 xs:gap-2 text-xs xs:text-sm">
+                        <input type="checkbox" checked={uploadIsMain} onChange={e => setUploadIsMain(e.target.checked)} />
+                        Основное фото
+                      </label>
+                      <label className="flex items-center gap-1.5 xs:gap-2 text-xs xs:text-sm">
+                        <input type="checkbox" checked={uploadIsMinimal} onChange={e => setUploadIsMinimal(e.target.checked)} />
+                        Миниатюра
+                      </label>
+                    </div>
+                    <div className="flex gap-2">
+                      <input ref={fileRef} type="file" accept="image/*" className="stitch-input flex-1 text-xs" required />
+                      <button type="submit" className="stitch-button text-xs xs:text-sm">Загрузить</button>
+                    </div>
+                  </form>
+                </div>
 
-              {/* Upload image */}
-              <div>
-                <h4 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Загрузка изображения</h4>
-                <form className="space-y-3" onSubmit={onUploadImage}>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={uploadIsMain} onChange={e => setUploadIsMain(e.target.checked)} />
-                      Основное фото
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={uploadIsMinimal} onChange={e => setUploadIsMinimal(e.target.checked)} />
-                      Миниатюра
-                    </label>
-                  </div>
-                  <div className="flex gap-2">
-                    <input ref={fileRef} type="file" accept="image/*" className="stitch-input flex-1" required />
-                    <button type="submit" className="stitch-button">Загрузить</button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2">
-                <button type="button" className="rounded-xl bg-yellow-100 px-4 py-2 text-sm font-bold text-yellow-800" onClick={async () => {
-                  await deleteMedicine(token, selected.id, false).catch(() => undefined);
-                  setSelected(null); load(query, page, activeFilter, categoryId);
-                }}>Деактивировать</button>
-                <button type="button" className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700" onClick={async () => {
-                  if (!confirm("Удалить товар полностью?")) return;
-                  await deleteMedicine(token, selected.id, true).catch(() => undefined);
-                  setSelected(null); load(query, page, activeFilter, categoryId);
-                }}>Удалить полностью</button>
-              </div>
-            </>
-          )}
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="rounded-xl bg-yellow-100 px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-bold text-yellow-800" onClick={async () => {
+                    await deleteMedicine(token, selected.id, false).catch(() => undefined);
+                    setSelected(null); load(query, page, activeFilter, categoryId);
+                  }}>Деактивировать</button>
+                  <button type="button" className="rounded-xl bg-red-100 px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-bold text-red-700" onClick={async () => {
+                    if (!confirm("Удалить товар полностью?")) return;
+                    await deleteMedicine(token, selected.id, true).catch(() => undefined);
+                    setSelected(null); load(query, page, activeFilter, categoryId);
+                  }}>Удалить полностью</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      ) : (
-        <div className="stitch-card p-8 text-center text-on-surface-variant">
-          Выберите товар из списка
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -764,10 +891,10 @@ function ClientsSection({ token }: { token: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 xs:space-y-3 sm:space-y-4">
       <div>
-        <h2 className="text-lg font-bold">Клиентский реестр</h2>
-        <p className="mt-1 text-sm text-on-surface-variant">Просмотр клиентов и управление аккаунтами. История заказов сохраняется при удалении.</p>
+        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Клиентский реестр</h2>
+        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Просмотр клиентов и управление аккаунтами. История заказов сохраняется при удалении.</p>
       </div>
 
       <input className="stitch-input w-full" placeholder="Поиск клиентов..." value={query} onChange={(e) => onSearchChange(e.target.value)} />
@@ -833,21 +960,30 @@ function OrdersTab({ token }: { token: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+
   const filteredOrders = dateFilter
     ? orders.filter((o) => o.createdAtUtc && new Date(o.createdAtUtc).toISOString().slice(0, 10) === dateFilter)
     : orders;
 
+  // Order IDs that have pending payment intents — avoid showing them as regular order cards
+  const intentOrderIds = new Set(intents.map((i) => i.reservedOrderId).filter(Boolean));
+
   const grouped = ALL_STATUSES.reduce<Record<string, ApiOrder[]>>((acc, status) => {
-    acc[status] = filteredOrders.filter((o) => o.status === status);
+    acc[status] = filteredOrders.filter((o) => {
+      if (o.status !== status) return false;
+      // In "New" column, hide orders that already appear as payment intent cards
+      if (status === "New" && intentOrderIds.has(o.orderId)) return false;
+      return true;
+    });
     return acc;
   }, {});
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-2 xs:space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold">Управление заказами</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Контроль статусов и подтверждение оплат{dateFilter ? ` · ${dateFilter}` : ""}</p>
+          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление заказами</h2>
+          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Контроль статусов и подтверждение оплат{dateFilter ? ` · ${dateFilter}` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -866,7 +1002,7 @@ function OrdersTab({ token }: { token: string }) {
 
       {/* Refunds section */}
       {refunds.length > 0 ? (
-        <section className="stitch-card space-y-3 p-5 opacity-80">
+        <section className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5 opacity-80">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-on-surface-variant">Запросы на возврат</h3>
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-600">{refunds.length}</span>
@@ -902,11 +1038,11 @@ function OrdersTab({ token }: { token: string }) {
             // Show payment intents in the New column
             const showIntentsHere = status === "New";
             return (
-              <div key={status} className="min-w-[260px] sm:min-w-[280px] flex-shrink-0 rounded-2xl bg-surface-container-low p-3 space-y-3">
+              <div key={status} className="min-w-[220px] xs:min-w-[250px] sm:min-w-[280px] flex-shrink-0 rounded-2xl bg-surface-container-low p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[status]}`} />
-                    <h4 className="text-sm font-bold">{STATUS_LABELS[status]}</h4>
+                    <h4 className="text-[10px] xs:text-xs sm:text-sm font-bold">{STATUS_LABELS[status]}</h4>
                   </div>
                   <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-bold">
                     {statusOrders.length + (showIntentsHere ? intents.length : 0)}
@@ -928,9 +1064,22 @@ function OrdersTab({ token }: { token: string }) {
                         </div>
                         <div className="flex items-center justify-between text-sm mt-1">
                           <span className="truncate max-w-[140px]">{order.pharmacyTitle ?? "—"}</span>
-                          <span className="font-bold">{formatMoney(order.cost, order.currency)}</span>
+                          <span className="font-bold">{order.cost ? formatMoney(order.cost, order.currency) : "—"}</span>
                         </div>
                         {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant mt-0.5">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : null}
+                        {order.status === "OnTheWay" ? (
+                          <button
+                            type="button"
+                            className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] xs:text-xs font-bold text-white hover:bg-emerald-700 transition"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await superAdminNextStatus(token, order.orderId).catch(() => undefined);
+                              load();
+                            }}
+                          >
+                            Доставлен
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -1057,7 +1206,7 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
   const INTENT_STATES: Record<number, string> = { 0: "Создан", 1: "Ожидает подтверждения", 2: "Подтверждён", 3: "Отклонён", 4: "Требует решения" };
 
   return (
-    <div className="stitch-card space-y-2 p-4 ring-1 ring-yellow-300">
+    <div className="stitch-card space-y-2 p-2 xs:p-3 sm:p-4 ring-1 ring-yellow-300">
       <div className="flex items-center justify-between">
         <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-800">
           {intent.state != null ? (INTENT_STATES[intent.state] ?? `State ${intent.state}`) : "Ожидает"}

@@ -745,6 +745,7 @@ public sealed class ClientService : IClientService
             return await CheckoutWithPaymentIntentAsync(
               request,
               client,
+              pharmacy,
               effectiveDeliveryAddress,
               evaluation,
               acceptedPositions,
@@ -847,6 +848,28 @@ public sealed class ClientService : IClientService
             client.AddOrder(order);
             _dbContext.Orders.Add(order);
 
+            if (!request.IsPickup
+              && request.DeliveryLatitude.HasValue
+              && request.DeliveryLongitude.HasValue
+              && pharmacy.Latitude.HasValue
+              && pharmacy.Longitude.HasValue)
+            {
+                var deliveryData = new DeliveryData(
+                  orderId: orderId,
+                  fromTitle: pharmacy.Title,
+                  fromAddress: pharmacy.Address,
+                  fromLatitude: pharmacy.Latitude.Value,
+                  fromLongitude: pharmacy.Longitude.Value,
+                  toTitle: request.DeliveryAddressTitle ?? effectiveDeliveryAddress,
+                  toAddress: effectiveDeliveryAddress,
+                  toLatitude: request.DeliveryLatitude.Value,
+                  toLongitude: request.DeliveryLongitude.Value,
+                  fromAddressId: null,
+                  toAddressId: request.DeliveryAddressId);
+
+                _dbContext.DeliveryData.Add(deliveryData);
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -856,12 +879,17 @@ public sealed class ClientService : IClientService
             throw;
         }
 
+        // Notify admins about new order
+        await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+            order!.Id, order!.Status.ToString(), order!.ClientId, order!.PharmacyId, cancellationToken);
+
         return order!.ToResponse(paymentResponse.PaymentUrl);
     }
 
     private async Task<CheckoutBasketResponse> CheckoutWithPaymentIntentAsync(
       CheckoutBasketRequest request,
       Client client,
+      Pharmacy pharmacy,
       string effectiveDeliveryAddress,
       CheckoutEvaluation evaluation,
       IReadOnlyCollection<BasketPosition> acceptedPositions,
@@ -939,6 +967,40 @@ public sealed class ClientService : IClientService
           positions: snapshotPositions,
           createdAtUtc: nowUtc);
 
+        var orderPositions = evaluation.Positions
+          .Select(x => new OrderPosition(
+            orderId: reservedOrderId,
+            medicineId: x.BasketPosition.MedicineId,
+            medicine: x.BasketPosition.Medicine,
+            offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
+              request.PharmacyId,
+              x.Price ?? 0m),
+            quantity: x.BasketPosition.Quantity,
+            isRejected: x.IsRejected))
+          .ToList();
+
+        var orderRequest = new CheckoutBasketRequest
+        {
+            ClientId = request.ClientId,
+            PharmacyId = request.PharmacyId,
+            IsPickup = request.IsPickup,
+            DeliveryAddress = effectiveDeliveryAddress,
+            IdempotencyKey = normalizedIdempotencyKey,
+            IgnoredPositionIds = request.IgnoredPositionIds ?? []
+        };
+
+        var order = orderRequest.ToDomain(reservedOrderId, client.PhoneNumber, orderPositions);
+        order.MarkManualPaymentPendingIndefinitely(
+          amount: estimatedCost,
+          currency: _paymentOptions.Currency,
+          provider: string.IsNullOrWhiteSpace(paymentResponse.Provider)
+            ? _paymentOptions.ProviderName
+            : paymentResponse.Provider,
+          receiverAccount: paymentResponse.ReceiverAccount ?? string.Empty,
+          paymentUrl: paymentResponse.PaymentUrl,
+          paymentComment: paymentResponse.PaymentComment);
+        order.MarkStockNotDeducted();
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -947,6 +1009,31 @@ public sealed class ClientService : IClientService
 
             _dbContext.BasketPositions.RemoveRange(acceptedPositions);
             _dbContext.PaymentIntents.Add(paymentIntent);
+
+            client.AddOrder(order);
+            _dbContext.Orders.Add(order);
+
+            if (!request.IsPickup
+              && request.DeliveryLatitude.HasValue
+              && request.DeliveryLongitude.HasValue
+              && pharmacy.Latitude.HasValue
+              && pharmacy.Longitude.HasValue)
+            {
+                var deliveryData = new DeliveryData(
+                  orderId: reservedOrderId,
+                  fromTitle: pharmacy.Title,
+                  fromAddress: pharmacy.Address,
+                  fromLatitude: pharmacy.Latitude.Value,
+                  fromLongitude: pharmacy.Longitude.Value,
+                  toTitle: request.DeliveryAddressTitle ?? effectiveDeliveryAddress,
+                  toAddress: effectiveDeliveryAddress,
+                  toLatitude: request.DeliveryLatitude.Value,
+                  toLongitude: request.DeliveryLongitude.Value,
+                  fromAddressId: null,
+                  toAddressId: request.DeliveryAddressId);
+
+                _dbContext.DeliveryData.Add(deliveryData);
+            }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -970,6 +1057,12 @@ public sealed class ClientService : IClientService
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+
+        // Notify admins about new order (payment intent flow)
+        await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+            order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+        await _realtimeUpdatesPublisher.PublishPaymentIntentUpdatedAsync(
+            paymentIntent.Id, paymentIntent.ClientId, paymentIntent.State, order.Id, cancellationToken);
 
         return ToCheckoutPaymentIntentResponse(paymentIntent);
     }

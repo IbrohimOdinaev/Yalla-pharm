@@ -140,6 +140,12 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .HasColumnName("payment_confirmed_by_user_id")
           .HasColumnType("uuid");
 
+        builder.Property(x => x.IsStockDeducted)
+          .HasColumnName("is_stock_deducted")
+          .HasColumnType("boolean")
+          .HasDefaultValue(true)
+          .IsRequired();
+
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_orders_client_id");
 
@@ -177,6 +183,11 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.HasMany(x => x.Positions)
           .WithOne()
           .HasForeignKey(x => x.OrderId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(x => x.DeliveryData)
+          .WithOne(x => x.Order)
+          .HasForeignKey<DeliveryData>(x => x.OrderId)
           .OnDelete(DeleteBehavior.Cascade);
 
         builder.Metadata.FindNavigation(nameof(Order.Positions))?.SetField("_positions");

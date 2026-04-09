@@ -52,4 +52,8 @@ public interface IMedicineService
   Task<DeleteMedicineImageResponse> DeleteMedicineImageAsync(
     DeleteMedicineImageRequest request,
     CancellationToken cancellationToken = default);
+
+  Task<SearchByPharmacyResponse> SearchByPharmacyAsync(
+    SearchByPharmacyRequest request,
+    CancellationToken cancellationToken = default);
 }

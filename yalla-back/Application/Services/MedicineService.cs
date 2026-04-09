@@ -197,7 +197,7 @@ public sealed class MedicineService : IMedicineService
 
         var totalCount = await query.CountAsync(cancellationToken);
         var medicines = await query
-          .OrderBy(x => x.Title)
+          .OrderByDescending(x => x.Images.Any(i => !i.Key.Contains("placeholder"))).ThenBy(x => x.Title)
           .ThenBy(x => x.Articul)
           .Skip((page - 1) * pageSize)
           .Take(pageSize)
@@ -432,6 +432,129 @@ public sealed class MedicineService : IMedicineService
                     : []
               })
               .ToList()
+        };
+    }
+
+    public async Task<SearchByPharmacyResponse> SearchByPharmacyAsync(
+      SearchByPharmacyRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var query = (request.Query ?? string.Empty).Trim();
+        var limit = request.Limit <= 0 ? 20 : Math.Min(request.Limit, 50);
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return new SearchByPharmacyResponse
+            {
+                Query = query,
+                TotalCount = 0,
+                Pharmacies = []
+            };
+        }
+
+        var searchPattern = $"%{query.ToLower()}%";
+
+        // Find matching offers grouped by pharmacy
+        var matchingOffers = await (
+          from offer in _dbContext.Offers.AsNoTracking()
+          join medicine in _dbContext.Medicines.AsNoTracking()
+            on offer.MedicineId equals medicine.Id
+          join pharmacy in _dbContext.Pharmacies.AsNoTracking()
+            on offer.PharmacyId equals pharmacy.Id
+          where medicine.IsActive
+                && pharmacy.IsActive
+                && offer.StockQuantity > 0
+                && (EF.Functions.Like(medicine.Title.ToLower(), searchPattern)
+                    || EF.Functions.Like(medicine.Articul.ToLower(), searchPattern))
+          select new
+          {
+              offer.PharmacyId,
+              PharmacyTitle = pharmacy.Title,
+              offer.MedicineId,
+              MedicineTitle = medicine.Title,
+              MedicineArticul = medicine.Articul,
+              offer.Price,
+              offer.StockQuantity
+          }).ToListAsync(cancellationToken);
+
+        if (matchingOffers.Count == 0)
+        {
+            return new SearchByPharmacyResponse
+            {
+                Query = query,
+                TotalCount = 0,
+                Pharmacies = []
+            };
+        }
+
+        var allMedicineIds = matchingOffers.Select(x => x.MedicineId).Distinct().ToList();
+        var totalCount = allMedicineIds.Count;
+
+        // Load images for all matched medicines
+        var images = await _dbContext.MedicineImages
+          .AsNoTracking()
+          .Where(x => allMedicineIds.Contains(x.MedicineId))
+          .OrderByDescending(x => x.IsMain)
+          .ThenByDescending(x => x.IsMinimal)
+          .Select(x => new
+          {
+              x.MedicineId,
+              Image = new MedicineImageResponse
+              {
+                  Id = x.Id,
+                  Key = x.Key,
+                  IsMain = x.IsMain,
+                  IsMinimal = x.IsMinimal
+              }
+          })
+          .ToListAsync(cancellationToken);
+
+        var imagesByMedicineId = images
+          .GroupBy(x => x.MedicineId)
+          .ToDictionary(x => x.Key, x => (IReadOnlyCollection<MedicineImageResponse>)x.Select(y => y.Image).ToList());
+
+        // Group by pharmacy
+        var pharmacyGroups = matchingOffers
+          .GroupBy(x => new { x.PharmacyId, x.PharmacyTitle })
+          .OrderByDescending(g => g.Count())
+          .Select(g =>
+          {
+              var medicines = g
+                .GroupBy(o => o.MedicineId)
+                .Take(limit)
+                .Select(mg =>
+                {
+                    var first = mg.First();
+                    var minPrice = mg.Where(o => o.Price > 0).Select(o => o.Price).DefaultIfEmpty(0).Min();
+                    return new MedicineSearchItemResponse
+                    {
+                        Id = first.MedicineId,
+                        Title = first.MedicineTitle,
+                        Articul = first.MedicineArticul,
+                        IsActive = true,
+                        MinPrice = minPrice > 0 ? minPrice : null,
+                        Images = imagesByMedicineId.TryGetValue(first.MedicineId, out var imgs) ? imgs : []
+                    };
+                })
+                .ToList();
+
+              return new PharmacyMedicinesGroup
+              {
+                  PharmacyId = g.Key.PharmacyId,
+                  PharmacyTitle = g.Key.PharmacyTitle,
+                  TotalInPharmacy = g.Select(o => o.MedicineId).Distinct().Count(),
+                  Medicines = medicines
+              };
+          })
+          .ToList();
+
+        return new SearchByPharmacyResponse
+        {
+            Query = query,
+            TotalCount = totalCount,
+            Pharmacies = pharmacyGroups
         };
     }
 
