@@ -185,10 +185,9 @@ export default function OrdersPage() {
             </svg>
           </div>
           <h2 className="text-sm xs:text-base sm:text-lg font-bold">Требуется авторизация</h2>
-          <p className="text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Войдите или зарегистрируйтесь для доступа</p>
+          <p className="text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Войдите по SMS, чтобы увидеть ваши заказы</p>
           <div className="flex justify-center gap-2 xs:gap-3">
-            <Link href="/login" className="stitch-button text-[10px] xs:text-xs sm:text-sm">Войти</Link>
-            <Link href="/register" className="stitch-button-secondary text-[10px] xs:text-xs sm:text-sm">Регистрация</Link>
+            <Link href="/login" className="stitch-button text-[10px] xs:text-xs sm:text-sm">Войти по SMS</Link>
           </div>
         </div>
       </AppShell>

@@ -63,6 +63,24 @@ public class User
         Role = role;
     }
 
+    internal User(Guid id, string name, string phoneNumber, Role role)
+    {
+        if (id == Guid.Empty)
+            throw new DomainArgumentException("User.Id can't be empty.");
+
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            throw new DomainArgumentException("User.PhoneNumber can't be null or whitespace.");
+
+        if (!phoneNumber.All(char.IsDigit))
+            throw new DomainArgumentException("User.PhoneNumber must contain digits only.");
+
+        Id = id;
+        Name = name ?? string.Empty;
+        PhoneNumber = phoneNumber;
+        PasswordHash = "OTP_AUTH";
+        Role = role;
+    }
+
     public void SetTelegramId(long? telegramId) => TelegramId = telegramId;
 
     public void SetName(string? name)

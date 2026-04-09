@@ -172,7 +172,8 @@ builder.Services.AddScoped<IAuthService>(sp =>
         sp.GetRequiredService<IPasswordHasher>(),
         sp.GetRequiredService<IJwtTokenProvider>(),
         tgBotToken,
-        tgMaxAge));
+        tgMaxAge,
+        sp.GetRequiredService<ISmsService>()));
 
 var app = builder.Build();
 

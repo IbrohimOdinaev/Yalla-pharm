@@ -1,6 +1,7 @@
 using Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
 using Yalla.Domain.Enums;
@@ -28,6 +29,26 @@ public sealed class AuthController : ControllerBase
     return Ok(response);
   }
 
+  [HttpPost("admin/login")]
+  [AllowAnonymous]
+  public async Task<IActionResult> AdminLogin(
+    [FromBody] LoginRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.AdminLoginAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("super-admin/login")]
+  [AllowAnonymous]
+  public async Task<IActionResult> SuperAdminLogin(
+    [FromBody] LoginRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.SuperAdminLoginAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
   [HttpPost("telegram")]
   [AllowAnonymous]
   public async Task<IActionResult> TelegramLogin(
@@ -46,6 +67,39 @@ public sealed class AuthController : ControllerBase
   {
     var userId = User.GetRequiredUserId();
     var response = await _authService.ChangePasswordAsync(userId, request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("otp/request")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-request")]
+  public async Task<IActionResult> RequestClientOtp(
+    [FromBody] RequestClientOtpRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.RequestClientOtpAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("otp/verify")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-verify")]
+  public async Task<IActionResult> VerifyClientOtp(
+    [FromBody] VerifyClientOtpRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.VerifyClientOtpAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("otp/resend")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-resend")]
+  public async Task<IActionResult> ResendClientOtp(
+    [FromBody] ResendClientOtpRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.ResendClientOtpAsync(request, cancellationToken);
     return Ok(response);
   }
 }

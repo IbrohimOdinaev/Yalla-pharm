@@ -9,6 +9,14 @@ public interface IAuthService
     LoginRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<LoginResponse> AdminLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<LoginResponse> SuperAdminLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<ChangePasswordResponse> ChangePasswordAsync(
     Guid userId,
     ChangePasswordRequest request,
@@ -21,5 +29,17 @@ public interface IAuthService
 
   Task<LoginResponse> TelegramLoginAsync(
     TelegramLoginRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<RequestClientOtpResponse> RequestClientOtpAsync(
+    RequestClientOtpRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<LoginResponse> VerifyClientOtpAsync(
+    VerifyClientOtpRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<RequestClientOtpResponse> ResendClientOtpAsync(
+    ResendClientOtpRequest request,
     CancellationToken cancellationToken = default);
 }

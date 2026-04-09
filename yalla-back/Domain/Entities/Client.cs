@@ -26,6 +26,11 @@ public class Client : User
     {
     }
 
+    public Client(string name, string phoneNumber)
+      : base(Guid.NewGuid(), name, phoneNumber, Role.Client)
+    {
+    }
+
     public Client(
       Guid id,
       string name,

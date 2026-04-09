@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { getMyProfile, updateMyProfile, deleteMyAccount, changePassword } from "@/entities/client/api";
+import { getMyProfile, updateMyProfile, deleteMyAccount } from "@/entities/client/api";
 import type { ApiClient } from "@/shared/types/api";
 import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
@@ -28,13 +28,6 @@ export default function ProfilePage() {
   const [editDob, setEditDob] = useState("");
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-
-  /* password */
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [passwordMsg, setPasswordMsg] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   /* delete */
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -74,10 +67,9 @@ export default function ProfilePage() {
             </svg>
           </div>
           <h2 className="text-base xs:text-lg font-bold">Требуется авторизация</h2>
-          <p className="text-xs xs:text-sm text-on-surface-variant">Войдите или зарегистрируйтесь для доступа</p>
+          <p className="text-xs xs:text-sm text-on-surface-variant">Войдите по SMS, чтобы получить доступ к профилю</p>
           <div className="flex justify-center gap-2 xs:gap-3">
-            <Link href="/login" className="stitch-button text-sm">Войти</Link>
-            <Link href="/register" className="stitch-button-secondary text-sm">Регистрация</Link>
+            <Link href="/login" className="stitch-button text-sm">Войти по SMS</Link>
           </div>
         </div>
       </AppShell>
@@ -106,41 +98,13 @@ export default function ProfilePage() {
     }
   }
 
-  async function onChangePassword(e: FormEvent) {
-    e.preventDefault();
-    if (!token) return;
-    setPasswordError(null);
-    setPasswordMsg(null);
-
-    if (newPassword.length < 8) {
-      setPasswordError("Новый пароль: минимум 8 символов.");
-      return;
-    }
-    if (!/^[A-Za-z0-9!@#$%^&*()\-_=.,?]+$/.test(newPassword)) {
-      setPasswordError("Новый пароль содержит недопустимые символы.");
-      return;
-    }
-
-    setIsChangingPassword(true);
-    try {
-      await changePassword(token, currentPassword, newPassword);
-      setPasswordMsg("Пароль успешно изменён.");
-      setCurrentPassword("");
-      setNewPassword("");
-    } catch (err) {
-      setPasswordError(err instanceof Error ? err.message : "Не удалось сменить пароль.");
-    } finally {
-      setIsChangingPassword(false);
-    }
-  }
-
   async function onDeleteAccount() {
     if (!token) return;
     setIsDeleting(true);
     try {
       await deleteMyAccount(token);
       dispatch(clearCredentials());
-      router.push("/register");
+      router.push("/login");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось удалить аккаунт.");
       setIsDeleting(false);
@@ -209,28 +173,6 @@ export default function ProfilePage() {
 
               <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSavingProfile}>
                 {isSavingProfile ? "Сохраняем..." : "Сохранить"}
-              </button>
-            </form>
-
-            {/* Change password */}
-            <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onChangePassword}>
-              <h2 className="text-base xs:text-lg font-bold">Смена пароля</h2>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Текущий пароль</span>
-                <input className="stitch-input" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
-              </label>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Новый пароль</span>
-                <input className="stitch-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Минимум 8 символов" required />
-              </label>
-
-              {passwordError ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{passwordError}</div> : null}
-              {passwordMsg ? <div className="rounded-xl bg-emerald-100 p-3 text-sm text-emerald-700">{passwordMsg}</div> : null}
-
-              <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isChangingPassword}>
-                {isChangingPassword ? "Меняем..." : "Обновить пароль"}
               </button>
             </form>
 
