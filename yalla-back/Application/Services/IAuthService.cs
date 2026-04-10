@@ -27,10 +27,6 @@ public interface IAuthService
     UpdateAdminProfileRequest request,
     CancellationToken cancellationToken = default);
 
-  Task<LoginResponse> TelegramLoginAsync(
-    TelegramLoginRequest request,
-    CancellationToken cancellationToken = default);
-
   Task<RequestClientOtpResponse> RequestClientOtpAsync(
     RequestClientOtpRequest request,
     CancellationToken cancellationToken = default);

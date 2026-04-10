@@ -2,9 +2,17 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useRef, useState, Suspense } from "react";
-import { requestClientOtp, verifyClientOtp, resendClientOtp, type RequestClientOtpResponse } from "@/entities/auth/api";
-import { apiFetch } from "@/shared/api/http-client";
+import { FormEvent, useEffect, useRef, useState, Suspense, useCallback } from "react";
+import {
+  requestClientOtp,
+  verifyClientOtp,
+  resendClientOtp,
+  startTelegramAuth,
+  completeTelegramAuth,
+  type RequestClientOtpResponse,
+  type StartTelegramAuthResponse,
+} from "@/entities/auth/api";
+import { connectTelegramAuthHub } from "@/shared/lib/telegramAuthHub";
 import { consumeGuestCheckoutIntent } from "@/shared/lib/guest-intent";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
@@ -134,55 +142,75 @@ function LoginContent() {
     setInfo(null);
   }
 
-  // Telegram login (kept as alternative)
-  const tgContainerRef = useRef<HTMLDivElement>(null);
+  // ───────── Telegram bot deeplink auth ─────────
+  const [tgSession, setTgSession] = useState<StartTelegramAuthResponse | null>(null);
+  const [tgWaiting, setTgWaiting] = useState(false);
+  const tgConnectionRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  const tgCompletedRef = useRef(false);
+
+  // Cleanup hub connection on unmount
   useEffect(() => {
-    const container = tgContainerRef.current;
-    if (!container) return;
-
-    type TgUser = { id: number; first_name: string; last_name?: string; username?: string; photo_url?: string; auth_date: number; hash: string };
-
-    (window as unknown as Record<string, unknown>).onTelegramAuth = async (user: TgUser) => {
-      setIsSubmitting(true);
-      setError(null);
-      try {
-        const resp = await apiFetch<{ accessToken: string; role: string | number; userId: string }>("/api/auth/telegram", {
-          method: "POST",
-          body: {
-            id: user.id,
-            firstName: user.first_name,
-            lastName: user.last_name ?? null,
-            username: user.username ?? null,
-            photoUrl: user.photo_url ?? null,
-            authDate: user.auth_date,
-            hash: user.hash,
-          },
-        });
-        const role = typeof resp.role === "number" ? (ROLE_MAP[resp.role] ?? "Client") : String(resp.role);
-        applyCredentialsAndRedirect(resp.accessToken, role, resp.userId);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Не удалось войти через Telegram.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-
-    const script = document.createElement("script");
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.async = true;
-    script.setAttribute("data-telegram-login", "yallapharm_bot");
-    script.setAttribute("data-size", "large");
-    script.setAttribute("data-radius", "8");
-    script.setAttribute("data-onauth", "onTelegramAuth(user)");
-    script.setAttribute("data-request-access", "write");
-    container.appendChild(script);
-
     return () => {
-      delete (window as unknown as Record<string, unknown>).onTelegramAuth;
-      container.innerHTML = "";
+      tgConnectionRef.current?.stop().catch(() => undefined);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const closeTgModal = useCallback(() => {
+    tgConnectionRef.current?.stop().catch(() => undefined);
+    tgConnectionRef.current = null;
+    setTgSession(null);
+    setTgWaiting(false);
+    tgCompletedRef.current = false;
+  }, []);
+
+  async function onTelegramConfirmed(nonce: string) {
+    if (tgCompletedRef.current) return;
+    tgCompletedRef.current = true;
+    try {
+      const resp = await completeTelegramAuth(nonce);
+      const role = typeof resp.role === "number" ? (ROLE_MAP[resp.role] ?? "Client") : String(resp.role);
+      applyCredentialsAndRedirect(resp.accessToken, role, resp.userId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось завершить вход через Telegram.");
+      closeTgModal();
+    }
+  }
+
+  async function onTelegramLoginClick() {
+    setError(null);
+    setInfo(null);
+    setIsSubmitting(true);
+    try {
+      const session = await startTelegramAuth();
+      setTgSession(session);
+      setTgWaiting(true);
+
+      // Trigger the tg:// protocol handler to open the Telegram app.
+      // We use an anchor click instead of window.open so the browser doesn't
+      // open a blank tab if the protocol handler fails.
+      const a = document.createElement("a");
+      a.href = session.deepLink;
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Subscribe to real-time confirmation event
+      const conn = await connectTelegramAuthHub(session.nonce, {
+        onConfirmed: () => onTelegramConfirmed(session.nonce),
+        onCancelled: () => {
+          setError("Вход отменён в Telegram.");
+          closeTgModal();
+        },
+      });
+      tgConnectionRef.current = conn;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось запустить вход через Telegram.");
+      closeTgModal();
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <AppShell top={<TopBar title="Вход" backHref="back" />}>
@@ -222,7 +250,17 @@ function LoginContent() {
               <div className="flex-1 h-px bg-outline-variant" />
             </div>
 
-            <div ref={tgContainerRef} className="flex justify-center" />
+            <button
+              type="button"
+              onClick={onTelegramLoginClick}
+              disabled={isSubmitting}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1c8cc4] disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px]"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.871 4.326-2.96-.924c-.643-.204-.66-.643.136-.953l11.566-4.458c.534-.197 1.002.13.834.938z"/>
+              </svg>
+              Войти через Telegram
+            </button>
 
             <p className="text-[10px] xs:text-xs text-center text-on-surface-variant pt-2">
               <Link href="/login/admin" className="font-semibold text-on-surface-variant hover:text-primary transition">
@@ -292,6 +330,49 @@ function LoginContent() {
           </form>
         )}
       </div>
+
+      {tgWaiting && tgSession ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-3">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeTgModal} />
+          <div
+            className="relative w-full max-w-sm rounded-2xl bg-surface-container-lowest p-5 sm:p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-center w-14 h-14 mx-auto rounded-full bg-[#229ED9]/10 text-[#229ED9]">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.871 4.326-2.96-.924c-.643-.204-.66-.643.136-.953l11.566-4.458c.534-.197 1.002.13.834.938z"/>
+              </svg>
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base sm:text-lg font-bold">Подтвердите вход в Telegram</h3>
+              <p className="text-xs sm:text-sm text-on-surface-variant">
+                Откройте бот <span className="font-mono font-bold text-on-surface">@{tgSession.botUsername}</span>{" "}
+                и нажмите «Подтвердить». После этого вы автоматически вернётесь в свой аккаунт.
+              </p>
+            </div>
+
+            <a
+              href={tgSession.deepLink}
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1c8cc4]"
+            >
+              Открыть Telegram
+            </a>
+
+            <button
+              type="button"
+              onClick={closeTgModal}
+              className="stitch-button-secondary w-full text-sm"
+            >
+              Отмена
+            </button>
+
+            <p className="text-[10px] text-center text-on-surface-variant">
+              Сессия истекает через {tgSession.ttlSeconds} сек.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

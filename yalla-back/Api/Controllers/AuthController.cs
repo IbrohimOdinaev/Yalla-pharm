@@ -13,10 +13,12 @@ namespace Api.Controllers;
 public sealed class AuthController : ControllerBase
 {
   private readonly IAuthService _authService;
+  private readonly ITelegramAuthService _telegramAuthService;
 
-  public AuthController(IAuthService authService)
+  public AuthController(IAuthService authService, ITelegramAuthService telegramAuthService)
   {
     _authService = authService;
+    _telegramAuthService = telegramAuthService;
   }
 
   [HttpPost("login")]
@@ -49,13 +51,33 @@ public sealed class AuthController : ControllerBase
     return Ok(response);
   }
 
-  [HttpPost("telegram")]
+  [HttpPost("telegram/start")]
   [AllowAnonymous]
-  public async Task<IActionResult> TelegramLogin(
-    [FromBody] TelegramLoginRequest request,
+  [EnableRateLimiting("sms-register-request")]
+  public async Task<IActionResult> StartTelegramAuth(CancellationToken cancellationToken)
+  {
+    var response = await _telegramAuthService.StartAsync(cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("telegram/complete")]
+  [AllowAnonymous]
+  [EnableRateLimiting("sms-register-verify")]
+  public async Task<IActionResult> CompleteTelegramAuth(
+    [FromBody] CompleteTelegramAuthRequest request,
     CancellationToken cancellationToken)
   {
-    var response = await _authService.TelegramLoginAsync(request, cancellationToken);
+    var response = await _telegramAuthService.CompleteAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpGet("telegram/poll")]
+  [AllowAnonymous]
+  public async Task<IActionResult> PollTelegramAuth(
+    [FromQuery] string nonce,
+    CancellationToken cancellationToken)
+  {
+    var response = await _telegramAuthService.PollAsync(nonce, cancellationToken);
     return Ok(response);
   }
 

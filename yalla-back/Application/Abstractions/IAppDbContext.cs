@@ -23,6 +23,7 @@ public interface IAppDbContext
     DbSet<RefundRequest> RefundRequests { get; }
     DbSet<SmsVerificationSession> SmsVerificationSessions { get; }
     DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
+    DbSet<TelegramAuthSession> TelegramAuthSessions { get; }
     DbSet<User> Users { get; }
     DbSet<Category> Categories { get; }
     DbSet<DeliveryData> DeliveryData { get; }

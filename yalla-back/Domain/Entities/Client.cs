@@ -21,8 +21,8 @@ public class Client : User
     {
     }
 
-    public Client(string name, long telegramId)
-      : base(Guid.NewGuid(), name, telegramId, Role.Client)
+    public Client(string name, long telegramId, string? telegramUsername = null)
+      : base(Guid.NewGuid(), name, telegramId, telegramUsername, Role.Client)
     {
     }
 

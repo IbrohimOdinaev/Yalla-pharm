@@ -56,3 +56,35 @@ export async function superAdminLogin(phoneNumber: string, password: string): Pr
     body: { phoneNumber, password },
   });
 }
+
+// ───────────── Telegram bot deeplink auth ─────────────
+
+export type StartTelegramAuthResponse = {
+  nonce: string;
+  deepLink: string;
+  botUsername: string;
+  expiresAtUtc: string;
+  ttlSeconds: number;
+};
+
+export type PollTelegramAuthResponse = {
+  status: "pending" | "confirmed" | "cancelled" | "expired" | "consumed";
+};
+
+export async function startTelegramAuth(): Promise<StartTelegramAuthResponse> {
+  return apiFetch<StartTelegramAuthResponse>("/api/auth/telegram/start", {
+    method: "POST",
+    body: {},
+  });
+}
+
+export async function completeTelegramAuth(nonce: string): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("/api/auth/telegram/complete", {
+    method: "POST",
+    body: { nonce },
+  });
+}
+
+export async function pollTelegramAuth(nonce: string): Promise<PollTelegramAuthResponse> {
+  return apiFetch<PollTelegramAuthResponse>(`/api/auth/telegram/poll?nonce=${encodeURIComponent(nonce)}`);
+}

@@ -24,6 +24,18 @@ public sealed class ExceptionHandlingMiddleware
     }
     catch (Exception exception)
     {
+      // TEMP DIAGNOSTIC: dump every exception that reaches the middleware,
+      // even if response has already started.
+      try
+      {
+        var line =
+          $"[{DateTime.UtcNow:O}] {context.Request.Method} {context.Request.Path} HasStarted={context.Response.HasStarted} traceId={context.TraceIdentifier}\n" +
+          exception.ToString() + "\n" +
+          "----------------------------------------------------------------\n";
+        System.IO.File.AppendAllText("/tmp/yalla-error.log", line);
+      }
+      catch { /* ignore */ }
+
       if (context.Response.HasStarted)
       {
         _logger.LogWarning(
@@ -126,6 +138,18 @@ public sealed class ExceptionHandlingMiddleware
         context.TraceIdentifier,
         error.StatusCode,
         error.Code);
+
+      // TEMP DIAGNOSTIC: also dump full exception to /tmp/yalla-error.log so we can read it from outside.
+      try
+      {
+        var line =
+          $"[{DateTime.UtcNow:O}] {context.Request.Method} {context.Request.Path} traceId={context.TraceIdentifier}\n" +
+          exception.ToString() + "\n" +
+          "----------------------------------------------------------------\n";
+        System.IO.File.AppendAllText("/tmp/yalla-error.log", line);
+      }
+      catch { /* ignore */ }
+
       return;
     }
 

@@ -65,6 +65,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .HasColumnType("bigint")
       .IsRequired(false);
 
+    builder.Property(x => x.TelegramUsername)
+      .HasColumnName("telegram_username")
+      .HasColumnType("character varying(64)")
+      .HasMaxLength(64)
+      .IsRequired(false);
+
     builder.HasIndex(x => x.PhoneNumber)
       .IsUnique()
       .HasDatabaseName("ix_users_phone_number");

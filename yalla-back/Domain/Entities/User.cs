@@ -21,6 +21,8 @@ public class User
 
     public long? TelegramId { get; private protected set; }
 
+    public string? TelegramUsername { get; private protected set; }
+
     private protected User() { }
 
     public User(
@@ -50,7 +52,7 @@ public class User
         PhoneNumber = phoneNumber;
     }
 
-    internal User(Guid id, string name, long telegramId, Role role)
+    internal User(Guid id, string name, long telegramId, string? telegramUsername, Role role)
     {
         if (id == Guid.Empty)
             throw new DomainArgumentException("User.Id can't be empty.");
@@ -60,6 +62,7 @@ public class User
         PhoneNumber = $"tg_{telegramId}";
         PasswordHash = "TELEGRAM_AUTH";
         TelegramId = telegramId;
+        TelegramUsername = string.IsNullOrWhiteSpace(telegramUsername) ? null : telegramUsername.Trim();
         Role = role;
     }
 
@@ -82,6 +85,11 @@ public class User
     }
 
     public void SetTelegramId(long? telegramId) => TelegramId = telegramId;
+
+    public void SetTelegramUsername(string? telegramUsername)
+    {
+        TelegramUsername = string.IsNullOrWhiteSpace(telegramUsername) ? null : telegramUsername.Trim();
+    }
 
     public void SetName(string? name)
     {

@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Api.Hubs;
 using Api.Middleware;
+using Api.Telegram;
 using Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
@@ -14,6 +15,7 @@ using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.Services;
 using Yalla.Infrastructure;
+using Yalla.Infrastructure.Telegram;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -163,17 +165,24 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IRealtimeUpdatesPublisher, SignalRRealtimeUpdatesPublisher>();
 
-// Override AuthService with Telegram config
-var tgBotToken = builder.Configuration["Telegram:BotToken"] ?? "";
-var tgMaxAge = builder.Configuration.GetValue<int?>("Telegram:LoginWidgetMaxAgeSeconds") ?? 86400;
-builder.Services.AddScoped<IAuthService>(sp =>
-    new AuthService(
-        sp.GetRequiredService<IAppDbContext>(),
-        sp.GetRequiredService<IPasswordHasher>(),
-        sp.GetRequiredService<IJwtTokenProvider>(),
-        tgBotToken,
-        tgMaxAge,
-        sp.GetRequiredService<ISmsService>()));
+// Telegram bot deeplink auth
+builder.Services.Configure<TelegramAuthOptions>(options =>
+{
+    var section = builder.Configuration.GetSection(TelegramAuthOptions.SectionName);
+    options.BotToken = section["BotToken"] ?? string.Empty;
+    options.BotUsername = section["BotUsername"] ?? string.Empty;
+    options.WebhookPublicBaseUrl = section["WebhookPublicBaseUrl"] ?? string.Empty;
+    options.WebhookSecretToken = section["WebhookSecretToken"] ?? string.Empty;
+    if (int.TryParse(section["AuthSessionTtlSeconds"], out var ttl) && ttl > 0)
+        options.AuthSessionTtlSeconds = ttl;
+    if (bool.TryParse(section["AutoRegisterWebhookOnStart"], out var autoRegister))
+        options.AutoRegisterWebhookOnStart = autoRegister;
+});
+builder.Services.AddHttpClient<ITelegramBotApi, TelegramBotApi>();
+builder.Services.AddScoped<ITelegramAuthService, TelegramAuthService>();
+builder.Services.AddScoped<ITelegramAuthRealtimePublisher, SignalRTelegramAuthRealtimePublisher>();
+builder.Services.AddScoped<TelegramBotUpdateHandler>();
+builder.Services.AddHostedService<TelegramAuthSessionCleanupHostedService>();
 
 var app = builder.Build();
 
@@ -203,6 +212,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<UpdatesHub>("/hubs/updates");
+app.MapHub<TelegramAuthHub>("/hubs/telegram-auth");
 // app.MapFallbackToFile("index.html");
 
 app.Run();
