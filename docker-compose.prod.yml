@@ -1,6 +1,6 @@
 # ============================================
-# DEV: all services local
-# Usage: docker compose up -d --build
+# PROD: front + back only (external DB, S3)
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
 # ============================================
 
 services:
@@ -25,10 +25,6 @@ services:
     container_name: yalla-api
     ports:
       - "5000:8080"
-    depends_on:
-      - postgres
-      - minio
-      - elasticsearch
     environment:
       - ConnectionStrings__Default=${DB_CONNECTION_STRING}
       - Database__ApplyMigrationsOnStartup=${DB_APPLY_MIGRATIONS:-true}
@@ -37,11 +33,10 @@ services:
       - Jwt__Audience=${JWT_AUDIENCE:-Yalla.Api.Client}
       - Jwt__AccessTokenMinutes=${JWT_ACCESS_TOKEN_MINUTES:-43200}
       - MinIo__Endpoint=${MINIO_ENDPOINT}
-      - MinIo__ContainerEndpoint=${MINIO_ENDPOINT}
       - MinIo__AccessKey=${MINIO_ACCESS_KEY}
       - MinIo__SecretKey=${MINIO_SECRET_KEY}
       - MinIo__BucketName=${MINIO_BUCKET}
-      - MinIo__UseSsl=${MINIO_USE_SSL:-false}
+      - MinIo__UseSsl=${MINIO_USE_SSL:-true}
       - Elasticsearch__Url=${ELASTICSEARCH_URL}
       - Elasticsearch__MedicineIndex=${ELASTICSEARCH_INDEX:-medicines}
       - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
@@ -57,66 +52,15 @@ services:
       - OsonSms__Login=${OSON_SMS_LOGIN}
       - OsonSms__Token=${OSON_SMS_TOKEN}
       - OsonSms__PassSaltHash=${OSON_SMS_PASS_SALT_HASH}
-      - OsonSms__UseStub=${OSON_SMS_USE_STUB:-true}
+      - OsonSms__UseStub=${OSON_SMS_USE_STUB:-false}
       - DushanbeCityPayment__BaseUrl=${DC_PAYMENT_BASE_URL}
       - Jura__BaseUrl=${JURA_BASE_URL}
       - Jura__Login=${JURA_LOGIN}
       - Jura__Password=${JURA_PASSWORD}
-      - Cors__AllowedOrigins__0=${CORS_ORIGIN_0:-http://localhost:3000}
-      - Cors__AllowedOrigins__1=${CORS_ORIGIN_1:-http://127.0.0.1:3000}
-    networks:
-      - yalla-network
-
-  postgres:
-    image: postgres:16
-    container_name: yalla-postgres
-    restart: always
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-app_db}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - yalla-network
-
-  elasticsearch:
-    image: elasticsearch:8.13.0
-    container_name: yalla-elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms256m -Xmx512m
-    ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
-    networks:
-      - yalla-network
-
-  minio:
-    image: minio/minio
-    container_name: yalla-minio
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-    volumes:
-      - minio-data:/data
+      - Cors__AllowedOrigins__0=${CORS_ORIGIN_0}
+      - Cors__AllowedOrigins__1=${CORS_ORIGIN_1}
     networks:
       - yalla-network
 
 networks:
   yalla-network:
-
-volumes:
-  postgres-data:
-    external: true
-  minio-data:
-    external: true
-  elasticsearch-data:

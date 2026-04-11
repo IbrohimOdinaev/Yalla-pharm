@@ -40,6 +40,8 @@ pnpm-debug.log*
 
 # Environment
 .env.local
+.env.dev
+.env.prod
 
 # Misc
 .nvimlog
