@@ -20,15 +20,22 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
         ILogger<ElasticsearchMedicineSearchEngine> logger,
         string indexName = "medicines")
     {
-        _http = new HttpClient { BaseAddress = new Uri(esUrl), Timeout = TimeSpan.FromSeconds(10) };
         _dbContext = dbContext;
         _logger = logger;
-        _baseUrl = esUrl.TrimEnd('/');
+        _baseUrl = (esUrl ?? "").TrimEnd('/');
         _indexName = indexName;
+
+        if (!string.IsNullOrEmpty(_baseUrl))
+            _http = new HttpClient { BaseAddress = new Uri(_baseUrl), Timeout = TimeSpan.FromSeconds(10) };
+        else
+            _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
     }
+
+    private bool IsDisabled => string.IsNullOrEmpty(_baseUrl);
 
     public async Task IndexMedicineAsync(MedicineSearchDocument doc, CancellationToken ct = default)
     {
+        if (IsDisabled) return;
         await EnsureIndexAsync(ct);
         var json = JsonSerializer.Serialize(ToEsDoc(doc));
         var response = await _http.PutAsync($"/{_indexName}/_doc/{doc.Id}", new StringContent(json, Encoding.UTF8, "application/json"), ct);
@@ -38,6 +45,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
 
     public async Task IndexManyAsync(IEnumerable<MedicineSearchDocument> docs, CancellationToken ct = default)
     {
+        if (IsDisabled) return;
         await EnsureIndexAsync(ct);
         var sb = new StringBuilder();
         foreach (var doc in docs)
@@ -54,11 +62,13 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
 
     public async Task DeleteAsync(Guid medicineId, CancellationToken ct = default)
     {
+        if (IsDisabled) return;
         await _http.DeleteAsync($"/{_indexName}/_doc/{medicineId}", ct);
     }
 
     public async Task<IReadOnlyList<MedicineSearchResult>> SearchAsync(string query, int limit = 20, CancellationToken ct = default)
     {
+        if (IsDisabled) return [];
         await EnsureIndexAsync(ct);
         var trimmed = (query ?? "").Trim();
         if (string.IsNullOrEmpty(trimmed)) return [];
@@ -129,6 +139,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
 
     public async Task ReindexAllAsync(CancellationToken ct = default)
     {
+        if (IsDisabled) { _logger.LogInformation("Elasticsearch disabled — skipping reindex"); return; }
         // Delete index
         await _http.DeleteAsync($"/{_indexName}", ct);
 
