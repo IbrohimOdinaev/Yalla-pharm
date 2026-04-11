@@ -123,17 +123,27 @@ public sealed class MedicinesController : ControllerBase
     if (string.IsNullOrWhiteSpace(q))
       return Ok(new { suggestions = Array.Empty<object>() });
 
-    var results = await _searchEngine.SearchAsync(q.Trim(), Math.Min(limit, 20), cancellationToken);
+    try
+    {
+      var results = await _searchEngine.SearchAsync(q.Trim(), Math.Min(limit, 20), cancellationToken);
+      if (results.Count > 0)
+        return Ok(new { suggestions = results.Select(r => new { r.Id, r.Title, r.Articul, r.CategoryName, r.MinPrice, r.Score }) });
+    }
+    catch { /* ES unavailable — fall through to SQL */ }
+
+    // Fallback: SQL LIKE search
+    var fallback = await _medicineService.SearchMedicinesAsync(
+      new SearchMedicinesRequest { Query = q.Trim(), Limit = Math.Min(limit, 20) }, cancellationToken);
     return Ok(new
     {
-      suggestions = results.Select(r => new
+      suggestions = (fallback.Medicines ?? []).Select(m => new
       {
-        r.Id,
-        r.Title,
-        r.Articul,
-        r.CategoryName,
-        r.MinPrice,
-        r.Score
+        Id = m.Id,
+        Title = m.Title,
+        Articul = m.Articul,
+        CategoryName = m.CategoryName ?? "",
+        MinPrice = m.MinPrice,
+        Score = 0.0
       })
     });
   }

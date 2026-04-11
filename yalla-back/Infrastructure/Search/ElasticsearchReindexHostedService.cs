@@ -38,6 +38,6 @@ public sealed class ElasticsearchReindexHostedService : BackgroundService
             }
         }
 
-        _logger.LogError("Elasticsearch reindex failed after 10 attempts");
+        _logger.LogWarning("Elasticsearch unavailable — live search will use SQL fallback");
     }
 }
