@@ -15,6 +15,7 @@ import { useAppSelector } from "@/shared/lib/redux";
 
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
+import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 
 const POPULAR_QUERIES = ["Парацетамол", "Ибупрофен", "Амоксициллин", "Цитрамон", "Лоратадин", "Омепразол"];
@@ -43,6 +44,7 @@ function HomeContent() {
   const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
+  const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const searchParams = useSearchParams();
   const navRouter = useRouter();
 
@@ -101,12 +103,12 @@ function HomeContent() {
     getCategories().then(setCategories).catch(() => undefined);
   }, []);
 
-  const fetchMedicines = useCallback((p = 1, catId = "") => {
+  const fetchMedicines = useCallback((p = 1, catId = "", pharmId?: string) => {
     if (isInitialLoad.current) setIsLoading(true);
     else setIsSearching(true);
     setError(null);
 
-    getCatalogMedicinesPaginated(p, 24, catId || undefined)
+    getCatalogMedicinesPaginated(p, 24, catId || undefined, pharmId || undefined)
       .then((data) => {
         setMedicines(Array.isArray(data?.medicines) ? data.medicines : []);
         const total = data?.totalCount ?? 0;
@@ -121,8 +123,8 @@ function HomeContent() {
   }, []);
 
   useOfferLiveUpdates(useCallback(() => {
-    fetchMedicines(page, selectedCategoryId);
-  }, [fetchMedicines, page, selectedCategoryId]));
+    fetchMedicines(page, selectedCategoryId, selectedPharmacy?.id);
+  }, [fetchMedicines, page, selectedCategoryId, selectedPharmacy?.id]));
 
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
@@ -138,8 +140,8 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    fetchMedicines(1, selectedCategoryId);
-  }, [fetchMedicines, selectedCategoryId]);
+    fetchMedicines(1, selectedCategoryId, selectedPharmacy?.id);
+  }, [fetchMedicines, selectedCategoryId, selectedPharmacy?.id]);
 
   // Search by pharmacy
   function doSearch(q: string) {
@@ -155,7 +157,12 @@ function HomeContent() {
         setPharmacyResults(data.pharmacies ?? []);
         setSearchTotalCount(data.totalCount ?? 0);
         setPharmacyScrollPage({});
-        setSelectedSearchPharmacyId("");
+        // Auto-apply pharmacy filter if a pharmacy is globally selected
+        if (selectedPharmacy && (data.pharmacies ?? []).some((p) => p.pharmacyId === selectedPharmacy.id)) {
+          setSelectedSearchPharmacyId(selectedPharmacy.id);
+        } else {
+          setSelectedSearchPharmacyId("");
+        }
       })
       .catch((err) => {
         setSearchError(err instanceof Error ? err.message : "Ошибка поиска");
@@ -237,7 +244,7 @@ function HomeContent() {
     const newId = catId === selectedCategoryId ? "" : catId;
     setSelectedCategoryId(newId);
     setPage(1);
-    fetchMedicines(1, newId);
+    fetchMedicines(1, newId, selectedPharmacy?.id);
   }
 
   // Match quick category label to actual category via keywords
@@ -246,7 +253,7 @@ function HomeContent() {
       setSelectedCategoryId("");
       setExpandedCategoryId("");
       setView("catalog");
-      fetchMedicines(1, "");
+      fetchMedicines(1, "", selectedPharmacy?.id);
       return;
     }
     const quickCat = QUICK_CATEGORIES.find((c) => c.label === label);
@@ -258,19 +265,18 @@ function HomeContent() {
     });
     if (match) {
       setSelectedCategoryId(match.id);
-      // If it's a child category, expand its parent
       const parent = categories.find((c) => c.children?.some((ch) => ch.id === match.id));
       if (parent) setExpandedCategoryId(parent.id);
       else if (match.children?.length) setExpandedCategoryId(match.id);
       setView("catalog");
-      fetchMedicines(1, match.id);
+      fetchMedicines(1, match.id, selectedPharmacy?.id);
     }
   }
 
   function goToPage(p: number) {
     if (p < 1 || p > totalPages) return;
     setPage(p);
-    fetchMedicines(p, selectedCategoryId);
+    fetchMedicines(p, selectedCategoryId, selectedPharmacy?.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -287,7 +293,7 @@ function HomeContent() {
               <nav className="space-y-0.5 max-h-[70vh] overflow-y-auto pr-1">
                 <button
                   type="button"
-                  onClick={() => { setSelectedCategoryId(""); setExpandedCategoryId(""); fetchMedicines(1, ""); }}
+                  onClick={() => { setSelectedCategoryId(""); setExpandedCategoryId(""); fetchMedicines(1, "", selectedPharmacy?.id); }}
                   className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition ${!selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"}`}
                 >
                   Все товары
@@ -306,7 +312,7 @@ function HomeContent() {
                           }
                           setSelectedCategoryId(cat.id);
                           setPage(1);
-                          fetchMedicines(1, cat.id);
+                          fetchMedicines(1, cat.id, selectedPharmacy?.id);
                         }}
                         className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition flex items-center justify-between ${isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"}`}
                       >
@@ -321,7 +327,7 @@ function HomeContent() {
                             <button
                               key={sub.id}
                               type="button"
-                              onClick={() => { setSelectedCategoryId(sub.id); setPage(1); fetchMedicines(1, sub.id); }}
+                              onClick={() => { setSelectedCategoryId(sub.id); setPage(1); fetchMedicines(1, sub.id, selectedPharmacy?.id); }}
                               className={`w-full text-left rounded-lg px-3 py-1.5 text-sm transition ${selectedCategoryId === sub.id ? "bg-primary/80 text-white font-semibold" : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"}`}
                             >
                               {sub.name}
@@ -342,7 +348,7 @@ function HomeContent() {
             <div className="sm:hidden mb-4">
               <select
                 value={selectedCategoryId}
-                onChange={(e) => { setSelectedCategoryId(e.target.value); setPage(1); fetchMedicines(1, e.target.value); }}
+                onChange={(e) => { setSelectedCategoryId(e.target.value); setPage(1); fetchMedicines(1, e.target.value, selectedPharmacy?.id); }}
                 className="stitch-input w-full text-sm"
               >
                 <option value="">Все товары</option>
@@ -375,7 +381,7 @@ function HomeContent() {
                       <button
                         key={sub.id}
                         type="button"
-                        onClick={() => { setSelectedCategoryId(sub.id); setExpandedCategoryId(sel.id); setPage(1); fetchMedicines(1, sub.id); }}
+                        onClick={() => { setSelectedCategoryId(sub.id); setExpandedCategoryId(sel.id); setPage(1); fetchMedicines(1, sub.id, selectedPharmacy?.id); }}
                         className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${selectedCategoryId === sub.id ? "bg-primary text-white border-primary" : "border-surface-container-high hover:bg-surface-container-low"}`}
                       >
                         {sub.name}

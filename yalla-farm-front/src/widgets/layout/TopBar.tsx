@@ -19,9 +19,12 @@ type TopBarProps = {
   addressText?: string;
   onAddressClick?: () => void;
   onLogoClick?: () => void;
+  pharmacyName?: string;
+  pharmacyIconUrl?: string | null;
+  onPharmacyClick?: () => void;
 };
 
-export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, onAddressClick, onLogoClick }: TopBarProps) {
+export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, onAddressClick, onLogoClick, pharmacyName, pharmacyIconUrl, onPharmacyClick }: TopBarProps) {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const dispatch = useAppDispatch();
@@ -73,8 +76,28 @@ export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, 
             </Link>
           )}
 
-          {/* Left spacer — small gap after logo */}
-          <div className="w-4 sm:w-8 flex-shrink-0" />
+          {/* Pharmacy selector */}
+          <button
+            type="button"
+            onClick={onPharmacyClick}
+            className="flex items-center gap-1.5 rounded-full border border-surface-container-high bg-surface-container-lowest px-2 sm:px-3 py-1.5 sm:py-2 transition hover:bg-surface-container-low flex-shrink-0 max-w-[140px] sm:max-w-[180px] ml-3 sm:ml-4"
+          >
+            {pharmacyIconUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pharmacyIconUrl.startsWith("http") ? pharmacyIconUrl : `/api/pharmacies/icon/${pharmacyIconUrl}/content`} alt="" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover flex-shrink-0" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary flex-shrink-0 sm:w-[18px] sm:h-[18px]">
+                <path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
+                <path d="M9 21v-4h6v4"/><path d="M10 9h4"/><path d="M10 13h4"/>
+              </svg>
+            )}
+            <span className="text-xs sm:text-sm font-medium text-on-surface truncate">
+              {pharmacyName || "Аптека"}
+            </span>
+          </button>
+
+          {/* Left spacer */}
+          <div className="w-2 sm:w-4 flex-shrink-0" />
 
           {/* Search bar — uses callback if provided, otherwise navigates to home search */}
           {onSearchClick ? (

@@ -172,11 +172,14 @@ public sealed class MedicineService : IMedicineService
 
         var page = request.Page < 1 ? 1 : request.Page;
         var pageSize = request.PageSize <= 0 ? 20 : Math.Min(request.PageSize, 100);
+        var filterPharmacyId = request.PharmacyId;
 
         var query = _dbContext.Medicines
           .AsNoTracking()
           .Where(x => x.IsActive)
-          .Where(x => x.Offers.Any(o => o.StockQuantity > 0));
+          .Where(x => filterPharmacyId.HasValue
+            ? x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0)
+            : x.Offers.Any(o => o.StockQuantity > 0));
 
         if (request.CategoryId.HasValue)
         {
@@ -209,9 +212,13 @@ public sealed class MedicineService : IMedicineService
               Articul = x.Articul,
               IsActive = x.IsActive,
               CategoryName = x.Category != null ? x.Category.Name : null,
-              MinPrice = x.Offers.Any(o => o.Price > 0)
-                ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
-                : null,
+              MinPrice = filterPharmacyId.HasValue
+                ? (x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.Price > 0)
+                    ? x.Offers.Where(o => o.PharmacyId == filterPharmacyId.Value && o.Price > 0).Min(o => o.Price)
+                    : (decimal?)null)
+                : (x.Offers.Any(o => o.Price > 0)
+                    ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                    : (decimal?)null),
               Images = x.Images
                 .OrderByDescending(i => i.IsMain)
                 .ThenByDescending(i => i.IsMinimal)

@@ -894,6 +894,11 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("admin_id");
 
+                    b.Property<string>("BannerUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("banner_url");
+
                     b.Property<string>("IconUrl")
                         .HasColumnType("text");
 

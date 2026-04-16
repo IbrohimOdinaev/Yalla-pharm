@@ -19,6 +19,8 @@ public class Pharmacy
 
     public string? IconUrl { get; private set; }
 
+    public string? BannerUrl { get; private set; }
+
     private readonly List<Order> _orders = new();
     public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
 
@@ -91,6 +93,11 @@ public class Pharmacy
     public void SetIconUrl(string? iconUrl)
     {
         IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl.Trim();
+    }
+
+    public void SetBannerUrl(string? bannerUrl)
+    {
+        BannerUrl = string.IsNullOrWhiteSpace(bannerUrl) ? null : bannerUrl.Trim();
     }
 
     public void ChangeActivity()

@@ -69,9 +69,10 @@ export function getMedicineDisplayName(medicine: ApiMedicine): string {
   return medicine.title || medicine.name || "Без названия";
 }
 
-export async function getCatalogMedicinesPaginated(page = 1, pageSize = 24, categoryId?: string): Promise<ApiPaginated<ApiMedicine>> {
+export async function getCatalogMedicinesPaginated(page = 1, pageSize = 24, categoryId?: string, pharmacyId?: string): Promise<ApiPaginated<ApiMedicine>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (categoryId) params.set("categoryId", categoryId);
+  if (pharmacyId) params.set("pharmacyId", pharmacyId);
   return apiFetch<ApiPaginated<ApiMedicine>>(`/api/medicines?${params}`);
 }
 

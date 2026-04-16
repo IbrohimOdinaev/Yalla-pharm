@@ -51,6 +51,12 @@ public class PharmacyConfiguration : IEntityTypeConfiguration<Pharmacy>
           .HasColumnType("double precision")
           .IsRequired(false);
 
+        builder.Property(x => x.BannerUrl)
+          .HasColumnName("banner_url")
+          .HasColumnType("character varying(1024)")
+          .HasMaxLength(1024)
+          .IsRequired(false);
+
         builder.HasIndex(x => x.AdminId)
           .HasDatabaseName("ix_pharmacies_admin_id");
 

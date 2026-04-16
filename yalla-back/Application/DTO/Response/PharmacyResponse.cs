@@ -10,4 +10,5 @@ public sealed class PharmacyResponse
   public double? Latitude { get; init; }
   public double? Longitude { get; init; }
   public string? IconUrl { get; init; }
+  public string? BannerUrl { get; init; }
 }

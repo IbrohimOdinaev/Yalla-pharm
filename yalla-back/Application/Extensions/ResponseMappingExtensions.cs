@@ -62,7 +62,8 @@ public static class ResponseMappingExtensions
             IsActive = pharmacy.IsActive,
             Latitude = pharmacy.Latitude,
             Longitude = pharmacy.Longitude,
-            IconUrl = pharmacy.IconUrl
+            IconUrl = pharmacy.IconUrl,
+            BannerUrl = pharmacy.BannerUrl
         };
     }
 
