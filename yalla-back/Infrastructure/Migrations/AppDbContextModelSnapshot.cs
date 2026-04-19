@@ -1290,6 +1290,27 @@ namespace Yalla.Infrastructure.Migrations
                     b.ToTable("sms_verification_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.SyncState", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("sync_state", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.TelegramAuthSession", b =>
                 {
                     b.Property<Guid>("Id")

@@ -1,21 +1,23 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
+using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Domain.Entities;
-using Yalla.Application.Common;
 
 namespace Yalla.Application.Services;
 
 public sealed class WooCommerceSyncService : IWooCommerceSyncService
 {
+    private const string PollCursorKey = "woocommerce_products_last_poll_utc";
+
     private readonly IAppDbContext _dbContext;
     private readonly WooCommerceOptions _options;
     private readonly HttpClient _httpClient;
     private readonly ILogger<WooCommerceSyncService> _logger;
-    private DateTime _lastPollUtc = DateTime.MinValue;
 
     public WooCommerceSyncService(
         IAppDbContext dbContext,
@@ -29,35 +31,63 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         _logger = logger;
     }
 
-    public async Task ProcessWebhookAsync(WooCommerceWebhookPayload payload, CancellationToken cancellationToken = default)
+    public async Task ProcessUpdateAsync(WooCommerceWebhookPayload payload, CancellationToken cancellationToken = default)
     {
         if (payload.Id <= 0) return;
 
-        var medicine = await _dbContext.Medicines
-            .AsTracking()
-            .FirstOrDefaultAsync(x => x.WooCommerceId == payload.Id, cancellationToken);
+        var medicineId = await _dbContext.Medicines
+            .Where(x => x.WooCommerceId == payload.Id)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (medicine == null)
+        if (medicineId is null)
         {
             _logger.LogWarning("Webhook: Medicine not found for WooCommerceId {WcId}", payload.Id);
             return;
         }
 
-        await UpsertOfferAsync(medicine.Id, payload.Price, payload.StockQuantity, payload.StockStatus, cancellationToken);
+        if (!TryComputeStock(payload, out var stock))
+        {
+            _logger.LogWarning("Webhook: WC:{WcId} skipped — invalid stock_quantity", payload.Id);
+            return;
+        }
 
-        // Update title if changed
-        if (!string.IsNullOrWhiteSpace(payload.Name) && payload.Name != medicine.Title)
-            medicine.SetTitle(payload.Name);
+        if (!TryParsePrice(payload.Price, out var price))
+        {
+            _logger.LogWarning("Webhook: WC:{WcId} skipped — invalid price '{Price}'", payload.Id, payload.Price);
+            return;
+        }
 
-        // Deactivate if product unpublished
-        if (payload.Status == "trash" || payload.Status == "draft")
-            medicine.SetIsActive(false);
-        else if (payload.Status == "publish" && !medicine.IsActive)
-            medicine.SetIsActive(true);
-
+        await UpsertOfferAsync(medicineId.Value, price, stock, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Webhook: Synced WC:{WcId} → Medicine {MedicineId}, price={Price}, stock={Stock}",
-            payload.Id, medicine.Id, payload.Price, payload.StockQuantity);
+
+        _logger.LogInformation("Webhook update: WC:{WcId} → Medicine {MedicineId}, price={Price}, stock={Stock}",
+            payload.Id, medicineId.Value, price, stock);
+    }
+
+    public async Task ProcessDeleteAsync(int wooCommerceId, CancellationToken cancellationToken = default)
+    {
+        if (wooCommerceId <= 0) return;
+
+        var pharmacyId = _options.PharmacyId;
+        if (pharmacyId == Guid.Empty) return;
+
+        var offer = await (
+            from m in _dbContext.Medicines
+            join o in _dbContext.Offers on m.Id equals o.MedicineId
+            where m.WooCommerceId == wooCommerceId && o.PharmacyId == pharmacyId
+            select o).AsTracking().FirstOrDefaultAsync(cancellationToken);
+
+        if (offer is null)
+        {
+            _logger.LogInformation("Webhook delete: WC:{WcId} — no offer to zero", wooCommerceId);
+            return;
+        }
+
+        offer.SetStockQuantity(0);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Webhook delete: WC:{WcId} → offer stock set to 0", wooCommerceId);
     }
 
     public async Task PollUpdatedProductsAsync(CancellationToken cancellationToken = default)
@@ -68,8 +98,15 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
             return;
         }
 
-        var modifiedAfter = _lastPollUtc > DateTime.MinValue
-            ? _lastPollUtc.ToString("yyyy-MM-ddTHH:mm:ss")
+        if (_options.PharmacyId == Guid.Empty)
+        {
+            _logger.LogWarning("WooCommerce polling skipped: PharmacyId not configured");
+            return;
+        }
+
+        var cursor = await LoadCursorAsync(cancellationToken);
+        var modifiedAfter = cursor > DateTime.MinValue
+            ? cursor.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)
             : "";
 
         var pollStart = DateTime.UtcNow;
@@ -79,9 +116,7 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var url = $"{_options.BaseUrl}/wp-json/wc/v3/products?per_page=100&page={page}" +
-                      $"&consumer_key={_options.ConsumerKey}&consumer_secret={_options.ConsumerSecret}";
-
+            var url = $"{_options.BaseUrl}/wp-json/wc/v3/products?per_page=100&page={page}";
             if (!string.IsNullOrEmpty(modifiedAfter))
                 url += $"&modified_after={modifiedAfter}";
 
@@ -100,26 +135,7 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
 
                 if (products == null || products.Count == 0) break;
 
-                foreach (var product in products)
-                {
-                    try
-                    {
-                        var medicine = await _dbContext.Medicines
-                            .AsTracking()
-                            .FirstOrDefaultAsync(x => x.WooCommerceId == product.Id, cancellationToken);
-
-                        if (medicine == null) continue;
-
-                        await UpsertOfferAsync(medicine.Id, product.Price, product.StockQuantity, product.StockStatus, cancellationToken);
-                        totalSynced++;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "WC Poll: Failed to sync product {WcId}", product.Id);
-                    }
-                }
-
-                await _dbContext.SaveChangesAsync(cancellationToken);
+                totalSynced += await SyncBatchAsync(products, cancellationToken);
 
                 if (response.Headers.TryGetValues("X-WP-TotalPages", out var tp) &&
                     int.TryParse(tp.First(), out int totalPages) && page >= totalPages)
@@ -136,20 +152,69 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         }
 
         if (succeeded)
-            _lastPollUtc = pollStart;
+            await SaveCursorAsync(pollStart, cancellationToken);
 
         _logger.LogInformation("WC Poll: Synced {Count} products (succeeded={Succeeded})", totalSynced, succeeded);
     }
 
-    private async Task UpsertOfferAsync(Guid medicineId, string priceStr, int? stockQty, string stockStatus, CancellationToken ct)
+    private async Task<int> SyncBatchAsync(List<WooCommerceWebhookPayload> products, CancellationToken ct)
+    {
+        var pharmacyId = _options.PharmacyId;
+        var ids = products.Where(p => p.Id > 0).Select(p => p.Id).Distinct().ToList();
+        if (ids.Count == 0) return 0;
+
+        var medicines = await _dbContext.Medicines
+            .Where(m => m.WooCommerceId.HasValue && ids.Contains(m.WooCommerceId.Value))
+            .Select(m => new { m.Id, WcId = m.WooCommerceId!.Value })
+            .ToDictionaryAsync(x => x.WcId, x => x.Id, ct);
+
+        if (medicines.Count == 0) return 0;
+
+        var medicineIds = medicines.Values.ToList();
+        var offers = await _dbContext.Offers
+            .AsTracking()
+            .Where(o => o.PharmacyId == pharmacyId && medicineIds.Contains(o.MedicineId))
+            .ToDictionaryAsync(o => o.MedicineId, ct);
+
+        int synced = 0;
+        foreach (var product in products)
+        {
+            if (!medicines.TryGetValue(product.Id, out var medicineId)) continue;
+
+            if (!TryComputeStock(product, out var stock))
+            {
+                _logger.LogWarning("WC Poll: WC:{WcId} skipped — invalid stock_quantity", product.Id);
+                continue;
+            }
+
+            if (!TryParsePrice(product.Price, out var price))
+            {
+                _logger.LogWarning("WC Poll: WC:{WcId} skipped — invalid price '{Price}'", product.Id, product.Price);
+                continue;
+            }
+
+            if (offers.TryGetValue(medicineId, out var offer))
+            {
+                offer.SetPrice(price);
+                offer.SetStockQuantity(stock);
+            }
+            else
+            {
+                var newOffer = new Offer(medicineId, pharmacyId, stock, price);
+                _dbContext.Offers.Add(newOffer);
+                offers[medicineId] = newOffer;
+            }
+            synced++;
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+        return synced;
+    }
+
+    private async Task UpsertOfferAsync(Guid medicineId, decimal price, int stock, CancellationToken ct)
     {
         var pharmacyId = _options.PharmacyId;
         if (pharmacyId == Guid.Empty) return;
-
-        decimal.TryParse(priceStr, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var price);
-
-        var stock = stockStatus == "outofstock" ? 0 : stockQty ?? (stockStatus == "instock" ? 1 : 0);
 
         var offer = await _dbContext.Offers
             .AsTracking()
@@ -162,8 +227,70 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         }
         else
         {
-            var newOffer = new Offer(medicineId, pharmacyId, stock, price);
-            _dbContext.Offers.Add(newOffer);
+            _dbContext.Offers.Add(new Offer(medicineId, pharmacyId, stock, price));
         }
+    }
+
+    private async Task<DateTime> LoadCursorAsync(CancellationToken ct)
+    {
+        var raw = await _dbContext.SyncStates
+            .Where(x => x.Key == PollCursorKey)
+            .Select(x => x.Value)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrEmpty(raw)) return DateTime.MinValue;
+        return DateTime.TryParse(raw, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt)
+            ? DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+            : DateTime.MinValue;
+    }
+
+    private async Task SaveCursorAsync(DateTime utc, CancellationToken ct)
+    {
+        var value = utc.ToString("o", CultureInfo.InvariantCulture);
+        var existing = await _dbContext.SyncStates
+            .AsTracking()
+            .FirstOrDefaultAsync(x => x.Key == PollCursorKey, ct);
+
+        if (existing is null)
+            _dbContext.SyncStates.Add(new SyncState(PollCursorKey, value, utc));
+        else
+            existing.SetValue(value, utc);
+
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    private static bool TryComputeStock(WooCommerceWebhookPayload p, out int stock)
+    {
+        // Unpublished products are treated as out of stock to protect the catalog.
+        if (p.Status is "trash" or "draft" or "pending")
+        {
+            stock = 0;
+            return true;
+        }
+
+        if (p.StockStatus == "outofstock")
+        {
+            stock = 0;
+            return true;
+        }
+
+        if (p.StockQuantity.HasValue)
+        {
+            if (p.StockQuantity.Value < 0) { stock = 0; return false; }
+            stock = p.StockQuantity.Value;
+            return true;
+        }
+
+        stock = p.StockStatus == "instock" ? 1 : 0;
+        return true;
+    }
+
+    private static bool TryParsePrice(string raw, out decimal price)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) { price = 0; return false; }
+        if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out price)) return false;
+        if (price < 0) return false;
+        return true;
     }
 }

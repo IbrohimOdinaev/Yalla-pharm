@@ -32,6 +32,7 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<DeliveryData> DeliveryData => Set<DeliveryData>();
   public DbSet<ClientAddress> ClientAddresses => Set<ClientAddress>();
   public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
+  public DbSet<SyncState> SyncStates => Set<SyncState>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

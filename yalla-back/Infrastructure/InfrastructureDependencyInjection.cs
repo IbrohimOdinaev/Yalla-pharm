@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -190,9 +192,15 @@ public static class DependencyInjection
 
     // WooCommerce sync
     services.Configure<WooCommerceOptions>(config.GetSection(WooCommerceOptions.SectionName));
-    services.AddHttpClient<IWooCommerceSyncService, WooCommerceSyncService>(client =>
+    services.AddHttpClient<IWooCommerceSyncService, WooCommerceSyncService>((sp, client) =>
     {
       client.Timeout = TimeSpan.FromSeconds(30);
+      var opts = sp.GetRequiredService<IOptions<WooCommerceOptions>>().Value;
+      if (!string.IsNullOrEmpty(opts.ConsumerKey) && !string.IsNullOrEmpty(opts.ConsumerSecret))
+      {
+        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{opts.ConsumerKey}:{opts.ConsumerSecret}"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+      }
     });
     services.AddHostedService<WooCommercePollHostedService>();
 

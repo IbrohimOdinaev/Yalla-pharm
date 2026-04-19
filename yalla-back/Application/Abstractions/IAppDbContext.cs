@@ -29,6 +29,7 @@ public interface IAppDbContext
     DbSet<DeliveryData> DeliveryData { get; }
     DbSet<ClientAddress> ClientAddresses { get; }
     DbSet<PaymentSettings> PaymentSettings { get; }
+    DbSet<SyncState> SyncStates { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

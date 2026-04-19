@@ -58,13 +58,9 @@ public sealed class WebhooksController : ControllerBase
         var topic = Request.Headers["X-WC-Webhook-Topic"].FirstOrDefault() ?? "";
         _logger.LogInformation("Webhook received: topic={Topic}, bodyLength={Length}", topic, body.Length);
 
-        if (topic is not ("product.updated" or "product.created"))
-        {
-            // product.deleted or ping — acknowledge but skip
+        if (topic is not ("product.updated" or "product.created" or "product.deleted"))
             return Ok(new { status = "ignored", topic });
-        }
 
-        // Parse payload
         WooCommerceWebhookPayload? payload;
         try
         {
@@ -79,9 +75,12 @@ public sealed class WebhooksController : ControllerBase
         if (payload == null || payload.Id <= 0)
             return Ok(new { status = "skipped", reason = "no product id" });
 
-        await _syncService.ProcessWebhookAsync(payload, cancellationToken);
+        if (topic == "product.deleted")
+            await _syncService.ProcessDeleteAsync(payload.Id, cancellationToken);
+        else
+            await _syncService.ProcessUpdateAsync(payload, cancellationToken);
 
-        return Ok(new { status = "processed", productId = payload.Id });
+        return Ok(new { status = "processed", productId = payload.Id, topic });
     }
 
     private bool VerifySignature(string body, string signature)
