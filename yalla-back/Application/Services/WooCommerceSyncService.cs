@@ -75,6 +75,7 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         var pollStart = DateTime.UtcNow;
         int page = 1;
         int totalSynced = 0;
+        bool succeeded = true;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -90,6 +91,7 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogWarning("WC Poll: HTTP {StatusCode} on page {Page}", response.StatusCode, page);
+                    succeeded = false;
                     break;
                 }
 
@@ -128,12 +130,15 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "WC Poll: Error on page {Page}", page);
+                succeeded = false;
                 break;
             }
         }
 
-        _lastPollUtc = pollStart;
-        _logger.LogInformation("WC Poll: Synced {Count} products", totalSynced);
+        if (succeeded)
+            _lastPollUtc = pollStart;
+
+        _logger.LogInformation("WC Poll: Synced {Count} products (succeeded={Succeeded})", totalSynced, succeeded);
     }
 
     private async Task UpsertOfferAsync(Guid medicineId, string priceStr, int? stockQty, string stockStatus, CancellationToken ct)

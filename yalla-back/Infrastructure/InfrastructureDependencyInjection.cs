@@ -190,11 +190,10 @@ public static class DependencyInjection
 
     // WooCommerce sync
     services.Configure<WooCommerceOptions>(config.GetSection(WooCommerceOptions.SectionName));
-    services.AddHttpClient<WooCommerceSyncService>(client =>
+    services.AddHttpClient<IWooCommerceSyncService, WooCommerceSyncService>(client =>
     {
       client.Timeout = TimeSpan.FromSeconds(30);
     });
-    services.AddScoped<IWooCommerceSyncService, WooCommerceSyncService>();
     services.AddHostedService<WooCommercePollHostedService>();
 
     // Jura delivery service

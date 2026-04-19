@@ -40,14 +40,17 @@ public sealed class WebhooksController : ControllerBase
         if (!string.IsNullOrWhiteSpace(_options.WebhookSecret))
         {
             var signature = Request.Headers["X-WC-Webhook-Signature"].FirstOrDefault();
-            if (!string.IsNullOrEmpty(signature))
+            if (string.IsNullOrEmpty(signature))
             {
-                if (!VerifySignature(body, signature))
-                {
-                    _logger.LogWarning("Webhook: Signature mismatch. Received={Received}, Topic={Topic}",
-                        signature, Request.Headers["X-WC-Webhook-Topic"].FirstOrDefault());
-                    // Allow through — WooCommerce signature encoding can vary
-                }
+                _logger.LogWarning("Webhook: Missing X-WC-Webhook-Signature header");
+                return Unauthorized(new { error = "missing signature" });
+            }
+
+            if (!VerifySignature(body, signature))
+            {
+                _logger.LogWarning("Webhook: Signature mismatch. Received={Received}, Topic={Topic}",
+                    signature, Request.Headers["X-WC-Webhook-Topic"].FirstOrDefault());
+                return Unauthorized(new { error = "invalid signature" });
             }
         }
 
