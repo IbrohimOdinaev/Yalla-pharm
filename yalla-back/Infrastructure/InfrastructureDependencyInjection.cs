@@ -157,6 +157,14 @@ public static class DependencyInjection
           x => x.Key,
           x => x.Value ?? string.Empty,
           StringComparer.OrdinalIgnoreCase);
+
+      var juraSection = config.GetSection($"{SmsTemplatesOptions.SectionName}:JuraDelivery");
+      options.JuraDelivery = juraSection.GetChildren()
+        .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+        .ToDictionary(
+          x => x.Key,
+          x => x.Value ?? string.Empty,
+          StringComparer.OrdinalIgnoreCase);
     });
     services.AddHttpClient<OsonSmsSender>((provider, client) =>
     {
@@ -202,6 +210,7 @@ public static class DependencyInjection
         ? tariffId
         : 37;
     });
+    services.AddSingleton<IJuraHealthState, JuraHealthState>();
     services.AddHttpClient<JuraService>((provider, client) =>
     {
       var juraOptions = provider.GetRequiredService<IOptions<JuraOptions>>().Value;
@@ -210,6 +219,7 @@ public static class DependencyInjection
       client.Timeout = TimeSpan.FromSeconds(15);
     });
     services.AddScoped<IJuraService>(provider => provider.GetRequiredService<JuraService>());
+    services.AddHostedService<JuraDeliveryStatusSyncHostedService>();
 
     // Elasticsearch
     var esUrl = config["Elasticsearch:Url"] ?? "http://localhost:9200";

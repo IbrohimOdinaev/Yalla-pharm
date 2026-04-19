@@ -124,6 +124,8 @@ export type ApiClient = {
   phoneNumber: string;
   gender?: number | null;
   dateOfBirth?: string | null;
+  telegramId?: number | null;
+  telegramUsername?: string | null;
 };
 
 /* ── Orders ── */
@@ -133,6 +135,7 @@ export type ApiOrderPosition = {
   medicineId: string;
   medicine?: ApiMedicine;
   quantity: number;
+  returnedQuantity?: number;
   price: number;
   isRejected?: boolean;
 };
@@ -164,8 +167,23 @@ export type ApiOrder = {
   orderPlacedAt?: string;
   paymentUrl?: string;
   paymentExpiresAtUtc?: string | null;
+  comment?: string | null;
   positions?: ApiOrderPosition[];
   refundRequest?: ApiRefundRequest;
+  // Delivery
+  deliveryCost?: number;
+  deliveryDistance?: number;
+  totalCost?: number;
+  juraOrderId?: number | null;
+  juraStatus?: string | null;
+  juraStatusId?: number | null;
+  recipientCode?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  fromLatitude?: number | null;
+  fromLongitude?: number | null;
+  toLatitude?: number | null;
+  toLongitude?: number | null;
 };
 
 /* ── Search ── */

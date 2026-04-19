@@ -91,6 +91,8 @@ public static class RequestMappingExtensions
         pharmacy.SetCoordinates(request.Latitude, request.Longitude);
         if (request.IconUrl is not null)
             pharmacy.SetIconUrl(request.IconUrl);
+        if (request.BannerUrl is not null)
+            pharmacy.SetBannerUrl(request.BannerUrl);
 
         if (pharmacy.IsActive != request.IsActive)
             pharmacy.ChangeActivity();
@@ -131,7 +133,8 @@ public static class RequestMappingExtensions
           request.DeliveryAddress,
           positions,
           request.IdempotencyKey,
-          isPickup: request.IsPickup);
+          isPickup: request.IsPickup,
+          comment: request.Comment);
     }
 
     public static async Task<Client> GetTrackedClientOrThrowAsync(

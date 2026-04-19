@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getClientOrderHistory, cancelOrder, getOrderById } from "@/entities/order/api";
+import { getClientOrderHistory, cancelOrder, getOrderById, repeatOrder } from "@/entities/order/api";
+import {
+  computeOriginalPaid as totalsOriginalPaid,
+  computeRejectedRefund,
+  computeReturnedRefund,
+  computeTotalRefund,
+  computeNetCost,
+} from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import type { ApiOrder } from "@/shared/types/api";
@@ -20,7 +27,9 @@ const STATUS_LABELS: Record<string, string> = {
   Preparing: "Собирается",
   Ready: "Готов к выдаче",
   OnTheWay: "В пути",
+  DriverArrived: "Курьер у вас",
   Delivered: "Доставлен",
+  PickedUp: "Забран",
   Returned: "Возврат",
   Cancelled: "Отменён"
 };
@@ -31,31 +40,38 @@ const STATUS_COLORS: Record<string, string> = {
   Preparing: "bg-blue-100 text-blue-800",
   Ready: "bg-emerald-100 text-emerald-800",
   OnTheWay: "bg-purple-100 text-purple-800",
+  DriverArrived: "bg-purple-200 text-purple-900",
   Delivered: "bg-emerald-100 text-emerald-800",
+  PickedUp: "bg-emerald-100 text-emerald-800",
   Returned: "bg-gray-100 text-gray-600",
   Cancelled: "bg-red-100 text-red-700"
 };
 
 const CANCELLABLE = new Set(["UnderReview", "Preparing", "Ready"]);
 
-/** Compute cost from positions when backend cost is 0 */
-function getOrderCost(order: ApiOrder): number {
-  if ((order.cost ?? 0) > 0) return order.cost!;
-  return (order.positions ?? [])
-    .filter((p) => !p.isRejected)
-    .reduce((sum, p) => sum + (p.price ?? 0) * (p.quantity ?? 0), 0);
+// Subset of JURA status_ids we surface to the client: 4 on-site, 7 in transit, 9 delivered.
+function formatJuraDeliveryStatus(statusId: number | null | undefined): string | null {
+  switch (statusId) {
+    case 4: return "Курьер на месте";
+    case 7: return "Курьер везёт заказ";
+    case 9: return "Заказ доставлен";
+    default: return null;
+  }
 }
 
-/** Compute return cost from rejected positions */
-function computeReturnCost(order: ApiOrder): number {
-  return (order.positions ?? [])
-    .filter((p) => p.isRejected)
-    .reduce((sum, p) => sum + (p.price ?? 0) * (p.quantity ?? 0), 0);
+// Show receipt code when our Order is OnTheWay OR JURA is engaged (4/7).
+function shouldShowReceiptCode(order: ApiOrder): boolean {
+  if (!order.recipientCode) return false;
+  if (order.status === "OnTheWay") return true;
+  return order.juraStatusId === 4 || order.juraStatusId === 7;
 }
+
+// Money helpers for orders extracted to entities/order/totals.ts —
+// see imports above (totalsOriginalPaid, computeRejectedRefund, etc.).
 
 /** Is order awaiting payment confirmation? (only if not already cancelled/delivered/returned) */
 function isAwaitingPayment(order: ApiOrder): boolean {
-  const terminal = new Set(["Cancelled", "Delivered", "Returned"]);
+  const terminal = new Set(["Cancelled", "Delivered", "PickedUp", "Returned"]);
   if (terminal.has(order.status)) return false;
   return order.paymentState === "PendingManualConfirmation" || order.paymentState === "1";
 }
@@ -63,7 +79,7 @@ function isAwaitingPayment(order: ApiOrder): boolean {
 type Tab = "active" | "history";
 
 const ACTIVE_STATUSES = new Set(["New", "UnderReview", "Preparing", "Ready", "OnTheWay"]);
-const HISTORY_STATUSES = new Set(["Delivered", "Cancelled", "Returned"]);
+const HISTORY_STATUSES = new Set(["Delivered", "PickedUp", "Cancelled", "Returned"]);
 
 function isActiveOrder(order: ApiOrder): boolean {
   // Orders awaiting payment are active unless already in terminal status
@@ -82,6 +98,7 @@ export default function OrdersPage() {
   const [orderDetails, setOrderDetails] = useState<Record<string, ApiOrder>>({});
   const [pharmacyMap, setPharmacyMap] = useState<Record<string, ActivePharmacy>>({});
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [repeatingId, setRepeatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("active");
 
   // Load order list + details for each + pharmacies
@@ -175,6 +192,27 @@ export default function OrdersPage() {
     setExpandedId(orderId);
   }
 
+  async function onRepeat(order: ApiOrder) {
+    if (!token) return;
+    if (!confirm("Повторить заказ? Будет создан новый заказ с теми же позициями. Корзина не изменится.")) return;
+    setRepeatingId(order.orderId);
+    try {
+      const response = await repeatOrder(token, order.orderId, {
+        pharmacyId: order.pharmacyId ?? "",
+        isPickup: Boolean(order.isPickup),
+        deliveryAddress: order.deliveryAddress ?? "",
+      });
+      const updated = await getClientOrderHistory(token);
+      setOrders(updated);
+      const paymentUrl = String(response?.paymentUrl ?? "");
+      if (paymentUrl) window.location.assign(paymentUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось повторить заказ.");
+    } finally {
+      setRepeatingId(null);
+    }
+  }
+
   if (!token) {
     return (
       <AppShell top={<TopBar title="Заказы" backHref="back" />}>
@@ -262,10 +300,19 @@ export default function OrdersPage() {
           const detail = orderDetails[order.orderId];
           const awaiting = isAwaitingPayment(detail ?? order);
           const statusColor = awaiting ? "bg-yellow-100 text-yellow-800" : (STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-600");
-          const statusLabel = awaiting ? "Ожидает подтверждения" : (STATUS_LABELS[order.status] ?? order.status);
+          // Client sees Returned orders tagged with their original completion mode: "Доставлен · Возврат" / "Забран · Возврат"
+          const baseStatusLabel = STATUS_LABELS[order.status] ?? order.status;
+          const statusLabel = awaiting
+            ? "Ожидает подтверждения"
+            : order.status === "Returned"
+              ? `${order.isPickup ? "Забран" : "Доставлен"} · Возврат`
+              : baseStatusLabel;
           const d = detail ?? order;
-          const cost = getOrderCost(d);
-          const returnCost = (d.returnCost ?? 0) > 0 ? d.returnCost! : computeReturnCost(d);
+          const cost = computeNetCost(d);
+          const rejectedRefund = computeRejectedRefund(d);
+          const returnedRefund = computeReturnedRefund(d);
+          const refundAmount = computeTotalRefund(d);
+          const originalPaid = totalsOriginalPaid(d);
           const pharmacy = pharmacyMap[d.pharmacyId ?? ""];
 
           return (
@@ -278,9 +325,11 @@ export default function OrdersPage() {
                 <div className="space-y-0.5 xs:space-y-1">
                   <p className="font-mono text-[10px] text-on-surface-variant">#{order.orderId.slice(0, 8)}</p>
                   <div className="flex items-center gap-1 xs:gap-1.5">
-                    <p className="text-xs xs:text-sm sm:text-lg font-extrabold text-primary">{cost > 0 ? formatMoney(cost, d.currency) : "—"}</p>
-                    {returnCost > 0 ? (
-                      <span className="rounded-full bg-red-100 px-1.5 xs:px-2 py-0.5 text-[10px] font-bold text-red-700">возврат {formatMoney(returnCost, d.currency)}</span>
+                    <p className="text-xs xs:text-sm sm:text-lg font-extrabold text-primary">{originalPaid > 0 ? formatMoney(originalPaid, d.currency) : "—"}</p>
+                    {refundAmount > 0 ? (
+                      <span className="rounded-full bg-red-100 px-1.5 xs:px-2 py-0.5 text-[10px] font-bold text-red-700">
+                        возврат {formatMoney(refundAmount, d.currency)}
+                      </span>
                     ) : null}
                   </div>
                   {pharmacy ? <p className="text-[10px] xs:text-xs sm:text-sm font-medium">{pharmacy.title}</p> : null}
@@ -318,7 +367,12 @@ export default function OrdersPage() {
               {isExpanded ? (() => {
                 const positions = d.positions ?? [];
                 const detailCost = cost;
-                const detailReturnCost = returnCost;
+                const detailRefund = refundAmount;
+                const detailOriginal = originalPaid;
+                const isCancelled = d.status === "Cancelled";
+                const isReturned = d.status === "Returned";
+                const hasRejects = rejectedRefund > 0;
+                const hasReturns = returnedRefund > 0;
 
                 return (
                   <div className="border-t border-surface-container-high px-1.5 xs:px-3 sm:px-4 pb-2 xs:pb-4 pt-1.5 xs:pt-3 space-y-2 xs:space-y-3">
@@ -334,21 +388,47 @@ export default function OrdersPage() {
                       <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
                         <p className="text-[10px] text-on-surface-variant uppercase">Доставка</p>
                         <p className="text-[10px] xs:text-xs sm:text-sm font-bold">{order.isPickup ? "Самовывоз" : order.deliveryAddress || "—"}</p>
-                        {!order.isPickup && (d as ApiOrder & { deliveryCost?: number }).deliveryCost ? (
-                          <p className="text-[10px] text-on-surface-variant">Стоимость: {formatMoney((d as ApiOrder & { deliveryCost?: number }).deliveryCost!, d.currency)}</p>
+                        {!order.isPickup && d.deliveryCost ? (
+                          <p className="text-[10px] text-on-surface-variant">Стоимость: {formatMoney(d.deliveryCost, d.currency)}</p>
                         ) : null}
-                        {!order.isPickup && (d as ApiOrder & { driverName?: string }).driverName ? (
-                          <p className="text-[10px] text-emerald-600">Водитель: {(d as ApiOrder & { driverName?: string }).driverName}{(d as ApiOrder & { driverPhone?: string }).driverPhone ? ` (${(d as ApiOrder & { driverPhone?: string }).driverPhone})` : ""}</p>
+                        {!order.isPickup && formatJuraDeliveryStatus(d.juraStatusId) ? (
+                          <p className="text-[10px] text-emerald-700 font-semibold">{formatJuraDeliveryStatus(d.juraStatusId)}</p>
+                        ) : null}
+                        {!order.isPickup && d.driverName ? (
+                          <p className="text-[10px] text-emerald-600">
+                            Водитель: {d.driverName}
+                            {d.driverPhone ? (
+                              <> (<a href={`tel:${d.driverPhone}`} className="underline">{d.driverPhone}</a>)</>
+                            ) : null}
+                          </p>
                         ) : null}
                       </div>
                       <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
-                        <p className="text-[10px] text-on-surface-variant uppercase">Сумма</p>
-                        <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-primary">{detailCost > 0 ? formatMoney(detailCost, d.currency) : "—"}</p>
+                        <p className="text-[10px] text-on-surface-variant uppercase">Сумма заказа</p>
+                        <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-primary">{detailOriginal > 0 ? formatMoney(detailOriginal, d.currency) : "—"}</p>
                       </div>
-                      {detailReturnCost > 0 ? (
+                      {(hasRejects || hasReturns) && !isCancelled ? (
+                        <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
+                          <p className="text-[10px] text-on-surface-variant uppercase">За полученные товары</p>
+                          <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-on-surface">{formatMoney(detailCost, d.currency)}</p>
+                        </div>
+                      ) : null}
+                      {hasRejects ? (
                         <div className="rounded-xl bg-red-50 p-2 xs:p-2.5">
-                          <p className="text-[10px] text-red-600 uppercase">Возврат</p>
-                          <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-red-700">{formatMoney(detailReturnCost, d.currency)}</p>
+                          <p className="text-[10px] text-red-600 uppercase">Возврат за отклонённые</p>
+                          <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-red-700">{formatMoney(rejectedRefund, d.currency)}</p>
+                        </div>
+                      ) : null}
+                      {hasReturns ? (
+                        <div className="rounded-xl bg-red-50 p-2 xs:p-2.5">
+                          <p className="text-[10px] text-red-600 uppercase">Возврат за возвращённые</p>
+                          <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-red-700">{formatMoney(returnedRefund, d.currency)}</p>
+                        </div>
+                      ) : null}
+                      {isCancelled ? (
+                        <div className="rounded-xl bg-red-50 p-2 xs:p-2.5">
+                          <p className="text-[10px] text-red-600 uppercase">К возврату (заказ отменён)</p>
+                          <p className="text-[10px] xs:text-xs sm:text-sm font-bold text-red-700">{formatMoney(detailRefund, d.currency)}</p>
                         </div>
                       ) : null}
                       {(d.paymentState) ? (
@@ -360,6 +440,15 @@ export default function OrdersPage() {
                         </div>
                       ) : null}
                     </div>
+
+                    {/* Receipt code — show when courier is active */}
+                    {shouldShowReceiptCode(d) ? (
+                      <div className="rounded-xl bg-emerald-50 border-2 border-emerald-300 p-3 xs:p-4 text-center">
+                        <p className="text-[10px] xs:text-xs uppercase tracking-wider text-emerald-700 font-semibold">Код для курьера</p>
+                        <p className="mt-1 text-2xl xs:text-3xl font-extrabold tracking-widest text-emerald-900">{d.recipientCode}</p>
+                        <p className="mt-1 text-[10px] text-emerald-700">Назовите курьеру при получении</p>
+                      </div>
+                    ) : null}
 
                     {/* Positions as mini-cards */}
                     {positions.length > 0 ? (
@@ -397,6 +486,10 @@ export default function OrdersPage() {
                             </div>
                             {pos.isRejected ? (
                               <span className="flex-shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Отклонено</span>
+                            ) : (pos.returnedQuantity ?? 0) > 0 ? (
+                              <span className="flex-shrink-0 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-bold text-red-700" title={`Возвращено ${pos.returnedQuantity} из ${pos.quantity}`}>
+                                возврат {pos.returnedQuantity}/{pos.quantity}
+                              </span>
                             ) : null}
                           </Link>
                         ))}
@@ -424,6 +517,18 @@ export default function OrdersPage() {
                         disabled={cancellingId === order.orderId}
                       >
                         {cancellingId === order.orderId ? "Отменяем..." : "Отменить заказ"}
+                      </button>
+                    ) : null}
+
+                    {/* Repeat order — for completed/cancelled/returned orders */}
+                    {["Delivered", "PickedUp", "Cancelled", "Returned"].includes(order.status) && order.pharmacyId ? (
+                      <button
+                        type="button"
+                        className="w-full rounded-xl border border-primary/30 bg-primary/5 px-3 xs:px-4 py-2 xs:py-3 text-[10px] xs:text-xs sm:text-sm font-bold text-primary hover:bg-primary/10 transition"
+                        onClick={() => onRepeat(order)}
+                        disabled={repeatingId === order.orderId}
+                      >
+                        {repeatingId === order.orderId ? "Повторяем..." : "Повторить заказ"}
                       </button>
                     ) : null}
                   </div>

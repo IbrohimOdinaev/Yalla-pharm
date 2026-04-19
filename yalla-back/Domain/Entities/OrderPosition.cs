@@ -19,6 +19,9 @@ public class OrderPosition
 
     public bool IsRejected { get; private set; }
 
+    /// <summary>How many units of this position the client returned after delivery. 0 by default, bounded by <see cref="Quantity"/>. Only meaningful for non-rejected positions.</summary>
+    public int ReturnedQuantity { get; private set; }
+
     private OrderPosition() { }
 
     public OrderPosition(
@@ -85,5 +88,17 @@ public class OrderPosition
     public void Restore()
     {
         IsRejected = false;
+    }
+
+    public void SetReturnedQuantity(int quantity)
+    {
+        if (IsRejected)
+            throw new DomainArgumentException("Rejected positions can't be returned.");
+        if (quantity < 0)
+            throw new DomainArgumentException("ReturnedQuantity can't be negative.");
+        if (quantity > Quantity)
+            throw new DomainArgumentException($"ReturnedQuantity {quantity} exceeds position Quantity {Quantity}.");
+
+        ReturnedQuantity = quantity;
     }
 }

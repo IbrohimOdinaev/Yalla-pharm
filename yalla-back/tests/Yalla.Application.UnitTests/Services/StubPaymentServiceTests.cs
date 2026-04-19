@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
+using Yalla.Application.UnitTests.TestInfrastructure;
 
 namespace Yalla.Application.UnitTests.Services;
 
@@ -10,10 +11,12 @@ public sealed class StubPaymentServiceTests
   [Fact]
   public async Task PayForOrderAsync_ShouldGeneratePaymentUrl_WithAmountAndComment()
   {
-    var service = new StubPaymentService(Options.Create(new DushanbeCityPaymentOptions
-    {
-      BaseUrl = "http://pay.expresspay.tj/?A=9762000087892609&s=&c=&f1=133&FIELD2=&FIELD3="
-    }));
+    var service = new StubPaymentService(
+      Options.Create(new DushanbeCityPaymentOptions
+      {
+        BaseUrl = "http://pay.expresspay.tj/?A=9762000087892609&s=&c=&f1=133&FIELD2=&FIELD3="
+      }),
+      new FakePaymentSettingsService());
 
     var orderId = Guid.NewGuid();
     var response = await service.PayForOrderAsync(new PayForOrderRequest

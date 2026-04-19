@@ -33,6 +33,7 @@ public class DeliveryData
   public long? DriverDeviceId { get; private set; }
   public string? DriverName { get; private set; }
   public string? DriverPhone { get; private set; }
+  public string? RecipientCode { get; private set; }
 
   private DeliveryData() { }
 
@@ -87,5 +88,21 @@ public class DeliveryData
     DriverDeviceId = deviceId;
     DriverName = name;
     DriverPhone = phone;
+  }
+
+  public void SetRecipientCode(string? code)
+  {
+    RecipientCode = string.IsNullOrWhiteSpace(code) ? null : code.Trim();
+  }
+
+  public void ClearJuraDispatch()
+  {
+    JuraOrderId = null;
+    JuraStatus = null;
+    JuraStatusId = null;
+    DriverDeviceId = null;
+    DriverName = null;
+    DriverPhone = null;
+    RecipientCode = null;
   }
 }

@@ -40,6 +40,12 @@ public class OrderPositionConfiguration : IEntityTypeConfiguration<OrderPosition
           .HasDefaultValue(false)
           .IsRequired();
 
+        builder.Property(x => x.ReturnedQuantity)
+          .HasColumnName("returned_quantity")
+          .HasColumnType("integer")
+          .HasDefaultValue(0)
+          .IsRequired();
+
         builder.HasIndex(x => x.OrderId)
           .HasDatabaseName("ix_order_positions_order_id");
 

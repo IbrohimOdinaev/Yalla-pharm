@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { getMyProfile, updateMyProfile, deleteMyAccount } from "@/entities/client/api";
 import type { ApiClient } from "@/shared/types/api";
-import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
 import { clearCredentials } from "@/features/auth/model/authSlice";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { LinkPhoneModal } from "@/widgets/profile/LinkPhoneModal";
+import { LinkTelegramModal } from "@/widgets/profile/LinkTelegramModal";
 
 export default function ProfilePage() {
   const token = useAppSelector((state) => state.auth.token);
@@ -21,9 +22,8 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  /* profile edit */
+  /* profile edit — phone/telegram are read-only; they change only via OTP/bot link flows */
   const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
   const [editGender, setEditGender] = useState<string>("");
   const [editDob, setEditDob] = useState("");
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
@@ -32,6 +32,10 @@ export default function ProfilePage() {
   /* delete */
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  /* linking modals */
+  const [showLinkPhone, setShowLinkPhone] = useState(false);
+  const [showLinkTelegram, setShowLinkTelegram] = useState(false);
 
   /* cart */
   const { basket, loadBasket } = useCartStore();
@@ -43,7 +47,6 @@ export default function ProfilePage() {
       .then((client) => {
         setProfile(client);
         setEditName(client.name);
-        setEditPhone(client.phoneNumber);
         setEditGender(client.gender != null ? String(client.gender) : "");
         setEditDob(client.dateOfBirth ?? "");
         setIsLoading(false);
@@ -84,7 +87,6 @@ export default function ProfilePage() {
     try {
       await updateMyProfile(token, {
         name: editName || undefined,
-        phoneNumber: editPhone ? formatPhone(editPhone) : undefined,
         gender: editGender ? Number(editGender) : null,
         dateOfBirth: editDob || null,
       });
@@ -129,7 +131,11 @@ export default function ProfilePage() {
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Мой профиль</p>
                 <h1 className="mt-1 text-base xs:text-lg sm:text-2xl font-extrabold truncate">Здравствуйте, {profile.name || "Клиент"}</h1>
-                <p className="mt-1.5 text-xs xs:text-sm opacity-80 font-mono">{profile.phoneNumber}</p>
+                {profile.phoneNumber && !profile.phoneNumber.startsWith("tg_") ? (
+                  <p className="mt-1.5 text-xs xs:text-sm opacity-80 font-mono">+992{profile.phoneNumber}</p>
+                ) : profile.telegramUsername ? (
+                  <p className="mt-1.5 text-xs xs:text-sm opacity-80">@{profile.telegramUsername}</p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -137,6 +143,49 @@ export default function ProfilePage() {
 
         {profile ? (
           <>
+            {/* Linking — phone and telegram */}
+            {(() => {
+              const phoneLinked = !!profile.phoneNumber && !profile.phoneNumber.startsWith("tg_");
+              const telegramLinked = !!profile.telegramUsername || (profile.telegramId != null && profile.telegramId !== 0);
+              if (phoneLinked && telegramLinked) return null;
+              return (
+                <div className="stitch-card space-y-3 p-3 xs:p-4 sm:p-5">
+                  <h2 className="text-base xs:text-lg font-bold">Привязка аккаунта</h2>
+                  <p className="text-xs text-on-surface-variant">Привяжите оба способа входа — номер телефона и Telegram — чтобы входить любым из них в один и тот же аккаунт.</p>
+
+                  {!phoneLinked ? (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-container-high bg-surface-container-lowest p-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">Номер телефона</p>
+                          <p className="text-xs text-on-surface-variant">Ещё не привязан</p>
+                        </div>
+                      </div>
+                      <button type="button" className="stitch-button px-3 py-2 text-xs flex-shrink-0" onClick={() => setShowLinkPhone(true)}>Привязать</button>
+                    </div>
+                  ) : null}
+
+                  {!telegramLinked ? (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-container-high bg-surface-container-lowest p-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-[#229ED9]/10 flex items-center justify-center flex-shrink-0">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-[#229ED9]"><path d="M21.943 4.116a1.5 1.5 0 0 0-1.567-.196L2.91 11.123a1.5 1.5 0 0 0 .128 2.787l4.378 1.477 1.69 5.39a1 1 0 0 0 1.69.39l2.42-2.42 4.55 3.34a1.5 1.5 0 0 0 2.367-.94l3-15a1.5 1.5 0 0 0-1.19-1.83zM10 16l-.66 3.13L8 14.5l9-7-7 8.5z"/></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">Telegram</p>
+                          <p className="text-xs text-on-surface-variant">Ещё не привязан</p>
+                        </div>
+                      </div>
+                      <button type="button" className="stitch-button px-3 py-2 text-xs flex-shrink-0" onClick={() => setShowLinkTelegram(true)}>Привязать</button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
+
             {/* Profile info */}
             <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSaveProfile}>
               <h2 className="text-base xs:text-lg font-bold">Личные данные</h2>
@@ -162,7 +211,24 @@ export default function ProfilePage() {
 
               <label className="block space-y-1">
                 <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Телефон</span>
-                <input className="stitch-input" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+                <input
+                  className="stitch-input bg-surface-container-low cursor-not-allowed font-mono"
+                  type="tel"
+                  value={profile.phoneNumber && !profile.phoneNumber.startsWith("tg_") ? `+992${profile.phoneNumber}` : ""}
+                  readOnly
+                  placeholder="Не привязан"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Telegram</span>
+                <input
+                  className="stitch-input bg-surface-container-low cursor-not-allowed"
+                  type="text"
+                  value={profile.telegramUsername ? `@${profile.telegramUsername}` : ""}
+                  readOnly
+                  placeholder="Не привязан"
+                />
               </label>
 
               {profileMsg ? (
@@ -218,6 +284,33 @@ export default function ProfilePage() {
           </>
         ) : null}
       </div>
+
+      {token ? (
+        <>
+          <LinkPhoneModal
+            open={showLinkPhone}
+            token={token}
+            onClose={() => setShowLinkPhone(false)}
+            onSuccess={async () => {
+              try {
+                const updated = await getMyProfile(token);
+                setProfile(updated);
+              } catch { /* ignore */ }
+            }}
+          />
+          <LinkTelegramModal
+            open={showLinkTelegram}
+            token={token}
+            onClose={() => setShowLinkTelegram(false)}
+            onSuccess={async () => {
+              try {
+                const updated = await getMyProfile(token);
+                setProfile(updated);
+              } catch { /* ignore */ }
+            }}
+          />
+        </>
+      ) : null}
     </AppShell>
   );
 }

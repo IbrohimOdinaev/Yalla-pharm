@@ -146,6 +146,11 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .HasDefaultValue(true)
           .IsRequired();
 
+        builder.Property(x => x.Comment)
+          .HasColumnName("comment")
+          .HasColumnType("character varying(1024)")
+          .HasMaxLength(1024);
+
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_orders_client_id");
 

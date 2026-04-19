@@ -15,6 +15,8 @@ public static class DependencyInjection
     services.AddScoped<IPaymentService, StubPaymentService>();
     services.AddScoped<IAuthService, AuthService>();
     services.AddScoped<IClientService, ClientService>();
+    services.AddScoped<IClientAddressService, ClientAddressService>();
+    services.AddScoped<IPaymentSettingsService, PaymentSettingsService>();
     services.AddScoped<IPaymentIntentService, PaymentIntentService>();
     services.AddScoped<IMedicineService, MedicineService>();
     services.AddScoped<IOrderService, OrderService>();

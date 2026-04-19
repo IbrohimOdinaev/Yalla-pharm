@@ -382,4 +382,158 @@ public sealed class AuthService : IAuthService
     public bool IsNewClient { get; init; }
   }
 
+  private sealed class PhoneLinkPayload
+  {
+    public Guid ClientId { get; init; }
+    public string PhoneNumber { get; init; } = string.Empty;
+  }
+
+  public async Task<RequestClientOtpResponse> RequestPhoneLinkOtpAsync(
+    Guid clientId,
+    string phoneNumber,
+    CancellationToken cancellationToken = default)
+  {
+    if (clientId == Guid.Empty)
+      throw new DomainArgumentException("clientId can't be empty.");
+
+    var normalized = UserInputPolicy.NormalizePhoneNumber(phoneNumber);
+
+    var client = await _dbContext.Clients
+      .AsNoTracking()
+      .FirstOrDefaultAsync(x => x.Id == clientId, cancellationToken)
+      ?? throw new ClientErrorException(
+        errorCode: "client_not_found",
+        detail: "Клиент не найден.",
+        reason: "client_not_found");
+
+    // Already has a real phone — nothing to link
+    if (!string.IsNullOrEmpty(client.PhoneNumber) && !client.PhoneNumber.StartsWith("tg_", StringComparison.Ordinal))
+      throw new ClientErrorException(
+        errorCode: "phone_already_linked",
+        detail: "К этому аккаунту уже привязан номер телефона.",
+        reason: "already_linked");
+
+    // Phone already in use by another user
+    var inUse = await _dbContext.Users
+      .AsNoTracking()
+      .AnyAsync(x => x.PhoneNumber == normalized && x.Id != clientId, cancellationToken);
+    if (inUse)
+      throw new ClientErrorException(
+        errorCode: "phone_already_used",
+        detail: "Этот номер уже привязан к другому аккаунту.",
+        reason: "phone_in_use");
+
+    var payload = new PhoneLinkPayload { ClientId = clientId, PhoneNumber = normalized };
+
+    var sendResponse = await RequireSmsService().SendSmsAsync(
+      new SmsSendRequest
+      {
+        Purpose = SmsVerificationPurpose.ClientPhoneLink,
+        PhoneNumber = normalized,
+        PayloadJson = JsonSerializer.Serialize(payload),
+        MessageTemplate = OtpMessageTemplate
+      },
+      cancellationToken);
+
+    return new RequestClientOtpResponse
+    {
+      OtpSessionId = sendResponse.SessionId,
+      PhoneNumber = sendResponse.PhoneNumber,
+      ExpiresAtUtc = sendResponse.ExpiresAtUtc,
+      ResendAvailableAtUtc = sendResponse.ResendAvailableAtUtc,
+      CodeLength = sendResponse.CodeLength,
+      IsNewClient = false
+    };
+  }
+
+  public async Task<LoginResponse> VerifyPhoneLinkOtpAsync(
+    Guid clientId,
+    Guid otpSessionId,
+    string code,
+    CancellationToken cancellationToken = default)
+  {
+    if (clientId == Guid.Empty)
+      throw new DomainArgumentException("clientId can't be empty.");
+
+    var verifyResult = await RequireSmsService().VerifySmsAsync(
+      new SmsVerifyRequest { SessionId = otpSessionId, Code = code },
+      cancellationToken);
+
+    if (!verifyResult.IsSuccess)
+      throw CreateOtpVerificationException(verifyResult.FailureReason);
+
+    if (verifyResult.Purpose != SmsVerificationPurpose.ClientPhoneLink)
+      throw new ClientErrorException(
+        errorCode: "sms_session_purpose_mismatch",
+        detail: "Эта сессия не предназначена для привязки телефона.",
+        reason: "purpose_mismatch");
+
+    var payload = DeserializePhoneLinkPayload(verifyResult.PayloadJson);
+    if (payload.ClientId != clientId)
+      throw new ClientErrorException(
+        errorCode: "sms_session_client_mismatch",
+        detail: "Сессия принадлежит другому клиенту.",
+        reason: "client_mismatch");
+
+    // Someone else claimed this phone between request and verify
+    var inUse = await _dbContext.Users
+      .AsNoTracking()
+      .AnyAsync(x => x.PhoneNumber == payload.PhoneNumber && x.Id != clientId, cancellationToken);
+    if (inUse)
+      throw new ClientErrorException(
+        errorCode: "phone_already_used",
+        detail: "Этот номер уже привязан к другому аккаунту.",
+        reason: "phone_in_use");
+
+    var client = await _dbContext.Clients
+      .AsTracking()
+      .FirstOrDefaultAsync(x => x.Id == clientId, cancellationToken)
+      ?? throw new ClientErrorException(
+        errorCode: "client_not_found",
+        detail: "Клиент не найден.",
+        reason: "client_not_found");
+
+    client.SetPhoneNumber(payload.PhoneNumber);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+
+    var token = _jwtTokenProvider.GenerateToken(client.Id, client.Name, client.PhoneNumber, client.Role);
+
+    return new LoginResponse
+    {
+      UserId = client.Id,
+      Name = client.Name,
+      PhoneNumber = client.PhoneNumber,
+      Role = client.Role,
+      AccessToken = token.AccessToken,
+      ExpiresAtUtc = token.ExpiresAtUtc
+    };
+  }
+
+  private static PhoneLinkPayload DeserializePhoneLinkPayload(string? payloadJson)
+  {
+    if (string.IsNullOrWhiteSpace(payloadJson))
+      throw new ClientErrorException(
+        errorCode: "sms_payload_missing",
+        detail: "Данные сессии привязки повреждены.",
+        reason: "payload_missing");
+
+    try
+    {
+      var payload = JsonSerializer.Deserialize<PhoneLinkPayload>(payloadJson);
+      if (payload is null || payload.ClientId == Guid.Empty || string.IsNullOrWhiteSpace(payload.PhoneNumber))
+        throw new ClientErrorException(
+          errorCode: "sms_payload_invalid",
+          detail: "Данные сессии привязки повреждены.",
+          reason: "payload_invalid");
+      return payload;
+    }
+    catch (JsonException)
+    {
+      throw new ClientErrorException(
+        errorCode: "sms_payload_invalid",
+        detail: "Данные сессии привязки повреждены.",
+        reason: "payload_invalid");
+    }
+  }
+
 }

@@ -16,11 +16,14 @@ import { getCategories, flattenCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
 import { getClients, deleteClient } from "@/entities/client/admin-api";
 import type { ApiClient } from "@/shared/types/api";
-import { getAllOrders, superAdminNextStatus } from "@/entities/order/admin-api";
+import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
+import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
 import { getRefundRequests, initiateRefund } from "@/entities/refund/api";
+import { getPaymentSettings, updateDcBaseUrl, type PaymentSettingsSnapshot } from "@/entities/payment-settings/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
+import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
 import type { GeoResult } from "@/shared/lib/map";
 import dynamic from "next/dynamic";
 
@@ -48,7 +51,7 @@ export default function SuperAdminPage() {
 
   if (!token || role !== "SuperAdmin") {
     return (
-      <AppShell top={<TopBar title="SuperAdmin" />} hideGlobalNav>
+      <AppShell top={<TopBar title="SuperAdmin" showLogout />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm">
           Доступ только для суперадминистраторов. <Link href="/login" className="font-bold text-primary">Войти</Link>
         </div>
@@ -57,7 +60,7 @@ export default function SuperAdminPage() {
   }
 
   return (
-    <AppShell top={<TopBar title="SuperAdmin" />} hideGlobalNav>
+    <AppShell top={<TopBar title="SuperAdmin" showLogout />} hideGlobalNav>
       <div className="space-y-4">
         {/* Hero */}
         <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-2">
@@ -68,6 +71,9 @@ export default function SuperAdminPage() {
 
         {/* Stats */}
         <StatsDashboard token={token} />
+
+        {/* Payment BaseUrl settings */}
+        <PaymentSettingsCard token={token} />
 
         {activeTab === "pharmacies" ? <PharmaciesTab token={token} /> : null}
         {activeTab === "medicines" ? <MedicinesTab token={token} /> : null}
@@ -108,6 +114,107 @@ function StatsDashboard({ token }: { token: string }) {
           <p className="text-[8px] xs:text-[10px] sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">{item.label}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── Payment Base URL card ── */
+
+function PaymentSettingsCard({ token }: { token: string }) {
+  const [snapshot, setSnapshot] = useState<PaymentSettingsSnapshot | null>(null);
+  const [input, setInput] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    getPaymentSettings(token).then((s) => {
+      setSnapshot(s);
+      setInput(s.dcBaseUrl ?? "");
+    }).catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    const trimmed = input.trim();
+    const confirmMsg = trimmed
+      ? `Сменить base URL Dushanbe City Payment на:\n${trimmed}?\n\nВсе новые платежи будут использовать этот адрес.`
+      : "Сбросить base URL к системному значению по умолчанию?";
+    if (!confirm(confirmMsg)) return;
+    setIsSaving(true);
+    setMsg(null);
+    try {
+      const updated = await updateDcBaseUrl(token, trimmed || null);
+      setSnapshot(updated);
+      setInput(updated.dcBaseUrl ?? "");
+      setIsEditing(false);
+      setMsg("Base URL обновлён.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (!snapshot) {
+    return (
+      <div className="stitch-card p-3 text-xs text-on-surface-variant">Загружаем настройки платежей...</div>
+    );
+  }
+
+  const usingDefault = !snapshot.dcBaseUrl;
+
+  return (
+    <div className="stitch-card p-3 xs:p-4 sm:p-5 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Платежи: Dushanbe City</h2>
+          <p className="text-[10px] xs:text-xs text-on-surface-variant">
+            Base URL применяется для всех новых платежей. Изменение не затрагивает уже созданные заказы.
+          </p>
+        </div>
+        {!isEditing ? (
+          <button type="button" className="stitch-button-secondary text-xs px-3 py-1.5 flex-shrink-0" onClick={() => setIsEditing(true)}>Изменить</button>
+        ) : null}
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-2">
+          <label className="block space-y-1">
+            <span className="text-[10px] xs:text-xs font-semibold text-on-surface-variant uppercase">Base URL (пусто = по умолчанию)</span>
+            <input
+              type="url"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="http://pay.expresspay.tj/?A=..."
+              className="stitch-input font-mono text-xs"
+            />
+          </label>
+          {msg ? <p className={`text-[11px] ${msg.includes("обновлён") ? "text-emerald-600" : "text-red-600"}`}>{msg}</p> : null}
+          <div className="flex gap-2">
+            <button type="button" className="stitch-button-secondary text-xs flex-1 py-2" onClick={() => { setIsEditing(false); setInput(snapshot.dcBaseUrl ?? ""); setMsg(null); }}>Отмена</button>
+            <button type="button" className="stitch-button text-xs flex-1 py-2" onClick={save} disabled={isSaving}>
+              {isSaving ? "Сохраняем..." : "Сохранить"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${usingDefault ? "bg-surface-container-high text-on-surface-variant" : "bg-emerald-100 text-emerald-700"}`}>
+              {usingDefault ? "По умолчанию" : "Переопределён"}
+            </span>
+            <p className="text-[10px] text-on-surface-variant">
+              Обновлён: {new Date(snapshot.updatedAtUtc).toLocaleString("ru-RU")}
+            </p>
+          </div>
+          <p className="font-mono text-[11px] xs:text-xs break-all bg-surface-container-low rounded-lg p-2">
+            {snapshot.dcBaseUrlEffective}
+          </p>
+          {msg ? <p className="text-[11px] text-emerald-600">{msg}</p> : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -927,16 +1034,18 @@ function ClientsSection({ token }: { token: string }) {
 
 /* ── Orders + Payment Intents + Refunds Tab (Kanban) ── */
 
-const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "Delivered", "Cancelled", "Returned"];
+const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "DriverArrived", "Delivered", "PickedUp", "Cancelled", "Returned"];
 const STATUS_LABELS: Record<string, string> = {
   New: "Новые", UnderReview: "На рассмотрении", Preparing: "Собирается",
-  Ready: "Готов", OnTheWay: "В пути", Delivered: "Доставлен",
+  Ready: "Готов", OnTheWay: "В пути", DriverArrived: "Курьер на месте",
+  Delivered: "Доставлен", PickedUp: "Забран клиентом",
   Cancelled: "Отменён", Returned: "Возврат"
 };
 const STATUS_COLORS: Record<string, string> = {
   New: "bg-blue-500", UnderReview: "bg-yellow-500", Preparing: "bg-orange-500",
-  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", Delivered: "bg-green-500",
-  Cancelled: "bg-red-500", Returned: "bg-gray-500"
+  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", DriverArrived: "bg-purple-600",
+  Delivered: "bg-green-500",
+  PickedUp: "bg-green-500", Cancelled: "bg-red-500", Returned: "bg-gray-500"
 };
 
 function OrdersTab({ token }: { token: string }) {
@@ -946,6 +1055,8 @@ function OrdersTab({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null);
+  const [returnMode, setReturnMode] = useState(false);
+  const [returnQty, setReturnQty] = useState<Record<string, number>>({});
 
   const load = useCallback(() => {
     Promise.all([getAllOrders(token, ""), getPendingPaymentIntents(token), getRefundRequests(token)])
@@ -959,6 +1070,50 @@ function OrdersTab({ token }: { token: string }) {
   useSignalREvent("PaymentIntentUpdated", useCallback(() => { load(); }, [load]), token);
 
   useEffect(() => { load(); }, [load]);
+
+  // Reset return-mode whenever a different order is opened or overlay closes.
+  useEffect(() => {
+    setReturnMode(false);
+    setReturnQty({});
+  }, [selectedOrder?.orderId]);
+
+  // Whenever the orders list refetches, swap the open overlay's reference to
+  // the freshly loaded one so it shows the latest status / positions / totals.
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const fresh = orders.find(o => o.orderId === selectedOrder.orderId);
+    if (fresh && fresh !== selectedOrder) setSelectedOrder(fresh);
+  }, [orders, selectedOrder]);
+
+  // Restore the open-order overlay from ?orderId= when navigating back from
+  // /product or after a hard reload. Fires whenever orders list changes (on
+  // initial load and on refetches), but never re-opens what the user just
+  // closed — closeOverlay() strips the param from the URL synchronously.
+  useEffect(() => {
+    if (typeof window === "undefined" || orders.length === 0) return;
+    if (selectedOrder) return;
+    const url = new URL(window.location.href);
+    const wantId = url.searchParams.get("orderId");
+    if (!wantId) return;
+    const found = orders.find(o => o.orderId === wantId);
+    if (found) setSelectedOrder(found);
+  }, [orders, selectedOrder]);
+
+  function openOverlay(order: ApiOrder) {
+    setSelectedOrder(order);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("orderId", order.orderId);
+    window.history.replaceState({}, "", url.toString());
+  }
+
+  function closeOverlay() {
+    setSelectedOrder(null);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("orderId");
+    window.history.replaceState({}, "", url.toString());
+  }
 
 
   const filteredOrders = dateFilter
@@ -1018,6 +1173,7 @@ function OrdersTab({ token }: { token: string }) {
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${refund.status === "Completed" ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800"}`}>{refund.status}</span>
                   {refund.status !== "Completed" && refund.status !== "Failed" ? (
                     <button type="button" className="stitch-button text-xs" onClick={async () => {
+                      if (!confirm(`Инициировать возврат #${refund.refundRequestId.slice(0,8)}?`)) return;
                       await initiateRefund(token, refund.refundRequestId).catch(() => undefined);
                       load();
                     }}>Возврат</button>
@@ -1057,16 +1213,19 @@ function OrdersTab({ token }: { token: string }) {
                   {statusOrders.map(order => {
                     const phone = order.clientPhoneNumber?.replace(/^\+?992/, "") ?? "";
                     return (
-                      <div key={order.orderId} className="stitch-card p-3 cursor-pointer hover:ring-1 hover:ring-primary transition" onClick={() => setSelectedOrder(order)}>
-                        <div className="flex items-center justify-between">
+                      <div key={order.orderId} className={`stitch-card p-3 cursor-pointer hover:ring-1 hover:ring-primary transition ${deliveryBorderClass(!!order.isPickup)}`} onClick={() => openOverlay(order)}>
+                        <div className="flex items-center justify-between gap-1">
                           <span className="text-[10px] text-on-surface-variant font-mono">#{order.orderId.slice(0, 8)}</span>
-                          {phone ? <span className="text-[10px] font-mono text-on-surface-variant">{phone}</span> : null}
+                          <DeliveryBadge isPickup={!!order.isPickup} iconOnly />
                         </div>
                         <div className="flex items-center justify-between text-sm mt-1">
                           <span className="truncate max-w-[140px]">{order.pharmacyTitle ?? "—"}</span>
-                          <span className="font-bold">{order.cost ? formatMoney(order.cost, order.currency) : "—"}</span>
+                          <span className="font-bold">{computeOriginalPaid(order) > 0 ? formatMoney(computeOriginalPaid(order), order.currency) : "—"}</span>
                         </div>
-                        {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant mt-0.5">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : null}
+                        <div className="flex items-center justify-between mt-0.5">
+                          {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : <span/>}
+                          {phone ? <span className="text-[10px] font-mono text-on-surface-variant">{phone}</span> : null}
+                        </div>
                         {order.status === "OnTheWay" ? (
                           <button
                             type="button"
@@ -1095,7 +1254,7 @@ function OrdersTab({ token }: { token: string }) {
 
       {/* Order detail overlay */}
       {selectedOrder ? (
-        <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-16 overflow-y-auto" onClick={() => setSelectedOrder(null)}>
+        <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-16 overflow-y-auto" onClick={closeOverlay}>
           <div className="stitch-card w-full max-w-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -1103,7 +1262,7 @@ function OrdersTab({ token }: { token: string }) {
                 <p className="text-xs font-mono text-on-surface-variant">#{selectedOrder.orderId.slice(0, 8)}</p>
                 <h2 className="text-xl font-extrabold">Заказ</h2>
               </div>
-              <button type="button" onClick={() => setSelectedOrder(null)} className="rounded-xl bg-surface-container-low p-2 hover:bg-surface-container-high">
+              <button type="button" onClick={closeOverlay} className="rounded-xl bg-surface-container-low p-2 hover:bg-surface-container-high">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -1115,8 +1274,8 @@ function OrdersTab({ token }: { token: string }) {
                 <p className="font-bold">{STATUS_LABELS[selectedOrder.status] ?? selectedOrder.status}</p>
               </div>
               <div className="rounded-xl bg-surface-container-low p-3">
-                <p className="text-[10px] text-on-surface-variant uppercase">Сумма</p>
-                <p className="font-bold text-primary">{formatMoney(selectedOrder.cost, selectedOrder.currency)}</p>
+                <p className="text-[10px] text-on-surface-variant uppercase">Сумма заказа</p>
+                <p className="font-bold text-primary">{formatMoney(computeOriginalPaid(selectedOrder), selectedOrder.currency)}</p>
               </div>
               <div className="rounded-xl bg-surface-container-low p-3">
                 <p className="text-[10px] text-on-surface-variant uppercase">Доставка</p>
@@ -1146,13 +1305,43 @@ function OrdersTab({ token }: { token: string }) {
                   </p>
                 </div>
               ) : null}
-              {selectedOrder.returnCost && selectedOrder.returnCost > 0 ? (
-                <div className="rounded-xl bg-surface-container-low p-3">
-                  <p className="text-[10px] text-on-surface-variant uppercase">Возврат</p>
-                  <p className="font-bold text-red-600">{formatMoney(selectedOrder.returnCost, selectedOrder.currency)}</p>
-                </div>
-              ) : null}
+              {(() => {
+                const rejected = computeRejectedRefund(selectedOrder);
+                const returned = computeReturnedRefund(selectedOrder);
+                const net = computeNetCost(selectedOrder);
+                const hasAnyRefund = rejected > 0 || returned > 0;
+                return (
+                  <>
+                    {hasAnyRefund ? (
+                      <div className="rounded-xl bg-surface-container-low p-3">
+                        <p className="text-[10px] text-on-surface-variant uppercase">За полученные</p>
+                        <p className="font-bold">{formatMoney(net, selectedOrder.currency)}</p>
+                      </div>
+                    ) : null}
+                    {rejected > 0 ? (
+                      <div className="rounded-xl bg-red-50 border border-red-100 p-3">
+                        <p className="text-[10px] text-red-600 uppercase">Возврат за отклонённые</p>
+                        <p className="font-bold text-red-700">{formatMoney(rejected, selectedOrder.currency)}</p>
+                      </div>
+                    ) : null}
+                    {returned > 0 ? (
+                      <div className="rounded-xl bg-red-50 border border-red-100 p-3">
+                        <p className="text-[10px] text-red-600 uppercase">Возврат за возвращённые</p>
+                        <p className="font-bold text-red-700">{formatMoney(returned, selectedOrder.currency)}</p>
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
+
+            {/* Comment */}
+            {selectedOrder.comment ? (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-1">
+                <p className="text-[10px] text-amber-700 uppercase tracking-wider font-semibold">Комментарий клиента</p>
+                <p className="text-sm text-amber-900 whitespace-pre-wrap">{selectedOrder.comment}</p>
+              </div>
+            ) : null}
 
             {/* Positions as mini-cards */}
             {(selectedOrder.positions ?? []).length > 0 ? (
@@ -1163,7 +1352,6 @@ function OrdersTab({ token }: { token: string }) {
                     key={pos.positionId}
                     href={pos.medicineId ? `/product/${pos.medicineId}` : "#"}
                     className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3 transition hover:bg-surface-container-high"
-                    onClick={() => setSelectedOrder(null)}
                   >
                     <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-surface-container flex items-center justify-center text-xs text-on-surface-variant font-bold">
                       {(pos.medicine?.title ?? "?")[0]}
@@ -1185,10 +1373,129 @@ function OrdersTab({ token }: { token: string }) {
             {/* SuperAdmin can only advance: New→UnderReview, OnTheWay→Delivered */}
             {(selectedOrder.status === "New" || selectedOrder.status === "OnTheWay") ? (
               <button type="button" className="stitch-button w-full" onClick={async () => {
+                const label = selectedOrder.status === "New" ? "подтвердить оплату и передать заказ аптеке" : "подтвердить доставку заказа клиенту";
+                if (!confirm(`Действительно ${label} #${selectedOrder.orderId.slice(0, 8)}?`)) return;
                 await superAdminNextStatus(token, selectedOrder.orderId).catch(() => undefined);
                 load();
-                setSelectedOrder(null);
+                closeOverlay();
               }}>{selectedOrder.status === "New" ? "Подтвердить и передать аптеке" : "Подтвердить доставку"}</button>
+            ) : null}
+
+            {/* Cancel — SuperAdmin can cancel from any pre-delivery status */}
+            {selectedOrder.status && !["Delivered", "PickedUp", "Returned", "Cancelled"].includes(selectedOrder.status) ? (
+              <button
+                type="button"
+                className="w-full rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-200 transition"
+                onClick={async () => {
+                  if (!confirm(`Отменить заказ #${selectedOrder.orderId.slice(0, 8)}?`)) return;
+                  try {
+                    await superAdminCancelOrder(token, selectedOrder.orderId);
+                    load();
+                    closeOverlay();
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : "Не удалось отменить заказ");
+                  }
+                }}
+              >
+                Отменить заказ
+              </button>
+            ) : null}
+
+            {/* Return flow — only for completed orders (Delivered/PickedUp or already Returned) */}
+            {selectedOrder.status && ["Delivered", "PickedUp", "Returned"].includes(selectedOrder.status) ? (
+              !returnMode ? (
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 transition"
+                  onClick={() => {
+                    setReturnMode(true);
+                    const initial: Record<string, number> = {};
+                    for (const p of selectedOrder.positions ?? []) {
+                      if (!p.isRejected) initial[p.positionId] = p.returnedQuantity ?? 0;
+                    }
+                    setReturnQty(initial);
+                  }}
+                >
+                  {selectedOrder.status === "Returned" ? "Добавить ещё возвраты" : "Оформить возврат позиций"}
+                </button>
+              ) : (
+                <div className="rounded-xl border border-red-200 bg-red-50/50 p-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-bold text-red-900">Возврат позиций</p>
+                    <p className="text-[11px] text-red-700">Укажите сколько единиц клиент вернул по каждой позиции. 0 — не возвращал.</p>
+                  </div>
+                  <div className="space-y-2">
+                    {(selectedOrder.positions ?? []).filter(p => !p.isRejected).map((pos) => {
+                      const current = returnQty[pos.positionId] ?? 0;
+                      return (
+                        <div key={pos.positionId} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-red-100">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold truncate">{pos.medicine?.title ?? pos.medicineId.slice(0, 8)}</p>
+                            <p className="text-[10px] text-on-surface-variant">Заказано: {pos.quantity} · Цена: {formatMoney(pos.price)}</p>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button type="button" className="w-6 h-6 rounded bg-surface-container-low text-sm font-bold" onClick={() => setReturnQty(q => ({ ...q, [pos.positionId]: Math.max(0, (q[pos.positionId] ?? 0) - 1) }))}>−</button>
+                            <input
+                              type="number"
+                              min={0}
+                              max={pos.quantity}
+                              value={current}
+                              onChange={(e) => {
+                                const v = Math.max(0, Math.min(pos.quantity, Number(e.target.value) || 0));
+                                setReturnQty(q => ({ ...q, [pos.positionId]: v }));
+                              }}
+                              className="w-12 text-center rounded bg-surface-container-low py-0.5 text-sm font-mono"
+                            />
+                            <span className="text-[10px] text-on-surface-variant">/{pos.quantity}</span>
+                            <button type="button" className="w-6 h-6 rounded bg-surface-container-low text-sm font-bold" onClick={() => setReturnQty(q => ({ ...q, [pos.positionId]: Math.min(pos.quantity, (q[pos.positionId] ?? 0) + 1) }))}>+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const totalRefund = (selectedOrder.positions ?? [])
+                      .filter(p => !p.isRejected)
+                      .reduce((sum, p) => sum + (p.price ?? 0) * (returnQty[p.positionId] ?? 0), 0);
+                    const hasAny = Object.values(returnQty).some(v => v > 0);
+                    return (
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-red-200">
+                        <div>
+                          <p className="text-[10px] text-red-700 uppercase font-semibold">К возврату</p>
+                          <p className="text-sm font-bold text-red-900">{formatMoney(totalRefund, selectedOrder.currency)}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" className="rounded-lg px-3 py-2 text-xs font-bold bg-white border border-red-200 text-red-700" onClick={() => { setReturnMode(false); setReturnQty({}); }}>
+                            Отмена
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!hasAny}
+                            className="rounded-lg px-3 py-2 text-xs font-bold bg-red-600 text-white disabled:opacity-50"
+                            onClick={async () => {
+                              const positions = Object.entries(returnQty)
+                                .filter(([, q]) => q > 0)
+                                .map(([positionId, quantity]) => ({ positionId, quantity }));
+                              if (positions.length === 0) return;
+                              try {
+                                await superAdminReturnPositions(token, selectedOrder.orderId, positions);
+                                setReturnMode(false);
+                                setReturnQty({});
+                                load();
+                                closeOverlay();
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "Не удалось оформить возврат");
+                              }
+                            }}
+                          >
+                            Подтвердить возврат
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )
             ) : null}
           </div>
         </div>
@@ -1224,6 +1531,7 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
       {!showReject ? (
         <div className="flex gap-2">
           <button type="button" className="stitch-button text-xs" disabled={isProcessing} onClick={async () => {
+            if (!confirm(`Подтвердить оплату для заказа #${intent.reservedOrderId?.slice(0, 8) ?? intent.paymentIntentId.slice(0, 8)}? Заказ будет передан аптеке.`)) return;
             setIsProcessing(true); setActionError(null);
             try {
               await confirmPaymentIntent(token, intent.paymentIntentId);
@@ -1243,6 +1551,7 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
           <input className="stitch-input w-full" placeholder="Причина отклонения..." value={reason} onChange={(e) => setReason(e.target.value)} />
           <div className="flex gap-2">
             <button type="button" className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white" disabled={isProcessing} onClick={async () => {
+              if (!confirm("Отклонить этот платёж? Заказ будет отменён.")) return;
               setIsProcessing(true); setActionError(null);
               try { await rejectPaymentIntent(token, intent.paymentIntentId, reason); onDone(); }
               catch (err) { setActionError(err instanceof Error ? err.message : "Ошибка отклонения"); }

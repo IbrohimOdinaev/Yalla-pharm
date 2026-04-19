@@ -95,7 +95,9 @@ public sealed class ClientServiceDeletionTests
     var logger = LoggerFactory.Create(_ => { }).CreateLogger<ClientService>();
     return new ClientService(
       scope.Db,
-      new StubPaymentService(Options.Create(new DushanbeCityPaymentOptions())),
+      new StubPaymentService(
+        Options.Create(new DushanbeCityPaymentOptions()),
+        new FakePaymentSettingsService()),
       new BCryptPasswordHasher(),
       new FakeSmsService(),
       Options.Create(new SmsVerificationOptions
@@ -105,7 +107,8 @@ public sealed class ClientServiceDeletionTests
       }),
       Options.Create(new DushanbeCityPaymentOptions()),
       logger,
-      new NoOpRealtimeUpdatesPublisher());
+      new NoOpRealtimeUpdatesPublisher(),
+      new FakeClientAddressService());
   }
 
   private sealed class FakeSmsService : ISmsService

@@ -12,4 +12,14 @@ public sealed class CheckoutBasketRequest
   public double? DeliveryLongitude { get; init; }
   public string IdempotencyKey { get; init; } = string.Empty;
   public IReadOnlyCollection<Guid> IgnoredPositionIds { get; init; } = [];
+
+  /// <summary>Optional free-form comment for the order (max 1024).</summary>
+  public string? Comment { get; init; }
+
+  /// <summary>
+  /// Where the order positions come from. If null — defaults to
+  /// <see cref="CheckoutSourceKind.Basket"/> (backward-compatible). When the
+  /// source is non-basket, the basket is not touched.
+  /// </summary>
+  public CheckoutSourceRequest? Source { get; init; }
 }

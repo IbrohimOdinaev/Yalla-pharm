@@ -19,6 +19,8 @@ public interface IJuraService
   Task CancelOrderAsync(long juraOrderId, string reason, CancellationToken ct);
 
   Task<List<JuraTariff>> GetTariffsAsync(CancellationToken ct);
+
+  Task<string?> GetReceiptCodeAsync(long juraOrderId, CancellationToken ct);
 }
 
 public sealed class JuraAddress

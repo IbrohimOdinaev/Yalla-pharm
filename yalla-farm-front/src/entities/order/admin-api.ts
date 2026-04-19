@@ -37,3 +37,23 @@ export async function superAdminNextStatus(token: string, orderId: string): Prom
 export async function rejectPositions(token: string, orderId: string, positionIds: string[]): Promise<void> {
   await apiFetch<unknown>("/api/orders/positions/reject", { method: "POST", token, body: { orderId, positionIds } });
 }
+
+export async function superAdminCancelOrder(token: string, orderId: string): Promise<void> {
+  await apiFetch<unknown>("/api/orders/cancel-by-super-admin", { method: "POST", token, body: { orderId } });
+}
+
+export async function adminCancelOrder(token: string, orderId: string): Promise<void> {
+  await apiFetch<unknown>("/api/orders/cancel-by-admin", { method: "POST", token, body: { orderId } });
+}
+
+export async function superAdminReturnPositions(
+  token: string,
+  orderId: string,
+  positions: { positionId: string; quantity: number }[]
+): Promise<void> {
+  await apiFetch<unknown>("/api/orders/return-by-super-admin", {
+    method: "POST",
+    token,
+    body: { orderId, positions },
+  });
+}

@@ -36,6 +36,11 @@ public sealed class SmsOutboxMessageConfiguration : IEntityTypeConfiguration<Sms
       .HasConversion<int>()
       .IsRequired();
 
+    builder.Property(x => x.MessageKey)
+      .HasColumnName("message_key")
+      .HasColumnType("character varying(64)")
+      .HasMaxLength(64);
+
     builder.Property(x => x.Message)
       .HasColumnName("message")
       .HasColumnType("character varying(1000)")
@@ -114,7 +119,13 @@ public sealed class SmsOutboxMessageConfiguration : IEntityTypeConfiguration<Sms
 
     builder.HasIndex(x => new { x.OrderId, x.StatusSnapshot, x.PhoneNumber })
       .IsUnique()
-      .HasDatabaseName("ux_sms_outbox_order_status_phone");
+      .HasDatabaseName("ux_sms_outbox_order_status_phone")
+      .HasFilter("message_key IS NULL");
+
+    builder.HasIndex(x => new { x.OrderId, x.MessageKey, x.PhoneNumber })
+      .IsUnique()
+      .HasDatabaseName("ux_sms_outbox_order_msgkey_phone")
+      .HasFilter("message_key IS NOT NULL");
 
     builder.HasIndex(x => new { x.State, x.NextAttemptAtUtc })
       .HasDatabaseName("ix_sms_outbox_state_next_attempt_at_utc");

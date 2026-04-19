@@ -27,10 +27,4 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="Fixtures/**/*.cs" />
-    <Compile Remove="Scenarios/**/*.cs" />
-    <Compile Remove="TestData/**/*.cs" />
-  </ItemGroup>
-
 </Project>

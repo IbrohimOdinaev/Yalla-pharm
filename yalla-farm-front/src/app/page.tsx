@@ -17,6 +17,8 @@ import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdate
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
+import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
+import type { ActivePharmacy } from "@/entities/pharmacy/api";
 
 const POPULAR_QUERIES = ["Парацетамол", "Ибупрофен", "Амоксициллин", "Цитрамон", "Лоратадин", "Омепразол"];
 
@@ -96,6 +98,9 @@ function HomeContent() {
   // Pharmacy filter in search
   const [showPharmacyFilter, setShowPharmacyFilter] = useState(false);
   const [selectedSearchPharmacyId, setSelectedSearchPharmacyId] = useState<string>("");
+  // When user enters search via a pharmacy banner, this pin overrides the global pharmacy
+  // until search is closed. After exit, global selection is used again.
+  const [pinnedSearchPharmacy, setPinnedSearchPharmacy] = useState<ActivePharmacy | null>(null);
 
   const isInitialLoad = useRef(true);
 
@@ -157,8 +162,10 @@ function HomeContent() {
         setPharmacyResults(data.pharmacies ?? []);
         setSearchTotalCount(data.totalCount ?? 0);
         setPharmacyScrollPage({});
-        // Auto-apply pharmacy filter if a pharmacy is globally selected
-        if (selectedPharmacy && (data.pharmacies ?? []).some((p) => p.pharmacyId === selectedPharmacy.id)) {
+        // Pinned pharmacy (from banner click) wins over global selection
+        if (pinnedSearchPharmacy && (data.pharmacies ?? []).some((p) => p.pharmacyId === pinnedSearchPharmacy.id)) {
+          setSelectedSearchPharmacyId(pinnedSearchPharmacy.id);
+        } else if (!pinnedSearchPharmacy && selectedPharmacy && (data.pharmacies ?? []).some((p) => p.pharmacyId === selectedPharmacy.id)) {
           setSelectedSearchPharmacyId(selectedPharmacy.id);
         } else {
           setSelectedSearchPharmacyId("");
@@ -226,10 +233,28 @@ function HomeContent() {
     setSearchError(null);
     setSelectedSearchPharmacyId("");
     setShowPharmacyFilter(false);
+    setPinnedSearchPharmacy(null);
+    // Use browser history — it knows the real previous URL even when typing
+    // in the search box (replaceState doesn't add new entries)
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navRouter.back();
+    } else {
+      navRouter.replace("/");
+    }
+  }
+
+  function openSearchForPharmacy(pharmacy: ActivePharmacy) {
+    setPinnedSearchPharmacy(pharmacy);
+    setSelectedSearchPharmacyId(pharmacy.id);
+    setView("search");
+    setQuery("");
+    setPharmacyResults([]);
+    setSearchTotalCount(0);
+    // Push a new browser history entry so back works naturally
     const url = new URL(window.location.href);
-    url.searchParams.delete("search");
-    window.history.replaceState({}, "", url.toString());
-    replaceLastNavigation("/");
+    url.searchParams.set("search", "");
+    navRouter.push(url.pathname + url.search);
+    setTimeout(() => searchInputRef.current?.focus(), 100);
   }
 
   // Restore search results from URL on mount
@@ -509,7 +534,7 @@ function HomeContent() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setSelectedSearchPharmacyId("")}
+                        onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); }}
                         className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-container-low hover:bg-surface-container-high transition"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -522,7 +547,7 @@ function HomeContent() {
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   <button
                     type="button"
-                    onClick={() => setSelectedSearchPharmacyId("")}
+                    onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); }}
                     className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
                       !selectedSearchPharmacyId
                         ? "bg-primary text-white shadow-sm"
@@ -535,9 +560,12 @@ function HomeContent() {
                     <button
                       key={group.pharmacyId}
                       type="button"
-                      onClick={() => setSelectedSearchPharmacyId(
-                        selectedSearchPharmacyId === group.pharmacyId ? "" : group.pharmacyId
-                      )}
+                      onClick={() => {
+                        if (selectedSearchPharmacyId === group.pharmacyId) setPinnedSearchPharmacy(null);
+                        setSelectedSearchPharmacyId(
+                          selectedSearchPharmacyId === group.pharmacyId ? "" : group.pharmacyId
+                        );
+                      }}
                       className={`flex items-center gap-2 rounded-full px-1 pr-3 py-1 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
                         selectedSearchPharmacyId === group.pharmacyId
                           ? "bg-primary text-white shadow-sm"
@@ -564,6 +592,16 @@ function HomeContent() {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Pinned pharmacy badge — shown when entered search via banner */}
+            {pinnedSearchPharmacy && (
+              <div className="flex items-center gap-2 rounded-xl bg-primary/5 border border-primary/20 px-3 py-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-primary flex-shrink-0">
+                  <path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
+                </svg>
+                <span className="text-xs font-semibold flex-1 truncate">Поиск в аптеке: {pinnedSearchPharmacy.title}</span>
               </div>
             )}
 
@@ -715,6 +753,9 @@ function HomeContent() {
           <HeroCarousel />
 
           <InfoBanner text="Быстрая доставка по Душанбе: 30-45 минут" />
+
+          {/* Pharmacy banners — click opens search filtered by that pharmacy */}
+          <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
 
           {/* Quick category filters */}
           <div className="flex gap-1.5 xs:gap-2 overflow-x-auto pb-2 scrollbar-hide scroll-touch snap-x -mx-1.5 px-1.5 xs:-mx-3 xs:px-3 sm:-mx-0 sm:px-0 sm:grid sm:grid-cols-4 sm:gap-3 lg:gap-4 sm:overflow-visible sm:pb-0">

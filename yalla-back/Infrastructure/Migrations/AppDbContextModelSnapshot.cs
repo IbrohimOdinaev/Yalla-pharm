@@ -54,6 +54,81 @@ namespace Yalla.Infrastructure.Migrations
                     b.ToTable("basket_positions", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.PaymentSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("DcBaseUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("dc_base_url");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("payment_settings", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ClientAddress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("address");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime>("LastUsedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_used_at_utc");
+
+                    b.Property<double>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "LastUsedAtUtc")
+                        .HasDatabaseName("ix_client_addresses_client_last_used");
+
+                    b.HasIndex("ClientId", "Title")
+                        .IsUnique()
+                        .HasDatabaseName("ux_client_addresses_client_title")
+                        .HasFilter("title IS NOT NULL");
+
+                    b.ToTable("client_addresses", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -251,6 +326,11 @@ namespace Yalla.Infrastructure.Migrations
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
+
+                    b.Property<string>("RecipientCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("recipient_code");
 
                     b.Property<string>("ToAddress")
                         .IsRequired()
@@ -481,6 +561,11 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_stock_deducted");
 
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("comment");
+
                     b.Property<DateTime>("OrderPlacedAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("order_placed_at");
@@ -607,6 +692,12 @@ namespace Yalla.Infrastructure.Migrations
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
+
+                    b.Property<int>("ReturnedQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("returned_quantity");
 
                     b.Property<int>("Quantity")
                         .ValueGeneratedOnAdd()
@@ -1071,6 +1162,11 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("state");
 
+                    b.Property<string>("MessageKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("message_key");
+
                     b.Property<int>("StatusSnapshot")
                         .HasColumnType("integer")
                         .HasColumnName("status_snapshot");
@@ -1094,7 +1190,13 @@ namespace Yalla.Infrastructure.Migrations
 
                     b.HasIndex("OrderId", "StatusSnapshot", "PhoneNumber")
                         .IsUnique()
-                        .HasDatabaseName("ux_sms_outbox_order_status_phone");
+                        .HasDatabaseName("ux_sms_outbox_order_status_phone")
+                        .HasFilter("message_key IS NULL");
+
+                    b.HasIndex("OrderId", "MessageKey", "PhoneNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_sms_outbox_order_msgkey_phone")
+                        .HasFilter("message_key IS NOT NULL");
 
                     b.ToTable("sms_outbox_messages", (string)null);
                 });
@@ -1213,6 +1315,10 @@ namespace Yalla.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("expires_at_utc");
+
+                    b.Property<Guid?>("InitiatingUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("initiating_user_id");
 
                     b.Property<string>("Nonce")
                         .IsRequired()
@@ -1376,6 +1482,15 @@ namespace Yalla.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Medicine");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ClientAddress", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Category", b =>

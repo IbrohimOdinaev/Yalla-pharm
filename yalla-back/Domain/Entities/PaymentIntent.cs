@@ -196,8 +196,9 @@ public sealed class PaymentIntent
 
   private static string NormalizePhoneNumber(string value, string fieldName)
   {
+    // Phone is optional at checkout — Telegram-only clients keep this empty.
     if (string.IsNullOrWhiteSpace(value))
-      throw new DomainArgumentException($"{fieldName} can't be null or whitespace.");
+      return string.Empty;
 
     var digitsOnly = new string(value.Where(char.IsDigit).ToArray());
     if (digitsOnly.StartsWith("992", StringComparison.Ordinal) && digitsOnly.Length == 12)

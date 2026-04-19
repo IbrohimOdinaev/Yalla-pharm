@@ -27,6 +27,8 @@ public interface IAppDbContext
     DbSet<User> Users { get; }
     DbSet<Category> Categories { get; }
     DbSet<DeliveryData> DeliveryData { get; }
+    DbSet<ClientAddress> ClientAddresses { get; }
+    DbSet<PaymentSettings> PaymentSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

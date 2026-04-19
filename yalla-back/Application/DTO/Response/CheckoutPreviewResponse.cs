@@ -10,5 +10,8 @@ public sealed class CheckoutPreviewResponse
   public int RejectedPositionsCount { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }
+  public decimal DeliveryCost { get; init; }
+  public double? DeliveryDistance { get; init; }
+  public decimal TotalCost { get; init; }
   public IReadOnlyCollection<CheckoutPreviewPositionResponse> Positions { get; init; } = [];
 }

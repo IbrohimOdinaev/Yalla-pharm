@@ -10,14 +10,17 @@ public sealed class StubPaymentService : IPaymentService
 {
   private const string DeclineEnvName = "YALLA_STUB_PAYMENT_DECLINE";
   private readonly DushanbeCityPaymentOptions _paymentOptions;
+  private readonly IPaymentSettingsService _paymentSettingsService;
 
-  public StubPaymentService(IOptions<DushanbeCityPaymentOptions> paymentOptions)
+  public StubPaymentService(IOptions<DushanbeCityPaymentOptions> paymentOptions, IPaymentSettingsService paymentSettingsService)
   {
     ArgumentNullException.ThrowIfNull(paymentOptions);
+    ArgumentNullException.ThrowIfNull(paymentSettingsService);
     _paymentOptions = paymentOptions.Value;
+    _paymentSettingsService = paymentSettingsService;
   }
 
-  public Task<PayForOrderResponse> PayForOrderAsync(
+  public async Task<PayForOrderResponse> PayForOrderAsync(
     PayForOrderRequest request,
     CancellationToken cancellationToken = default)
   {
@@ -25,13 +28,13 @@ public sealed class StubPaymentService : IPaymentService
 
     if (request.Amount <= 0)
     {
-      return Task.FromResult(new PayForOrderResponse
+      return new PayForOrderResponse
       {
         IsPaid = false,
         Provider = _paymentOptions.ProviderName,
         Status = "Declined",
         FailureReason = "Payment amount must be positive."
-      });
+      };
     }
 
     var rawDeclineFlag = Environment.GetEnvironmentVariable(DeclineEnvName);
@@ -40,18 +43,18 @@ public sealed class StubPaymentService : IPaymentService
 
     if (shouldDecline)
     {
-      return Task.FromResult(new PayForOrderResponse
+      return new PayForOrderResponse
       {
         IsPaid = false,
         Provider = _paymentOptions.ProviderName,
         Status = "Declined",
         FailureReason = $"Stub payment was declined via env var '{DeclineEnvName}'."
-      });
+      };
     }
 
-    var paymentLink = BuildPaymentLink(request);
+    var paymentLink = await BuildPaymentLinkAsync(request, cancellationToken);
 
-    return Task.FromResult(new PayForOrderResponse
+    return new PayForOrderResponse
     {
       IsPaid = true,
       Provider = _paymentOptions.ProviderName,
@@ -60,12 +63,16 @@ public sealed class StubPaymentService : IPaymentService
       PaymentUrl = paymentLink.PaymentUrl,
       PaymentComment = paymentLink.PaymentComment,
       ReceiverAccount = paymentLink.ReceiverAccount
-    });
+    };
   }
 
-  private PaymentLinkInfo BuildPaymentLink(PayForOrderRequest request)
+  private async Task<PaymentLinkInfo> BuildPaymentLinkAsync(PayForOrderRequest request, CancellationToken cancellationToken)
   {
-    if (string.IsNullOrWhiteSpace(_paymentOptions.BaseUrl))
+    // Prefer the runtime-editable URL from the DB; fall back to static config.
+    var overrideUrl = await _paymentSettingsService.GetDcBaseUrlAsync(cancellationToken);
+    var baseUrl = !string.IsNullOrWhiteSpace(overrideUrl) ? overrideUrl : _paymentOptions.BaseUrl;
+
+    if (string.IsNullOrWhiteSpace(baseUrl))
     {
       return new PaymentLinkInfo
       {
@@ -78,7 +85,7 @@ public sealed class StubPaymentService : IPaymentService
     var clientPhoneNumber = NormalizePhoneNumber(request.ClientPhoneNumber);
     var paymentComment = $"ClientNumber: {clientPhoneNumber} & OrderId: {request.OrderId}";
     var paymentUrl = WithQueryParameter(
-      WithQueryParameter(_paymentOptions.BaseUrl, "s", amount),
+      WithQueryParameter(baseUrl, "s", amount),
       "c",
       paymentComment);
 

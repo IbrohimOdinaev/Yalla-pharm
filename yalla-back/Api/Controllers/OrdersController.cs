@@ -237,6 +237,73 @@ public sealed class OrdersController : ControllerBase
     return Ok(response);
   }
 
+  [HttpPost("cancel-by-super-admin")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> CancelBySuperAdmin(
+    [FromBody] CancelOrderRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _orderService.CancelOrderBySuperAdminAsync(request.OrderId, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("cancel-by-admin")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> CancelByAdmin(
+    [FromBody] CancelOrderRequest request,
+    CancellationToken cancellationToken)
+  {
+    var pharmacyId = User.GetRequiredPharmacyId();
+    var userId = User.GetRequiredUserId();
+    var response = await _orderService.CancelOrderByAdminAsync(request.OrderId, pharmacyId, userId, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("return-by-super-admin")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> ReturnBySuperAdmin(
+    [FromBody] ReturnOrderPositionsRequest request,
+    CancellationToken cancellationToken)
+  {
+    var userId = User.GetRequiredUserId();
+    var response = await _orderService.ReturnOrderPositionsBySuperAdminAsync(request, userId, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("{orderId:guid}/delivery/dispatch")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> DispatchDelivery(
+    Guid orderId,
+    [FromBody] DispatchDeliveryRequest request,
+    CancellationToken cancellationToken)
+  {
+    var scoped = new DispatchDeliveryRequest
+    {
+      WorkerId = User.GetRequiredUserId(),
+      OrderId = orderId,
+      TariffId = request?.TariffId
+    };
+    var response = await _orderService.DispatchDeliveryAsync(scoped, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("{orderId:guid}/delivery/cancel")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> CancelDelivery(
+    Guid orderId,
+    [FromBody] CancelDeliveryRequest request,
+    CancellationToken cancellationToken)
+  {
+    var scoped = new CancelDeliveryRequest
+    {
+      WorkerId = User.GetRequiredUserId(),
+      OrderId = orderId,
+      Reason = request?.Reason
+    };
+    var response = await _orderService.CancelDeliveryAsync(scoped, cancellationToken);
+    return Ok(response);
+  }
+
   private async Task<Yalla.Application.DTO.Response.GetNewOrdersForWorkerResponse> GetScopedPharmacyOrdersAsync(
     int take,
     CancellationToken cancellationToken)

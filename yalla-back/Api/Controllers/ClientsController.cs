@@ -13,10 +13,20 @@ namespace Api.Controllers;
 public sealed class ClientsController : ControllerBase
 {
   private readonly IClientService _clientService;
+  private readonly IAuthService _authService;
+  private readonly ITelegramAuthService _telegramAuthService;
+  private readonly IClientAddressService _addressService;
 
-  public ClientsController(IClientService clientService)
+  public ClientsController(
+    IClientService clientService,
+    IAuthService authService,
+    ITelegramAuthService telegramAuthService,
+    IClientAddressService addressService)
   {
     _clientService = clientService;
+    _authService = authService;
+    _telegramAuthService = telegramAuthService;
+    _addressService = addressService;
   }
 
   [HttpPost("register")]
@@ -192,7 +202,8 @@ public sealed class ClientsController : ControllerBase
       IsPickup = request.IsPickup,
       DeliveryAddress = request.DeliveryAddress,
       IdempotencyKey = request.IdempotencyKey,
-      IgnoredPositionIds = request.IgnoredPositionIds
+      IgnoredPositionIds = request.IgnoredPositionIds,
+      Source = request.Source
     };
 
     var response = await _clientService.PreviewCheckoutAsync(scopedRequest, cancellationToken);
@@ -227,11 +238,133 @@ public sealed class ClientsController : ControllerBase
       PharmacyId = request.PharmacyId,
       IsPickup = request.IsPickup,
       DeliveryAddress = request.DeliveryAddress,
+      DeliveryAddressId = request.DeliveryAddressId,
+      DeliveryAddressTitle = request.DeliveryAddressTitle,
+      DeliveryLatitude = request.DeliveryLatitude,
+      DeliveryLongitude = request.DeliveryLongitude,
       IdempotencyKey = idempotencyKey,
-      IgnoredPositionIds = request.IgnoredPositionIds
+      IgnoredPositionIds = request.IgnoredPositionIds,
+      Comment = request.Comment,
+      Source = request.Source
     };
 
     var response = await _clientService.CheckoutBasketAsync(scopedRequest, cancellationToken);
+
+    // Auto-record delivery address to client's address history (non-pickup only).
+    if (!request.IsPickup
+        && request.DeliveryLatitude.HasValue
+        && request.DeliveryLongitude.HasValue
+        && !string.IsNullOrWhiteSpace(request.DeliveryAddress))
+    {
+      await _addressService.RecordUsageAsync(
+        currentUserId,
+        request.DeliveryAddress,
+        request.DeliveryLatitude.Value,
+        request.DeliveryLongitude.Value,
+        cancellationToken);
+    }
+
     return Ok(response);
+  }
+
+  // ─── Profile: link phone number (SMS OTP) ───
+
+  [HttpPost("me/phone/link/request")]
+  [Authorize(Roles = nameof(Role.Client))]
+  [EnableRateLimiting("sms-register-request")]
+  public async Task<IActionResult> RequestPhoneLink(
+    [FromBody] LinkPhoneNumberRequest request,
+    CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var response = await _authService.RequestPhoneLinkOtpAsync(clientId, request.PhoneNumber, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("me/phone/link/verify")]
+  [Authorize(Roles = nameof(Role.Client))]
+  [EnableRateLimiting("sms-register-verify")]
+  public async Task<IActionResult> VerifyPhoneLink(
+    [FromBody] VerifyLinkPhoneNumberRequest request,
+    CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var response = await _authService.VerifyPhoneLinkOtpAsync(clientId, request.OtpSessionId, request.Code, cancellationToken);
+    return Ok(response);
+  }
+
+  // ─── Profile: link Telegram account ───
+
+  [HttpPost("me/telegram/link/start")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> StartTelegramLink(CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var response = await _telegramAuthService.StartLinkAsync(clientId, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("me/telegram/link/complete")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> CompleteTelegramLink(
+    [FromBody] CompleteTelegramAuthRequest request,
+    CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    await _telegramAuthService.CompleteLinkAsync(clientId, request.Nonce, cancellationToken);
+    return Ok(new { linked = true });
+  }
+
+  [HttpGet("me/telegram/link/poll")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> PollTelegramLink(
+    [FromQuery] string nonce,
+    CancellationToken cancellationToken)
+  {
+    var response = await _telegramAuthService.PollAsync(nonce, cancellationToken);
+    return Ok(response);
+  }
+
+  // ─── Profile: saved delivery addresses ───
+
+  [HttpGet("me/addresses")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> GetAddresses(CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var list = await _addressService.GetAllAsync(clientId, cancellationToken);
+    return Ok(new { addresses = list });
+  }
+
+  [HttpPost("me/addresses")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> UpsertAddress(
+    [FromBody] UpsertClientAddressRequest request,
+    CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var response = await _addressService.UpsertAsync(clientId, request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPut("me/addresses/{addressId:guid}")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> UpdateAddress(
+    Guid addressId,
+    [FromBody] UpdateClientAddressRequest request,
+    CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var response = await _addressService.UpdateAsync(clientId, addressId, request, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpDelete("me/addresses/{addressId:guid}")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> DeleteAddress(Guid addressId, CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    await _addressService.DeleteAsync(clientId, addressId, cancellationToken);
+    return Ok(new { deleted = true });
   }
 }

@@ -46,4 +46,16 @@ public interface ITelegramAuthService
     long chatId,
     int messageId,
     CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Creates a linking session for an already-authenticated client that wants to
+  /// attach a Telegram account to their profile.
+  /// </summary>
+  Task<StartTelegramAuthResponse> StartLinkAsync(Guid clientId, CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Completes a linking session after the bot confirmation: attaches the
+  /// confirmed Telegram identity to the initiating client.
+  /// </summary>
+  Task CompleteLinkAsync(Guid clientId, string nonce, CancellationToken cancellationToken = default);
 }

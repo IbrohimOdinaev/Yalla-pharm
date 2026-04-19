@@ -13,22 +13,27 @@ import { updatePharmacy } from "@/entities/pharmacy/admin-api";
 import { searchMedicines, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import type { ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
-import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions } from "@/entities/order/admin-api";
+import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions, adminCancelOrder } from "@/entities/order/admin-api";
+import { AdminOrderDetailModal } from "@/widgets/order/AdminOrderDetailModal";
+import { computeOriginalPaid } from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
+import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
 
 type Tab = "pharmacy" | "offers" | "orders";
 
-const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "Delivered", "Cancelled", "Returned"];
+const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "DriverArrived", "Delivered", "PickedUp", "Cancelled", "Returned"];
 const STATUS_LABELS: Record<string, string> = {
   New: "Новые", UnderReview: "На рассмотрении", Preparing: "Собирается",
-  Ready: "Готов", OnTheWay: "В пути", Delivered: "Доставлен",
+  Ready: "Готов", OnTheWay: "В пути", DriverArrived: "Курьер на месте",
+  Delivered: "Доставлен", PickedUp: "Забран клиентом",
   Cancelled: "Отменён", Returned: "Возврат"
 };
 const STATUS_COLORS: Record<string, string> = {
   New: "bg-blue-500", UnderReview: "bg-yellow-500", Preparing: "bg-orange-500",
-  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", Delivered: "bg-green-500",
-  Cancelled: "bg-red-500", Returned: "bg-gray-500"
+  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", DriverArrived: "bg-purple-600",
+  Delivered: "bg-green-500",
+  PickedUp: "bg-green-500", Cancelled: "bg-red-500", Returned: "bg-gray-500"
 };
 
 export default function WorkspacePage() {
@@ -73,7 +78,7 @@ export default function WorkspacePage() {
 
   if (!token || role !== "Admin") {
     return (
-      <AppShell top={<TopBar title="Workspace" />} hideGlobalNav>
+      <AppShell top={<TopBar title="Workspace" showLogout />} hideGlobalNav>
         <div className="stitch-card p-6 text-sm">
           Доступ только для администраторов. <Link href="/login" className="font-bold text-primary">Войти</Link>
         </div>
@@ -82,7 +87,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <AppShell top={<TopBar title="Workspace" />} hideGlobalNav>
+    <AppShell top={<TopBar title="Workspace" showLogout />} hideGlobalNav>
       <div className="space-y-4">
         {/* Feature 14: Admin hero */}
         <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-3">
@@ -323,6 +328,15 @@ function OrdersTab({ token }: { token: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  // Deep-link: /workspace?orderId=X auto-opens modal on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("orderId");
+    if (id) setSelectedOrderId(id);
+  }, []);
 
   const refresh = useCallback(() => {
     setIsLoading(true);
@@ -336,6 +350,21 @@ function OrdersTab({ token }: { token: string }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Safety-net polling: if SignalR drops, auto-transitions from JURA still land.
+  useEffect(() => {
+    function onFocus() {
+      if (document.visibilityState === "visible") refresh();
+    }
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    const t = setInterval(refresh, 15000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      clearInterval(t);
+    };
+  }, [refresh]);
+
 
   async function onAction(action: string, orderId: string) {
     try {
@@ -343,6 +372,7 @@ function OrdersTab({ token }: { token: string }) {
       if (action === "ready") await markReady(token, orderId);
       if (action === "ontheway") await markOnTheWay(token, orderId);
       if (action === "delete") await deleteNewOrder(token, orderId);
+      if (action === "cancel") await adminCancelOrder(token, orderId);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка.");
@@ -383,12 +413,14 @@ function OrdersTab({ token }: { token: string }) {
 
       <div className="flex gap-4 overflow-x-auto pb-4 snap-x md:grid md:grid-cols-2 md:overflow-x-visible xl:grid-cols-4">
         {ALL_STATUSES.map((status) => {
-          const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean }[] => {
-            const a: { label: string; action: string; danger?: boolean }[] = [];
-            if (status === "UnderReview") a.push({ label: "Начать сборку", action: "assembly" });
-            if (status === "Preparing") a.push({ label: "Собран", action: "ready" });
-            if (status === "Ready") a.push({ label: order.isPickup ? "Выдан клиенту" : "В пути", action: "ontheway" });
-            // New, OnTheWay, Delivered, Cancelled, Returned — no actions for admin
+          const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] => {
+            const a: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] = [];
+            if (status === "UnderReview") a.push({ label: "Начать сборку", action: "assembly", needsConfirm: true });
+            if (status === "Preparing") a.push({ label: "Собран", action: "ready", needsConfirm: true });
+            if (status === "Ready") a.push({ label: order.isPickup ? "Выдан клиенту" : "В пути", action: "ontheway", needsConfirm: true });
+            // Cancellation available while the order is in-pharmacy
+            if (status === "UnderReview" || status === "Preparing" || status === "Ready")
+              a.push({ label: "Отменить", action: "cancel", danger: true });
             return a;
           };
 
@@ -403,7 +435,7 @@ function OrdersTab({ token }: { token: string }) {
               </div>
               <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                 {grouped[status].map((order) => (
-                  <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} actions={actions(order)} onAction={onAction} />
+                  <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} onSelect={setSelectedOrderId} actions={actions(order)} onAction={onAction} />
                 ))}
                 {grouped[status].length === 0 && <p className="text-xs text-on-surface-variant text-center py-4">Пусто</p>}
               </div>
@@ -411,6 +443,15 @@ function OrdersTab({ token }: { token: string }) {
           );
         })}
       </div>
+
+      {selectedOrderId ? (
+        <AdminOrderDetailModal
+          orderId={selectedOrderId}
+          token={token}
+          onClose={() => { setSelectedOrderId(null); refresh(); }}
+          onDeleted={refresh}
+        />
+      ) : null}
     </div>
   );
 }
@@ -420,13 +461,15 @@ function OrderCard({
   actions,
   onAction,
   token,
-  onRefresh
+  onRefresh,
+  onSelect,
 }: {
   order: ApiOrder;
-  actions: { label: string; action: string; danger?: boolean }[];
+  actions: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[];
   onAction: (action: string, orderId: string) => void;
   token?: string;
   onRefresh?: () => void;
+  onSelect?: (orderId: string) => void;
 }) {
   const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
   const [isRejecting, setIsRejecting] = useState(false);
@@ -443,6 +486,7 @@ function OrderCard({
 
   async function onRejectSelected() {
     if (!token || selectedPositions.size === 0) return;
+    if (!confirm(`Отклонить ${selectedPositions.size} позицию(й)? Эти позиции не войдут в заказ, клиенту будет возвращена их стоимость.`)) return;
     setIsRejecting(true);
     try {
       await rejectPositions(token, order.orderId, Array.from(selectedPositions));
@@ -457,10 +501,13 @@ function OrderCard({
     : undefined;
 
   return (
-    <div className="stitch-card space-y-2 p-3">
-      <div className="flex items-center justify-between">
+    <div className={`stitch-card space-y-2 p-3 ${deliveryBorderClass(!!order.isPickup)}`}>
+      <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
-        <span className="font-bold text-sm">{formatMoney(order.cost, order.currency)}</span>
+        <div className="flex items-center gap-1.5">
+          <DeliveryBadge isPickup={!!order.isPickup} />
+          <span className="font-bold text-sm">{formatMoney(computeOriginalPaid(order), order.currency)}</span>
+        </div>
       </div>
       {phoneDisplay ? <p className="text-xs font-mono text-on-surface-variant">{phoneDisplay}</p> : null}
 
@@ -472,10 +519,16 @@ function OrderCard({
 
       {order.deliveryAddress ? <p className="text-xs text-on-surface-variant">{order.isPickup ? "Самовывоз" : order.deliveryAddress}</p> : null}
 
-      {/* Feature 13: Position count and delivery type */}
-      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-        <span>{order.positions?.length ?? 0} поз.</span>
-        <span>{order.isPickup ? "Самовывоз" : "Доставка"}</span>
+      {order.comment ? (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-800">
+          <p className="font-semibold text-[10px] uppercase tracking-wider text-amber-700">Комментарий</p>
+          <p className="whitespace-pre-wrap">{order.comment}</p>
+        </div>
+      ) : null}
+
+      {/* Position count */}
+      <div className="text-xs text-on-surface-variant">
+        {order.positions?.length ?? 0} поз.
       </div>
 
       {/* Position list with reject checkboxes for Preparing */}
@@ -505,7 +558,8 @@ function OrderCard({
               type="button"
               className={`rounded-lg px-3 py-1 text-xs font-bold ${a.danger ? "bg-red-100 text-red-700" : "bg-primary text-white"}`}
               onClick={() => {
-                if (a.danger && !confirm("Вы уверены?")) return;
+                if (a.danger && !confirm(`Подтвердите: ${a.label.toLowerCase()} заказ #${order.orderId.slice(0, 8)}?`)) return;
+                if (a.needsConfirm && !confirm(`${a.label}? Статус заказа #${order.orderId.slice(0, 8)} изменится.`)) return;
                 onAction(a.action, order.orderId);
               }}
             >
@@ -515,13 +569,14 @@ function OrderCard({
         </div>
       ) : null}
 
-      {/* Feature 13: "Подробнее" link */}
-      <Link
-        href={`/workspace/order/${order.orderId}`}
+      {/* "Подробнее" — opens modal inline (no navigation) */}
+      <button
+        type="button"
+        onClick={() => onSelect?.(order.orderId)}
         className="inline-block rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold text-on-surface-variant hover:bg-surface-container-high"
       >
         Подробнее
-      </Link>
+      </button>
     </div>
   );
 }

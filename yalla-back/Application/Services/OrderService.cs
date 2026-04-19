@@ -6,6 +6,7 @@ using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
+using Yalla.Domain.Exceptions;
 
 namespace Yalla.Application.Services;
 
@@ -57,6 +58,7 @@ public sealed class OrderService : IOrderService
     var orders = await query
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+      .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Skip((page - 1) * pageSize)
       .Take(pageSize)
@@ -92,6 +94,7 @@ public sealed class OrderService : IOrderService
       .Where(x => x.ClientId == request.ClientId)
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+      .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .ToListAsync(cancellationToken);
 
@@ -111,6 +114,9 @@ public sealed class OrderService : IOrderService
           PaymentExpiresAtUtc = x.PaymentExpiresAtUtc,
           Cost = x.Cost,
           ReturnCost = x.ReturnCost,
+          DeliveryCost = x.DeliveryData != null ? x.DeliveryData.DeliveryCost : 0m,
+          TotalCost = x.Cost + (x.DeliveryData != null ? x.DeliveryData.DeliveryCost : 0m),
+          Comment = x.Comment,
           Positions = x.Positions
             .Select(y => new OrderHistoryPositionResponse
             {
@@ -140,6 +146,7 @@ public sealed class OrderService : IOrderService
         $"Order '{request.OrderId}' for client '{request.ClientId}' was not found.");
 
     var delivery = order.DeliveryData;
+    var detailsDeliveryCost = delivery?.DeliveryCost ?? 0m;
 
     return new GetClientOrderDetailsResponse
     {
@@ -155,10 +162,20 @@ public sealed class OrderService : IOrderService
       PaymentUrl = order.PaymentUrl,
       Cost = order.Cost,
       ReturnCost = order.ReturnCost,
-      DeliveryCost = delivery?.DeliveryCost ?? 0m,
+      Comment = order.Comment,
+      DeliveryCost = detailsDeliveryCost,
+      DeliveryDistance = delivery?.Distance,
+      TotalCost = order.Cost + detailsDeliveryCost,
+      JuraOrderId = delivery?.JuraOrderId,
+      JuraStatusId = delivery?.JuraStatusId,
+      RecipientCode = delivery?.RecipientCode,
       DriverName = delivery?.DriverName,
       DriverPhone = delivery?.DriverPhone,
       JuraStatus = delivery?.JuraStatus,
+      FromLatitude = delivery?.FromLatitude,
+      FromLongitude = delivery?.FromLongitude,
+      ToLatitude = delivery?.ToLatitude,
+      ToLongitude = delivery?.ToLongitude,
       Positions = order.Positions
         .Select(x => new ClientOrderDetailsPositionResponse
         {
@@ -166,6 +183,7 @@ public sealed class OrderService : IOrderService
           MedicineId = x.MedicineId,
           MedicineTitle = x.Medicine?.Title ?? $"Medicine:{x.MedicineId}",
           Quantity = x.Quantity,
+          ReturnedQuantity = x.ReturnedQuantity,
           IsRejected = x.IsRejected,
           Price = x.OfferSnapshot.Price
         })
@@ -199,6 +217,7 @@ public sealed class OrderService : IOrderService
     var orders = await query
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+      .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Skip((page - 1) * pageSize)
       .Take(pageSize)
@@ -236,6 +255,7 @@ public sealed class OrderService : IOrderService
             || x.Status == Status.Ready))
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+      .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Take(take)
       .ToListAsync(cancellationToken);
@@ -308,6 +328,7 @@ public sealed class OrderService : IOrderService
         .Where(x => x.Id == request.OrderId)
         .Include(x => x.Positions)
         .ThenInclude(x => x.Medicine)
+        .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(cancellationToken)
         ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
 
@@ -422,11 +443,6 @@ public sealed class OrderService : IOrderService
       await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
         order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
 
-      if (!order.IsPickup && _juraService != null)
-      {
-        await DispatchJuraDeliveryAsync(order, cancellationToken);
-      }
-
       return new MarkOrderReadyResponse
       {
         WorkerId = worker.Id,
@@ -441,17 +457,52 @@ public sealed class OrderService : IOrderService
     }
   }
 
-  private async Task DispatchJuraDeliveryAsync(Order order, CancellationToken ct)
+  public async Task<DispatchDeliveryResponse> DispatchDeliveryAsync(
+    DispatchDeliveryRequest request,
+    CancellationToken cancellationToken = default)
   {
+    ArgumentNullException.ThrowIfNull(request);
+    if (_juraService is null)
+      throw new InvalidOperationException("JURA service is not configured.");
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var deliveryData = await _dbContext.DeliveryData
-        .FirstOrDefaultAsync(d => d.OrderId == order.Id, ct);
+      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
+      var order = await _dbContext.Orders
+        .AsTracking()
+        .Include(x => x.DeliveryData)
+        .FirstOrDefaultAsync(x => x.Id == request.OrderId, cancellationToken)
+        ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
 
-      if (deliveryData == null)
+      if (order.PharmacyId != worker.PharmacyId)
+        throw new InvalidOperationException(
+          $"Order '{order.Id}' does not belong to worker pharmacy '{worker.PharmacyId}'.");
+
+      if (order.IsPickup)
+        throw new InvalidOperationException("Pickup orders cannot be dispatched to delivery service.");
+
+      if (order.Status != Status.Ready)
+        throw new InvalidOperationException(
+          $"Order '{order.Id}' must be in status '{Status.Ready}' to dispatch delivery.");
+
+      var deliveryData = order.DeliveryData
+        ?? throw new InvalidOperationException($"Order '{order.Id}' has no delivery data.");
+
+      if (deliveryData.JuraOrderId.HasValue)
       {
-        _logger.LogWarning("No DeliveryData found for order {OrderId}, skipping JURA dispatch", order.Id);
-        return;
+        await transaction.RollbackAsync(cancellationToken);
+        return new DispatchDeliveryResponse
+        {
+          OrderId = order.Id,
+          JuraOrderId = deliveryData.JuraOrderId.Value,
+          JuraStatus = deliveryData.JuraStatus ?? string.Empty,
+          JuraStatusId = deliveryData.JuraStatusId ?? 0,
+          DeliveryCost = deliveryData.DeliveryCost,
+          DriverName = deliveryData.DriverName,
+          DriverPhone = deliveryData.DriverPhone,
+          AlreadyDispatched = true
+        };
       }
 
       var from = new JuraAddress
@@ -462,7 +513,6 @@ public sealed class OrderService : IOrderService
         Lng = deliveryData.FromLongitude,
         Id = deliveryData.FromAddressId
       };
-
       var to = new JuraAddress
       {
         Title = deliveryData.ToTitle,
@@ -476,24 +526,222 @@ public sealed class OrderService : IOrderService
         ? $"992{order.ClientPhoneNumber}"
         : null;
 
-      var result = await _juraService!.CreateDeliveryOrderAsync(from, to, tariffId: null, clientPhone, ct);
+      // NB: we do NOT recalculate DeliveryCost here — it was fixed at checkout and
+      // is what the client was quoted (Order.PaymentAmount is locked to it). JURA
+      // will bill us per the chosen tariff; if it differs from the checkout quote,
+      // that's an operational cost for the pharmacy, not the client.
+      var result = await _juraService.CreateDeliveryOrderAsync(
+        from, to, request.TariffId, clientPhone, cancellationToken);
 
-      deliveryData.SetJuraOrder(result.OrderId, result.Status, result.StatusId);
-
-      if (result.PerformerDeviceId.HasValue)
+      // ─── Orphan-protection ───
+      // JURA has now created the delivery order. If we fail to persist locally,
+      // we must cancel on their side to avoid a phantom dispatch (courier shows
+      // up, but we have no record of it).
+      try
       {
-        var driverName = $"{result.PerformerFirstName} {result.PerformerLastName}".Trim();
-        deliveryData.SetDriverInfo(result.PerformerDeviceId, driverName, result.PerformerPhone);
+        deliveryData.SetJuraOrder(result.OrderId, result.Status, result.StatusId);
+        if (result.PerformerDeviceId.HasValue)
+        {
+          var driverName = $"{result.PerformerFirstName} {result.PerformerLastName}".Trim();
+          deliveryData.SetDriverInfo(result.PerformerDeviceId, driverName, result.PerformerPhone);
+        }
+        if (!string.IsNullOrWhiteSpace(result.RecipientCode))
+        {
+          deliveryData.SetRecipientCode(result.RecipientCode);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+      }
+      catch (Exception persistEx)
+      {
+        _logger.LogCritical(persistEx,
+          "JURA orphan risk! Created jura_order_id={JuraId} for order {OrderId} but local save failed. Attempting JURA cancel.",
+          result.OrderId, order.Id);
+
+        try { await transaction.RollbackAsync(CancellationToken.None); } catch { /* ignored */ }
+
+        try
+        {
+          await _juraService.CancelOrderAsync(
+            result.OrderId,
+            "Local persistence failure — rollback",
+            CancellationToken.None);
+          _logger.LogWarning(
+            "JURA order {JuraId} rolled back successfully after local save failure.",
+            result.OrderId);
+        }
+        catch (Exception cancelEx)
+        {
+          _logger.LogCritical(cancelEx,
+            "!!! DOUBLE FAILURE: JURA order {JuraId} created but neither saved locally nor cancelled remotely. Manual intervention required (order {OrderId}).",
+            result.OrderId, order.Id);
+        }
+
+        throw;
       }
 
-      await _dbContext.SaveChangesAsync(ct);
+      _logger.LogInformation(
+        "JURA delivery dispatched for order {OrderId} by worker {WorkerId}, JURA order {JuraOrderId}",
+        order.Id, worker.Id, result.OrderId);
 
-      _logger.LogInformation("JURA delivery dispatched for order {OrderId}, JURA order {JuraOrderId}",
-        order.Id, result.OrderId);
+      return new DispatchDeliveryResponse
+      {
+        OrderId = order.Id,
+        JuraOrderId = result.OrderId,
+        JuraStatus = result.Status,
+        JuraStatusId = result.StatusId,
+        DeliveryCost = deliveryData.DeliveryCost,
+        DriverName = deliveryData.DriverName,
+        DriverPhone = deliveryData.DriverPhone,
+        AlreadyDispatched = false
+      };
+    }
+    catch
+    {
+      try { await transaction.RollbackAsync(CancellationToken.None); } catch { /* ignored */ }
+      throw;
+    }
+  }
+
+  public async Task<CancelDeliveryResponse> CancelDeliveryAsync(
+    CancelDeliveryRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    if (_juraService is null)
+      throw new InvalidOperationException("JURA service is not configured.");
+
+    var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
+    var order = await _dbContext.Orders
+      .AsTracking()
+      .Include(x => x.DeliveryData)
+      .FirstOrDefaultAsync(x => x.Id == request.OrderId, cancellationToken)
+      ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
+
+    if (order.PharmacyId != worker.PharmacyId)
+      throw new InvalidOperationException(
+        $"Order '{order.Id}' does not belong to worker pharmacy '{worker.PharmacyId}'.");
+
+    var deliveryData = order.DeliveryData
+      ?? throw new InvalidOperationException($"Order '{order.Id}' has no delivery data.");
+
+    if (!deliveryData.JuraOrderId.HasValue)
+      throw new InvalidOperationException("Delivery was not dispatched to JURA.");
+
+    if (order.Status is Status.Delivered or Status.PickedUp or Status.Cancelled or Status.Returned)
+      throw new InvalidOperationException(
+        $"Cannot cancel delivery in order status '{order.Status}'.");
+
+    var reason = string.IsNullOrWhiteSpace(request.Reason)
+      ? "Pharmacy admin cancelled delivery"
+      : request.Reason.Trim();
+
+    try
+    {
+      await _juraService.CancelOrderAsync(deliveryData.JuraOrderId.Value, reason, cancellationToken);
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Failed to dispatch JURA delivery for order {OrderId}", order.Id);
+      _logger.LogError(ex,
+        "Failed to cancel JURA delivery for order {OrderId}, jura {JuraOrderId}",
+        order.Id, deliveryData.JuraOrderId);
+      throw;
+    }
+
+    deliveryData.ClearJuraDispatch();
+    await _dbContext.SaveChangesAsync(cancellationToken);
+
+    _logger.LogInformation(
+      "JURA delivery cancelled for order {OrderId} by worker {WorkerId}",
+      order.Id, worker.Id);
+
+    return new CancelDeliveryResponse
+    {
+      OrderId = order.Id,
+      Cancelled = true
+    };
+  }
+
+  public async Task<List<JuraTariff>> GetDeliveryTariffsAsync(CancellationToken cancellationToken = default)
+  {
+    if (_juraService is null)
+      throw new InvalidOperationException("JURA service is not configured.");
+    return await _juraService.GetTariffsAsync(cancellationToken);
+  }
+
+  public async Task CancelOrderFromJuraAsync(
+    Guid orderId,
+    string reason,
+    CancellationToken cancellationToken = default)
+  {
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      var order = await _dbContext.Orders
+        .AsTracking()
+        .Include(x => x.Positions)
+        .Include(x => x.DeliveryData)
+        .FirstOrDefaultAsync(x => x.Id == orderId, cancellationToken)
+        ?? throw new InvalidOperationException($"Order '{orderId}' was not found.");
+
+      // Guard: don't double-cancel or touch terminal orders.
+      if (order.Status is Status.Cancelled or Status.Delivered or Status.PickedUp or Status.Returned)
+      {
+        await transaction.RollbackAsync(cancellationToken);
+        return;
+      }
+
+      var oldStatus = order.Status;
+      order.Cancel();
+      LogStatusTransition(order.Id, oldStatus, order.Status, $"CancelOrderFromJura:{reason}", Guid.Empty);
+
+      var positionsToRestore = order.Positions.Where(x => !x.IsRejected).ToList();
+      if (order.IsStockDeducted && positionsToRestore.Count > 0)
+      {
+        await RestoreStockForPositionsAsync(order.PharmacyId, positionsToRestore, cancellationToken);
+        _logger.LogInformation(
+          "Stock restored for JURA-cancelled order {OrderId}. Positions restored: {PositionsCount}.",
+          order.Id, positionsToRestore.Count);
+      }
+
+      var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
+      _ = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
+      _logger.LogWarning(
+        "Order {OrderId} auto-cancelled due to JURA delivery cancellation. Refund amount: {Amount}.",
+        order.Id, order.Cost + deliveryCost);
+    }
+    catch
+    {
+      try { await transaction.RollbackAsync(CancellationToken.None); } catch { /* ignored */ }
+      throw;
+    }
+  }
+
+  private async Task TryCancelJuraDeliveryAsync(DeliveryData? deliveryData, string reason, CancellationToken ct)
+  {
+    if (_juraService is null || deliveryData is null || !deliveryData.JuraOrderId.HasValue)
+      return;
+
+    try
+    {
+      await _juraService.CancelOrderAsync(deliveryData.JuraOrderId.Value, reason, ct);
+      _logger.LogInformation(
+        "JURA delivery cancelled (jura {JuraOrderId}) due to order cancellation",
+        deliveryData.JuraOrderId);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex,
+        "Could not cancel JURA delivery {JuraOrderId} on order cancellation — will need manual attention",
+        deliveryData.JuraOrderId);
     }
   }
 
@@ -636,11 +884,20 @@ public sealed class OrderService : IOrderService
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.Positions)
+        .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(
           x => x.Id == request.OrderId && x.ClientId == request.ClientId,
           cancellationToken)
         ?? throw new InvalidOperationException(
           $"Order '{request.OrderId}' for client '{request.ClientId}' was not found.");
+
+      // "New" orders can only be cancelled by SuperAdmin (payment intent cleanup).
+      // Clients may cancel from UnderReview onward.
+      if (order.Status == Status.New)
+        throw new ClientErrorException(
+          errorCode: "client_cannot_cancel_new_order",
+          detail: "Новый заказ (ожидает подтверждения оплаты) может отменить только администратор.",
+          reason: "status_new");
 
       var oldStatus = order.Status;
       order.Cancel();
@@ -663,7 +920,173 @@ public sealed class OrderService : IOrderService
           positionsToRestore.Count);
       }
 
-      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost);
+      var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
+      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+
+      await TryCancelJuraDeliveryAsync(order.DeliveryData, "Client cancelled order", cancellationToken);
+
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
+      return new CancelOrderResponse
+      {
+        ClientId = request.ClientId,
+        OrderId = order.Id,
+        Status = order.Status,
+        RefundRequest = refundRequest
+      };
+    }
+    catch (Exception)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      throw;
+    }
+  }
+
+  public async Task<CancelOrderResponse> CancelOrderByAdminAsync(
+    Guid orderId,
+    Guid pharmacyId,
+    Guid actorUserId,
+    CancellationToken cancellationToken = default)
+  {
+    if (orderId == Guid.Empty)
+      throw new DomainArgumentException("orderId can't be empty.");
+    if (pharmacyId == Guid.Empty)
+      throw new DomainArgumentException("pharmacyId can't be empty.");
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      var order = await _dbContext.Orders
+        .AsTracking()
+        .Include(x => x.Positions)
+        .Include(x => x.DeliveryData)
+        .FirstOrDefaultAsync(
+          x => x.Id == orderId && x.PharmacyId == pharmacyId,
+          cancellationToken)
+        ?? throw new InvalidOperationException(
+          $"Order '{orderId}' was not found in pharmacy '{pharmacyId}'.");
+
+      // Admin can cancel only orders in progress within the pharmacy
+      // (not "New" — those are awaiting payment confirmation by SuperAdmin,
+      // not "OnTheWay"/"Delivered"/"PickedUp"/"Returned"/"Cancelled").
+      if (order.Status is not (Status.UnderReview or Status.Preparing or Status.Ready))
+        throw new ClientErrorException(
+          errorCode: "admin_cannot_cancel_in_this_status",
+          detail: $"Администратор аптеки не может отменить заказ в статусе «{order.Status}».",
+          reason: $"status:{order.Status}");
+
+      var oldStatus = order.Status;
+      order.Cancel();
+      LogStatusTransition(order.Id, oldStatus, order.Status, "CancelOrderByAdmin", actorUserId);
+
+      var positionsToRestore = order.Positions
+        .Where(x => !x.IsRejected)
+        .ToList();
+
+      if (order.IsStockDeducted && positionsToRestore.Count > 0)
+      {
+        await RestoreStockForPositionsAsync(
+          order.PharmacyId,
+          positionsToRestore,
+          cancellationToken);
+
+        _logger.LogInformation(
+          "Stock restored for admin-cancelled order {OrderId}. Positions restored: {PositionsCount}.",
+          order.Id, positionsToRestore.Count);
+      }
+
+      var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
+      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+
+      await TryCancelJuraDeliveryAsync(order.DeliveryData, "Pharmacy admin cancelled order", cancellationToken);
+
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
+      return new CancelOrderResponse
+      {
+        ClientId = order.ClientId ?? Guid.Empty,
+        OrderId = order.Id,
+        Status = order.Status,
+        RefundRequest = refundRequest
+      };
+    }
+    catch (Exception)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      throw;
+    }
+  }
+
+  public async Task<CancelOrderResponse> ReturnOrderPositionsBySuperAdminAsync(
+    ReturnOrderPositionsRequest request,
+    Guid actorUserId,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    if (request.OrderId == Guid.Empty)
+      throw new DomainArgumentException("orderId can't be empty.");
+    if (request.Positions is null || request.Positions.Count == 0)
+      throw new DomainArgumentException("At least one position must be returned.");
+
+    // Normalize + dedupe by positionId (last wins).
+    var byPositionId = new Dictionary<Guid, int>();
+    foreach (var line in request.Positions)
+    {
+      if (line.PositionId == Guid.Empty)
+        throw new DomainArgumentException("PositionId can't be empty.");
+      if (line.Quantity < 1)
+        throw new DomainArgumentException("Returned quantity must be at least 1.");
+      byPositionId[line.PositionId] = line.Quantity;
+    }
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      var order = await _dbContext.Orders
+        .AsTracking()
+        .Include(x => x.Positions)
+        .FirstOrDefaultAsync(x => x.Id == request.OrderId, cancellationToken)
+        ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
+
+      if (order.Status is not (Status.Delivered or Status.PickedUp or Status.Returned))
+        throw new ClientErrorException(
+          errorCode: "return_not_allowed_in_this_status",
+          detail: $"Возврат возможен только для доставленных или забранных заказов (текущий статус: {order.Status}).",
+          reason: $"status:{order.Status}");
+
+      // Merge with existing returned quantities (idempotent: each call sets the
+      // total returned for the given positions, not a delta).
+      var oldStatus = order.Status;
+      order.InitiateReturn(byPositionId);
+      LogStatusTransition(order.Id, oldStatus, order.Status, "ReturnOrderPositionsBySuperAdmin", actorUserId);
+
+      // Restock the returned units.
+      var restockPositions = order.Positions
+        .Where(p => !p.IsRejected && p.ReturnedQuantity > 0 && byPositionId.ContainsKey(p.Id))
+        .Select(p => new ReturnedStockEntry(p.MedicineId, p.ReturnedQuantity))
+        .GroupBy(x => x.MedicineId)
+        .Select(g => new ReturnedStockEntry(g.Key, g.Sum(x => x.Quantity)))
+        .ToList();
+
+      foreach (var entry in restockPositions)
+      {
+        await _dbContext.Offers
+          .Where(o => o.PharmacyId == order.PharmacyId && o.MedicineId == entry.MedicineId)
+          .ExecuteUpdateAsync(
+            setters => setters.SetProperty(o => o.StockQuantity, o => o.StockQuantity + entry.Quantity),
+            cancellationToken);
+      }
+
+      // Refund = current ReturnCost (rejected + returned) recalculated by domain.
+      var refundRequest = CreateRefundRequestStub(order.Id, order.ReturnCost);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
@@ -673,7 +1096,73 @@ public sealed class OrderService : IOrderService
 
       return new CancelOrderResponse
       {
-        ClientId = request.ClientId,
+        ClientId = order.ClientId ?? Guid.Empty,
+        OrderId = order.Id,
+        Status = order.Status,
+        RefundRequest = refundRequest
+      };
+    }
+    catch (Exception)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      throw;
+    }
+  }
+
+  private sealed record ReturnedStockEntry(Guid MedicineId, int Quantity);
+
+  public async Task<CancelOrderResponse> CancelOrderBySuperAdminAsync(
+    Guid orderId,
+    CancellationToken cancellationToken = default)
+  {
+    if (orderId == Guid.Empty)
+      throw new DomainArgumentException("orderId can't be empty.");
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      var order = await _dbContext.Orders
+        .AsTracking()
+        .Include(x => x.Positions)
+        .Include(x => x.DeliveryData)
+        .FirstOrDefaultAsync(x => x.Id == orderId, cancellationToken)
+        ?? throw new InvalidOperationException($"Order '{orderId}' was not found.");
+
+      var oldStatus = order.Status;
+      order.Cancel();
+      LogStatusTransition(order.Id, oldStatus, order.Status, "CancelOrderBySuperAdmin", order.ClientId ?? Guid.Empty);
+
+      var positionsToRestore = order.Positions
+        .Where(x => !x.IsRejected)
+        .ToList();
+
+      if (order.IsStockDeducted && positionsToRestore.Count > 0)
+      {
+        await RestoreStockForPositionsAsync(
+          order.PharmacyId,
+          positionsToRestore,
+          cancellationToken);
+
+        _logger.LogInformation(
+          "Stock restored for SA-cancelled order {OrderId}. Positions restored: {PositionsCount}.",
+          order.Id,
+          positionsToRestore.Count);
+      }
+
+      var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
+      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+
+      await TryCancelJuraDeliveryAsync(order.DeliveryData, "SuperAdmin cancelled order", cancellationToken);
+
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
+      return new CancelOrderResponse
+      {
+        ClientId = order.ClientId ?? Guid.Empty,
         OrderId = order.Id,
         Status = order.Status,
         RefundRequest = refundRequest
@@ -811,6 +1300,8 @@ public sealed class OrderService : IOrderService
 
   private static WorkerOrderResponse ToWorkerOrderResponse(Order order)
   {
+    var delivery = order.DeliveryData;
+    var deliveryCost = delivery?.DeliveryCost ?? 0m;
     return new WorkerOrderResponse
     {
       OrderId = order.Id,
@@ -823,12 +1314,26 @@ public sealed class OrderService : IOrderService
       Status = order.Status,
       Cost = order.Cost,
       ReturnCost = order.ReturnCost,
+      DeliveryCost = deliveryCost,
+      DeliveryDistance = delivery?.Distance,
+      TotalCost = order.Cost + deliveryCost,
+      JuraOrderId = delivery?.JuraOrderId,
+      JuraStatus = delivery?.JuraStatus,
+      JuraStatusId = delivery?.JuraStatusId,
+      DriverName = delivery?.DriverName,
+      DriverPhone = delivery?.DriverPhone,
+      FromLatitude = delivery?.FromLatitude,
+      FromLongitude = delivery?.FromLongitude,
+      ToLatitude = delivery?.ToLatitude,
+      ToLongitude = delivery?.ToLongitude,
+      Comment = order.Comment,
       Positions = order.Positions
         .Select(x => new WorkerOrderPositionResponse
         {
           PositionId = x.Id,
           MedicineId = x.MedicineId,
           Quantity = x.Quantity,
+          ReturnedQuantity = x.ReturnedQuantity,
           IsRejected = x.IsRejected,
           Price = x.OfferSnapshot.Price,
           Medicine = x.Medicine is null

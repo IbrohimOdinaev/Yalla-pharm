@@ -97,8 +97,9 @@ public sealed class PaymentHistory
 
   private static string NormalizePhoneNumber(string phoneNumber, string fieldName)
   {
+    // Phone is optional — Telegram-only clients/admins may not have one.
     if (string.IsNullOrWhiteSpace(phoneNumber))
-      throw new DomainArgumentException($"{fieldName} can't be null or whitespace.");
+      return string.Empty;
 
     var digitsOnly = new string(phoneNumber.Where(char.IsDigit).ToArray());
     if (digitsOnly.StartsWith("992", StringComparison.Ordinal) && digitsOnly.Length == 12)

@@ -11,6 +11,12 @@ public class TelegramAuthSession
 
   public TelegramAuthSessionStatus Status { get; private set; }
 
+  /// <summary>
+  /// When set, the session was initiated by an already-authenticated user who
+  /// is linking Telegram to their account — not a fresh login.
+  /// </summary>
+  public Guid? InitiatingUserId { get; private set; }
+
   public long? TelegramUserId { get; private set; }
   public string? TelegramUsername { get; private set; }
   public string? TelegramFirstName { get; private set; }
@@ -30,12 +36,14 @@ public class TelegramAuthSession
 
   private TelegramAuthSession() { }
 
-  public TelegramAuthSession(string nonce, DateTime expiresAtUtc)
+  public TelegramAuthSession(string nonce, DateTime expiresAtUtc, Guid? initiatingUserId = null)
   {
     if (string.IsNullOrWhiteSpace(nonce))
       throw new DomainArgumentException("TelegramAuthSession.Nonce can't be null or whitespace.");
     if (expiresAtUtc <= DateTime.UtcNow)
       throw new DomainArgumentException("TelegramAuthSession.ExpiresAtUtc must be in the future.");
+    if (initiatingUserId.HasValue && initiatingUserId.Value == Guid.Empty)
+      throw new DomainArgumentException("TelegramAuthSession.InitiatingUserId can't be empty guid.");
 
     Id = Guid.NewGuid();
     Nonce = nonce;
@@ -43,7 +51,10 @@ public class TelegramAuthSession
     CreatedAtUtc = DateTime.UtcNow;
     UpdatedAtUtc = CreatedAtUtc;
     ExpiresAtUtc = expiresAtUtc;
+    InitiatingUserId = initiatingUserId;
   }
+
+  public bool IsLinkingSession => InitiatingUserId.HasValue;
 
   public void RegisterConfirmationMessage(long chatId, int messageId)
   {

@@ -9,6 +9,11 @@ public sealed class SmsOutboxMessage
   public Guid OrderId { get; private set; }
   public string PhoneNumber { get; private set; } = string.Empty;
   public Status StatusSnapshot { get; private set; }
+  /// <summary>
+  /// Discriminator for dedup when multiple SMS per order+status need to be distinguished
+  /// (e.g. JURA delivery phases 4/7/9/10 all map to <see cref="Status.OnTheWay"/>).
+  /// </summary>
+  public string? MessageKey { get; private set; }
   public string Message { get; private set; } = string.Empty;
   public string Provider { get; private set; } = string.Empty;
   public int AttemptCount { get; private set; }
@@ -30,7 +35,8 @@ public sealed class SmsOutboxMessage
     Status statusSnapshot,
     string message,
     string provider,
-    DateTime nowUtc)
+    DateTime nowUtc,
+    string? messageKey = null)
   {
     if (orderId == Guid.Empty)
       throw new DomainArgumentException("OrderId can't be empty.");
@@ -43,6 +49,7 @@ public sealed class SmsOutboxMessage
       OrderId = orderId,
       PhoneNumber = NormalizePhoneNumber(phoneNumber),
       StatusSnapshot = statusSnapshot,
+      MessageKey = NormalizeOptional(messageKey, 64, "MessageKey"),
       Message = NormalizeRequired(message, 1000, "Message"),
       Provider = NormalizeRequired(provider, 64, "Provider"),
       AttemptCount = 0,

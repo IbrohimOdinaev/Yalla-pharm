@@ -116,6 +116,8 @@ public static class ResponseMappingExtensions
             PhoneNumber = client.PhoneNumber,
             Gender = client.Gender.HasValue ? (int)client.Gender.Value : null,
             DateOfBirth = client.DateOfBirth?.ToString("yyyy-MM-dd"),
+            TelegramId = client.TelegramId,
+            TelegramUsername = client.TelegramUsername,
             BasketPositions = basketPositions,
             Orders = orders,
             PharmacyOptions = []
@@ -135,6 +137,8 @@ public static class ResponseMappingExtensions
             PhoneNumber = client.PhoneNumber,
             Gender = client.Gender.HasValue ? (int)client.Gender.Value : null,
             DateOfBirth = client.DateOfBirth?.ToString("yyyy-MM-dd"),
+            TelegramId = client.TelegramId,
+            TelegramUsername = client.TelegramUsername,
             BasketPositions = basketPositions,
             Orders = orders,
             PharmacyOptions = pharmacyOptions
@@ -143,6 +147,7 @@ public static class ResponseMappingExtensions
 
     public static CheckoutBasketResponse ToResponse(this Order order, string? paymentUrl = null)
     {
+        var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
         return new CheckoutBasketResponse
         {
             ClientId = order.ClientId ?? Guid.Empty,
@@ -158,6 +163,8 @@ public static class ResponseMappingExtensions
             Status = order.Status,
             Cost = order.Cost,
             ReturnCost = order.ReturnCost,
+            DeliveryCost = deliveryCost,
+            TotalCost = order.Cost + deliveryCost,
             PaymentState = order.PaymentState,
             PaymentExpiresAtUtc = order.PaymentExpiresAtUtc,
             PaymentUrl = string.IsNullOrWhiteSpace(paymentUrl)

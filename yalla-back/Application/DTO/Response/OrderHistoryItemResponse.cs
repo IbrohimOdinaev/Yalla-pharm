@@ -14,5 +14,8 @@ public sealed class OrderHistoryItemResponse
   public DateTime? PaymentExpiresAtUtc { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }
+  public decimal DeliveryCost { get; init; }
+  public decimal TotalCost { get; init; }
+  public string? Comment { get; init; }
   public IReadOnlyCollection<OrderHistoryPositionResponse> Positions { get; init; } = [];
 }

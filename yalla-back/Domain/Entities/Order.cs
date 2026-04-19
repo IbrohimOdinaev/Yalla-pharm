@@ -51,6 +51,9 @@ public class Order
 
     public bool IsStockDeducted { get; private set; } = true;
 
+    /// <summary>Optional free-form comment left by the client at checkout (max 1024).</summary>
+    public string? Comment { get; private set; }
+
     private readonly List<OrderPosition> _positions = new();
 
     public IReadOnlyCollection<OrderPosition> Positions => _positions.AsReadOnly();
@@ -68,7 +71,8 @@ public class Order
       List<OrderPosition> positions,
       string? idempotencyKey = null,
       DateTime? orderPlacedAt = null,
-      bool isPickup = false)
+      bool isPickup = false,
+      string? comment = null)
     {
         if (id == Guid.Empty)
             throw new DomainArgumentException("Id can't be empty.");
@@ -111,17 +115,60 @@ public class Order
         RecalculateTotals();
         PaymentAmount = Cost;
         PaymentConfirmedAtUtc = DateTime.UtcNow;
+        Comment = NormalizeOptionalString(comment, 1024, "Comment");
+    }
+
+    public void SetComment(string? comment)
+    {
+        Comment = NormalizeOptionalString(comment, 1024, "Comment");
     }
 
     public void RecalculateTotals()
     {
+        // Cost = what the client still owes after rejects/returns (net of refunds).
+        // ReturnCost = total refund-due: rejected-positions value + returned-quantity value.
+        // Invariant: Cost + ReturnCost == sum(price * Quantity) for all positions.
         Cost = _positions
           .Where(x => !x.IsRejected)
-          .Sum(x => x.OfferSnapshot.Price * x.Quantity);
+          .Sum(x => x.OfferSnapshot.Price * (x.Quantity - x.ReturnedQuantity));
 
         ReturnCost = _positions
           .Where(x => x.IsRejected)
-          .Sum(x => x.OfferSnapshot.Price * x.Quantity);
+          .Sum(x => x.OfferSnapshot.Price * x.Quantity)
+          + _positions
+          .Where(x => !x.IsRejected)
+          .Sum(x => x.OfferSnapshot.Price * x.ReturnedQuantity);
+    }
+
+    /// <summary>
+    /// SuperAdmin-side return: for each delivered non-rejected position, record
+    /// how many units came back. Allowed only when the order has already been
+    /// delivered (<see cref="Status.Delivered"/>) or picked up (<see cref="Status.PickedUp"/>).
+    /// Sets the status to <see cref="Status.Returned"/>. The original completion
+    /// mode (pickup/delivery) stays derivable from <see cref="IsPickup"/>.
+    /// </summary>
+    public void InitiateReturn(IReadOnlyDictionary<Guid, int> returnedByPositionId)
+    {
+        if (returnedByPositionId is null || returnedByPositionId.Count == 0)
+            throw new DomainArgumentException("Return request must contain at least one position.");
+
+        if (Status is not Status.Delivered and not Status.PickedUp and not Status.Returned)
+            throw new DomainException($"Return is only allowed from Delivered/PickedUp (current: {Status}).");
+
+        foreach (var (positionId, qty) in returnedByPositionId)
+        {
+            var position = _positions.FirstOrDefault(p => p.Id == positionId)
+              ?? throw new DomainArgumentException($"Position '{positionId}' doesn't belong to this order.");
+
+            if (position.IsRejected)
+                throw new DomainArgumentException($"Position '{positionId}' was rejected and can't be returned.");
+
+            // qty here is the TOTAL returned so far for this position (idempotent updates).
+            position.SetReturnedQuantity(qty);
+        }
+
+        RecalculateTotals();
+        Status = Status.Returned;
     }
 
     public void NextStage(bool isNotCancelled)
@@ -150,16 +197,63 @@ public class Order
                 break;
             case Status.Ready:
                 Status = IsPickup
-                  ? Status.Delivered
+                  ? Status.PickedUp
                   : Status.OnTheWay;
                 break;
             case Status.OnTheWay:
                 Status = Status.Delivered;
                 break;
+            case Status.DriverArrived:
+                Status = Status.Delivered;
+                break;
             case Status.Delivered:
+            case Status.PickedUp:
                 Status = Status.Returned;
                 break;
         }
+    }
+
+    /// <summary>
+    /// Delivery-service driven transition: courier physically started moving the
+    /// package towards the client. Allowed only from <see cref="Status.Ready"/>.
+    /// Idempotent if already in <see cref="Status.OnTheWay"/>.
+    /// </summary>
+    public void MarkOnTheWayFromDelivery()
+    {
+        if (IsPickup)
+            throw new DomainException("Pickup orders can't enter OnTheWay from a delivery signal.");
+
+        if (Status == Status.OnTheWay)
+            return;
+        if (Status != Status.Ready)
+            throw new DomainException($"Cannot move to OnTheWay from status '{Status}'.");
+
+        Status = Status.OnTheWay;
+    }
+
+    /// <summary>Courier arrived at client address (JURA 4 after 7). Allowed only from OnTheWay.</summary>
+    public void MarkDriverArrivedFromDelivery()
+    {
+        if (IsPickup)
+            throw new DomainException("Pickup orders can't have DriverArrived.");
+
+        if (Status == Status.DriverArrived)
+            return;
+        if (Status != Status.OnTheWay)
+            throw new DomainException($"Cannot move to DriverArrived from status '{Status}'.");
+
+        Status = Status.DriverArrived;
+    }
+
+    /// <summary>Delivery completed. Allowed from OnTheWay/DriverArrived.</summary>
+    public void MarkDeliveredFromDelivery()
+    {
+        if (Status == Status.Delivered)
+            return;
+        if (Status is not (Status.OnTheWay or Status.DriverArrived))
+            throw new DomainException($"Cannot move to Delivered from status '{Status}'.");
+
+        Status = Status.Delivered;
     }
 
     public void Cancel()
@@ -167,8 +261,9 @@ public class Order
         if (Status == Status.Cancelled)
             throw new DomainException("Order is already cancelled.");
 
-        if ((int)Status >= (int)Status.Delivered)
-            throw new DomainException("Cannot cancel order that is already delivered or returned.");
+        // Terminal states can't be cancelled (delivered, picked up, returned, already cancelled).
+        if (Status is Status.Delivered or Status.PickedUp or Status.Returned)
+            throw new DomainException("Cannot cancel order that is already completed or returned.");
 
         Status = Status.Cancelled;
     }
@@ -342,8 +437,10 @@ public class Order
 
     private static string NormalizeClientPhoneNumber(string clientPhoneNumber)
     {
+        // Phone is optional — Telegram-only clients keep this empty. When
+        // provided, it must still be a valid 9-digit number.
         if (string.IsNullOrWhiteSpace(clientPhoneNumber))
-            throw new DomainArgumentException("ClientPhoneNumber can't be null or whitespace.");
+            return string.Empty;
 
         var digitsOnly = new string(clientPhoneNumber
           .Where(char.IsDigit)

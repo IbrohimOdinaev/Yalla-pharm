@@ -99,13 +99,16 @@ public sealed class ClientServiceSmsErrorTests
     var logger = LoggerFactory.Create(_ => { }).CreateLogger<ClientService>();
     return new ClientService(
       scope.Db,
-      new StubPaymentService(Options.Create(new DushanbeCityPaymentOptions())),
+      new StubPaymentService(
+        Options.Create(new DushanbeCityPaymentOptions()),
+        new FakePaymentSettingsService()),
       new BCryptPasswordHasher(),
       smsService ?? new FakeSmsService(),
       Options.Create(smsOptions ?? new SmsVerificationOptions()),
       Options.Create(new DushanbeCityPaymentOptions()),
       logger,
-      new NoOpRealtimeUpdatesPublisher());
+      new NoOpRealtimeUpdatesPublisher(),
+      new FakeClientAddressService());
   }
 
   private sealed class FakeSmsService : ISmsService

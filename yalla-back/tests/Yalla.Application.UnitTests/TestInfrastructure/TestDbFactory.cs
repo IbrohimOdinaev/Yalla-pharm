@@ -1,12 +1,35 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Yalla.Application.Abstractions;
+using Yalla.Application.Services;
 using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
 using Yalla.Domain.ValueObjects;
 using Yalla.Infrastructure;
 
 namespace Yalla.Application.UnitTests.TestInfrastructure;
+
+internal sealed class FakePaymentSettingsService : IPaymentSettingsService
+{
+  private readonly string? _baseUrl;
+  public FakePaymentSettingsService(string? baseUrl = null) => _baseUrl = baseUrl;
+  public Task<string?> GetDcBaseUrlAsync(CancellationToken ct = default) => Task.FromResult(_baseUrl);
+  public Task SetDcBaseUrlAsync(string? url, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
+  public Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken ct = default)
+    => Task.FromResult(new PaymentSettingsSnapshot { DcBaseUrl = _baseUrl, DcBaseUrlEffective = _baseUrl ?? string.Empty });
+}
+
+internal sealed class FakeClientAddressService : IClientAddressService
+{
+  public Task<IReadOnlyCollection<Yalla.Application.DTO.Response.ClientAddressResponse>> GetAllAsync(Guid clientId, CancellationToken ct = default)
+    => Task.FromResult<IReadOnlyCollection<Yalla.Application.DTO.Response.ClientAddressResponse>>(Array.Empty<Yalla.Application.DTO.Response.ClientAddressResponse>());
+  public Task<Yalla.Application.DTO.Response.ClientAddressResponse> UpsertAsync(Guid clientId, Yalla.Application.DTO.Request.UpsertClientAddressRequest request, CancellationToken ct = default)
+    => throw new NotSupportedException("Fake — not used by tests that hit this.");
+  public Task<Yalla.Application.DTO.Response.ClientAddressResponse> UpdateAsync(Guid clientId, Guid addressId, Yalla.Application.DTO.Request.UpdateClientAddressRequest request, CancellationToken ct = default)
+    => throw new NotSupportedException("Fake — not used by tests that hit this.");
+  public Task DeleteAsync(Guid clientId, Guid addressId, CancellationToken ct = default) => Task.CompletedTask;
+  public Task RecordUsageAsync(Guid clientId, string address, double latitude, double longitude, CancellationToken ct = default) => Task.CompletedTask;
+}
 
 internal static class TestDbFactory
 {

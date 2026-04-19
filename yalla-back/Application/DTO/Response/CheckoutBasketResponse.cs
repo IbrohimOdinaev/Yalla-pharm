@@ -17,6 +17,8 @@ public sealed class CheckoutBasketResponse
   public Status Status { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }
+  public decimal DeliveryCost { get; init; }
+  public decimal TotalCost { get; init; }
   public OrderPaymentState PaymentState { get; init; }
   public DateTime? PaymentExpiresAtUtc { get; init; }
   public string? PaymentUrl { get; init; }

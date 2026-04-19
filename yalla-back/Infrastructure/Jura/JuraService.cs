@@ -14,6 +14,7 @@ public sealed class JuraService : IJuraService
   private readonly HttpClient _http;
   private readonly JuraOptions _options;
   private readonly ILogger<JuraService> _logger;
+  private readonly IJuraHealthState _health;
   private readonly SemaphoreSlim _authLock = new(1, 1);
 
   private string? _token;
@@ -24,11 +25,12 @@ public sealed class JuraService : IJuraService
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
   };
 
-  public JuraService(HttpClient http, IOptions<JuraOptions> options, ILogger<JuraService> logger)
+  public JuraService(HttpClient http, IOptions<JuraOptions> options, ILogger<JuraService> logger, IJuraHealthState health)
   {
     _http = http;
     _options = options.Value;
     _logger = logger;
+    _health = health;
   }
 
   // ─── Address Search ───
@@ -70,7 +72,7 @@ public sealed class JuraService : IJuraService
     };
 
     var response = await SendWithAuthAsync(HttpMethod.Post,
-      $"/api/v2/integration/orders/calculate?{query}", body, ct);
+      $"/api/v2/external-api/orders/calculate?{query}", body, ct);
 
     var result = await response.Content.ReadFromJsonAsync<JuraCalculateResponse>(JsonOptions, ct);
     return new JuraCalculateResult
@@ -99,7 +101,7 @@ public sealed class JuraService : IJuraService
     _logger.LogInformation("Creating JURA delivery order from {From} to {To}", from.Title, to.Title);
 
     var response = await SendWithAuthAsync(HttpMethod.Post,
-      $"/api/v2/integration/orders/create?{query}", body, ct);
+      $"/api/v2/external-api/orders/create?{query}", body, ct);
 
     var result = await response.Content.ReadFromJsonAsync<JuraCreateOrderResponse>(JsonOptions, ct);
     if (result == null)
@@ -126,7 +128,7 @@ public sealed class JuraService : IJuraService
   public async Task<JuraOrderStatusResult> GetOrderStatusAsync(long juraOrderId, CancellationToken ct)
   {
     var response = await SendWithAuthAsync(HttpMethod.Get,
-      $"/api/v2/integration/orders/status?order_id={juraOrderId}", null, ct);
+      $"/api/v2/external-api/orders/status?order_id={juraOrderId}", null, ct);
 
     var result = await response.Content.ReadFromJsonAsync<JuraDataResponse<JuraOrderStatusData>>(JsonOptions, ct);
     var data = result?.Data ?? throw new InvalidOperationException($"JURA order status returned null for {juraOrderId}");
@@ -149,7 +151,7 @@ public sealed class JuraService : IJuraService
   public async Task<JuraDriverPositionResult> GetDriverPositionAsync(long deviceId, CancellationToken ct)
   {
     var response = await SendWithAuthAsync(HttpMethod.Get,
-      $"/api/v2/integration/traccar/position?device_id={deviceId}", null, ct);
+      $"/api/v2/external-api/traccar/position?device_id={deviceId}", null, ct);
 
     var result = await response.Content.ReadFromJsonAsync<JuraDataResponse<JuraPositionData>>(JsonOptions, ct);
     var data = result?.Data ?? throw new InvalidOperationException($"JURA traccar position returned null for device {deviceId}");
@@ -169,8 +171,19 @@ public sealed class JuraService : IJuraService
     _logger.LogInformation("Cancelling JURA order {OrderId}, reason: {Reason}", juraOrderId, reason);
 
     await SendWithAuthAsync(HttpMethod.Post,
-      $"/api/v2/integration/orders/cancel?order_id={juraOrderId}&reason_cancel_order={Uri.EscapeDataString(reason)}",
+      $"/api/v2/external-api/orders/cancel?order_id={juraOrderId}&reason_cancel_order={Uri.EscapeDataString(reason)}",
       null, ct);
+  }
+
+  // ─── Receipt Code ───
+
+  public async Task<string?> GetReceiptCodeAsync(long juraOrderId, CancellationToken ct)
+  {
+    var response = await SendWithAuthAsync(HttpMethod.Get,
+      $"/api/v2/external-api/orders/receipt-code?order_id={juraOrderId}", null, ct);
+
+    var result = await response.Content.ReadFromJsonAsync<JuraDataResponse<JuraReceiptCodeData>>(JsonOptions, ct);
+    return result?.Data?.ReceiptCode;
   }
 
   // ─── Tariffs ───
@@ -217,7 +230,37 @@ public sealed class JuraService : IJuraService
     if (body != null)
       request.Content = JsonContent.Create(body, options: JsonOptions);
 
-    return await _http.SendAsync(request, ct);
+    HttpResponseMessage response;
+    try
+    {
+      response = await _http.SendAsync(request, ct);
+    }
+    catch (Exception ex)
+    {
+      _health.RecordHttpFailure(method.Method, url, null, ex.GetType().Name + ": " + ex.Message, DateTime.UtcNow);
+      throw;
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+      var responseText = await response.Content.ReadAsStringAsync(ct);
+      _logger.LogWarning("JURA {Method} {Url} → {Status}: {Response}",
+        method.Method, url, (int)response.StatusCode,
+        responseText.Length > 500 ? responseText.Substring(0, 500) + "..." : responseText);
+
+      response.Content = new StringContent(responseText, System.Text.Encoding.UTF8,
+        response.Content.Headers.ContentType?.MediaType ?? "application/json");
+
+      // 401 triggers re-auth at the caller; treat it as a neutral event, not failure.
+      if ((int)response.StatusCode != 401)
+        _health.RecordHttpFailure(method.Method, url, (int)response.StatusCode, responseText, DateTime.UtcNow);
+    }
+    else
+    {
+      _health.RecordHttpSuccess(method.Method, url, DateTime.UtcNow);
+    }
+
+    return response;
   }
 
   private async Task<string> GetTokenAsync(CancellationToken ct)
@@ -243,6 +286,7 @@ public sealed class JuraService : IJuraService
       var result = await response.Content.ReadFromJsonAsync<JuraLoginResponse>(JsonOptions, ct);
       _token = result?.Token ?? throw new InvalidOperationException("JURA login returned no token");
 
+      _health.RecordAuthSuccess(DateTime.UtcNow);
       _logger.LogInformation("JURA authentication successful");
       return _token;
     }
@@ -332,5 +376,11 @@ public sealed class JuraService : IJuraService
     public int Id { get; set; }
     public string? Name { get; set; }
     public int DivisionId { get; set; }
+  }
+
+  private sealed class JuraReceiptCodeData
+  {
+    public long OrderId { get; set; }
+    public string? ReceiptCode { get; set; }
   }
 }

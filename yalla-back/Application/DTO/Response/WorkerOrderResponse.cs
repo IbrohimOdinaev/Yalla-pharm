@@ -16,5 +16,18 @@ public sealed class WorkerOrderResponse
   public DateTime? PaymentExpiresAtUtc { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }
+  public decimal DeliveryCost { get; init; }
+  public double? DeliveryDistance { get; init; }
+  public decimal TotalCost { get; init; }
+  public long? JuraOrderId { get; init; }
+  public string? JuraStatus { get; init; }
+  public int? JuraStatusId { get; init; }
+  public string? DriverName { get; init; }
+  public string? DriverPhone { get; init; }
+  public double? FromLatitude { get; init; }
+  public double? FromLongitude { get; init; }
+  public double? ToLatitude { get; init; }
+  public double? ToLongitude { get; init; }
+  public string? Comment { get; init; }
   public IReadOnlyCollection<WorkerOrderPositionResponse> Positions { get; init; } = [];
 }

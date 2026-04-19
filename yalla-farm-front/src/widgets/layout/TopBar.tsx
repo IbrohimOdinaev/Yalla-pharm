@@ -22,9 +22,11 @@ type TopBarProps = {
   pharmacyName?: string;
   pharmacyIconUrl?: string | null;
   onPharmacyClick?: () => void;
+  /** Show explicit "Выйти" button on the right (for Admin/SuperAdmin pages without dropdown). */
+  showLogout?: boolean;
 };
 
-export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, onAddressClick, onLogoClick, pharmacyName, pharmacyIconUrl, onPharmacyClick }: TopBarProps) {
+export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, onAddressClick, onLogoClick, pharmacyName, pharmacyIconUrl, onPharmacyClick, showLogout }: TopBarProps) {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const dispatch = useAppDispatch();
@@ -49,17 +51,18 @@ export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, 
   }, [menuOpen]);
 
   function onLogout() {
+    const wasAdminLike = role === "Admin" || role === "SuperAdmin";
     dispatch(clearCredentials());
     setMenuOpen(false);
-    router.push("/");
+    router.push(wasAdminLike ? "/login/admin" : "/login");
   }
 
   const roleLabels: Record<string, string> = { Client: "Клиент", Admin: "Администратор", SuperAdmin: "Суперадмин" };
 
-  // ── HOME MODE: Logo | Search | Address | Account ──
+  // ── HOME MODE: Logo | Search | Address | Pharmacy | Account ──
   if (homeMode) {
     return (
-      <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur-xl border-b border-surface-container-high">
+      <header className="sticky top-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-surface-container-high">
         <div className="flex h-14 sm:h-16 items-center px-3 sm:px-5 lg:px-6">
           {/* Logo */}
           {onLogoClick ? (
@@ -76,28 +79,8 @@ export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, 
             </Link>
           )}
 
-          {/* Pharmacy selector */}
-          <button
-            type="button"
-            onClick={onPharmacyClick}
-            className="flex items-center gap-1.5 rounded-full border border-surface-container-high bg-surface-container-lowest px-2 sm:px-3 py-1.5 sm:py-2 transition hover:bg-surface-container-low flex-shrink-0 max-w-[140px] sm:max-w-[180px] ml-3 sm:ml-4"
-          >
-            {pharmacyIconUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={pharmacyIconUrl.startsWith("http") ? pharmacyIconUrl : `/api/pharmacies/icon/${pharmacyIconUrl}/content`} alt="" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover flex-shrink-0" />
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary flex-shrink-0 sm:w-[18px] sm:h-[18px]">
-                <path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
-                <path d="M9 21v-4h6v4"/><path d="M10 9h4"/><path d="M10 13h4"/>
-              </svg>
-            )}
-            <span className="text-xs sm:text-sm font-medium text-on-surface truncate">
-              {pharmacyName || "Аптека"}
-            </span>
-          </button>
-
           {/* Left spacer */}
-          <div className="w-2 sm:w-4 flex-shrink-0" />
+          <div className="w-3 sm:w-5 flex-shrink-0" />
 
           {/* Search bar — uses callback if provided, otherwise navigates to home search */}
           {onSearchClick ? (
@@ -137,6 +120,29 @@ export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, 
             </svg>
             <span className="text-xs sm:text-sm font-medium text-on-surface truncate">
               {addressText || "Выберите адрес"}
+            </span>
+          </button>
+
+          {/* Gap between address and pharmacy */}
+          <div className="w-2 sm:w-3 flex-shrink-0" />
+
+          {/* Pharmacy selector — next to address */}
+          <button
+            type="button"
+            onClick={onPharmacyClick}
+            className="flex items-center gap-1.5 rounded-full border border-surface-container-high bg-surface-container-lowest px-2 sm:px-3 py-1.5 sm:py-2 transition hover:bg-surface-container-low flex-shrink-0 max-w-[140px] sm:max-w-[180px]"
+          >
+            {pharmacyIconUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pharmacyIconUrl.startsWith("http") ? pharmacyIconUrl : `/api/pharmacies/icon/${pharmacyIconUrl}/content`} alt="" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover flex-shrink-0" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary flex-shrink-0 sm:w-[18px] sm:h-[18px]">
+                <path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
+                <path d="M9 21v-4h6v4"/><path d="M10 9h4"/><path d="M10 13h4"/>
+              </svg>
+            )}
+            <span className="text-xs sm:text-sm font-medium text-on-surface truncate">
+              {pharmacyName || "Аптека"}
             </span>
           </button>
 
@@ -229,14 +235,26 @@ export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, 
     );
   }
 
-  // ── DEFAULT MODE: logo + title + logout ──
+  // ── DEFAULT MODE: back + title (+ optional logout) ──
   return (
-    <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur-xl border-b border-surface-container-high">
+    <header className="sticky top-0 z-30 bg-surface/90 backdrop-blur-xl border-b border-surface-container-high">
       <div className="flex h-12 sm:h-14 items-center justify-between px-3 sm:px-5 lg:px-6">
         <div className="flex items-center gap-2 sm:gap-3">
           {backHref ? (
             backHref === "back" ? (
-              <button type="button" onClick={() => router.push(goBack())} className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-surface-container-low text-primary transition hover:bg-surface-container-high">
+              <button type="button" onClick={() => {
+                // Use browser back when possible — Next.js App Router cache restores
+                // the previous page instantly with its state. Only fall back to
+                // router.push when the browser stack is empty (deep link / direct
+                // open) so we still land on a sensible parent.
+                if (typeof window !== "undefined" && window.history.length > 1) {
+                  // Pop our in-memory stack to keep it in sync with the browser.
+                  goBack();
+                  router.back();
+                } else {
+                  router.push(goBack());
+                }
+              }} className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-surface-container-low text-primary transition hover:bg-surface-container-high">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
               </button>
             ) : (
@@ -250,10 +268,15 @@ export function TopBar({ title, backHref, homeMode, onSearchClick, addressText, 
           )}
           <h1 className="text-sm sm:text-base font-bold text-on-surface">{title}</h1>
         </div>
-        {token ? (
-          <button type="button" onClick={onLogout} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50">
+        {showLogout && token ? (
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+            aria-label="Выйти"
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-            Выйти
+            <span className="hidden xs:inline">Выйти</span>
           </button>
         ) : null}
       </div>

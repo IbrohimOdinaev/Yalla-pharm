@@ -74,7 +74,8 @@ public sealed class PharmaciesController : ControllerBase
         IsActive = request.IsActive,
         Latitude = request.Latitude,
         Longitude = request.Longitude,
-        IconUrl = request.IconUrl
+        IconUrl = request.IconUrl,
+        BannerUrl = request.BannerUrl
       };
     }
 
@@ -153,6 +154,85 @@ public sealed class PharmaciesController : ControllerBase
       try { await _imageStorage.DeleteAsync(pharmacy.IconUrl, cancellationToken); }
       catch { /* ignore */ }
       pharmacy.SetIconUrl(null);
+      await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    return Ok(new { deleted = true });
+  }
+
+  [HttpPost("banner")]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  public async Task<IActionResult> UploadBanner(
+    [FromForm] Guid pharmacyId,
+    [FromForm] IFormFile image,
+    CancellationToken cancellationToken)
+  {
+    if (image is null || image.Length <= 0)
+      throw new InvalidOperationException("Image file is required.");
+
+    if (image.Length > 10 * 1024 * 1024)
+      throw new InvalidOperationException("Banner file is too large. Maximum 10 MB.");
+
+    var role = User.GetRequiredRole();
+    var targetPharmacyId = role == Role.Admin ? User.GetRequiredPharmacyId() : pharmacyId;
+
+    var pharmacy = await _db.Pharmacies.FindAsync([targetPharmacyId], cancellationToken)
+      ?? throw new InvalidOperationException("Pharmacy not found.");
+
+    if (!string.IsNullOrEmpty(pharmacy.BannerUrl) && !pharmacy.BannerUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+    {
+      try { await _imageStorage.DeleteAsync(pharmacy.BannerUrl, cancellationToken); }
+      catch { /* ignore */ }
+    }
+
+    var contentType = string.IsNullOrWhiteSpace(image.ContentType) ? "application/octet-stream" : image.ContentType;
+    using var stream = image.OpenReadStream();
+    var key = await _imageStorage.UploadAsync(stream, contentType, $"pharmacy-banner-{targetPharmacyId}{Path.GetExtension(image.FileName)}", cancellationToken);
+
+    pharmacy.SetBannerUrl(key);
+    await _db.SaveChangesAsync(cancellationToken);
+
+    return Ok(new { bannerUrl = key });
+  }
+
+  [HttpGet("banner/{pharmacyId:guid}/content")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GetBannerContent(Guid pharmacyId, CancellationToken cancellationToken)
+  {
+    var pharmacy = await _db.Pharmacies.FindAsync([pharmacyId], cancellationToken)
+      ?? throw new InvalidOperationException("Pharmacy not found.");
+
+    if (string.IsNullOrEmpty(pharmacy.BannerUrl))
+      return NotFound();
+
+    // External URL — let client fetch directly
+    if (pharmacy.BannerUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+      return Redirect(pharmacy.BannerUrl);
+
+    var content = await _imageStorage.GetContentAsync(pharmacy.BannerUrl, cancellationToken);
+    return File(content.Content, content.ContentType);
+  }
+
+  [HttpDelete("banner")]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  public async Task<IActionResult> DeleteBanner(
+    [FromBody] DeletePharmacyRequest request,
+    CancellationToken cancellationToken)
+  {
+    var role = User.GetRequiredRole();
+    var targetPharmacyId = role == Role.Admin ? User.GetRequiredPharmacyId() : request.PharmacyId;
+
+    var pharmacy = await _db.Pharmacies.FindAsync([targetPharmacyId], cancellationToken)
+      ?? throw new InvalidOperationException("Pharmacy not found.");
+
+    if (!string.IsNullOrEmpty(pharmacy.BannerUrl))
+    {
+      if (!pharmacy.BannerUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+      {
+        try { await _imageStorage.DeleteAsync(pharmacy.BannerUrl, cancellationToken); }
+        catch { /* ignore */ }
+      }
+      pharmacy.SetBannerUrl(null);
       await _db.SaveChangesAsync(cancellationToken);
     }
 

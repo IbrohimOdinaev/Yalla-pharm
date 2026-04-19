@@ -38,4 +38,23 @@ public interface IAuthService
   Task<RequestClientOtpResponse> ResendClientOtpAsync(
     ResendClientOtpRequest request,
     CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Starts an SMS OTP session for attaching a phone number to an already
+  /// authenticated client (e.g. a Telegram-only account).
+  /// </summary>
+  Task<RequestClientOtpResponse> RequestPhoneLinkOtpAsync(
+    Guid clientId,
+    string phoneNumber,
+    CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Verifies the SMS code and attaches the phone number to the client.
+  /// Returns the same profile shape as login for frontend convenience.
+  /// </summary>
+  Task<LoginResponse> VerifyPhoneLinkOtpAsync(
+    Guid clientId,
+    Guid otpSessionId,
+    string code,
+    CancellationToken cancellationToken = default);
 }

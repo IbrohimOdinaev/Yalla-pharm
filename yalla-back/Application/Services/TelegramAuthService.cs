@@ -110,6 +110,12 @@ public sealed class TelegramAuthService : ITelegramAuthService
         detail: "Сессия не подтверждена. Откройте Telegram-бот и подтвердите вход.",
         reason: $"status:{session.Status}");
 
+    if (session.IsLinkingSession)
+      throw new ClientErrorException(
+        errorCode: "telegram_link_session_misuse",
+        detail: "Эта сессия предназначена для привязки, а не для входа.",
+        reason: "linking_session");
+
     if (session.TelegramUserId is null)
       throw new ClientErrorException(
         errorCode: "telegram_auth_payload_missing",
@@ -156,6 +162,138 @@ public sealed class TelegramAuthService : ITelegramAuthService
       AccessToken = token.AccessToken,
       ExpiresAtUtc = token.ExpiresAtUtc
     };
+  }
+
+  public async Task<StartTelegramAuthResponse> StartLinkAsync(Guid clientId, CancellationToken cancellationToken = default)
+  {
+    if (clientId == Guid.Empty)
+      throw new DomainArgumentException("clientId can't be empty.");
+
+    EnsureConfigured();
+
+    var client = await _dbContext.Clients
+      .AsNoTracking()
+      .FirstOrDefaultAsync(x => x.Id == clientId, cancellationToken)
+      ?? throw new ClientErrorException(
+        errorCode: "client_not_found",
+        detail: "Клиент не найден.",
+        reason: "client_not_found");
+
+    if (client.TelegramId.HasValue)
+      throw new ClientErrorException(
+        errorCode: "telegram_already_linked",
+        detail: "К этому аккаунту уже привязан Telegram.",
+        reason: "already_linked");
+
+    var nonce = GenerateNonce();
+    var ttlSeconds = _options.AuthSessionTtlSeconds <= 0 ? 300 : _options.AuthSessionTtlSeconds;
+    var expiresAtUtc = DateTime.UtcNow.AddSeconds(ttlSeconds);
+
+    var session = new TelegramAuthSession(nonce, expiresAtUtc, clientId);
+    _dbContext.TelegramAuthSessions.Add(session);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+
+    var deepLink = $"tg://resolve?domain={_options.BotUsername}&start=auth_{nonce}";
+
+    _logger.LogInformation(
+      "Telegram link session created. Nonce={Nonce}, ClientId={ClientId}, ExpiresAtUtc={ExpiresAtUtc}",
+      nonce, clientId, expiresAtUtc);
+
+    return new StartTelegramAuthResponse
+    {
+      Nonce = nonce,
+      DeepLink = deepLink,
+      BotUsername = _options.BotUsername,
+      ExpiresAtUtc = expiresAtUtc,
+      TtlSeconds = ttlSeconds
+    };
+  }
+
+  public async Task CompleteLinkAsync(Guid clientId, string nonce, CancellationToken cancellationToken = default)
+  {
+    if (clientId == Guid.Empty)
+      throw new DomainArgumentException("clientId can't be empty.");
+
+    if (string.IsNullOrWhiteSpace(nonce))
+      throw new ClientErrorException(
+        errorCode: "telegram_auth_nonce_missing",
+        detail: "Nonce обязателен.",
+        reason: "nonce_missing");
+
+    var session = await _dbContext.TelegramAuthSessions
+      .AsTracking()
+      .FirstOrDefaultAsync(x => x.Nonce == nonce, cancellationToken)
+      ?? throw new ClientErrorException(
+        errorCode: "telegram_auth_session_not_found",
+        detail: "Сессия привязки не найдена.",
+        reason: "session_not_found");
+
+    if (!session.IsLinkingSession || session.InitiatingUserId != clientId)
+      throw new ClientErrorException(
+        errorCode: "telegram_link_session_mismatch",
+        detail: "Сессия не принадлежит текущему пользователю.",
+        reason: "initiator_mismatch");
+
+    if (session.Status == TelegramAuthSessionStatus.Pending && session.ExpiresAtUtc <= DateTime.UtcNow)
+    {
+      session.MarkExpired();
+      await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    if (session.Status != TelegramAuthSessionStatus.Confirmed)
+      throw new ClientErrorException(
+        errorCode: "telegram_auth_not_confirmed",
+        detail: "Сессия не подтверждена. Подтвердите привязку в боте.",
+        reason: $"status:{session.Status}");
+
+    if (session.TelegramUserId is null)
+      throw new ClientErrorException(
+        errorCode: "telegram_auth_payload_missing",
+        detail: "Данные сессии повреждены.",
+        reason: "payload_missing");
+
+    var tgUserId = session.TelegramUserId.Value;
+
+    // Another user already uses this Telegram id — refuse
+    var conflicting = await _dbContext.Users
+      .AsNoTracking()
+      .Where(x => x.TelegramId == tgUserId && x.Id != clientId)
+      .Select(x => x.Id)
+      .FirstOrDefaultAsync(cancellationToken);
+    if (conflicting != Guid.Empty)
+      throw new ClientErrorException(
+        errorCode: "telegram_already_used",
+        detail: "Этот Telegram уже привязан к другому аккаунту.",
+        reason: "telegram_in_use");
+
+    var client = await _dbContext.Clients
+      .AsTracking()
+      .FirstOrDefaultAsync(x => x.Id == clientId, cancellationToken)
+      ?? throw new ClientErrorException(
+        errorCode: "client_not_found",
+        detail: "Клиент не найден.",
+        reason: "client_not_found");
+
+    if (client.TelegramId.HasValue && client.TelegramId != tgUserId)
+      throw new ClientErrorException(
+        errorCode: "telegram_already_linked",
+        detail: "К этому аккаунту уже привязан другой Telegram.",
+        reason: "already_linked");
+
+    client.SetTelegramId(tgUserId);
+    client.SetTelegramUsername(session.TelegramUsername);
+    if (string.IsNullOrWhiteSpace(client.Name))
+    {
+      var displayName = BuildDisplayName(session.TelegramFirstName, session.TelegramLastName);
+      if (!string.IsNullOrWhiteSpace(displayName))
+        client.SetName(displayName);
+    }
+
+    session.Consume();
+    await _dbContext.SaveChangesAsync(cancellationToken);
+
+    _logger.LogInformation(
+      "Telegram linked. ClientId={ClientId}, TgUserId={TgUserId}", clientId, tgUserId);
   }
 
   public async Task<PollTelegramAuthResponse> PollAsync(string nonce, CancellationToken cancellationToken = default)

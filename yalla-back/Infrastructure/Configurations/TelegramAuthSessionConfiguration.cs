@@ -30,6 +30,11 @@ public sealed class TelegramAuthSessionConfiguration : IEntityTypeConfiguration<
       .HasConversion<int>()
       .IsRequired();
 
+    builder.Property(x => x.InitiatingUserId)
+      .HasColumnName("initiating_user_id")
+      .HasColumnType("uuid")
+      .IsRequired(false);
+
     builder.Property(x => x.TelegramUserId)
       .HasColumnName("telegram_user_id")
       .HasColumnType("bigint")

@@ -117,6 +117,11 @@ public class DeliveryDataConfiguration : IEntityTypeConfiguration<DeliveryData>
       .HasColumnType("character varying(20)")
       .HasMaxLength(20);
 
+    builder.Property(x => x.RecipientCode)
+      .HasColumnName("recipient_code")
+      .HasColumnType("character varying(32)")
+      .HasMaxLength(32);
+
     // Indexes
     builder.HasIndex(x => x.OrderId)
       .IsUnique()

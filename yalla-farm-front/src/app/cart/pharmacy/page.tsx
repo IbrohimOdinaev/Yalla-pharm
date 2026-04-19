@@ -83,13 +83,20 @@ export default function PharmacySelectPage() {
     return map;
   }, [pharmacies]);
 
+  // Sum across in-stock-at-required-qty items only
+  function availableItemsTotal(items: ApiBasketPharmacyItem[] | undefined) {
+    return (items ?? [])
+      .filter((i) => i.hasEnoughQuantity)
+      .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
+  }
+
   // Build pharmacy options — from server for auth, computed from offers for guests
   const filteredOptions = useMemo(() => {
     const serverOptions = basket.pharmacyOptions ?? [];
     if (serverOptions.length > 0) {
       return serverOptions
         .filter((o) => (o.enoughQuantityMedicinesCount ?? 0) > 0)
-        .sort((a, b) => (a.totalCost ?? Infinity) - (b.totalCost ?? Infinity));
+        .sort((a, b) => availableItemsTotal(a.items) - availableItemsTotal(b.items));
     }
 
     // Guest mode: compute pharmacy options from medicine.offers
@@ -147,7 +154,7 @@ export default function PharmacySelectPage() {
   // Map markers — show all pharmacies with coordinates, add cost if available
   const mapMarkers = useMemo(() => {
     const costMap: Record<string, number | undefined> = {};
-    for (const o of filteredOptions) costMap[o.pharmacyId] = o.totalCost;
+    for (const o of filteredOptions) costMap[o.pharmacyId] = availableItemsTotal(o.items);
 
     return pharmacies
       .filter((p) => p.latitude != null && p.longitude != null)
@@ -170,21 +177,14 @@ export default function PharmacySelectPage() {
     setTimeout(() => setHighlightedId(""), 2000);
   }, []);
 
-  // Select pharmacy — no auth required here, auth checked on checkout confirm
+  // Select pharmacy — final per-position selection happens on checkout page
   function onSelectPharmacy(option: ApiBasketPharmacyOption) {
-    const unavailableMedIds = (option.items ?? [])
-      .filter((i) => !i.hasEnoughQuantity)
-      .map((i) => i.medicineId);
-    const ignoredPositionIds = (basket.positions ?? [])
-      .filter((p) => unavailableMedIds.includes(p.medicineId))
-      .map((p) => p.id);
-
     setDraft({
       pharmacyId: option.pharmacyId,
       selectedPharmacyTitle: option.pharmacyTitle ?? "",
       selectedPharmacyItems: option.items ?? [],
       selectedPharmacyTotalCost: option.totalCost ?? 0,
-      ignoredPositionIds,
+      ignoredPositionIds: [],
       isPickup,
     });
     router.push("/checkout");
@@ -205,7 +205,14 @@ export default function PharmacySelectPage() {
 
       {/* Sub-header: back + title + delivery/pickup tabs */}
       <div className="flex items-center gap-3 px-4 sm:px-6 py-2.5 border-b border-surface-container-high bg-surface flex-shrink-0">
-        <button type="button" onClick={() => router.push(goBack())} className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-low text-primary hover:bg-surface-container-high transition flex-shrink-0">
+        <button type="button" onClick={() => {
+          if (typeof window !== "undefined" && window.history.length > 1) {
+            goBack();
+            router.back();
+          } else {
+            router.push(goBack());
+          }
+        }} className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-low text-primary hover:bg-surface-container-high transition flex-shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
 
@@ -278,33 +285,43 @@ export default function PharmacySelectPage() {
                     </div>
 
                     {/* Price + availability + actions */}
-                    <div className="mt-3 flex items-end justify-between">
-                      <div>
-                        <p className="text-lg font-extrabold text-on-surface">{formatMoney(option.totalCost ?? 0, "TJS")}</p>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
-                          className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-primary transition mt-0.5"
-                        >
-                          <span className={allAvailable ? "text-emerald-600" : "text-amber-600"}>
-                            {allAvailable
-                              ? "Все в наличии"
-                              : `${option.enoughQuantityMedicinesCount ?? 0} из ${option.totalMedicinesCount ?? 0} в наличии`}
-                          </span>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition ${isExpanded ? "rotate-180" : ""}`}>
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </button>
-                      </div>
+                    {(() => {
+                      const availableTotal = (option.items ?? [])
+                        .filter((i) => i.hasEnoughQuantity)
+                        .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
+                      return (
+                        <div className="mt-3 flex items-end justify-between">
+                          <div>
+                            <p className="text-lg font-extrabold text-on-surface">
+                              {formatMoney(availableTotal, "TJS")}
+                              <span className="text-xs font-medium text-on-surface-variant ml-1">+ доставка</span>
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
+                              className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-primary transition mt-0.5"
+                            >
+                              <span className={allAvailable ? "text-emerald-600" : "text-amber-600"}>
+                                {allAvailable
+                                  ? "Все в наличии"
+                                  : `${option.enoughQuantityMedicinesCount ?? 0} из ${option.totalMedicinesCount ?? 0} в наличии`}
+                              </span>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition ${isExpanded ? "rotate-180" : ""}`}>
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </button>
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
-                        className="stitch-button px-5 py-2 text-sm"
-                      >
-                        Выбрать
-                      </button>
-                    </div>
+                          <button
+                            type="button"
+                            onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
+                            className="stitch-button px-5 py-2 text-sm"
+                          >
+                            Выбрать
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Expanded items list */}
                     {isExpanded && (
@@ -314,8 +331,12 @@ export default function PharmacySelectPage() {
                           const name = med ? getMedicineDisplayName(med) : item.medicineId;
                           const imgUrl = med ? resolveMedicineImageUrl(med) : "";
 
+                          const enough = item.hasEnoughQuantity;
+                          const partial = item.isFound && !enough;
+                          const missing = !item.isFound;
+                          const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
                           return (
-                            <div key={item.medicineId} className={`flex items-center gap-2.5 text-xs ${!item.hasEnoughQuantity ? "opacity-50" : ""}`}>
+                            <div key={item.medicineId} className={`flex items-center gap-2.5 text-xs ${missing ? "opacity-50" : ""}`}>
                               {imgUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={imgUrl} alt="" className="w-8 h-8 rounded object-contain bg-surface-container-low flex-shrink-0" />
@@ -324,12 +345,18 @@ export default function PharmacySelectPage() {
                               )}
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium truncate">{name}</p>
-                                {!item.hasEnoughQuantity ? (
+                                {missing ? (
                                   <p className="text-[10px] text-red-500">Нет в наличии</p>
+                                ) : partial ? (
+                                  <p className="text-[10px] text-amber-600">Доступно только {item.foundQuantity} из {item.requestedQuantity}</p>
                                 ) : null}
                               </div>
-                              <span className="text-on-surface-variant flex-shrink-0">×{item.requestedQuantity}</span>
-                              <span className="font-bold flex-shrink-0">{formatMoney(item.price ?? 0, "TJS")}</span>
+                              <span className={`flex-shrink-0 tabular-nums ${enough ? "text-on-surface-variant" : "text-amber-600 font-semibold"}`}>
+                                {cappedFound}/{item.requestedQuantity}
+                              </span>
+                              <span className={`font-bold flex-shrink-0 ${missing ? "line-through text-on-surface-variant" : ""}`}>
+                                {formatMoney(item.price ?? 0, "TJS")}
+                              </span>
                             </div>
                           );
                         })}

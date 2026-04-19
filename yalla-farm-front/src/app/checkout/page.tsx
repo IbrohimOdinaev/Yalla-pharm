@@ -13,7 +13,9 @@ import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
-import type { ApiMedicine, ApiCheckoutResponse } from "@/shared/types/api";
+import { getMyProfile } from "@/entities/client/api";
+import { removeFromBasket } from "@/entities/basket/api";
+import type { ApiMedicine, ApiCheckoutResponse, ApiClient } from "@/shared/types/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
@@ -24,11 +26,11 @@ export default function CheckoutPage() {
   const router = useRouter();
   const goBack = useGoBack();
 
-  const { loadBasket } = useCartStore();
+  const { basket, loadBasket } = useCartStore();
   const {
-    pharmacyId, selectedPharmacyTitle, selectedPharmacyItems, selectedPharmacyTotalCost,
-    ignoredPositionIds, isPickup, deliveryCost, deliveryDistance,
-    setDraft, setDeliveryAddressData, setDeliveryCost,
+    pharmacyId, selectedPharmacyTitle, selectedPharmacyItems,
+    isPickup, deliveryCost, deliveryDistance,
+    setDeliveryAddressData, setDeliveryCost,
   } = useCheckoutDraftStore();
 
   const savedAddress = useDeliveryAddressStore((s) => s.address);
@@ -41,6 +43,10 @@ export default function CheckoutPage() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
+  const [profile, setProfile] = useState<ApiClient | null>(null);
+  const [selectedMedIds, setSelectedMedIds] = useState<Set<string>>(new Set());
+  const [selectionInited, setSelectionInited] = useState(false);
+  const [comment, setComment] = useState("");
 
   // Guards
   useEffect(() => {
@@ -48,9 +54,53 @@ export default function CheckoutPage() {
     if (token) loadBasket(token).catch(() => undefined);
   }, [token, pharmacyId, router, loadBasket]);
 
+  // Load client profile (phone / telegram) for recipient display
+  useEffect(() => {
+    if (!token) return;
+    getMyProfile(token).then(setProfile).catch(() => undefined);
+  }, [token]);
+
   // Use items from store (works for both auth and guest)
   const checkoutItems = selectedPharmacyItems;
-  const itemsAmount = selectedPharmacyTotalCost;
+
+  // Initialize selection: items in stock are checked by default, out-of-stock unchecked
+  useEffect(() => {
+    if (selectionInited || checkoutItems.length === 0) return;
+    const initial = new Set<string>();
+    for (const item of checkoutItems) {
+      if (item.hasEnoughQuantity) initial.add(item.medicineId);
+    }
+    setSelectedMedIds(initial);
+    setSelectionInited(true);
+  }, [checkoutItems, selectionInited]);
+
+  function toggleSelection(medicineId: string) {
+    setSelectedMedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(medicineId)) next.delete(medicineId);
+      else next.add(medicineId);
+      return next;
+    });
+  }
+
+  // Sum = price * actual delivered qty (min(found, requested)) for every selected position
+  const itemsAmount = useMemo(() => {
+    return checkoutItems
+      .filter((i) => selectedMedIds.has(i.medicineId))
+      .reduce((sum, i) => {
+        const qty = Math.min(i.foundQuantity, i.requestedQuantity);
+        return sum + (i.price ?? 0) * qty;
+      }, 0);
+  }, [checkoutItems, selectedMedIds]);
+
+  const selectedCount = selectedMedIds.size;
+
+  // Phone is optional — a linked Telegram account is an acceptable contact
+  // channel. At least one of (phone | telegram) must be present.
+  const profilePhone = profile?.phoneNumber ?? "";
+  const phoneLinked = !!profilePhone && !profilePhone.startsWith("tg_");
+  const telegramLinked = !!profile?.telegramUsername || !!profile?.telegramId;
+  const hasContact = phoneLinked || telegramLinked;
 
   // Load medicine details
   useEffect(() => {
@@ -108,8 +158,22 @@ export default function CheckoutPage() {
       router.push("/login?redirect=/checkout");
       return;
     }
+    if (selectedCount === 0) return;
+    if (!hasContact) {
+      setError("Привяжите номер телефона или Telegram-аккаунт в профиле.");
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
+
+    // Map medicineId -> basket positionId. Anything client unselected becomes ignored
+    // for checkout AND must be removed from the basket afterwards (backend keeps them).
+    const positionsByMedId: Record<string, string> = {};
+    for (const p of basket.positions ?? []) positionsByMedId[p.medicineId] = p.id;
+    const ignoredPositionIds = checkoutItems
+      .filter((i) => !selectedMedIds.has(i.medicineId))
+      .map((i) => positionsByMedId[i.medicineId])
+      .filter((id): id is string => Boolean(id));
 
     try {
       const idempotencyKey = buildCheckoutIdempotencyKey();
@@ -122,17 +186,23 @@ export default function CheckoutPage() {
         deliveryLongitude: localCoords?.lng ?? savedCoords?.lng ?? null,
         idempotencyKey,
         ignoredPositionIds,
+        comment: comment.trim() ? comment.trim() : null,
       };
 
       await apiFetch("/api/clients/checkout/preview", { method: "POST", token, body: payload });
       const checkout = await apiFetch<ApiCheckoutResponse>("/api/clients/checkout", { method: "POST", token, body: payload });
 
-      const orderId = String(checkout.reservedOrderId || checkout.orderId || "");
-      const paymentIntentId = String(checkout.paymentIntentId || "");
-      const paymentUrl = String(checkout.paymentUrl || "");
+      // Backend keeps the unselected (ignored) positions in basket — wipe them now
+      if (ignoredPositionIds.length > 0) {
+        await Promise.all(
+          ignoredPositionIds.map((positionId) =>
+            removeFromBasket(token, positionId).catch(() => undefined)
+          )
+        );
+      }
 
+      const paymentUrl = String(checkout.paymentUrl || "");
       if (paymentUrl) {
-        // Replace checkout with orders in history, so "back" from payment goes to orders
         router.replace("/orders");
         window.location.assign(paymentUrl);
       } else {
@@ -172,16 +242,32 @@ export default function CheckoutPage() {
 
         {/* Order items */}
         <div className="stitch-card p-4 space-y-3">
-          <h3 className="text-sm font-bold">Позиции заказа</h3>
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm font-bold">Позиции заказа</h3>
+            <span className="text-xs text-on-surface-variant">Выбрано {selectedCount} из {checkoutItems.length}</span>
+          </div>
           <div className="space-y-2">
             {checkoutItems.map((item) => {
               const med = medicineMap[item.medicineId];
               const name = med ? getMedicineDisplayName(med) : item.medicineId;
               const imgUrl = med ? resolveMedicineImageUrl(med) : "";
-              const unavailable = !item.hasEnoughQuantity;
+              const enough = item.hasEnoughQuantity;
+              const partial = item.isFound && !enough;
+              const missing = !item.isFound;
+              const checked = selectedMedIds.has(item.medicineId);
+              const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
 
               return (
-                <div key={item.medicineId} className={`flex items-center gap-3 text-sm ${unavailable ? "opacity-40" : ""}`}>
+                <label
+                  key={item.medicineId}
+                  className={`flex items-center gap-3 text-sm rounded-xl px-2 py-1.5 cursor-pointer transition ${checked ? "bg-primary/5" : "hover:bg-surface-container-low"} ${!checked ? "opacity-60" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleSelection(item.medicineId)}
+                    className="w-4 h-4 accent-primary flex-shrink-0"
+                  />
                   {imgUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={imgUrl} alt="" className="w-10 h-10 rounded object-contain bg-surface-container-low flex-shrink-0" />
@@ -190,15 +276,62 @@ export default function CheckoutPage() {
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{name}</p>
-                    {unavailable ? <p className="text-[10px] text-red-500">Нет в наличии — не будет в заказе</p> : null}
+                    {missing ? (
+                      <p className="text-[10px] text-red-500">Нет в наличии</p>
+                    ) : partial ? (
+                      <p className="text-[10px] text-amber-600">Доступно только {item.foundQuantity} из {item.requestedQuantity}</p>
+                    ) : null}
                   </div>
-                  <span className="text-on-surface-variant flex-shrink-0">×{item.requestedQuantity}</span>
-                  <span className="font-bold flex-shrink-0">{formatMoney(item.price ?? 0, "TJS")}</span>
-                </div>
+                  <div className="flex items-baseline gap-1.5 flex-shrink-0 text-xs tabular-nums">
+                    <span className="text-on-surface-variant">{formatMoney(item.price ?? 0, "TJS")}</span>
+                    <span className="text-on-surface-variant">×</span>
+                    <span className={enough ? "text-on-surface-variant" : "text-amber-600 font-semibold"}>{cappedFound}/{item.requestedQuantity}</span>
+                    <span className="text-on-surface-variant">=</span>
+                    <span className="font-bold text-sm text-on-surface">{formatMoney((item.price ?? 0) * cappedFound, "TJS")}</span>
+                  </div>
+                </label>
               );
             })}
           </div>
         </div>
+
+        {/* Recipient (phone / telegram) */}
+        {profile ? (
+          <div className="stitch-card p-4 space-y-2">
+            <h3 className="text-sm font-bold">Получатель</h3>
+            <div className="space-y-1.5 text-sm">
+              {profile.name ? (
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-on-surface-variant flex-shrink-0"><circle cx="12" cy="8" r="4" /><path d="M20 21a8 8 0 1 0-16 0" /></svg>
+                  <span className="font-medium">{profile.name}</span>
+                </div>
+              ) : null}
+              {profile.phoneNumber && !profile.phoneNumber.startsWith("tg_") ? (
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-on-surface-variant flex-shrink-0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
+                  <span className="font-mono">+{profile.phoneNumber}</span>
+                </div>
+              ) : null}
+              {profile.telegramUsername ? (
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-[#229ED9] flex-shrink-0"><path d="M21.943 4.116a1.5 1.5 0 0 0-1.567-.196L2.91 11.123a1.5 1.5 0 0 0 .128 2.787l4.378 1.477 1.69 5.39a1 1 0 0 0 1.69.39l2.42-2.42 4.55 3.34a1.5 1.5 0 0 0 2.367-.94l3-15a1.5 1.5 0 0 0-1.19-1.83zM10 16l-.66 3.13L8 14.5l9-7-7 8.5z"/></svg>
+                  <span>@{profile.telegramUsername}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {!hasContact ? (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-2">
+                <p className="text-sm font-semibold text-amber-900">Нет контакта для связи</p>
+                <p className="text-xs text-amber-800">Привяжите номер телефона <b>или</b> Telegram-аккаунт в профиле — достаточно одного способа.</p>
+                <Link href="/profile" className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
+                  Перейти в профиль
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Delivery address */}
         <div className="stitch-card p-4 space-y-3">
@@ -222,6 +355,21 @@ export default function CheckoutPage() {
               </button>
             </div>
           ) : null}
+        </div>
+
+        {/* Comment */}
+        <div className="stitch-card p-4 space-y-2">
+          <label htmlFor="order-comment" className="text-sm font-bold">Комментарий к заказу</label>
+          <textarea
+            id="order-comment"
+            value={comment}
+            onChange={(e) => setComment(e.target.value.slice(0, 1024))}
+            placeholder="Например: позвоните за 10 минут до приезда"
+            rows={3}
+            className="stitch-input resize-none"
+            maxLength={1024}
+          />
+          <p className="text-[11px] text-on-surface-variant text-right">{comment.length}/1024</p>
         </div>
 
         {/* Cost summary */}
@@ -248,7 +396,14 @@ export default function CheckoutPage() {
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={() => router.push(goBack())}
+            onClick={() => {
+              if (typeof window !== "undefined" && window.history.length > 1) {
+                goBack();
+                router.back();
+              } else {
+                router.push(goBack());
+              }
+            }}
             className="stitch-button-secondary flex-1 py-3"
           >
             Назад
@@ -256,10 +411,18 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={onSubmit}
-            disabled={isSubmitting || (!isPickup && !localAddress && !savedAddress)}
+            disabled={isSubmitting || selectedCount === 0 || (!isPickup && !localAddress && !savedAddress) || !hasContact}
             className="stitch-button flex-1 py-3"
           >
-            {isSubmitting ? "Оформляем..." : !token ? "Войти и подтвердить" : "Подтвердить"}
+            {isSubmitting
+              ? "Оформляем..."
+              : !token
+                ? "Войти и подтвердить"
+                : selectedCount === 0
+                  ? "Выберите позиции"
+                  : !hasContact
+                    ? "Нужен контакт"
+                    : "Подтвердить"}
           </button>
         </div>
       </div>

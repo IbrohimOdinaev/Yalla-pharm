@@ -30,6 +30,8 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<TelegramAuthSession> TelegramAuthSessions => Set<TelegramAuthSession>();
   public DbSet<Category> Categories => Set<Category>();
   public DbSet<DeliveryData> DeliveryData => Set<DeliveryData>();
+  public DbSet<ClientAddress> ClientAddresses => Set<ClientAddress>();
+  public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

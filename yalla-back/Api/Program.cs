@@ -194,6 +194,21 @@ if (applyMigrationsOnStartup)
     db.Database.Migrate();
 }
 
+// Backfill default banner URL for any pharmacy without one (uses picsum.photos seeded by id)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var pharmaciesWithoutBanner = await db.Pharmacies
+        .Where(p => p.BannerUrl == null)
+        .ToListAsync();
+    foreach (var pharmacy in pharmaciesWithoutBanner)
+    {
+        pharmacy.SetBannerUrl($"https://picsum.photos/seed/{pharmacy.Id}/800/240");
+    }
+    if (pharmaciesWithoutBanner.Count > 0)
+        await db.SaveChangesAsync();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

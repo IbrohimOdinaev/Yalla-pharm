@@ -83,6 +83,14 @@ public sealed class DeliveryController : ControllerBase
     });
   }
 
+  [HttpGet("tariffs")]
+  [Authorize(Roles = "Admin,SuperAdmin")]
+  public async Task<IActionResult> GetTariffs(CancellationToken ct)
+  {
+    var tariffs = await _jura.GetTariffsAsync(ct);
+    return Ok(tariffs);
+  }
+
   [HttpGet("{orderId:guid}/status")]
   [Authorize]
   public async Task<IActionResult> GetDeliveryStatus(Guid orderId, CancellationToken ct)

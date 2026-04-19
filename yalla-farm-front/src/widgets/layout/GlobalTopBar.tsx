@@ -11,12 +11,14 @@ import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 export function GlobalTopBar() {
   const router = useRouter();
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
+  const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const loadPharmacy = usePharmacyStore((s) => s.load);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showPharmacyModal, setShowPharmacyModal] = useState(false);
 
   useEffect(() => { loadPharmacy(); }, [loadPharmacy]);
+  useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
   return (
     <>

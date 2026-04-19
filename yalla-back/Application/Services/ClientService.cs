@@ -23,6 +23,8 @@ public sealed class ClientService : IClientService
   private readonly DushanbeCityPaymentOptions _paymentOptions;
   private readonly ILogger<ClientService> _logger;
   private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
+  private readonly IClientAddressService _addressService;
+  private readonly IJuraService? _juraService;
 
   public ClientService(
     IAppDbContext dbContext,
@@ -32,7 +34,9 @@ public sealed class ClientService : IClientService
     IOptions<SmsVerificationOptions> smsOptions,
     IOptions<DushanbeCityPaymentOptions> paymentOptions,
     ILogger<ClientService> logger,
-    IRealtimeUpdatesPublisher realtimeUpdatesPublisher)
+    IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
+    IClientAddressService addressService,
+    IJuraService? juraService = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(paymentService);
@@ -42,6 +46,7 @@ public sealed class ClientService : IClientService
     ArgumentNullException.ThrowIfNull(paymentOptions);
     ArgumentNullException.ThrowIfNull(logger);
     ArgumentNullException.ThrowIfNull(realtimeUpdatesPublisher);
+    ArgumentNullException.ThrowIfNull(addressService);
 
     _dbContext = dbContext;
     _paymentService = paymentService;
@@ -51,6 +56,8 @@ public sealed class ClientService : IClientService
     _paymentOptions = paymentOptions.Value;
     _logger = logger;
     _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
+    _addressService = addressService;
+    _juraService = juraService;
   }
 
   public async Task<RegisterClientResponse> RegisterClientAsync(
@@ -219,20 +226,27 @@ public sealed class ClientService : IClientService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
-
         var client = await _dbContext.Clients
           .AsTracking()
           .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
           ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
 
-        var phoneExists = await _dbContext.Users
-          .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber && x.Id != request.ClientId, cancellationToken);
+        // PhoneNumber updates go through the dedicated OTP link flow — don't let
+        // callers overwrite it via the generic profile update. If provided, it
+        // must match what's already stored.
+        var phoneToApply = string.Empty;
+        if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
+        {
+            var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
+            if (normalizedPhoneNumber != client.PhoneNumber)
+                throw new ClientErrorException(
+                  errorCode: "phone_change_not_allowed",
+                  detail: "Номер телефона меняется только через OTP-привязку в профиле.",
+                  reason: "phone_change_not_allowed");
+            phoneToApply = normalizedPhoneNumber;
+        }
 
-        if (phoneExists)
-            throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
-
-        request.ApplyToDomain(client, normalizedPhoneNumber);
+        request.ApplyToDomain(client, phoneToApply);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -651,11 +665,21 @@ public sealed class ClientService : IClientService
 
         var normalizedIdempotencyKey = (request.IdempotencyKey ?? string.Empty).Trim();
 
+        if (normalizedIdempotencyKey.Length == 0)
+            throw new DomainArgumentException("IdempotencyKey can't be null or whitespace.");
+
+        // Idempotency — return an already-created order/intent for this key
+        // (regardless of payment mode), so retries don't double-charge the client.
+        var existingOrderByKey = await _dbContext.Orders
+          .AsNoTracking()
+          .FirstOrDefaultAsync(
+            o => o.ClientId == request.ClientId && o.IdempotencyKey == normalizedIdempotencyKey,
+            cancellationToken);
+        if (existingOrderByKey is not null)
+            return existingOrderByKey.ToResponse(existingOrderByKey.PaymentUrl);
+
         if (_paymentOptions.CreateOrderOnlyAfterAdminPaymentConfirmation)
         {
-            if (normalizedIdempotencyKey.Length == 0)
-                throw new DomainArgumentException("IdempotencyKey can't be null or whitespace.");
-
             var existingIntent = await _dbContext.PaymentIntents
               .AsNoTracking()
               .FirstOrDefaultAsync(
@@ -666,6 +690,8 @@ public sealed class ClientService : IClientService
                 return ToCheckoutPaymentIntentResponse(existingIntent);
         }
 
+        var sourceKind = request.Source?.Kind ?? CheckoutSourceKind.Basket;
+
         var client = await _dbContext.Clients
           .AsTracking()
           .Include(x => x.BasketPositions)
@@ -673,10 +699,17 @@ public sealed class ClientService : IClientService
           .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
           ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
 
-        var basketPositions = client.BasketPositions.ToList();
+        var drafts = await ResolvePositionDraftsAsync(client, request.Source, cancellationToken);
 
-        if (basketPositions.Count == 0)
-            throw new InvalidOperationException($"Client '{request.ClientId}' basket is empty.");
+        if (drafts.Count == 0)
+        {
+            throw sourceKind switch
+            {
+                CheckoutSourceKind.Basket => new InvalidOperationException($"Client '{request.ClientId}' basket is empty."),
+                CheckoutSourceKind.RepeatOrder => new InvalidOperationException("Repeat order has no positions."),
+                _ => new InvalidOperationException("Checkout source provided no positions.")
+            };
+        }
 
         var pharmacy = await _dbContext.GetTrackedPharmacyOrThrowAsync(request.PharmacyId, cancellationToken);
 
@@ -695,11 +728,15 @@ public sealed class ClientService : IClientService
               : new DomainArgumentException("DeliveryAddress can't be null or whitespace.");
         }
 
-        var ignoredPositionIds = request.IgnoredPositionIds?.ToHashSet() ?? [];
-        ValidateIgnoredPositionIds(basketPositions, ignoredPositionIds);
+        // IgnoredPositionIds is meaningful only for basket source (ids reference BasketPosition rows).
+        var ignoredPositionIds = sourceKind == CheckoutSourceKind.Basket
+          ? (request.IgnoredPositionIds?.ToHashSet() ?? [])
+          : new HashSet<Guid>();
+        if (sourceKind == CheckoutSourceKind.Basket)
+            ValidateIgnoredPositionIds(client.BasketPositions, ignoredPositionIds);
 
         var evaluation = await BuildCheckoutEvaluationAsync(
-          basketPositions,
+          drafts,
           request.PharmacyId,
           ignoredPositionIds,
           cancellationToken);
@@ -712,33 +749,39 @@ public sealed class ClientService : IClientService
             throw firstBlocking.Reason switch
             {
                 CheckoutRejectReason.MedicineInactive => new InvalidOperationException(
-                  $"Medicine '{firstBlocking.BasketPosition.MedicineId}' is inactive and cannot be checked out."),
+                  $"Medicine '{firstBlocking.Draft.MedicineId}' is inactive and cannot be checked out."),
                 CheckoutRejectReason.OfferNotFound => new InvalidOperationException(
-                  $"Medicine '{firstBlocking.BasketPosition.MedicineId}' is not available in pharmacy '{request.PharmacyId}'."),
+                  $"Medicine '{firstBlocking.Draft.MedicineId}' is not available in pharmacy '{request.PharmacyId}'."),
                 CheckoutRejectReason.InsufficientStock => new InvalidOperationException(
-                  $"Quantity '{firstBlocking.BasketPosition.Quantity}' exceeds stock '{firstBlocking.FoundQuantity}' for medicine '{firstBlocking.BasketPosition.MedicineId}' in pharmacy '{request.PharmacyId}'."),
+                  $"Quantity '{firstBlocking.Draft.Quantity}' exceeds stock '{firstBlocking.FoundQuantity}' for medicine '{firstBlocking.Draft.MedicineId}' in pharmacy '{request.PharmacyId}'."),
                 _ => new InvalidOperationException("Checkout failed due to invalid basket state.")
             };
         }
 
-        var acceptedPositions = evaluation.Positions
+        var acceptedDrafts = evaluation.Positions
           .Where(x => !x.IsRejected)
-          .Select(x => x.BasketPosition)
+          .Select(x => x.Draft)
           .ToList();
 
-        if (acceptedPositions.Count == 0)
-            throw new InvalidOperationException("At least one basket position must be selected for checkout.");
+        if (acceptedDrafts.Count == 0)
+            throw new InvalidOperationException("At least one position must be selected for checkout.");
 
-        var acceptedByMedicineId = acceptedPositions
+        var effectivePhone = ResolveRecipientPhone(client);
+
+        var acceptedByMedicineId = acceptedDrafts
           .GroupBy(x => x.MedicineId)
           .ToDictionary(x => x.Key, x => x.Sum(y => y.Quantity));
 
-        var estimatedCost = evaluation.Positions
+        var itemsCost = evaluation.Positions
           .Where(x => !x.IsRejected)
-          .Sum(x => (x.Price ?? 0m) * x.BasketPosition.Quantity);
+          .Sum(x => (x.Price ?? 0m) * x.Draft.Quantity);
 
-        if (estimatedCost <= 0m)
+        if (itemsCost <= 0m)
             throw new InvalidOperationException("Checkout total amount must be greater than zero.");
+
+        var (deliveryCost, deliveryDistance) = await CalculateJuraDeliveryCostAsync(
+          pharmacy, request, cancellationToken);
+        var estimatedCost = itemsCost + deliveryCost;
 
         if (_paymentOptions.CreateOrderOnlyAfterAdminPaymentConfirmation)
         {
@@ -747,9 +790,13 @@ public sealed class ClientService : IClientService
               client,
               pharmacy,
               effectiveDeliveryAddress,
+              effectivePhone,
               evaluation,
-              acceptedPositions,
+              acceptedDrafts,
               estimatedCost,
+              deliveryCost,
+              deliveryDistance,
+              sourceKind,
               cancellationToken);
         }
 
@@ -758,7 +805,7 @@ public sealed class ClientService : IClientService
         {
             OrderId = orderId,
             ClientId = request.ClientId,
-            ClientPhoneNumber = client.PhoneNumber,
+            ClientPhoneNumber = effectivePhone,
             PharmacyId = request.PharmacyId,
             Amount = estimatedCost,
             Currency = _paymentOptions.Currency,
@@ -807,14 +854,14 @@ public sealed class ClientService : IClientService
             var orderPositions = evaluation.Positions
               .Select(x => new OrderPosition(
                 orderId: orderId,
-                medicineId: x.BasketPosition.MedicineId,
-                medicine: x.BasketPosition.Medicine,
+                medicineId: x.Draft.MedicineId,
+                medicine: x.Draft.Medicine,
                 offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
                   request.PharmacyId,
-                  currentOfferPrices.TryGetValue(x.BasketPosition.MedicineId, out var currentPrice)
+                  currentOfferPrices.TryGetValue(x.Draft.MedicineId, out var currentPrice)
                     ? currentPrice
                     : x.Price ?? 0m),
-                quantity: x.BasketPosition.Quantity,
+                quantity: x.Draft.Quantity,
                 isRejected: x.IsRejected))
               .ToList();
 
@@ -825,10 +872,11 @@ public sealed class ClientService : IClientService
                 IsPickup = request.IsPickup,
                 DeliveryAddress = effectiveDeliveryAddress,
                 IdempotencyKey = normalizedIdempotencyKey,
-                IgnoredPositionIds = request.IgnoredPositionIds ?? []
+                IgnoredPositionIds = request.IgnoredPositionIds ?? [],
+                Comment = request.Comment
             };
 
-            order = orderRequest.ToDomain(orderId, client.PhoneNumber, orderPositions);
+            order = orderRequest.ToDomain(orderId, effectivePhone, orderPositions);
             order.MarkManualPaymentPending(
               amount: estimatedCost,
               currency: _paymentOptions.Currency,
@@ -840,10 +888,20 @@ public sealed class ClientService : IClientService
               paymentComment: paymentResponse.PaymentComment,
               expiresAtUtc: DateTime.UtcNow.AddMinutes(Math.Max(1, _paymentOptions.PendingConfirmationTimeoutMinutes)));
 
-            foreach (var basketPosition in acceptedPositions)
-                client.RemoveBasketPosition(basketPosition);
-
-            _dbContext.BasketPositions.RemoveRange(acceptedPositions);
+            // Basket cleanup — only when source is the basket.
+            if (sourceKind == CheckoutSourceKind.Basket)
+            {
+                var basketIdsToRemove = acceptedDrafts
+                    .Where(d => d.BasketPositionId.HasValue)
+                    .Select(d => d.BasketPositionId!.Value)
+                    .ToHashSet();
+                var basketPositionsToRemove = client.BasketPositions
+                    .Where(bp => basketIdsToRemove.Contains(bp.Id))
+                    .ToList();
+                foreach (var bp in basketPositionsToRemove)
+                    client.RemoveBasketPosition(bp);
+                _dbContext.BasketPositions.RemoveRange(basketPositionsToRemove);
+            }
 
             client.AddOrder(order);
             _dbContext.Orders.Add(order);
@@ -866,6 +924,7 @@ public sealed class ClientService : IClientService
                   toLongitude: request.DeliveryLongitude.Value,
                   fromAddressId: null,
                   toAddressId: request.DeliveryAddressId);
+                deliveryData.SetDeliveryCost(deliveryCost, deliveryDistance);
 
                 _dbContext.DeliveryData.Add(deliveryData);
             }
@@ -891,9 +950,13 @@ public sealed class ClientService : IClientService
       Client client,
       Pharmacy pharmacy,
       string effectiveDeliveryAddress,
+      string effectivePhone,
       CheckoutEvaluation evaluation,
-      IReadOnlyCollection<BasketPosition> acceptedPositions,
+      IReadOnlyCollection<PositionDraft> acceptedDrafts,
       decimal estimatedCost,
+      decimal deliveryCost,
+      double? deliveryDistance,
+      CheckoutSourceKind sourceKind,
       CancellationToken cancellationToken)
     {
         var normalizedIdempotencyKey = (request.IdempotencyKey ?? string.Empty).Trim();
@@ -914,7 +977,7 @@ public sealed class ClientService : IClientService
         {
             OrderId = reservedOrderId,
             ClientId = request.ClientId,
-            ClientPhoneNumber = client.PhoneNumber,
+            ClientPhoneNumber = effectivePhone,
             PharmacyId = request.PharmacyId,
             Amount = estimatedCost,
             Currency = _paymentOptions.Currency,
@@ -935,10 +998,10 @@ public sealed class ClientService : IClientService
         var snapshotPositions = evaluation.Positions
           .Where(x => !x.IsRejected)
           .Select(x => new PaymentIntentPosition(
-            medicineId: x.BasketPosition.MedicineId,
+            medicineId: x.Draft.MedicineId,
             offerPharmacyId: request.PharmacyId,
             offerPrice: x.Price ?? 0m,
-            quantity: x.BasketPosition.Quantity))
+            quantity: x.Draft.Quantity))
           .ToList();
 
         if (snapshotPositions.Count == 0)
@@ -951,7 +1014,7 @@ public sealed class ClientService : IClientService
         var paymentIntent = new PaymentIntent(
           reservedOrderId: reservedOrderId,
           clientId: request.ClientId,
-          clientPhoneNumber: client.PhoneNumber,
+          clientPhoneNumber: effectivePhone,
           pharmacyId: request.PharmacyId,
           isPickup: request.IsPickup,
           deliveryAddress: effectiveDeliveryAddress,
@@ -970,12 +1033,12 @@ public sealed class ClientService : IClientService
         var orderPositions = evaluation.Positions
           .Select(x => new OrderPosition(
             orderId: reservedOrderId,
-            medicineId: x.BasketPosition.MedicineId,
-            medicine: x.BasketPosition.Medicine,
+            medicineId: x.Draft.MedicineId,
+            medicine: x.Draft.Medicine,
             offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
               request.PharmacyId,
               x.Price ?? 0m),
-            quantity: x.BasketPosition.Quantity,
+            quantity: x.Draft.Quantity,
             isRejected: x.IsRejected))
           .ToList();
 
@@ -986,10 +1049,11 @@ public sealed class ClientService : IClientService
             IsPickup = request.IsPickup,
             DeliveryAddress = effectiveDeliveryAddress,
             IdempotencyKey = normalizedIdempotencyKey,
-            IgnoredPositionIds = request.IgnoredPositionIds ?? []
+            IgnoredPositionIds = request.IgnoredPositionIds ?? [],
+            Comment = request.Comment
         };
 
-        var order = orderRequest.ToDomain(reservedOrderId, client.PhoneNumber, orderPositions);
+        var order = orderRequest.ToDomain(reservedOrderId, effectivePhone, orderPositions);
         order.MarkManualPaymentPendingIndefinitely(
           amount: estimatedCost,
           currency: _paymentOptions.Currency,
@@ -1004,10 +1068,20 @@ public sealed class ClientService : IClientService
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            foreach (var basketPosition in acceptedPositions)
-                client.RemoveBasketPosition(basketPosition);
+            if (sourceKind == CheckoutSourceKind.Basket)
+            {
+                var basketIdsToRemove = acceptedDrafts
+                    .Where(d => d.BasketPositionId.HasValue)
+                    .Select(d => d.BasketPositionId!.Value)
+                    .ToHashSet();
+                var basketPositionsToRemove = client.BasketPositions
+                    .Where(bp => basketIdsToRemove.Contains(bp.Id))
+                    .ToList();
+                foreach (var bp in basketPositionsToRemove)
+                    client.RemoveBasketPosition(bp);
+                _dbContext.BasketPositions.RemoveRange(basketPositionsToRemove);
+            }
 
-            _dbContext.BasketPositions.RemoveRange(acceptedPositions);
             _dbContext.PaymentIntents.Add(paymentIntent);
 
             client.AddOrder(order);
@@ -1031,6 +1105,7 @@ public sealed class ClientService : IClientService
                   toLongitude: request.DeliveryLongitude.Value,
                   fromAddressId: null,
                   toAddressId: request.DeliveryAddressId);
+                deliveryData.SetDeliveryCost(deliveryCost, deliveryDistance);
 
                 _dbContext.DeliveryData.Add(deliveryData);
             }
@@ -1048,7 +1123,7 @@ public sealed class ClientService : IClientService
                 cancellationToken);
 
             if (concurrentIntent is not null)
-                return ToCheckoutPaymentIntentResponse(concurrentIntent);
+                return ToCheckoutPaymentIntentResponse(concurrentIntent, deliveryCost);
 
             throw;
         }
@@ -1064,7 +1139,7 @@ public sealed class ClientService : IClientService
         await _realtimeUpdatesPublisher.PublishPaymentIntentUpdatedAsync(
             paymentIntent.Id, paymentIntent.ClientId, paymentIntent.State, order.Id, cancellationToken);
 
-        return ToCheckoutPaymentIntentResponse(paymentIntent);
+        return ToCheckoutPaymentIntentResponse(paymentIntent, deliveryCost);
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
@@ -1083,9 +1158,9 @@ public sealed class ClientService : IClientService
           .FirstOrDefaultAsync(x => x.Id == request.ClientId, cancellationToken)
           ?? throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
 
-        var basketPositions = client.BasketPositions.ToList();
+        var drafts = await ResolvePositionDraftsAsync(client, request.Source, cancellationToken);
 
-        if (basketPositions.Count == 0)
+        if (drafts.Count == 0)
         {
             return new CheckoutPreviewResponse
             {
@@ -1106,11 +1181,23 @@ public sealed class ClientService : IClientService
           .FirstOrDefaultAsync(x => x.Id == request.PharmacyId, cancellationToken)
           ?? throw new InvalidOperationException($"Pharmacy with id '{request.PharmacyId}' was not found.");
 
-        var ignoredPositionIds = request.IgnoredPositionIds?.ToHashSet() ?? [];
-        ValidateIgnoredPositionIds(basketPositions, ignoredPositionIds);
+        var sourceKind = request.Source?.Kind ?? CheckoutSourceKind.Basket;
+        var ignoredPositionIds = sourceKind == CheckoutSourceKind.Basket
+          ? (request.IgnoredPositionIds?.ToHashSet() ?? [])
+          : new HashSet<Guid>();
+        if (sourceKind == CheckoutSourceKind.Basket)
+            ValidateIgnoredPositionIds(client.BasketPositions, ignoredPositionIds);
+
+        // Mirror the delivery-address validation from CheckoutBasketAsync so the
+        // preview doesn't lie to the UI: if the real checkout would fail here,
+        // CanCheckout must be false.
+        var previewEffectiveAddress = request.IsPickup
+          ? (request.PharmacyId == pharmacy.Id ? pharmacy.Address : string.Empty)?.Trim() ?? string.Empty
+          : request.DeliveryAddress?.Trim() ?? string.Empty;
+        var hasValidAddress = !string.IsNullOrWhiteSpace(previewEffectiveAddress);
 
         var evaluation = await BuildCheckoutEvaluationAsync(
-          basketPositions,
+          drafts,
           request.PharmacyId,
           ignoredPositionIds,
           cancellationToken);
@@ -1118,26 +1205,37 @@ public sealed class ClientService : IClientService
         var acceptedPositionsCount = evaluation.Positions.Count(x => !x.IsRejected);
         var rejectedPositionsCount = evaluation.Positions.Count(x => x.IsRejected);
 
+        var itemsCost = evaluation.Positions
+          .Where(x => !x.IsRejected)
+          .Sum(x => (x.Price ?? 0m) * x.Draft.Quantity);
+
+        var (previewDeliveryCost, previewDeliveryDistance) = await CalculateJuraDeliveryCostAsync(
+          pharmacy, request, cancellationToken);
+
         return new CheckoutPreviewResponse
         {
             ClientId = request.ClientId,
             PharmacyId = request.PharmacyId,
-            CanCheckout = pharmacy.IsActive && evaluation.CanCheckout && acceptedPositionsCount > 0,
+            CanCheckout = pharmacy.IsActive
+              && evaluation.CanCheckout
+              && acceptedPositionsCount > 0
+              && hasValidAddress,
             TotalPositions = evaluation.Positions.Count,
             AcceptedPositionsCount = acceptedPositionsCount,
             RejectedPositionsCount = rejectedPositionsCount,
-            Cost = evaluation.Positions
-              .Where(x => !x.IsRejected)
-              .Sum(x => (x.Price ?? 0m) * x.BasketPosition.Quantity),
+            Cost = itemsCost,
             ReturnCost = evaluation.Positions
               .Where(x => x.IsRejected)
-              .Sum(x => (x.Price ?? 0m) * x.BasketPosition.Quantity),
+              .Sum(x => (x.Price ?? 0m) * x.Draft.Quantity),
+            DeliveryCost = previewDeliveryCost,
+            DeliveryDistance = previewDeliveryDistance,
+            TotalCost = itemsCost + previewDeliveryCost,
             Positions = evaluation.Positions
               .Select(x => new CheckoutPreviewPositionResponse
               {
-                  PositionId = x.BasketPosition.Id,
-                  MedicineId = x.BasketPosition.MedicineId,
-                  Quantity = x.BasketPosition.Quantity,
+                  PositionId = x.Draft.BasketPositionId ?? Guid.Empty,
+                  MedicineId = x.Draft.MedicineId,
+                  Quantity = x.Draft.Quantity,
                   IsRejected = x.IsRejected,
                   FoundQuantity = x.FoundQuantity,
                   Price = x.Price,
@@ -1153,8 +1251,55 @@ public sealed class ClientService : IClientService
           .CountAsync(x => x.ClientId == clientId, cancellationToken);
     }
 
-    private static CheckoutBasketResponse ToCheckoutPaymentIntentResponse(PaymentIntent paymentIntent)
+    private async Task<(decimal cost, double? distance)> CalculateJuraDeliveryCostAsync(
+      Pharmacy pharmacy,
+      CheckoutBasketRequest request,
+      CancellationToken ct)
     {
+        if (_juraService is null
+          || request.IsPickup
+          || !request.DeliveryLatitude.HasValue
+          || !request.DeliveryLongitude.HasValue
+          || !pharmacy.Latitude.HasValue
+          || !pharmacy.Longitude.HasValue)
+        {
+            return (0m, null);
+        }
+
+        try
+        {
+            var from = new JuraAddress
+            {
+                Title = pharmacy.Title,
+                Address = pharmacy.Address,
+                Lat = pharmacy.Latitude.Value,
+                Lng = pharmacy.Longitude.Value
+            };
+            var to = new JuraAddress
+            {
+                Id = request.DeliveryAddressId,
+                Title = request.DeliveryAddressTitle ?? request.DeliveryAddress,
+                Address = request.DeliveryAddress,
+                Lat = request.DeliveryLatitude.Value,
+                Lng = request.DeliveryLongitude.Value
+            };
+
+            var result = await _juraService.CalculateDeliveryAsync(from, to, tariffId: null, clientPhone: null, ct);
+            return (result.Amount, result.Distance);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+              "JURA delivery cost calculation failed for pharmacy {PharmacyId} — proceeding with zero cost",
+              pharmacy.Id);
+            return (0m, null);
+        }
+    }
+
+    private static CheckoutBasketResponse ToCheckoutPaymentIntentResponse(
+      PaymentIntent paymentIntent, decimal deliveryCost = 0m)
+    {
+        var itemsCost = paymentIntent.Amount - deliveryCost;
         return new CheckoutBasketResponse
         {
             ClientId = paymentIntent.ClientId,
@@ -1168,14 +1313,133 @@ public sealed class ClientService : IClientService
             IsPickup = paymentIntent.IsPickup,
             DeliveryAddress = paymentIntent.DeliveryAddress,
             Status = Status.New,
-            Cost = paymentIntent.Amount,
+            Cost = itemsCost > 0 ? itemsCost : paymentIntent.Amount,
             ReturnCost = 0m,
+            DeliveryCost = deliveryCost,
+            TotalCost = paymentIntent.Amount,
             PaymentState = paymentIntent.State == PaymentIntentState.Confirmed
               ? OrderPaymentState.Confirmed
               : OrderPaymentState.PendingManualConfirmation,
             PaymentExpiresAtUtc = null,
             PaymentUrl = paymentIntent.PaymentUrl
         };
+    }
+
+    /// <summary>
+    /// Turns a <see cref="CheckoutSourceRequest"/> into a source-agnostic list of
+    /// <see cref="PositionDraft"/>. For basket source keeps the
+    /// <see cref="PositionDraft.BasketPositionId"/> linkage so downstream code can
+    /// clean up the right rows; for other sources this stays null.
+    /// </summary>
+    private async Task<IReadOnlyList<PositionDraft>> ResolvePositionDraftsAsync(
+      Client client,
+      CheckoutSourceRequest? source,
+      CancellationToken cancellationToken)
+    {
+        var kind = source?.Kind ?? CheckoutSourceKind.Basket;
+
+        switch (kind)
+        {
+            case CheckoutSourceKind.Basket:
+                return client.BasketPositions
+                    .Where(bp => bp.Medicine != null)
+                    .Select(bp => new PositionDraft
+                    {
+                        MedicineId = bp.MedicineId,
+                        Quantity = bp.Quantity,
+                        Medicine = bp.Medicine!,
+                        BasketPositionId = bp.Id
+                    })
+                    .ToList();
+
+            case CheckoutSourceKind.RepeatOrder:
+                if (source?.RepeatOfOrderId is null || source.RepeatOfOrderId == Guid.Empty)
+                    throw new DomainArgumentException("Source.RepeatOfOrderId is required for RepeatOrder source.");
+
+                // Read original positions without tracking (we don't want to mutate
+                // the source order). Medicines are fetched separately as TRACKED
+                // so the new Order can safely reference them without EF trying to
+                // INSERT duplicates.
+                var originalOrder = await _dbContext.Orders
+                    .AsNoTracking()
+                    .Include(o => o.Positions)
+                    .FirstOrDefaultAsync(
+                        o => o.Id == source.RepeatOfOrderId && o.ClientId == client.Id,
+                        cancellationToken)
+                    ?? throw new ClientErrorException(
+                        errorCode: "repeat_order_not_found",
+                        detail: "Исходный заказ не найден или не принадлежит вам.",
+                        reason: "order_not_found");
+
+                var repeatMedIds = originalOrder.Positions
+                    .Where(p => !p.IsRejected)
+                    .Select(p => p.MedicineId)
+                    .Distinct()
+                    .ToList();
+
+                var repeatMedicines = await _dbContext.Medicines
+                    .AsTracking()
+                    .Where(m => repeatMedIds.Contains(m.Id))
+                    .ToDictionaryAsync(m => m.Id, cancellationToken);
+
+                var repeatGrouped = originalOrder.Positions
+                    .Where(p => !p.IsRejected && repeatMedicines.ContainsKey(p.MedicineId))
+                    .GroupBy(p => p.MedicineId)
+                    .Select(g => new { MedicineId = g.Key, Quantity = g.Sum(x => x.Quantity) })
+                    .ToList();
+
+                return repeatGrouped
+                    .Select(g => new PositionDraft
+                    {
+                        MedicineId = g.MedicineId,
+                        Quantity = g.Quantity,
+                        Medicine = repeatMedicines[g.MedicineId],
+                        BasketPositionId = null
+                    })
+                    .ToList();
+
+            case CheckoutSourceKind.Explicit:
+                var reqPositions = source?.Positions;
+                if (reqPositions is null || reqPositions.Count == 0)
+                    throw new DomainArgumentException("Source.Positions is required for Explicit source.");
+
+                // Validate and dedupe by medicineId (sum quantities).
+                var byMedicine = new Dictionary<Guid, int>();
+                foreach (var p in reqPositions)
+                {
+                    if (p.MedicineId == Guid.Empty)
+                        throw new DomainArgumentException("Explicit position MedicineId can't be empty.");
+                    if (p.Quantity <= 0)
+                        throw new DomainArgumentException("Explicit position Quantity must be greater than zero.");
+                    byMedicine[p.MedicineId] = byMedicine.GetValueOrDefault(p.MedicineId) + p.Quantity;
+                }
+
+                var medIds = byMedicine.Keys.ToList();
+                var medicines = await _dbContext.Medicines
+                    .AsTracking()
+                    .Where(m => medIds.Contains(m.Id))
+                    .ToDictionaryAsync(m => m.Id, cancellationToken);
+
+                var missing = medIds.Where(id => !medicines.ContainsKey(id)).ToList();
+                if (missing.Count > 0)
+                    throw new ClientErrorException(
+                        errorCode: "medicine_not_found",
+                        detail: $"Лекарства не найдены: {string.Join(", ", missing)}.",
+                        reason: "medicine_not_found");
+
+                return byMedicine
+                    .Select(kv => new PositionDraft
+                    {
+                        MedicineId = kv.Key,
+                        Quantity = kv.Value,
+                        Medicine = medicines[kv.Key],
+                        BasketPositionId = null
+                    })
+                    .ToList();
+
+            default:
+                throw new DomainArgumentException($"Unsupported checkout source kind: {kind}.");
+        }
     }
 
     private static void ValidateIgnoredPositionIds(
@@ -1199,12 +1463,12 @@ public sealed class ClientService : IClientService
     }
 
     private async Task<CheckoutEvaluation> BuildCheckoutEvaluationAsync(
-      IReadOnlyCollection<BasketPosition> basketPositions,
+      IReadOnlyCollection<PositionDraft> drafts,
       Guid pharmacyId,
       IReadOnlySet<Guid> ignoredPositionIds,
       CancellationToken cancellationToken)
     {
-        var medicineIds = basketPositions
+        var medicineIds = drafts
           .Select(x => x.MedicineId)
           .Distinct()
           .ToList();
@@ -1215,20 +1479,21 @@ public sealed class ClientService : IClientService
           .ToListAsync(cancellationToken);
 
         var liveOffersByMedicineId = liveOffers.ToDictionary(x => x.MedicineId, x => x);
-        var positions = new List<CheckoutEvaluationPosition>(basketPositions.Count);
+        var positions = new List<CheckoutEvaluationPosition>(drafts.Count);
         var canCheckout = true;
 
-        foreach (var basketPosition in basketPositions)
+        foreach (var draft in drafts)
         {
-            if (basketPosition.Medicine is null)
+            if (draft.Medicine is null)
                 throw new InvalidOperationException(
-                  $"Medicine '{basketPosition.MedicineId}' was not loaded for basket position '{basketPosition.Id}'.");
+                  $"Medicine '{draft.MedicineId}' was not loaded for draft position.");
 
-            var ignoredByClient = ignoredPositionIds.Contains(basketPosition.Id);
-            var hasOffer = liveOffersByMedicineId.TryGetValue(basketPosition.MedicineId, out var offer);
+            var ignoredByClient = draft.BasketPositionId.HasValue
+              && ignoredPositionIds.Contains(draft.BasketPositionId.Value);
+            var hasOffer = liveOffersByMedicineId.TryGetValue(draft.MedicineId, out var offer);
             var foundQuantity = hasOffer ? offer!.StockQuantity : 0;
             var price = hasOffer ? offer!.Price : (decimal?)null;
-            var hasEnoughQuantity = hasOffer && foundQuantity >= basketPosition.Quantity;
+            var hasEnoughQuantity = hasOffer && foundQuantity >= draft.Quantity;
 
             var reason = CheckoutRejectReason.Accepted;
             var isRejected = false;
@@ -1238,7 +1503,7 @@ public sealed class ClientService : IClientService
                 isRejected = true;
                 reason = CheckoutRejectReason.IgnoredByClient;
             }
-            else if (!basketPosition.Medicine.IsActive)
+            else if (!draft.Medicine.IsActive)
             {
                 isRejected = true;
                 reason = CheckoutRejectReason.MedicineInactive;
@@ -1259,7 +1524,7 @@ public sealed class ClientService : IClientService
 
             positions.Add(new CheckoutEvaluationPosition
             {
-                BasketPosition = basketPosition,
+                Draft = draft,
                 IsRejected = isRejected,
                 Reason = reason,
                 FoundQuantity = foundQuantity,
@@ -1527,6 +1792,29 @@ public sealed class ClientService : IClientService
         public string PasswordHash { get; init; } = string.Empty;
     }
 
+    /// <summary>
+    /// Resolves the phone number to record with the order/payment. Returns an
+    /// empty string for Telegram-only accounts — phone is optional as long as
+    /// the client has at least one contact channel (phone OR Telegram).
+    /// </summary>
+    private static string ResolveRecipientPhone(Client client)
+    {
+        var stored = client.PhoneNumber ?? string.Empty;
+        var storedIsSynthetic = stored.StartsWith("tg_", StringComparison.Ordinal);
+
+        if (!storedIsSynthetic && !string.IsNullOrWhiteSpace(stored))
+            return UserInputPolicy.NormalizePhoneNumber(stored);
+
+        // No real phone — need at least a Telegram id to reach the client.
+        if (!client.TelegramId.HasValue)
+            throw new ClientErrorException(
+              errorCode: "no_contact_channel",
+              detail: "Привяжите номер телефона или Telegram-аккаунт в профиле.",
+              reason: "no_contact_channel");
+
+        return string.Empty;
+    }
+
     private sealed class ClientBasketData
     {
         public IReadOnlyCollection<BasketPositionResponse> Positions { get; set; } = [];
@@ -1561,7 +1849,7 @@ public sealed class ClientService : IClientService
 
     private sealed class CheckoutEvaluationPosition
     {
-        public required BasketPosition BasketPosition { get; init; }
+        public required PositionDraft Draft { get; init; }
         public bool IsRejected { get; init; }
         public string Reason { get; init; } = string.Empty;
         public int FoundQuantity { get; init; }
