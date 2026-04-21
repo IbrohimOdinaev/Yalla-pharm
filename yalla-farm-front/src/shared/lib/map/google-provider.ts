@@ -44,10 +44,19 @@ export class GoogleMapProvider implements MapProvider {
         location: { lat: point.lat, lng: point.lng },
       });
 
-      const result = response.results?.[0];
-      if (!result) return { address: `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`, ...point };
+      const results = response.results ?? [];
+      if (results.length === 0) {
+        return { address: `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`, ...point };
+      }
 
-      return { address: result.formatted_address, ...point };
+      // Google returns several candidates (street → neighbourhood → city → country,
+      // plus a Plus Code near the start). We prefer anything that is NOT a Plus
+      // Code — the Jura provider will do its own cleanup, but this is a safer
+      // raw input for it.
+      const plusCodeRe = /^[23456789CFGHJMPQRVWX]{4,7}\+[23456789CFGHJMPQRVWX]{0,4}/i;
+      const streetLike = results.find((r) => !plusCodeRe.test(r.formatted_address));
+
+      return { address: (streetLike ?? results[0]).formatted_address, ...point };
     } catch {
       return { address: `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`, ...point };
     }

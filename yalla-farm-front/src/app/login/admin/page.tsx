@@ -9,14 +9,14 @@ import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { Button, Icon, IconButton } from "@/shared/ui";
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
-
 type StaffRole = "Admin" | "SuperAdmin";
 
 export default function AdminLoginPage() {
   return (
-    <Suspense fallback={<AppShell top={<TopBar title="Вход для персонала" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
+    <Suspense fallback={<AppShell hideFooter top={<TopBar title="Вход для персонала" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
       <AdminLoginContent />
     </Suspense>
   );
@@ -64,26 +64,35 @@ function AdminLoginContent() {
   }
 
   return (
-    <AppShell top={<TopBar title="Вход для персонала" backHref="back" />}>
-      <div className="mx-auto max-w-md px-3 xs:px-4">
-        <form className="stitch-card space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSubmit}>
-          <div>
-            <h2 className="text-lg xs:text-xl sm:text-2xl font-bold">Вход для персонала</h2>
-            <p className="text-xs xs:text-sm text-on-surface-variant mt-1">
-              Клиенты входят через{" "}
-              <Link href="/login" className="font-bold text-primary">SMS-код</Link>.
-            </p>
-          </div>
+    <AppShell hideFooter top={<TopBar title="Вход для персонала" backHref="back" />}>
+      <div className="mx-auto max-w-md">
+        <div className="mb-6 flex flex-col items-center gap-3 pt-2 text-center">
+          <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-primary to-primary-container text-white shadow-card">
+            <Icon name="settings" size={30} />
+          </span>
+          <h1 className="font-display text-2xl font-extrabold">Кабинет персонала</h1>
+          <p className="max-w-xs text-sm text-on-surface-variant">
+            Клиенты входят через{" "}
+            <Link href="/login" className="font-bold text-primary hover:underline">
+              SMS-код
+            </Link>
+            . Для доступа к кабинету используйте пароль.
+          </p>
+        </div>
 
+        <form
+          className="space-y-4 rounded-3xl bg-surface-container-lowest p-5 shadow-card"
+          onSubmit={onSubmit}
+        >
           {/* Role tabs */}
-          <div className="flex rounded-full bg-surface-container-low p-0.5">
+          <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-1">
             <button
               type="button"
               onClick={() => { setStaffRole("Admin"); setError(null); }}
-              className={`flex-1 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition ${
+              className={`flex-1 rounded-full px-4 py-2 text-xs font-bold transition ${
                 staffRole === "Admin"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-on-surface-variant hover:text-on-surface"
+                  ? "bg-primary text-white shadow-card"
+                  : "text-on-surface-variant"
               }`}
             >
               Администратор
@@ -91,62 +100,69 @@ function AdminLoginContent() {
             <button
               type="button"
               onClick={() => { setStaffRole("SuperAdmin"); setError(null); }}
-              className={`flex-1 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition ${
+              className={`flex-1 rounded-full px-4 py-2 text-xs font-bold transition ${
                 staffRole === "SuperAdmin"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-on-surface-variant hover:text-on-surface"
+                  ? "bg-primary text-white shadow-card"
+                  : "text-on-surface-variant"
               }`}
             >
               Суперадмин
             </button>
           </div>
 
-          <label className="block space-y-1">
-            <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Телефон</span>
-            <div className="flex items-center stitch-input p-0 overflow-hidden">
-              <span className="pl-3 pr-1 text-on-surface-variant font-medium select-none flex-shrink-0">+992</span>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">
+              Номер телефона
+            </span>
+            <div className="flex items-center gap-2 rounded-2xl bg-surface-container-low px-3.5 focus-within:ring-2 focus-within:ring-primary/30">
+              <span className="text-sm">🇹🇯</span>
+              <span className="font-semibold text-on-surface-variant">+992</span>
               <input
-                className="flex-1 bg-transparent border-none outline-none py-2 pr-3 text-on-surface"
+                className="min-w-0 flex-1 bg-transparent py-3 text-base font-semibold tracking-wider text-on-surface outline-none tabular-nums"
                 type="tel"
                 inputMode="numeric"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                placeholder="900123456"
+                placeholder="93 •••• •• ••"
                 required
               />
             </div>
           </label>
 
-          <label className="block space-y-1">
-            <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Пароль</span>
-            <div className="relative">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">
+              Пароль
+            </span>
+            <div className="flex items-center gap-2 rounded-2xl bg-surface-container-low px-3.5 focus-within:ring-2 focus-within:ring-primary/30">
               <input
-                className="stitch-input w-full pr-10"
+                className="min-w-0 flex-1 bg-transparent py-3 text-sm text-on-surface outline-none"
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
               />
-              <button type="button" tabIndex={-1} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition" onClick={() => setShowPassword(!showPassword)}>
-                {showPassword ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                )}
-              </button>
+              <IconButton
+                icon={showPassword ? "eye-off" : "eye"}
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label="Показать пароль"
+                type="button"
+                tabIndex={-1}
+              />
             </div>
           </label>
 
-          {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
+          {error ? (
+            <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">
+              {error}
+            </div>
+          ) : null}
 
-          <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSubmitting}>
-            {isSubmitting
-              ? "Входим..."
-              : staffRole === "Admin"
-                ? "Войти как администратор"
-                : "Войти как суперадминистратор"}
-          </button>
+          <Button type="submit" size="lg" fullWidth rightIcon="arrow-right" loading={isSubmitting}>
+            {staffRole === "Admin" ? "Войти как администратор" : "Войти как суперадмин"}
+          </Button>
         </form>
       </div>
     </AppShell>

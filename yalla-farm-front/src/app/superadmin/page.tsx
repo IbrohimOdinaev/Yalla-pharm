@@ -63,7 +63,7 @@ export default function SuperAdminPage() {
     <AppShell top={<TopBar title="SuperAdmin" showLogout />} hideGlobalNav>
       <div className="space-y-4">
         {/* Hero */}
-        <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-2">
+        <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-container p-6 text-white space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">SuperAdmin Control</p>
           <h1 className="text-2xl font-extrabold">Глобальное управление системой</h1>
           <p className="text-sm opacity-80">Управление аптеками, каталогом, клиентами и заказами.</p>
@@ -1042,10 +1042,10 @@ const STATUS_LABELS: Record<string, string> = {
   Cancelled: "Отменён", Returned: "Возврат"
 };
 const STATUS_COLORS: Record<string, string> = {
-  New: "bg-blue-500", UnderReview: "bg-yellow-500", Preparing: "bg-orange-500",
-  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", DriverArrived: "bg-purple-600",
-  Delivered: "bg-green-500",
-  PickedUp: "bg-green-500", Cancelled: "bg-red-500", Returned: "bg-gray-500"
+  New: "bg-tertiary", UnderReview: "bg-warning-container", Preparing: "bg-secondary-container",
+  Ready: "bg-primary", OnTheWay: "bg-tertiary", DriverArrived: "bg-tertiary",
+  Delivered: "bg-primary",
+  PickedUp: "bg-primary", Cancelled: "bg-secondary", Returned: "bg-on-surface-variant"
 };
 
 function OrdersTab({ token }: { token: string }) {

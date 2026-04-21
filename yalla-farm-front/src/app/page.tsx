@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
 import { getCatalogMedicinesPaginated, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
@@ -8,9 +8,12 @@ import { getCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiPharmacyMedicinesGroup } from "@/shared/types/api";
 import { HeroCarousel } from "@/widgets/catalog/HeroCarousel";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { MedicineRail } from "@/widgets/catalog/MedicineRail";
+import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
+import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
 import { AppShell } from "@/widgets/layout/AppShell";
 
-import { InfoBanner } from "@/shared/ui/InfoBanner";
+import { TrustStrip } from "@/shared/ui";
 import { useAppSelector } from "@/shared/lib/redux";
 
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
@@ -18,19 +21,57 @@ import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddre
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
-import type { ActivePharmacy } from "@/entities/pharmacy/api";
+import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { PharmacyLogo } from "@/shared/ui";
 
 const POPULAR_QUERIES = ["Парацетамол", "Ибупрофен", "Амоксициллин", "Цитрамон", "Лоратадин", "Омепразол"];
 
-const QUICK_CATEGORIES: { icon: string; label: string; keywords?: string[] }[] = [
-  { icon: "🌡️", label: "Боль и жар", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
-  { icon: "🤧", label: "Аллергия", keywords: ["аллерг", "антигистамин"] },
-  { icon: "🫁", label: "Дыхание", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
-  { icon: "💊", label: "Антибиотики", keywords: ["антибиотик", "противомикроб"] },
-  { icon: "🧬", label: "Витамины", keywords: ["витамин", "бад", "биодобав", "минерал"] },
-  { icon: "❤️", label: "Сердце", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "🦠", label: "ЖКТ", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
-  { icon: "📋", label: "Все категории" },
+type QuickCategory = {
+  icon: CategoryIconKey;
+  palette: CategoryTilePalette;
+  label: string;
+  keywords?: string[];
+};
+
+// Home-feed rails. Each rail resolves its server-side categoryId by matching
+// one of the keywords against the category name — this keeps us working no
+// matter how backend renames a category as long as the core word survives.
+// `keywords: null` means "no category filter" → generic "Popular" rail.
+type RailSpec = {
+  id: string;
+  title: string;
+  accent: "primary" | "secondary" | "tertiary" | "accent";
+  keywords: string[] | null;
+};
+
+const HOME_RAILS: RailSpec[] = [
+  { id: "popular", title: "Популярные товары", accent: "accent", keywords: null },
+  { id: "pain", title: "Боль и жар", accent: "secondary", keywords: ["боль", "жар", "обезболив", "анальг"] },
+  { id: "vitamins", title: "Витамины и БАД", accent: "accent", keywords: ["витамин", "бад", "биодобав"] },
+  { id: "cold", title: "Простуда и дыхание", accent: "tertiary", keywords: ["кашел", "бронх", "респират", "простуд"] },
+  { id: "allergy", title: "Аллергия", accent: "secondary", keywords: ["аллерг", "антигистамин"] },
+  { id: "gi", title: "ЖКТ и пищеварение", accent: "primary", keywords: ["жкт", "желуд", "пищевар", "гастро"] },
+  { id: "heart", title: "Сердце и давление", accent: "secondary", keywords: ["сердц", "кардио", "давлен"] },
+  { id: "baby", title: "Мама и малыш", accent: "primary", keywords: ["малыш", "беремен", "дет"] },
+];
+
+const QUICK_CATEGORIES: QuickCategory[] = [
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "pill", palette: "lilac", label: "Антибиотики", keywords: ["антибиотик", "противомикроб"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "skin", palette: "peach", label: "Кожа и волосы", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
+  { icon: "drop", palette: "coral", label: "Диабет", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "baby", palette: "sun", label: "Мама и малыш", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", keywords: ["нерв", "сон", "успок", "стресс", "антидепресс", "седатив"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "lipstick", palette: "rose", label: "Красота", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "grid", palette: "mint", label: "Все категории" },
 ];
 
 export default function HomePage() {
@@ -107,6 +148,65 @@ function HomeContent() {
   useEffect(() => {
     getCategories().then(setCategories).catch(() => undefined);
   }, []);
+
+  // Cache of pharmacy-id → iconUrl so we can render logos without issuing
+  // doomed-to-404 requests for pharmacies that have no icon uploaded yet.
+  const [pharmacyIconsById, setPharmacyIconsById] = useState<Record<string, string | null | undefined>>({});
+  useEffect(() => {
+    getActivePharmacies()
+      .then((list) => {
+        const next: Record<string, string | null | undefined> = {};
+        for (const p of list) next[p.id] = p.iconUrl;
+        setPharmacyIconsById(next);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Per-rail medicines, keyed by RailSpec.id. We populate these in parallel as
+  // responses arrive so each rail can flip from skeleton → content
+  // independently. Keyed map makes it trivial to skip already-fetched rails on
+  // re-render and to blow the whole cache when the pharmacy filter changes.
+  const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>({});
+  // Resolves RailSpec.keywords → concrete categoryId using the loaded
+  // categories tree. `null` keyword list stays null (the "Popular" rail).
+  const railCategoryIds = useMemo(() => {
+    const allCats = [...categories, ...categories.flatMap((c) => c.children ?? [])];
+    const out: Record<string, string | null | undefined> = {};
+    for (const spec of HOME_RAILS) {
+      if (spec.keywords === null) {
+        out[spec.id] = null;
+        continue;
+      }
+      const match = allCats.find((c) => spec.keywords!.some((kw) => c.name.toLowerCase().includes(kw)));
+      out[spec.id] = match?.id;
+    }
+    return out;
+  }, [categories]);
+
+  // Reset the rail cache whenever the user switches pharmacy — stock differs.
+  useEffect(() => {
+    setRailMeds({});
+  }, [selectedPharmacy?.id]);
+
+  // Fire a parallel fetch for every rail that has a resolved categoryId (or
+  // null for "any category"). Rails whose category wasn't found are silently
+  // skipped — they simply won't render.
+  useEffect(() => {
+    if (categories.length === 0) return;
+    for (const spec of HOME_RAILS) {
+      if (railMeds[spec.id]) continue;
+      const catId = railCategoryIds[spec.id];
+      if (catId === undefined) continue;
+      getCatalogMedicinesPaginated(1, 10, catId || undefined, selectedPharmacy?.id)
+        .then((data) => {
+          setRailMeds((prev) => ({ ...prev, [spec.id]: Array.isArray(data?.medicines) ? data.medicines : [] }));
+        })
+        .catch(() => {
+          // Mark rail as "fetched empty" so we stop retrying on every render.
+          setRailMeds((prev) => ({ ...prev, [spec.id]: [] }));
+        });
+    }
+  }, [categories.length, railCategoryIds, selectedPharmacy?.id, railMeds]);
 
   const fetchMedicines = useCallback((p = 1, catId = "", pharmId?: string) => {
     if (isInitialLoad.current) setIsLoading(true);
@@ -217,10 +317,23 @@ function HomeContent() {
     setTimeout(() => searchInputRef.current?.focus(), 100);
   }
 
-  // Sync view with URL search params (e.g. when navigating via GlobalTopBar search)
+  // Sync view with URL search params in BOTH directions. Forward: GlobalTopBar
+  // search click → router.push("/?search=") → enter search view. Reverse:
+  // browser back removes the ?search= param → leave search view and reset its
+  // local state (previously the component stayed stuck in search view with
+  // stale chips/filters after browser back).
   useEffect(() => {
-    if (searchParams.has("search") && view !== "search") {
-      openSearch(searchParams.get("search") ?? "");
+    const urlQ = searchParams.get("search");
+    if (urlQ !== null) {
+      if (view !== "search") openSearch(urlQ);
+    } else if (view === "search") {
+      setView("home");
+      setQuery("");
+      setPharmacyResults([]);
+      setSearchTotalCount(0);
+      setSearchError(null);
+      setSelectedSearchPharmacyId("");
+      setPinnedSearchPharmacy(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -516,18 +629,12 @@ function HomeContent() {
                   const selected = pharmacyResults.find((p) => p.pharmacyId === selectedSearchPharmacyId);
                   return selected ? (
                     <div className="flex items-center gap-3 rounded-xl bg-primary/5 border border-primary/20 px-4 py-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/pharmacies/icon/${selected.pharmacyId}/content`}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-primary" style={{ display: "none" }}>
-                          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                        </svg>
-                      </div>
+                      <PharmacyLogo
+                        pharmacyId={selected.pharmacyId}
+                        iconUrl={pharmacyIconsById[selected.pharmacyId]}
+                        size={40}
+                        className="flex-shrink-0"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-on-surface">{selected.pharmacyTitle}</p>
                         <p className="text-xs text-on-surface-variant">Найдено {selected.totalInPharmacy} товаров</p>
@@ -572,17 +679,12 @@ function HomeContent() {
                           : "bg-surface-container-low text-on-surface hover:bg-surface-container-high"
                       }`}
                     >
-                      <div className={`w-7 h-7 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 ${
-                        selectedSearchPharmacyId === group.pharmacyId ? "bg-white/20" : "bg-surface-container-high"
-                      }`}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/pharmacies/icon/${group.pharmacyId}/content`}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
-                      </div>
+                      <PharmacyLogo
+                        pharmacyId={group.pharmacyId}
+                        iconUrl={pharmacyIconsById[group.pharmacyId]}
+                        size={28}
+                        className="flex-shrink-0"
+                      />
                       {group.pharmacyTitle}
                       <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                         selectedSearchPharmacyId === group.pharmacyId ? "bg-white/20" : "bg-surface-container-high"
@@ -748,29 +850,30 @@ function HomeContent() {
         onClose={() => { setShowAddressModal(false); setIsFirstVisit(false); }}
         autoGeolocate={isFirstVisit}
       />
-      <div className="space-y-5 sm:space-y-7 lg:space-y-8 overflow-x-hidden">
+      <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
+
+          {/* Quick categories — Yandex-style horizontal rail */}
+          <section>
+            <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
+              {QUICK_CATEGORIES.map((cat) => (
+                <div key={cat.label} className="flex-shrink-0">
+                  <CategoryTile
+                    icon={cat.icon}
+                    palette={cat.palette}
+                    label={cat.label}
+                    onClick={() => onQuickCategoryClick(cat.label)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
 
           <HeroCarousel />
 
-          <InfoBanner text="Быстрая доставка по Душанбе: 30-45 минут" />
+          <TrustStrip />
 
-          {/* Pharmacy banners — click opens search filtered by that pharmacy */}
+          {/* Pharmacy banners */}
           <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
-
-          {/* Quick category filters */}
-          <div className="flex gap-1.5 xs:gap-2 overflow-x-auto pb-2 scrollbar-hide scroll-touch snap-x -mx-1.5 px-1.5 xs:-mx-3 xs:px-3 sm:-mx-0 sm:px-0 sm:grid sm:grid-cols-4 sm:gap-3 lg:gap-4 sm:overflow-visible sm:pb-0">
-            {QUICK_CATEGORIES.map((cat) => (
-              <button
-                key={cat.label}
-                type="button"
-                onClick={() => onQuickCategoryClick(cat.label)}
-                className="stitch-card flex flex-col items-center gap-0.5 xs:gap-1 sm:gap-1.5 p-1.5 xs:p-2 sm:p-3 text-center transition hover:shadow-card hover:-translate-y-0.5 active:scale-95 min-w-[56px] xs:min-w-[68px] flex-shrink-0 snap-start sm:min-w-0"
-              >
-                <span className="text-base xs:text-lg sm:text-2xl">{cat.icon}</span>
-                <span className="text-[8px] xs:text-[10px] sm:text-[11px] font-semibold leading-tight text-on-surface">{cat.label}</span>
-              </button>
-            ))}
-          </div>
 
           {/* All categories dropdown */}
           {showAllCategories && categories.length > 0 && (
@@ -843,52 +946,54 @@ function HomeContent() {
             </div>
           )}
 
-          {/* Medicine grid */}
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm xs:text-base sm:text-lg font-bold">{selectedCategoryId ? [...categories, ...categories.flatMap((c) => c.children ?? [])].find((c) => c.id === selectedCategoryId)?.name ?? "Товары" : "Трендовые товары"}</h3>
-            </div>
+          {/* Rails — fixed-count horizontal shelves, one per popular category.
+              Each fetches independently so they flip from skeleton → content
+              as their data arrives. Empty rails (no matching category or
+              zero stock) are hidden automatically by MedicineRail. */}
+          <div className="space-y-8 sm:space-y-12">
+            {HOME_RAILS.map((spec) => {
+              const catId = railCategoryIds[spec.id];
+              // Keyword-defined rail that found no matching category → drop it.
+              if (spec.keywords !== null && !catId) return null;
+              const meds = railMeds[spec.id];
+              return (
+                <MedicineRail
+                  key={spec.id}
+                  title={spec.title}
+                  accent={spec.accent}
+                  medicines={meds ?? []}
+                  isLoading={meds === undefined}
+                  onViewAll={() => {
+                    if (catId) {
+                      setSelectedCategoryId(catId);
+                      const parent = categories.find((c) => c.children?.some((ch) => ch.id === catId));
+                      if (parent) setExpandedCategoryId(parent.id);
+                    } else {
+                      setSelectedCategoryId("");
+                    }
+                    setView("catalog");
+                    fetchMedicines(1, catId || "", selectedPharmacy?.id);
+                  }}
+                />
+              );
+            })}
+          </div>
 
-            {isLoading ? <div className="stitch-card p-6 text-sm">Загружаем товары...</div> : null}
-            {error ? <div className="rounded-xl bg-red-100 p-4 text-sm text-red-700">{error}</div> : null}
-
-            {!isLoading && !error ? (
-              medicines.length === 0 ? (
-                <div className="stitch-card p-6 text-sm text-on-surface-variant">Ничего не найдено.</div>
-              ) : (
-                <div className={`grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 transition-opacity duration-200 ${isSearching ? "opacity-50" : "opacity-100"}`}>
-                  {medicines.map((medicine) => (
-                    <MedicineCard key={medicine.id} medicine={medicine} hideCart={isAdminOrSA} />
-                  ))}
-                </div>
-              )
-            ) : null}
-
-            {/* Pagination */}
-            {!isLoading && !error && totalPages > 1 ? (
-              <div className="flex items-center justify-center gap-2 xs:gap-3 pt-2">
-                <button
-                  type="button"
-                  className="stitch-button-secondary px-3 py-1.5 xs:px-4 xs:py-2 text-xs xs:text-sm"
-                  disabled={page <= 1}
-                  onClick={() => goToPage(page - 1)}
-                >
-                  Назад
-                </button>
-                <span className="text-xs xs:text-sm font-semibold text-on-surface-variant tabular-nums">
-                  {page} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  className="stitch-button-secondary px-3 py-1.5 xs:px-4 xs:py-2 text-xs xs:text-sm"
-                  disabled={page >= totalPages}
-                  onClick={() => goToPage(page + 1)}
-                >
-                  Вперёд
-                </button>
-              </div>
-            ) : null}
-          </section>
+          {/* Footer CTA to the full catalog */}
+          <div className="flex justify-center pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategoryId("");
+                setExpandedCategoryId("");
+                setView("catalog");
+                fetchMedicines(1, "", selectedPharmacy?.id);
+              }}
+              className="rounded-full bg-surface-container px-6 py-3 text-sm font-bold text-on-surface transition hover:bg-surface-container-high"
+            >
+              Открыть каталог →
+            </button>
+          </div>
       </div>
     </AppShell>
   );

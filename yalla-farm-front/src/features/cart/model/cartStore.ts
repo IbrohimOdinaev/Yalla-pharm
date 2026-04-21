@@ -37,6 +37,12 @@ function normalizeBasket(basket?: ApiBasket): ApiBasket {
 // Mutex to prevent concurrent addItem calls from creating duplicates
 let addItemQueue: Promise<void> = Promise.resolve();
 
+// Latest-request tracking per positionId. When the user mashes +/− quickly, we
+// fire one API call per click in the background; a stale response must not
+// overwrite the optimistic state set by a newer click. Each call captures its
+// sequence id; only the LATEST call is allowed to reconcile with the server.
+const quantityRequestId = new Map<string, number>();
+
 export const useCartStore = create<CartState>((set, get) => ({
   basket: EMPTY_BASKET,
   isLoading: false,
@@ -76,22 +82,63 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   removeItem: async (token, positionId) => {
-    set({ isLoading: true, error: null });
+    // Optimistic removal — the row disappears from the UI instantly; no
+    // isLoading flip so surrounding controls stay interactive.
+    const prev = get().basket;
+    set((state) => ({
+      basket: {
+        ...state.basket,
+        positions: (state.basket.positions ?? []).filter((p) => p.id !== positionId),
+      },
+      error: null,
+    }));
     try {
       const basket = await removeFromBasket(token, positionId);
-      set({ basket: normalizeBasket(basket), isLoading: false });
+      set({ basket: normalizeBasket(basket) });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Не удалось удалить товар.", isLoading: false });
+      // Rollback on failure.
+      set({
+        basket: prev,
+        error: error instanceof Error ? error.message : "Не удалось удалить товар.",
+      });
     }
   },
 
   setQuantity: async (token, positionId, quantity) => {
-    set({ isLoading: true, error: null });
+    const newQty = Math.max(1, quantity);
+
+    // Optimistic update: reflect the new qty in state immediately so buttons
+    // stay responsive under rapid clicking. No isLoading flip.
+    set((state) => ({
+      basket: {
+        ...state.basket,
+        positions: (state.basket.positions ?? []).map((p) =>
+          p.id === positionId ? { ...p, quantity: newQty } : p,
+        ),
+      },
+      error: null,
+    }));
+
+    // Latest-wins. A rapid sequence of clicks fires N API calls; only the
+    // response to the most-recent one is allowed to overwrite the optimistic
+    // state (otherwise stale responses would flicker the UI back).
+    const reqId = (quantityRequestId.get(positionId) ?? 0) + 1;
+    quantityRequestId.set(positionId, reqId);
+
     try {
-      const basket = await updateBasketQuantity(token, positionId, Math.max(1, quantity));
-      set({ basket: normalizeBasket(basket), isLoading: false });
+      const basket = await updateBasketQuantity(token, positionId, newQty);
+      if (quantityRequestId.get(positionId) === reqId) {
+        set({ basket: normalizeBasket(basket) });
+      }
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Не удалось обновить количество.", isLoading: false });
+      if (quantityRequestId.get(positionId) === reqId) {
+        set({ error: error instanceof Error ? error.message : "Не удалось обновить количество." });
+        // Resync from server so the optimistic state doesn't go out of sync.
+        try {
+          const basket = await getBasket(token);
+          set({ basket: normalizeBasket(basket) });
+        } catch { /* best effort */ }
+      }
     }
   },
 

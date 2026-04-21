@@ -1,11 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleMap, useJsApiLoader, OverlayView, Marker } from "@react-google-maps/api";
 import { env } from "@/shared/config/env";
 import { DUSHANBE_CENTER, getMapProvider, type GeoPoint, type GeoResult } from "@/shared/lib/map";
+import { formatMoney } from "@/shared/lib/format";
 
-const LIBRARIES: ("places")[] = ["places"];
+// `marker` library gives us AdvancedMarkerElement, which positions via the
+// native marker layer — no transform/draw desync on drag-end (unlike
+// OverlayView, which flashes markers to the old screen position for a frame
+// after releasing the mouse). `mapId` is required for AdvancedMarker; using
+// the public demo id is fine for dev and for maps without custom styles.
+const LIBRARIES: ("places" | "marker")[] = ["places", "marker"];
+const MAP_ID = "DEMO_MAP_ID";
 
 const MAP_OPTIONS: google.maps.MapOptions = {
   disableDefaultUI: false,
@@ -13,6 +20,7 @@ const MAP_OPTIONS: google.maps.MapOptions = {
   streetViewControl: false,
   mapTypeControl: false,
   fullscreenControl: false,
+  mapId: MAP_ID,
 };
 
 export type PharmacyMarker = {
@@ -65,17 +73,26 @@ export function PharmacyMap({
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+  // Drag state lives in a DOM ref — mutate the center-pin's style directly on
+  // drag start / end so no React re-render is triggered.
+  const centerPinRef = useRef<SVGSVGElement | null>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // For non-centerPin modes, center follows selectedPoint/userLocation
+  // Always reference the latest click handler without retriggering the marker
+  // effect — we don't want to recreate every marker just because the parent
+  // passed a new function reference.
+  const onPharmacyClickRef = useRef(onPharmacyClick);
+  useEffect(() => {
+    onPharmacyClickRef.current = onPharmacyClick;
+  }, [onPharmacyClick]);
+
   const center = useMemo(() => {
     if (selectedPoint) return { lat: selectedPoint.lat, lng: selectedPoint.lng };
     if (userLocation) return { lat: userLocation.lat, lng: userLocation.lng };
     if (pharmacies.length > 0) return { lat: pharmacies[0].lat, lng: pharmacies[0].lng };
     return DUSHANBE_CENTER;
   }, [pharmacies, userLocation, selectedPoint]);
-
 
   const handleMapClick = useCallback(
     async (e: google.maps.MapMouseEvent) => {
@@ -93,7 +110,6 @@ export function PharmacyMap({
     const c = mapRef.current.getCenter();
     if (!c) return;
     const point: GeoPoint = { lat: c.lat(), lng: c.lng() };
-    // Debounce reverse geocode
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
     idleTimeoutRef.current = setTimeout(async () => {
       const provider = getMapProvider();
@@ -101,6 +117,73 @@ export function PharmacyMap({
       if (result) onCenterChange(result);
     }, 300);
   }, [centerPinMode, onCenterChange]);
+
+  // ─── AdvancedMarker lifecycle ────────────────────────────────────────
+  //
+  // Markers are kept in a ref Map keyed by pharmacy id so we:
+  //   • add new ones when pharmacies appear
+  //   • update `position` and `content` in place when data changes
+  //   • remove ones that are no longer in the list
+  //
+  // Critically, unchanged markers are *not* recreated between renders —
+  // Google's native marker layer handles their positioning frame-by-frame
+  // during drag, so there's no release-time desync.
+  const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
+
+  useEffect(() => {
+    if (!map) return;
+    // The marker library might not be on `google.maps.marker` yet if the
+    // script hasn't finished loading.
+    const markerLib = (google.maps as typeof google.maps & {
+      marker?: { AdvancedMarkerElement: typeof google.maps.marker.AdvancedMarkerElement };
+    }).marker;
+    if (!markerLib?.AdvancedMarkerElement) return;
+
+    const current = markersRef.current;
+    const nextIds = new Set(pharmacies.map((p) => p.id));
+
+    // Remove markers whose pharmacy is no longer in the list.
+    for (const [id, marker] of current) {
+      if (!nextIds.has(id)) {
+        marker.map = null;
+        current.delete(id);
+      }
+    }
+
+    // Add / update the rest.
+    for (const pharmacy of pharmacies) {
+      const existing = current.get(pharmacy.id);
+      if (existing) {
+        existing.position = { lat: pharmacy.lat, lng: pharmacy.lng };
+        // Replace content in place so price / name updates don't recreate the
+        // marker (which would cause a visual flash).
+        existing.content = createPinElement(pharmacy);
+      } else {
+        const content = createPinElement(pharmacy);
+        const marker = new markerLib.AdvancedMarkerElement({
+          map,
+          position: { lat: pharmacy.lat, lng: pharmacy.lng },
+          content,
+          // Anchor the pin's visual tail (not its centre) on the geo coord.
+          gmpClickable: true,
+        });
+        marker.addListener("gmp-click", () => {
+          onPharmacyClickRef.current?.(pharmacy.id);
+        });
+        current.set(pharmacy.id, marker);
+      }
+    }
+  }, [map, pharmacies]);
+
+  // Full cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      for (const marker of markersRef.current.values()) {
+        marker.map = null;
+      }
+      markersRef.current.clear();
+    };
+  }, []);
 
   if (loadError) {
     return (
@@ -122,15 +205,20 @@ export function PharmacyMap({
 
   return (
     <div className={`relative overflow-hidden rounded-xl xs:rounded-2xl ${className}`}>
-      {/* Center pin for drag-to-pick mode */}
       {centerPinMode && (
         <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
           <div className="flex flex-col items-center" style={{ marginBottom: 36 }}>
-            {/* Pin shadow */}
-            <svg width="40" height="52" viewBox="0 0 40 52" fill="none" className={`transition-transform duration-150 ${isDragging ? "-translate-y-2 scale-110" : ""}`}>
-              <path d="M20 0C9 0 0 9 0 20c0 15 20 32 20 32s20-17 20-32C40 9 31 0 20 0z" fill="#0058bc" />
+            <svg
+              ref={centerPinRef}
+              width="40"
+              height="52"
+              viewBox="0 0 40 52"
+              fill="none"
+              className="transition-transform duration-150"
+            >
+              <path d="M20 0C9 0 0 9 0 20c0 15 20 32 20 32s20-17 20-32C40 9 31 0 20 0z" fill="#0E8B60" />
               <circle cx="20" cy="18" r="8" fill="white" />
-              <circle cx="20" cy="18" r="4" fill="#0058bc" />
+              <circle cx="20" cy="18" r="4" fill="#0E8B60" />
             </svg>
           </div>
         </div>
@@ -141,42 +229,44 @@ export function PharmacyMap({
         center={centerPinMode ? undefined : center}
         zoom={14}
         options={MAP_OPTIONS}
-        onLoad={(map) => {
-          mapRef.current = map;
+        onLoad={(m) => {
+          mapRef.current = m;
+          setMap(m);
           if (centerPinMode) {
             const initPos = selectedPoint
               ? { lat: selectedPoint.lat, lng: selectedPoint.lng }
               : userLocation
                 ? { lat: userLocation.lat, lng: userLocation.lng }
                 : DUSHANBE_CENTER;
-            map.setCenter(initPos);
+            m.setCenter(initPos);
           }
-          mapHandle?.({ panTo: (pt) => map.panTo({ lat: pt.lat, lng: pt.lng }) });
+          mapHandle?.({ panTo: (pt) => m.panTo({ lat: pt.lat, lng: pt.lng }) });
         }}
-        onUnmount={() => { mapHandle?.(null); }}
+        onUnmount={() => {
+          mapHandle?.(null);
+          mapRef.current = null;
+          setMap(null);
+        }}
         onClick={pickMode ? handleMapClick : undefined}
         onIdle={centerPinMode ? handleIdle : undefined}
-        onDragStart={() => setIsDragging(true)}
-        onDragEnd={() => setIsDragging(false)}
+        onDragStart={() => {
+          if (centerPinRef.current) {
+            centerPinRef.current.style.transform = "translateY(-8px) scale(1.1)";
+          }
+        }}
+        onDragEnd={() => {
+          if (centerPinRef.current) {
+            centerPinRef.current.style.transform = "";
+          }
+        }}
       >
-        {/* Pharmacy markers with name labels */}
-        {pharmacies.map((pharmacy) => (
-          <Marker
-            key={pharmacy.id}
-            position={{ lat: pharmacy.lat, lng: pharmacy.lng }}
-            title={pharmacy.title}
-            onClick={() => onPharmacyClick?.(pharmacy.id)}
-            label={{ text: pharmacy.title, color: "#000", fontWeight: "bold", fontSize: "11px", className: "pharmacy-marker-label" }}
-          />
-        ))}
-
-        {/* User location marker (green pin with "Вы" label) */}
+        {/* User location marker */}
         {userLocation && !centerPinMode && (
           <Marker
             position={{ lat: userLocation.lat, lng: userLocation.lng }}
             title="Вы здесь"
             icon={{
-              url: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="#16a34a"/><circle cx="16" cy="14" r="6" fill="white"/></svg>'),
+              url: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="#0E8B60"/><circle cx="16" cy="14" r="6" fill="white"/></svg>'),
               scaledSize: new google.maps.Size(32, 42),
               anchor: new google.maps.Point(16, 42),
             }}
@@ -184,7 +274,7 @@ export function PharmacyMap({
           />
         )}
 
-        {/* Selected point marker (only in legacy pickMode) */}
+        {/* Selected point marker (legacy pickMode) */}
         {selectedPoint && !centerPinMode && (
           <OverlayView
             position={{ lat: selectedPoint.lat, lng: selectedPoint.lng }}
@@ -206,4 +296,89 @@ export function PharmacyMap({
       </GoogleMap>
     </div>
   );
+}
+
+/**
+ * Build the DOM tree for a pharmacy pin: a Yandex-Apteka-style horizontal
+ * white pill with a round logo avatar, the pharmacy name, and (if provided)
+ * a yellow price chip. Below it hangs a white triangle tail whose tip marks
+ * the exact geo coordinate.
+ *
+ * Returned as a real HTMLElement so we can hand it to AdvancedMarkerElement's
+ * `content` — the native marker layer takes care of positioning from here.
+ */
+function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
+  const iconSrc = pharmacy.iconUrl
+    ? pharmacy.iconUrl.startsWith("http")
+      ? pharmacy.iconUrl
+      : `/api/pharmacies/icon/${pharmacy.id}/content`
+    : null;
+
+  const hasCost = typeof pharmacy.cost === "number" && pharmacy.cost > 0;
+
+  const root = document.createElement("div");
+  root.className = "flex flex-col items-start cursor-pointer select-none";
+  // Push the marker up so the tail's tip sits on the geo coord instead of
+  // the marker's centre.
+  root.style.transform = "translateY(-50%)";
+  root.setAttribute("aria-label", pharmacy.title);
+
+  const pill = document.createElement("div");
+  pill.className =
+    "flex items-center gap-2.5 rounded-full bg-surface-container-lowest pl-1 pr-3.5 py-1 shadow-float ring-1 ring-black/5 transition hover:ring-2 hover:ring-primary";
+  pill.style.transition = "transform 150ms ease-out, box-shadow 150ms ease-out";
+  pill.addEventListener("mouseenter", () => {
+    pill.style.transform = "scale(1.05)";
+  });
+  pill.addEventListener("mouseleave", () => {
+    pill.style.transform = "";
+  });
+
+  const avatar = document.createElement("div");
+  avatar.className =
+    "flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-soft";
+  if (iconSrc) {
+    const img = document.createElement("img");
+    img.src = iconSrc;
+    img.alt = "";
+    img.loading = "lazy";
+    img.className = "h-full w-full object-cover";
+    avatar.appendChild(img);
+  } else {
+    // Inline pharmacy SVG fallback — matches Icon name="pharmacy".
+    avatar.innerHTML =
+      '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E8B60" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>';
+  }
+  pill.appendChild(avatar);
+
+  const name = document.createElement("span");
+  name.className = "max-w-[180px] truncate text-sm font-extrabold text-on-surface";
+  name.textContent = pharmacy.title;
+  pill.appendChild(name);
+
+  if (hasCost) {
+    const price = document.createElement("span");
+    price.className =
+      "flex-shrink-0 rounded-full bg-accent px-2.5 py-1 text-xs font-extrabold text-on-surface";
+    price.textContent = `${formatMoney(pharmacy.cost!)} TJS`;
+    pill.appendChild(price);
+  }
+
+  root.appendChild(pill);
+
+  const tail = document.createElement("span");
+  tail.setAttribute("aria-hidden", "true");
+  tail.className = "-mt-[2px]";
+  Object.assign(tail.style, {
+    marginLeft: "20px",
+    width: "0",
+    height: "0",
+    borderLeft: "8px solid transparent",
+    borderRight: "8px solid transparent",
+    borderTop: "10px solid #FFFFFF",
+    filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.1))",
+  } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+  root.appendChild(tail);
+
+  return root;
 }

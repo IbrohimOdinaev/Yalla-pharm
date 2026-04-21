@@ -1,27 +1,59 @@
 const slides = [
   {
     title: "Витамины для иммунитета",
-    subtitle: "Поддержите организм в сезон простуд",
-    gradient: "from-primary to-primary-container"
+    subtitle: "Скидки до −30%",
+    badge: "Health",
+    bg: "bg-primary",
+    textOn: "text-white",
   },
   {
-    title: "Антиаллергия",
-    subtitle: "Лучшие препараты для весеннего периода",
-    gradient: "from-secondary to-emerald-400"
-  }
+    title: "Весенняя антиаллергия",
+    subtitle: "Лучшие препараты сезона",
+    badge: "Сезон",
+    bg: "bg-tertiary",
+    textOn: "text-white",
+  },
+  {
+    title: "Доставка 30–45 минут",
+    subtitle: "По всему Душанбе",
+    badge: "Yalla+",
+    bg: "bg-accent",
+    textOn: "text-on-surface",
+  },
 ];
 
+// Yandex-style promo banner row — flat, rounded, big heading, compact CTA.
 export function HeroCarousel() {
   return (
-    <section className="flex snap-x snap-mandatory gap-2 xs:gap-3 sm:gap-4 overflow-x-auto pb-2">
+    <section className="flex snap-x snap-mandatory gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 pb-1 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       {slides.map((slide) => (
         <article
           key={slide.title}
-          className={`min-w-[92%] xs:min-w-[88%] snap-center rounded-xl xs:rounded-2xl bg-gradient-to-br ${slide.gradient} p-3 xs:p-4 sm:p-6 text-white shadow-glass`}
+          className={`relative min-w-[85%] snap-center overflow-hidden rounded-3xl p-5 sm:min-w-[58%] lg:min-w-[40%] ${slide.bg} ${slide.textOn}`}
         >
-          <p className="text-[8px] xs:text-[10px] font-bold uppercase tracking-[0.1em] xs:tracking-[0.15em] opacity-80">Health First</p>
-          <h2 className="mt-1.5 xs:mt-2 text-lg xs:text-xl sm:text-2xl font-extrabold leading-tight">{slide.title}</h2>
-          <p className="mt-1 xs:mt-1.5 text-[10px] xs:text-xs sm:text-sm opacity-90">{slide.subtitle}</p>
+          {/* Decorative blob */}
+          <span aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10" />
+          <span aria-hidden className="pointer-events-none absolute right-8 -bottom-8 h-24 w-24 rounded-full bg-white/15" />
+
+          <div className="relative flex h-full flex-col justify-between gap-4">
+            <span className="inline-flex w-fit items-center rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm">
+              {slide.badge}
+            </span>
+
+            <div>
+              <h2 className="font-display text-xl font-extrabold leading-tight sm:text-2xl lg:text-3xl">
+                {slide.title}
+              </h2>
+              <p className="mt-1.5 text-sm opacity-90 sm:text-base">{slide.subtitle}</p>
+            </div>
+
+            <button
+              type="button"
+              className={`inline-flex w-fit items-center gap-1.5 rounded-full bg-white/95 px-4 py-2 text-xs font-extrabold transition hover:bg-white ${slide.textOn === "text-white" ? "text-on-surface" : "text-on-surface"}`}
+            >
+              Подробнее →
+            </button>
+          </div>
         </article>
       ))}
     </section>

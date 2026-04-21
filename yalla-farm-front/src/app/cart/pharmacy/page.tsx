@@ -14,6 +14,7 @@ import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddre
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
+import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
@@ -204,49 +205,56 @@ export default function PharmacySelectPage() {
       <GlobalTopBar />
 
       {/* Sub-header: back + title + delivery/pickup tabs */}
-      <div className="flex items-center gap-3 px-4 sm:px-6 py-2.5 border-b border-surface-container-high bg-surface flex-shrink-0">
-        <button type="button" onClick={() => {
-          if (typeof window !== "undefined" && window.history.length > 1) {
-            goBack();
-            router.back();
-          } else {
-            router.push(goBack());
-          }
-        }} className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-low text-primary hover:bg-surface-container-high transition flex-shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-        </button>
+      <div className="flex items-center gap-3 px-4 sm:px-6 py-3 shadow-glass bg-surface flex-shrink-0">
+        <IconButton
+          icon="back"
+          variant="neutral"
+          size="md"
+          onClick={goBack}
+          aria-label="Назад"
+        />
 
         {/* Tabs */}
-        <div className="flex rounded-full bg-surface-container-low p-0.5">
+        <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-1">
           <button
             type="button"
             onClick={() => setIsPickup(false)}
-            className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${!isPickup ? "bg-primary text-white shadow-sm" : "text-on-surface-variant hover:text-on-surface"}`}
+            className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition ${
+              !isPickup
+                ? "bg-primary text-white shadow-card"
+                : "text-on-surface-variant"
+            }`}
           >
+            <Icon name="truck" size={14} />
             Доставка
           </button>
           <button
             type="button"
             onClick={() => setIsPickup(true)}
-            className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${isPickup ? "bg-primary text-white shadow-sm" : "text-on-surface-variant hover:text-on-surface"}`}
+            className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition ${
+              isPickup
+                ? "bg-primary text-white shadow-card"
+                : "text-on-surface-variant"
+            }`}
           >
+            <Icon name="store" size={14} />
             Самовывоз
           </button>
         </div>
 
-        <h1 className="text-sm sm:text-base font-bold text-on-surface ml-2">Выберите аптеку</h1>
+        <h1 className="ml-auto hidden text-sm font-bold text-on-surface sm:block">Выберите аптеку</h1>
       </div>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left panel — pharmacy list */}
-        <aside className="w-full md:w-[400px] lg:w-[440px] flex-shrink-0 overflow-y-auto border-r border-surface-container-high order-2 md:order-1">
+        <aside className="w-full md:w-[420px] lg:w-[460px] flex-shrink-0 overflow-y-auto bg-surface-container-low/50 order-2 md:order-1">
           {filteredOptions.length === 0 ? (
             <div className="p-6 text-center text-sm text-on-surface-variant">
               Нет доступных аптек для вашей корзины.
             </div>
           ) : (
-            <div className="divide-y divide-surface-container-high">
+            <div className="space-y-2 p-3">
               {filteredOptions.map((option) => {
                 const geo = pharmacyGeo[option.pharmacyId];
                 const isHighlighted = highlightedId === option.pharmacyId;
@@ -257,29 +265,23 @@ export default function PharmacySelectPage() {
                   <div
                     key={option.pharmacyId}
                     ref={(el) => { cardRefs.current[option.pharmacyId] = el; }}
-                    className={`p-4 transition-colors duration-500 ${isHighlighted ? "bg-primary/5 ring-2 ring-primary/30 ring-inset" : ""}`}
+                    className={`rounded-3xl bg-surface-container-lowest p-4 shadow-card transition ${
+                      isHighlighted ? "ring-2 ring-primary" : ""
+                    }`}
                   >
                     {/* Pharmacy header */}
                     <div className="flex items-start gap-3">
-                      {/* Icon — always try loading, fallback on error */}
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={geo?.iconUrl?.startsWith("http") ? geo.iconUrl : `/api/pharmacies/icon/${option.pharmacyId}/content`}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.removeAttribute("style"); }}
-                        />
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-primary" style={{ display: "none" }}>
-                          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                        </svg>
-                      </div>
+                      <PharmacyLogo
+                        pharmacyId={option.pharmacyId}
+                        iconUrl={geo?.iconUrl}
+                        size={44}
+                        className="flex-shrink-0"
+                      />
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-on-surface truncate">{option.pharmacyTitle ?? "Аптека"}</h3>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-bold text-on-surface">{option.pharmacyTitle ?? "Аптека"}</h3>
                         {geo?.address ? (
-                          <p className="text-xs text-on-surface-variant truncate">{geo.address}</p>
+                          <p className="truncate text-xs text-on-surface-variant">{geo.address}</p>
                         ) : null}
                       </div>
                     </div>
@@ -290,35 +292,34 @@ export default function PharmacySelectPage() {
                         .filter((i) => i.hasEnoughQuantity)
                         .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
                       return (
-                        <div className="mt-3 flex items-end justify-between">
+                        <div className="mt-3 flex items-end justify-between gap-2">
                           <div>
-                            <p className="text-lg font-extrabold text-on-surface">
-                              {formatMoney(availableTotal, "TJS")}
-                              <span className="text-xs font-medium text-on-surface-variant ml-1">+ доставка</span>
+                            <p className="font-display text-xl font-extrabold text-primary tabular-nums">
+                              {formatMoney(availableTotal)} TJS
                             </p>
                             <button
                               type="button"
                               onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
-                              className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-primary transition mt-0.5"
+                              className="mt-1 flex items-center gap-1 text-xs font-semibold transition hover:text-primary"
                             >
-                              <span className={allAvailable ? "text-emerald-600" : "text-amber-600"}>
-                                {allAvailable
-                                  ? "Все в наличии"
-                                  : `${option.enoughQuantityMedicinesCount ?? 0} из ${option.totalMedicinesCount ?? 0} в наличии`}
-                              </span>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition ${isExpanded ? "rotate-180" : ""}`}>
-                                <polyline points="6 9 12 15 18 9" />
-                              </svg>
+                              {allAvailable ? (
+                                <Chip tone="success" asButton={false} size="sm" leftIcon="check">Всё в наличии</Chip>
+                              ) : (
+                                <Chip tone="warning" asButton={false} size="sm">
+                                  {option.enoughQuantityMedicinesCount ?? 0} из {option.totalMedicinesCount ?? 0}
+                                </Chip>
+                              )}
+                              <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={14} className="text-on-surface-variant" />
                             </button>
                           </div>
 
-                          <button
-                            type="button"
+                          <Button
+                            size="md"
+                            rightIcon="arrow-right"
                             onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
-                            className="stitch-button px-5 py-2 text-sm"
                           >
                             Выбрать
-                          </button>
+                          </Button>
                         </div>
                       );
                     })()}

@@ -12,6 +12,7 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { Button, Chip, Icon, IconButton } from "@/shared/ui";
 
 export default function ProductDetailsPage() {
   const params = useParams<{ id: string }>();
@@ -27,6 +28,7 @@ export default function ProductDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [added, setAdded] = useState(false);
 
   useOfferLiveUpdates(useCallback((payload) => {
     if (medicine && payload.medicineId === medicine.id) {
@@ -55,18 +57,32 @@ export default function ProductDetailsPage() {
   const gallery = useMemo(() => getGalleryImages(medicine ?? undefined), [medicine]);
   const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
+  const offersCount = medicine?.offers?.length ?? 0;
+  const inStock = (medicine?.offers ?? []).some((o) => (o.stockQuantity ?? 0) > 0);
+
+  function onAddToCart() {
+    if (!medicine) return;
+    if (token) addItem(token, medicine.id, quantity).catch(() => undefined);
+    else addGuestItem(medicine.id, quantity);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2000);
+  }
 
   return (
-    <AppShell top={<TopBar title="Карточка товара" backHref="back" />}>
-      {isLoading ? <div className="stitch-card p-6 text-sm">Загружаем товар...</div> : null}
-      {error ? <div className="rounded-xl bg-red-100 p-4 text-sm text-red-700">{error}</div> : null}
+    <AppShell hideFooter top={<TopBar title="Товар" backHref="back" />}>
+      {isLoading ? (
+        <div className="rounded-3xl bg-surface-container-low p-8 text-sm">Загружаем товар...</div>
+      ) : null}
+      {error ? (
+        <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+      ) : null}
 
       {medicine ? (
-        <section className="space-y-3 xs:space-y-4 sm:space-y-5">
-          {/* Image gallery */}
-          <div className="space-y-2 xs:space-y-3">
+        <div className="mx-auto max-w-3xl space-y-4 pb-24">
+          {/* Gallery */}
+          <div className="space-y-3">
             <div
-              className="relative overflow-hidden rounded-2xl bg-surface-container-high shadow-card"
+              className="relative aspect-square overflow-hidden rounded-3xl bg-accent-mint shadow-card"
               onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
               onTouchEnd={(e) => {
                 const startX = (e.currentTarget as HTMLElement).dataset.touchX;
@@ -79,124 +95,230 @@ export default function ProductDetailsPage() {
             >
               {activeImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={activeImage} alt={getMedicineDisplayName(medicine)} className="h-[180px] xs:h-[220px] sm:h-[360px] w-full object-contain bg-white" />
+                <img
+                  src={activeImage}
+                  alt={getMedicineDisplayName(medicine)}
+                  className="h-full w-full object-contain p-6"
+                />
               ) : (
-                <div className="flex h-[180px] xs:h-[220px] sm:h-[360px] items-center justify-center text-on-surface-variant">Нет изображения</div>
+                <div className="flex h-full items-center justify-center text-primary/40">
+                  <Icon name="pharmacy" size={64} />
+                </div>
               )}
-              {/* Arrow buttons */}
+
               {gallery.length > 1 ? (
                 <>
-                  {activeImageIdx > 0 && (
-                    <button type="button" onClick={() => setActiveImageIdx((i) => i - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 transition">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    </button>
-                  )}
-                  {activeImageIdx < gallery.length - 1 && (
-                    <button type="button" onClick={() => setActiveImageIdx((i) => i + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 transition">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    </button>
-                  )}
-                  <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+                  {activeImageIdx > 0 ? (
+                    <IconButton
+                      icon="chevron-left"
+                      variant="floating"
+                      size="md"
+                      onClick={() => setActiveImageIdx((i) => i - 1)}
+                      aria-label="Предыдущее"
+                      className="!absolute left-3 top-1/2 -translate-y-1/2"
+                    />
+                  ) : null}
+                  {activeImageIdx < gallery.length - 1 ? (
+                    <IconButton
+                      icon="chevron-right"
+                      variant="floating"
+                      size="md"
+                      onClick={() => setActiveImageIdx((i) => i + 1)}
+                      aria-label="Следующее"
+                      className="!absolute right-3 top-1/2 -translate-y-1/2"
+                    />
+                  ) : null}
+                  <div className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-on-surface shadow-card">
+                    {activeImageIdx + 1} / {gallery.length}
+                  </div>
+                  <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
                     {gallery.map((_, i) => (
-                      <span key={i} className={`h-2 w-2 rounded-full transition ${i === activeImageIdx ? "bg-primary shadow" : "bg-white/50"}`} />
+                      <span
+                        key={i}
+                        className={`h-2 rounded-full transition ${
+                          i === activeImageIdx ? "w-6 bg-primary" : "w-2 bg-white/70"
+                        }`}
+                      />
                     ))}
                   </div>
                 </>
               ) : null}
             </div>
+
             {gallery.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 pb-1">
                 {gallery.map((url, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => setActiveImageIdx(idx)}
-                    className={`h-10 w-10 xs:h-12 xs:w-12 sm:h-16 sm:w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
-                      idx === activeImageIdx ? "border-primary shadow-sm" : "border-surface-container-high hover:border-on-surface-variant"
+                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-accent-mint transition ${
+                      idx === activeImageIdx
+                        ? "ring-2 ring-primary ring-offset-2 ring-offset-surface"
+                        : "opacity-70 hover:opacity-100"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" className="h-full w-full object-contain bg-white" />
+                    <img src={url} alt="" className="h-full w-full object-contain p-1.5" />
                   </button>
                 ))}
               </div>
             ) : null}
           </div>
 
-          <div className="stitch-card space-y-3 xs:space-y-4 p-3 xs:p-4 sm:p-5">
-            <div>
-              <h1 className="text-base xs:text-lg sm:text-xl font-extrabold text-primary">{getMedicineDisplayName(medicine)}</h1>
-              {medicine.articul ? <p className="mt-1 text-xs xs:text-sm font-mono text-on-surface-variant">{medicine.articul}</p> : null}
-              {medicine.categoryName ? <p className="mt-1 text-xs xs:text-sm text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{medicine.categoryName}</span></p> : null}
-              {medicine.description ? (
-                <div className="mt-2 text-xs xs:text-sm text-on-surface-variant prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: medicine.description }} />
+          {/* Info card */}
+          <section className="space-y-3 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {medicine.categoryName ? (
+                <Chip tone="primary" asButton={false} size="sm">{medicine.categoryName}</Chip>
+              ) : null}
+              {inStock ? (
+                <Chip tone="success" asButton={false} leftIcon="check" size="sm">В наличии</Chip>
+              ) : (
+                <Chip tone="danger" asButton={false} size="sm">Нет в наличии</Chip>
+              )}
+              {offersCount > 0 ? (
+                <Chip tone="tertiary" asButton={false} leftIcon="pharmacy" size="sm">
+                  в {offersCount} {offersCount === 1 ? "аптеке" : offersCount < 5 ? "аптеках" : "аптеках"}
+                </Chip>
               ) : null}
             </div>
 
-            {/* Attributes */}
-            {(medicine.atributes ?? []).length > 0 ? (
-              <div className="grid grid-cols-1 xs:grid-cols-2 gap-1.5 xs:gap-2 text-[10px] xs:text-xs sm:text-sm">
+            <div>
+              <h1 className="font-display text-2xl font-extrabold leading-tight text-on-surface">
+                {getMedicineDisplayName(medicine)}
+              </h1>
+              {medicine.articul ? (
+                <p className="mt-1 font-mono text-xs text-on-surface-variant">Артикул: {medicine.articul}</p>
+              ) : null}
+            </div>
+
+            <div className="flex items-baseline gap-2">
+              <span className="font-display text-3xl font-extrabold text-primary tabular-nums">
+                {cheapestPrice ? `${formatMoney(cheapestPrice)} TJS` : "—"}
+              </span>
+              {offersCount > 1 && cheapestPrice ? (
+                <span className="text-xs font-semibold text-on-surface-variant">от</span>
+              ) : null}
+            </div>
+
+            {medicine.description ? (
+              <div
+                className="prose prose-sm max-w-none text-sm leading-relaxed text-on-surface-variant"
+                dangerouslySetInnerHTML={{ __html: medicine.description }}
+              />
+            ) : null}
+          </section>
+
+          {/* Attributes */}
+          {(medicine.atributes ?? []).length > 0 ? (
+            <section className="space-y-2">
+              <h3 className="px-1 font-display text-base font-extrabold">Характеристики</h3>
+              <div className="grid grid-cols-2 gap-2">
                 {medicine.atributes!.map((attr, i) => (
-                  <div key={i} className="rounded-xl bg-surface-container-low p-2 xs:p-3">
-                    <p className="text-xs text-on-surface-variant">{attr.type || attr.name}</p>
-                    <p className="font-semibold">{attr.value || attr.option}</p>
+                  <div key={i} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                      {attr.type || attr.name}
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold text-on-surface">{attr.value || attr.option}</p>
                   </div>
                 ))}
               </div>
-            ) : null}
-
-            {/* Offers from pharmacies */}
-            {(medicine.offers ?? []).length > 0 ? (
-              <div className="space-y-2">
-                <h3 className="text-xs xs:text-sm font-bold text-on-surface-variant">Цены в аптеках</h3>
-                {medicine.offers!.map((offer) => (
-                  <div key={offer.pharmacyId} className="flex items-center justify-between rounded-xl bg-surface-container-low px-2 xs:px-3 py-1.5 xs:py-2.5 gap-2">
-                    <div>
-                      <p className="font-semibold text-xs xs:text-sm">{offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}</p>
-                      <p className="text-xs text-on-surface-variant">В наличии: {offer.stockQuantity} шт.</p>
-                    </div>
-                    <p className="font-bold text-primary">{formatMoney(offer.price)}</p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <p className="text-base xs:text-lg sm:text-2xl font-black text-primary">
-              {cheapestPrice ? formatMoney(cheapestPrice) : "Цена в аптеке"}
-              {(medicine.offers ?? []).length > 1 ? <span className="ml-2 text-xs font-normal text-on-surface-variant">от</span> : null}
-            </p>
-
-            <div className="flex items-center gap-1.5 xs:gap-2">
-              <button type="button" onClick={() => setQuantity(q => Math.max(1, q - 1))} className="stitch-button-secondary px-2 xs:px-2.5 py-1 xs:py-1.5 text-xs">−</button>
-              <span className="min-w-6 xs:min-w-8 text-center font-semibold text-xs xs:text-sm">{quantity}</span>
-              <button type="button" onClick={() => setQuantity(q => q + 1)} className="stitch-button-secondary px-2 xs:px-3 py-1.5 xs:py-2 text-xs xs:text-sm">+</button>
-            </div>
-
-            <button
-              type="button"
-              className="stitch-button w-full text-xs xs:text-sm sm:text-base"
-              onClick={() => {
-                if (token) {
-                  addItem(token, medicine.id, quantity).catch(() => undefined);
-                } else {
-                  addGuestItem(medicine.id, quantity);
-                }
-              }}
-            >
-              Добавить в корзину
-            </button>
-          </div>
-
-          {/* Admin/SuperAdmin tip */}
-          {(role === "Admin" || role === "SuperAdmin") ? (
-            <div className="rounded-2xl bg-surface-container-low p-3 xs:p-4 sm:p-5 space-y-2">
-              <p className="text-sm font-bold text-on-surface-variant">Режим {role === "Admin" ? "Администратора" : "Суперадмина"}</p>
-              <p className="text-xs text-on-surface-variant">Управление этим товаром доступно в вашем кабинете.</p>
-              <Link href={role === "Admin" ? "/workspace" : "/superadmin"} className="stitch-button-secondary inline-block text-xs">Открыть кабинет</Link>
-            </div>
+            </section>
           ) : null}
 
-        </section>
+          {/* Pharmacy offers */}
+          {(medicine.offers ?? []).length > 0 ? (
+            <section className="space-y-2">
+              <h3 className="px-1 font-display text-base font-extrabold">Купить в аптеке</h3>
+              <div className="space-y-2">
+                {medicine.offers!.map((offer) => (
+                  <div
+                    key={offer.pharmacyId}
+                    className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card"
+                  >
+                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent-mint text-primary">
+                      <Icon name="pharmacy" size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-on-surface">
+                        {offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}
+                      </p>
+                      <p className="text-xs text-on-surface-variant">
+                        В наличии: {offer.stockQuantity} шт.
+                      </p>
+                    </div>
+                    <span className="flex-shrink-0 font-display text-lg font-extrabold tabular-nums text-primary">
+                      {formatMoney(offer.price)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {/* Admin hint */}
+          {(role === "Admin" || role === "SuperAdmin") ? (
+            <div className="rounded-3xl bg-surface-container-low p-4">
+              <p className="text-sm font-bold text-on-surface-variant">
+                Режим {role === "Admin" ? "администратора" : "супер-админа"}
+              </p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Управление этим товаром доступно в вашем кабинете.
+              </p>
+              <Link
+                href={role === "Admin" ? "/workspace" : "/superadmin"}
+                className="mt-3 inline-block"
+              >
+                <Button variant="secondary" size="sm" rightIcon="arrow-right">
+                  Открыть кабинет
+                </Button>
+              </Link>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Sticky bottom add-to-cart */}
+      {medicine && role !== "Admin" && role !== "SuperAdmin" ? (
+        <div className="fixed bottom-16 left-0 right-0 z-30 px-3 sm:bottom-4">
+          <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-full bg-surface-container-lowest p-1.5 shadow-glass">
+            <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+              <button
+                type="button"
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95"
+                aria-label="Уменьшить"
+              >
+                <Icon name="minus" size={16} />
+              </button>
+              <span className="min-w-[1.5rem] text-center text-sm font-extrabold tabular-nums">
+                {quantity}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuantity((q) => q + 1)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+                aria-label="Увеличить"
+              >
+                <Icon name="plus" size={16} />
+              </button>
+            </div>
+            <Button
+              size="lg"
+              className="flex-1"
+              leftIcon={added ? "check" : "bag"}
+              onClick={onAddToCart}
+              disabled={!inStock}
+            >
+              {added
+                ? "Добавлено"
+                : cheapestPrice
+                  ? `В корзину · ${formatMoney(cheapestPrice * quantity)} TJS`
+                  : "В корзину"}
+            </Button>
+          </div>
+        </div>
       ) : null}
     </AppShell>
   );

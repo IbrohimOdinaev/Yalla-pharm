@@ -20,6 +20,8 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { env } from "@/shared/config/env";
+import { Button, Chip, EmptyState, Icon } from "@/shared/ui";
+import { OrderStatusBadge } from "@/widgets/order/OrderStatusBadge";
 
 const STATUS_LABELS: Record<string, string> = {
   New: "Новый",
@@ -32,19 +34,6 @@ const STATUS_LABELS: Record<string, string> = {
   PickedUp: "Забран",
   Returned: "Возврат",
   Cancelled: "Отменён"
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  New: "bg-yellow-100 text-yellow-800",
-  UnderReview: "bg-blue-100 text-blue-800",
-  Preparing: "bg-blue-100 text-blue-800",
-  Ready: "bg-emerald-100 text-emerald-800",
-  OnTheWay: "bg-purple-100 text-purple-800",
-  DriverArrived: "bg-purple-200 text-purple-900",
-  Delivered: "bg-emerald-100 text-emerald-800",
-  PickedUp: "bg-emerald-100 text-emerald-800",
-  Returned: "bg-gray-100 text-gray-600",
-  Cancelled: "bg-red-100 text-red-700"
 };
 
 const CANCELLABLE = new Set(["UnderReview", "Preparing", "Ready"]);
@@ -216,18 +205,16 @@ export default function OrdersPage() {
   if (!token) {
     return (
       <AppShell top={<TopBar title="Заказы" backHref="back" />}>
-        <div className="stitch-card p-5 xs:p-6 sm:p-8 text-center space-y-3 xs:space-y-4">
-          <div className="mx-auto w-12 h-12 xs:w-14 xs:h-14 sm:w-16 sm:h-16 rounded-full bg-primary/10 flex items-center justify-center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
-            </svg>
-          </div>
-          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Требуется авторизация</h2>
-          <p className="text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Войдите по SMS, чтобы увидеть ваши заказы</p>
-          <div className="flex justify-center gap-2 xs:gap-3">
-            <Link href="/login" className="stitch-button text-[10px] xs:text-xs sm:text-sm">Войти по SMS</Link>
-          </div>
-        </div>
+        <EmptyState
+          icon="user"
+          title="Требуется авторизация"
+          description="Войдите по SMS, чтобы увидеть ваши заказы"
+          action={
+            <Link href="/login">
+              <Button size="md" rightIcon="arrow-right">Войти по SMS</Button>
+            </Link>
+          }
+        />
       </AppShell>
     );
   }
@@ -251,45 +238,48 @@ export default function OrdersPage() {
 
         {/* Tabs */}
         {!isLoading && sortedOrders.length > 0 ? (
-          <div className="flex gap-1.5 xs:gap-2 rounded-xl bg-surface-container-low p-1 xs:p-1.5">
+          <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-1">
             <button
               type="button"
-              className={`flex-1 rounded-lg px-2 xs:px-3 py-1.5 xs:py-2 text-[10px] xs:text-xs sm:text-sm font-bold transition ${
+              className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition ${
                 activeTab === "active"
-                  ? "bg-primary/10 text-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container"
+                  ? "bg-primary text-white shadow-card"
+                  : "text-on-surface-variant hover:bg-surface-container-high"
               }`}
               onClick={() => setActiveTab("active")}
             >
-              Активные{activeOrders.length > 0 ? ` (${activeOrders.length})` : ""}
+              Активные{activeOrders.length > 0 ? ` · ${activeOrders.length}` : ""}
             </button>
             <button
               type="button"
-              className={`flex-1 rounded-lg px-2 xs:px-3 py-1.5 xs:py-2 text-[10px] xs:text-xs sm:text-sm font-bold transition ${
+              className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition ${
                 activeTab === "history"
-                  ? "bg-surface-container-high text-on-surface shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container"
+                  ? "bg-primary text-white shadow-card"
+                  : "text-on-surface-variant hover:bg-surface-container-high"
               }`}
               onClick={() => setActiveTab("history")}
             >
-              История{historyOrders.length > 0 ? ` (${historyOrders.length})` : ""}
+              История{historyOrders.length > 0 ? ` · ${historyOrders.length}` : ""}
             </button>
           </div>
         ) : null}
 
         {!isLoading && sortedOrders.length === 0 ? (
-          <div className="stitch-card flex flex-col items-center gap-2 xs:gap-3 p-6 xs:p-8 sm:p-10 text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 xs:h-12 xs:w-12 text-on-surface-variant opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-3-3v6m-7.5 3.75h15A2.25 2.25 0 0021.75 16.5V7.5a2.25 2.25 0 00-2.25-2.25h-15A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-            <p className="text-[10px] xs:text-xs sm:text-sm font-medium text-on-surface-variant">У вас ещё нет заказов</p>
-            <Link href="/" className="text-[10px] xs:text-xs sm:text-sm font-bold text-primary">Перейти в каталог</Link>
-          </div>
+          <EmptyState
+            icon="orders"
+            title="У вас ещё нет заказов"
+            description="Оформите первый заказ в каталоге"
+            action={
+              <Link href="/">
+                <Button size="md" rightIcon="arrow-right">Перейти в каталог</Button>
+              </Link>
+            }
+          />
         ) : null}
 
         {/* Empty tab state */}
         {!isLoading && sortedOrders.length > 0 && displayedOrders.length === 0 ? (
-          <div className="stitch-card p-5 xs:p-6 text-center text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">
+          <div className="rounded-3xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">
             {activeTab === "active" ? "Нет активных заказов" : "История заказов пуста"}
           </div>
         ) : null}
@@ -299,11 +289,10 @@ export default function OrdersPage() {
           const isExpanded = expandedId === order.orderId;
           const detail = orderDetails[order.orderId];
           const awaiting = isAwaitingPayment(detail ?? order);
-          const statusColor = awaiting ? "bg-yellow-100 text-yellow-800" : (STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-600");
           // Client sees Returned orders tagged with their original completion mode: "Доставлен · Возврат" / "Забран · Возврат"
           const baseStatusLabel = STATUS_LABELS[order.status] ?? order.status;
           const statusLabel = awaiting
-            ? "Ожидает подтверждения"
+            ? "Ожидает оплаты"
             : order.status === "Returned"
               ? `${order.isPickup ? "Забран" : "Доставлен"} · Возврат`
               : baseStatusLabel;
@@ -316,49 +305,57 @@ export default function OrdersPage() {
           const pharmacy = pharmacyMap[d.pharmacyId ?? ""];
 
           return (
-            <article key={order.orderId} className="stitch-card overflow-hidden">
+            <article key={order.orderId} className="overflow-hidden rounded-3xl bg-surface-container-lowest shadow-card">
               <button
                 type="button"
-                className="flex w-full items-center justify-between p-2.5 xs:p-3 sm:p-4 text-left"
+                className="flex w-full items-start justify-between gap-3 p-4 text-left"
                 onClick={() => onToggleExpand(order.orderId)}
               >
-                <div className="space-y-0.5 xs:space-y-1">
-                  <p className="font-mono text-[10px] text-on-surface-variant">#{order.orderId.slice(0, 8)}</p>
-                  <div className="flex items-center gap-1 xs:gap-1.5">
-                    <p className="text-xs xs:text-sm sm:text-lg font-extrabold text-primary">{originalPaid > 0 ? formatMoney(originalPaid, d.currency) : "—"}</p>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant/70">#{order.orderId.slice(0, 8)}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-display text-xl font-extrabold text-primary">{originalPaid > 0 ? `${formatMoney(originalPaid)} ${d.currency ?? "TJS"}` : "—"}</p>
                     {refundAmount > 0 ? (
-                      <span className="rounded-full bg-red-100 px-1.5 xs:px-2 py-0.5 text-[10px] font-bold text-red-700">
-                        возврат {formatMoney(refundAmount, d.currency)}
-                      </span>
+                      <Chip tone="danger" asButton={false} size="sm">
+                        возврат {formatMoney(refundAmount)}
+                      </Chip>
                     ) : null}
                   </div>
-                  {pharmacy ? <p className="text-[10px] xs:text-xs sm:text-sm font-medium">{pharmacy.title}</p> : null}
+                  {pharmacy ? <p className="text-xs font-semibold text-on-surface-variant">{pharmacy.title}</p> : null}
                   {order.createdAtUtc ? (
-                    <p className="text-[10px] xs:text-xs text-on-surface-variant">
+                    <p className="text-[11px] text-on-surface-variant/70">
                       {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
                     </p>
                   ) : null}
                 </div>
-                <div className="flex items-center gap-1 xs:gap-1.5 flex-shrink-0">
-                  <span className={`rounded-full px-1.5 xs:px-2 py-0.5 text-[8px] xs:text-[10px] sm:text-xs font-bold ${statusColor}`}>{statusLabel}</span>
-                  <span className="text-on-surface-variant text-[10px] xs:text-xs sm:text-sm">{isExpanded ? "▲" : "▼"}</span>
+                <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
+                  {awaiting ? (
+                    <Chip tone="warning" asButton={false} leftIcon="clock" size="sm">{statusLabel}</Chip>
+                  ) : (
+                    <OrderStatusBadge status={order.status} />
+                  )}
+                  <Icon
+                    name={isExpanded ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    className="text-on-surface-variant"
+                  />
                 </div>
               </button>
 
               {/* Payment button + warning for awaiting orders */}
               {awaiting ? (
-                <div className="flex items-center gap-2 px-2.5 xs:px-3 sm:px-4 pb-2 xs:pb-2.5">
+                <div className="flex items-center gap-2 px-4 pb-3">
                   {d.paymentUrl ? (
                     <a
                       href={d.paymentUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="stitch-button text-center text-[10px] xs:text-xs px-3 xs:px-4 py-1.5 flex-shrink-0"
+                      className="flex-shrink-0"
                     >
-                      Оплатить
+                      <Button size="sm" rightIcon="arrow-right">Оплатить</Button>
                     </a>
                   ) : null}
-                  <p className="text-[9px] xs:text-[10px] text-amber-600 leading-tight">
+                  <p className="text-[10px] font-semibold leading-tight text-warning">
                     Оплатите в течение 24ч, иначе заказ будет отменён
                   </p>
                 </div>
@@ -443,10 +440,12 @@ export default function OrdersPage() {
 
                     {/* Receipt code — show when courier is active */}
                     {shouldShowReceiptCode(d) ? (
-                      <div className="rounded-xl bg-emerald-50 border-2 border-emerald-300 p-3 xs:p-4 text-center">
-                        <p className="text-[10px] xs:text-xs uppercase tracking-wider text-emerald-700 font-semibold">Код для курьера</p>
-                        <p className="mt-1 text-2xl xs:text-3xl font-extrabold tracking-widest text-emerald-900">{d.recipientCode}</p>
-                        <p className="mt-1 text-[10px] text-emerald-700">Назовите курьеру при получении</p>
+                      <div className="rounded-3xl bg-gradient-to-br from-primary to-primary-container p-5 text-center text-white shadow-glass">
+                        <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Код для курьера</p>
+                        <p className="mt-2 font-display text-4xl font-extrabold tracking-[0.4em] tabular-nums">
+                          {d.recipientCode}
+                        </p>
+                        <p className="mt-2 text-[11px] opacity-90">Назовите курьеру при получении</p>
                       </div>
                     ) : null}
 
@@ -508,29 +507,33 @@ export default function OrdersPage() {
                       </div>
                     ) : null}
 
-                    {/* Cancel button */}
-                    {CANCELLABLE.has(order.status) ? (
-                      <button
-                        type="button"
-                        className="w-full rounded-xl bg-red-100 px-3 xs:px-4 py-2 xs:py-3 text-[10px] xs:text-xs sm:text-sm font-bold text-red-700"
-                        onClick={() => onCancel(order.orderId)}
-                        disabled={cancellingId === order.orderId}
-                      >
-                        {cancellingId === order.orderId ? "Отменяем..." : "Отменить заказ"}
-                      </button>
-                    ) : null}
-
-                    {/* Repeat order — for completed/cancelled/returned orders */}
-                    {["Delivered", "PickedUp", "Cancelled", "Returned"].includes(order.status) && order.pharmacyId ? (
-                      <button
-                        type="button"
-                        className="w-full rounded-xl border border-primary/30 bg-primary/5 px-3 xs:px-4 py-2 xs:py-3 text-[10px] xs:text-xs sm:text-sm font-bold text-primary hover:bg-primary/10 transition"
-                        onClick={() => onRepeat(order)}
-                        disabled={repeatingId === order.orderId}
-                      >
-                        {repeatingId === order.orderId ? "Повторяем..." : "Повторить заказ"}
-                      </button>
-                    ) : null}
+                    {/* Actions */}
+                    <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                      {CANCELLABLE.has(order.status) ? (
+                        <Button
+                          variant="danger"
+                          size="md"
+                          fullWidth
+                          leftIcon="close"
+                          onClick={() => onCancel(order.orderId)}
+                          loading={cancellingId === order.orderId}
+                        >
+                          Отменить заказ
+                        </Button>
+                      ) : null}
+                      {["Delivered", "PickedUp", "Cancelled", "Returned"].includes(order.status) && order.pharmacyId ? (
+                        <Button
+                          variant="outline"
+                          size="md"
+                          fullWidth
+                          leftIcon="clock"
+                          onClick={() => onRepeat(order)}
+                          loading={repeatingId === order.orderId}
+                        >
+                          Повторить заказ
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })() : null}

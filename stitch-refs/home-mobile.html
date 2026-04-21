@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Yalla Farm — Онлайн-аптека в Душанбе</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#0EA47A",
+                        "primary-container": "#16C08E",
+                        secondary: "#FF6B6B",
+                        tertiary: "#2AB3CC",
+                        surface: "#F7FBF9",
+                        "surface-container-lowest": "#FFFFFF",
+                        "on-surface": "#0F1E1A",
+                        "on-surface-variant": "#556662",
+                        "mint-bg": "#E8F7EF"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "1rem",
+                        "xl": "1.5rem",
+                        "2xl": "20px",
+                        "3xl": "24px",
+                        "full": "9999px"
+                    },
+                    fontFamily: {
+                        headline: ["Manrope", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                        label: ["Inter", "sans-serif"]
+                    },
+                    boxShadow: {
+                        'card': '0 8px 24px rgba(14, 164, 122, 0.08)',
+                        'glass': '0 10px 30px rgba(14, 30, 26, 0.06)'
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #F7FBF9;
+            color: #0F1E1A;
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="pb-32">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-4 h-16 sticky top-0 z-50 bg-white dark:bg-emerald-950 shadow-[0_8px_24px_rgba(14,164,122,0.08)]">
+<div class="flex items-center gap-2">
+<div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold text-xl">Y</div>
+</div>
+<div class="flex items-center gap-2 flex-1 justify-center px-4">
+<div class="bg-mint-bg px-3 py-1.5 rounded-full flex items-center gap-1.5 max-w-[180px]">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="location_on">location_on</span>
+<span class="text-[12px] font-semibold truncate">Рудаки, 45</span>
+</div>
+</div>
+<div class="flex items-center">
+<div class="bg-white border border-emerald-50 shadow-sm p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="medical_services">medical_services</span>
+</div>
+</div>
+</header>
+<main class="mt-4 px-4 space-y-6">
+<!-- Search Button -->
+<button class="w-full h-14 bg-primary rounded-full flex items-center px-6 gap-3 shadow-card active:scale-95 transition-all">
+<span class="material-symbols-outlined text-white" data-icon="search">search</span>
+<span class="text-white font-semibold font-body">Найти лекарства</span>
+</button>
+<!-- Info Banner -->
+<div class="bg-mint-bg rounded-2xl p-4 flex items-center gap-4 border border-primary/10">
+<div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-primary" data-icon="bolt">bolt</span>
+</div>
+<div>
+<p class="text-on-surface font-semibold text-sm">Быстрая доставка по Душанбе</p>
+<p class="text-primary font-bold text-lg">30-45 минут</p>
+</div>
+</div>
+<!-- Pharmacy Carousel -->
+<section>
+<div class="flex items-center justify-between mb-3">
+<h2 class="font-headline font-bold text-lg">Аптеки рядом</h2>
+<span class="text-primary text-sm font-semibold">Все</span>
+</div>
+<div class="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4">
+<div class="flex-shrink-0 w-40 bg-white p-3 rounded-2xl shadow-card">
+<img class="w-full h-24 object-cover rounded-xl mb-2" data-alt="modern pharmacy interior with clean white shelves and green plants in professional medical setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCWczpEBO26yLeK23CajaCD45cP4Aa3Tq2M7CI3im4FzfDlc_P0PYzVHKXk1JUiaW26u1NuZc3ZrqmxskP3dpRn5C92gcvIRxRnpx392RFcT0RUfEwkE6ZEL-rEps07eQQ_H45-DeyMTcWbuvsuwKospY_n160dvsuix0CsXs3Va5F-TwmACQpnBuq7zZbRlN_zuFjQUqmd6dDeU3QDvB-jvJqVavKrTbEMt6jc1L0BfDUBsHVhFSkwkq0Ks4j1VtEpdGSJep-84A"/>
+<p class="font-bold text-sm truncate">Аптека №1</p>
+<p class="text-xs text-on-surface-variant">24/7 • 1.2 км</p>
+</div>
+<div class="flex-shrink-0 w-40 bg-white p-3 rounded-2xl shadow-card">
+<img class="w-full h-24 object-cover rounded-xl mb-2" data-alt="health store logo sign on a bright glass storefront with warm interior lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoRSsVJluBGe3-QQJRhjQoB0aCzuTaDf9YHrAw-GQngY6ETt3Djgut3jZBW4KAXI4aE5OyucYydSJZAZlOlCr2zQaU4rmEgV2S3ihIYfj9vT7zpwPbXDEuPzOhtakR4fQZzRhzDLpMAZXnJ2myyzlQWY4781DEY7MwNQf6qQfQLfZavz6tjxy8CH3iqDLfYb6WrQ7XMg9TopSZSF1mEqTIvJcK4NOCNU6HxMrDyPAgiVwA9mzAQ1AsUrqCZdF6jORrO9yMNbHAdQ"/>
+<p class="font-bold text-sm truncate">Sifat Pharma</p>
+<p class="text-xs text-on-surface-variant">До 22:00 • 0.8 км</p>
+</div>
+<div class="flex-shrink-0 w-40 bg-white p-3 rounded-2xl shadow-card">
+<img class="w-full h-24 object-cover rounded-xl mb-2" data-alt="clean minimal pharmacy counter with medical supplies and organized layout" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqbHpp_3r7vTIlXoNrWtQq8nb6Plb5w6fA8bX3Xh6IsvpMI9C1fHuGMacusM2ND2bMeFSvG6omw8KF0TaDof3PjnD-5t1HFX_J0Yp2eFCSdoWBOH3zadWWils2MHDiRR0xyEuQkGHcKecVFHJf1_a27BWNRpDVIwD1xHX5eedQYdEA92EK8__avLIPV-QX2m3fqChpx8UmXdkBu3bfSNmqDAtdUSGgKzpj7rz-tyCE4Q3wcaZF-ttGipQKuRLqoxHMB33jDKr8tg"/>
+<p class="font-bold text-sm truncate">Гарант</p>
+<p class="text-xs text-on-surface-variant">24/7 • 2.5 км</p>
+</div>
+</div>
+</section>
+<!-- Quick Categories -->
+<section>
+<div class="grid grid-cols-4 gap-3">
+<!-- Pain & Fever -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-primary text-2xl" data-icon="pill">pill</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Боль и жар</span>
+</div>
+<!-- Allergy -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-secondary text-2xl" data-icon="medical_mask">medical_mask</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Аллергия</span>
+</div>
+<!-- Respiratory -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-tertiary text-2xl" data-icon="lungs">pulmonology</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Дыхание</span>
+</div>
+<!-- Antibiotics -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-purple-500 text-2xl" data-icon="medication">medication</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Антибиотики</span>
+</div>
+<!-- Vitamins -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-yellow-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-yellow-600 text-2xl" data-icon="dna">genetics</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Витамины</span>
+</div>
+<!-- Heart -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-rose-500 text-2xl" data-icon="favorite">favorite</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Сердце</span>
+</div>
+<!-- GI -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-orange-500 text-2xl" data-icon="stomach">gastroenterology</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">ЖКТ</span>
+</div>
+<!-- All -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-slate-500 text-2xl" data-icon="grid_view">grid_view</span>
+</div>
+<span class="text-[11px] font-semibold text-center leading-tight">Все</span>
+</div>
+</div>
+</section>
+<!-- Trending Products -->
+<section>
+<h2 class="font-headline font-bold text-xl mb-4">Трендовые товары</h2>
+<div class="grid grid-cols-2 gap-4">
+<!-- Product Card 1 -->
+<div class="bg-white rounded-2xl p-3 shadow-card flex flex-col">
+<div class="bg-mint-bg rounded-xl aspect-square flex items-center justify-center mb-3 relative">
+<img class="w-3/4 h-3/4 object-contain" data-alt="professional medical packaging for health supplement boxes on clean mint background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-ZPSlfJcyPPEPA0zbzqwqQjjMnDNGETcimUEJduaxGZr9MR23IbSfMZhTfZJ8wzukKw9e3Prm5ylYA857_X_i-7mEA0K7GVfc8nxYztvelx35R0J4ixMKidV9HNVTo1vKG_3_mbehFwo9GW_tEQLqIUa6-ImD446mMo-DKhEKvDv0XciWzHcS_jc3Q8sJrY14zUQAP-DkfwSviey5DmoA_O_xClkesiFAkyJMgqJTMCE6bFMLcZZGzPCR9ZrizVSN-4V-iMBQYg"/>
+<button class="absolute bottom-2 right-2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</button>
+</div>
+<p class="font-headline font-bold text-sm line-clamp-2 leading-tight mb-2">Витамин C 1000мг, 30 капсул</p>
+<div class="mt-auto">
+<p class="text-primary font-extrabold text-lg">45 TJS</p>
+</div>
+</div>
+<!-- Product Card 2 -->
+<div class="bg-white rounded-2xl p-3 shadow-card flex flex-col">
+<div class="bg-mint-bg rounded-xl aspect-square flex items-center justify-center mb-3 relative">
+<img class="w-3/4 h-3/4 object-contain" data-alt="white medical bottle of medicine tablets on light clinical background with soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCVZl0sp1FZJlN0SCHL3NJzDCRJMjGUTFei8Xkf-fY2VwUdo1Ij7V5Ukp-lkXZHessWTucY4HgZjTycXlupedkCirZ7xdLZ17sjeCp36lbqV5NXkzgP1HBFbRTgW4-yFVbkRfejvWSCvzP4nU7RT_c0aMrdBjlOm2WyjXcQqZrOgY1J3mcFrz9NTPLZznxytES_imGQgA4gHPK8GUgMkAHwiseRlbYLTOq9vywyXQ31HgyqUKil6P1Ym_5WJrcffxE7JvC5S9c0KQ"/>
+<button class="absolute bottom-2 right-2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</button>
+</div>
+<p class="font-headline font-bold text-sm line-clamp-2 leading-tight mb-2">Парацетамол Экстра, 20 таб.</p>
+<div class="mt-auto">
+<p class="text-primary font-extrabold text-lg">12 TJS</p>
+</div>
+</div>
+<!-- Product Card 3 -->
+<div class="bg-white rounded-2xl p-3 shadow-card flex flex-col">
+<div class="bg-mint-bg rounded-xl aspect-square flex items-center justify-center mb-3 relative">
+<img class="w-3/4 h-3/4 object-contain" data-alt="amber medical spray bottle for allergy relief on a soft teal background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZ0a0vOjK7jo_cNm0IGikDozJlEWJIUhwoHidTyFmwgRsfmRg3a7rXPsXxSODiXI3052CWlxKtyXIyTVrO4sMTYxcWSZpJpdJ_1vCGZX0R8TEFctm-pENY3qxry7q4lcJAcdAKR3P3wrY0kP0q4Soz83evq13RifQmTZB_F2BLQWtpolczfKbhwszTUgjiBfs8ocHrjv5JR2WyubCE1EV2KkKIfCgoFPLGWxFDE-2wW-eTEc_XLJ_j6t8Gq1CZfV-ZcBpMnh_TBg"/>
+<button class="absolute bottom-2 right-2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</button>
+</div>
+<p class="font-headline font-bold text-sm line-clamp-2 leading-tight mb-2">Назальный спрей АкваМарис</p>
+<div class="mt-auto">
+<p class="text-primary font-extrabold text-lg">68 TJS</p>
+</div>
+</div>
+<!-- Product Card 4 -->
+<div class="bg-white rounded-2xl p-3 shadow-card flex flex-col">
+<div class="bg-mint-bg rounded-xl aspect-square flex items-center justify-center mb-3 relative">
+<img class="w-3/4 h-3/4 object-contain" data-alt="medical cream tube for dermatological treatment on clean green surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1J6-pU11AcmeHoguQZis-u3P_yZ8Qs_5mxE4qhyqq2k9YsIYtegx27X0ckONfftrtf3Wtd-sylWHlT6LGhljq163xUz6SvK2nCw3mYLcYyhRHlcFsJmbdVyES9PwR3yiz-lBTrQ_xQSdZ8bKe58FQuQd6O7pTcaSq1jpbZVAaksOxj5yZZ3ciE3gva2vGsBxiz7uHRqEKTrzzYIqcYde7xXf9TrWKxTVCGBko7fSidCDsebGqx8WauGhJ9Epz_DadmDqddbjlsQ"/>
+<button class="absolute bottom-2 right-2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</button>
+</div>
+<p class="font-headline font-bold text-sm line-clamp-2 leading-tight mb-2">Декспантенол мазь 5%, 30г</p>
+<div class="mt-auto">
+<p class="text-primary font-extrabold text-lg">35 TJS</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pt-2 pb-6 bg-white/80 dark:bg-emerald-950/90 backdrop-blur-md rounded-t-3xl border-t border-emerald-50 dark:border-emerald-900 shadow-[0_-10px_30px_rgba(14,30,26,0.06)]">
+<div class="flex flex-col items-center justify-center bg-primary text-white rounded-2xl px-5 py-1.5 scale-110 duration-300 ease-out">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-inter text-[11px] font-semibold">Главная</span>
+</div>
+<div class="flex flex-col items-center justify-center text-emerald-900/40 dark:text-emerald-200/40 hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="grid_view">grid_view</span>
+<span class="font-inter text-[11px] font-semibold">Каталог</span>
+</div>
+<div class="flex flex-col items-center justify-center text-emerald-900/40 dark:text-emerald-200/40 hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="shopping_basket">shopping_basket</span>
+<span class="font-inter text-[11px] font-semibold">Корзина</span>
+</div>
+<div class="flex flex-col items-center justify-center text-emerald-900/40 dark:text-emerald-200/40 hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-inter text-[11px] font-semibold">Профиль</span>
+</div>
+</nav>
+</body></html>

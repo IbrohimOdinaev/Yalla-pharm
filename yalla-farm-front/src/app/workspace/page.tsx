@@ -30,10 +30,10 @@ const STATUS_LABELS: Record<string, string> = {
   Cancelled: "Отменён", Returned: "Возврат"
 };
 const STATUS_COLORS: Record<string, string> = {
-  New: "bg-blue-500", UnderReview: "bg-yellow-500", Preparing: "bg-orange-500",
-  Ready: "bg-emerald-500", OnTheWay: "bg-purple-500", DriverArrived: "bg-purple-600",
-  Delivered: "bg-green-500",
-  PickedUp: "bg-green-500", Cancelled: "bg-red-500", Returned: "bg-gray-500"
+  New: "bg-tertiary", UnderReview: "bg-warning-container", Preparing: "bg-secondary-container",
+  Ready: "bg-primary", OnTheWay: "bg-tertiary", DriverArrived: "bg-tertiary",
+  Delivered: "bg-primary",
+  PickedUp: "bg-primary", Cancelled: "bg-secondary", Returned: "bg-on-surface-variant"
 };
 
 export default function WorkspacePage() {
@@ -90,7 +90,7 @@ export default function WorkspacePage() {
     <AppShell top={<TopBar title="Workspace" showLogout />} hideGlobalNav>
       <div className="space-y-4">
         {/* Feature 14: Admin hero */}
-        <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-6 text-white space-y-3">
+        <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-container p-6 text-white space-y-3">
           <p className="text-xs font-bold uppercase tracking-wider opacity-80">Admin Dashboard</p>
           <h1 className="text-2xl font-extrabold">
             Кабинет аптеки{pharmacyName ? `: ${pharmacyName}` : ""}

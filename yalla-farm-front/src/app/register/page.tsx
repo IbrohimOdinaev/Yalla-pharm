@@ -5,27 +5,30 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { Button, Icon } from "@/shared/ui";
 
 export default function RegisterRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/login");
+    const id = setTimeout(() => router.replace("/login"), 1500);
+    return () => clearTimeout(id);
   }, [router]);
 
   return (
-    <AppShell top={<TopBar title="Регистрация" backHref="back" />}>
-      <div className="mx-auto max-w-md px-3 xs:px-4">
-        <div className="stitch-card p-4 xs:p-5 sm:p-6 space-y-3 text-center">
-          <h2 className="text-base xs:text-lg sm:text-xl font-bold">Регистрация теперь по SMS</h2>
-          <p className="text-xs xs:text-sm text-on-surface-variant">
-            Отдельная регистрация больше не требуется. Введите номер телефона на странице входа,
-            и аккаунт будет создан автоматически после подтверждения SMS-кода.
-          </p>
-          <Link href="/login" className="stitch-button inline-block min-h-[44px] px-6 leading-[44px]">
-            Перейти ко входу
-          </Link>
-        </div>
+    <AppShell hideFooter top={<TopBar title="Регистрация" backHref="back" />}>
+      <div className="mx-auto flex max-w-md flex-col items-center gap-4 pt-6 text-center">
+        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-accent-mint text-primary">
+          <Icon name="sms" size={36} />
+        </span>
+        <h2 className="font-display text-2xl font-extrabold">Регистрация теперь по SMS</h2>
+        <p className="max-w-xs text-sm text-on-surface-variant">
+          Отдельная регистрация не требуется. Введите номер телефона на странице входа —
+          аккаунт создастся автоматически после SMS-кода.
+        </p>
+        <Link href="/login">
+          <Button size="md" rightIcon="arrow-right">Перейти ко входу</Button>
+        </Link>
       </div>
     </AppShell>
   );

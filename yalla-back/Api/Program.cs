@@ -159,6 +159,24 @@ builder.Services
           ValidateLifetime = true,
           ClockSkew = TimeSpan.Zero
       };
+
+      // Browsers cannot set custom headers on WebSocket upgrade requests, so
+      // SignalR passes the JWT through the `access_token` query parameter.
+      // Without this hook the middleware only reads from the `Authorization`
+      // header and every WebSocket handshake returns 401.
+      options.Events = new JwtBearerEvents
+      {
+          OnMessageReceived = context =>
+          {
+              var accessToken = context.Request.Query["access_token"];
+              var path = context.HttpContext.Request.Path;
+              if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+              {
+                  context.Token = accessToken;
+              }
+              return Task.CompletedTask;
+          }
+      };
   });
 
 builder.Services.AddApplication();

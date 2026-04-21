@@ -18,12 +18,13 @@ import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { Button, Icon, Input, Chip } from "@/shared/ui";
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<AppShell top={<TopBar title="Вход" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
+    <Suspense fallback={<AppShell hideFooter top={<TopBar title="Вход" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
       <LoginContent />
     </Suspense>
   );
@@ -46,7 +47,6 @@ function LoginContent() {
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
-  // Countdown to next available resend
   useEffect(() => {
     if (!session) { setResendSecondsLeft(0); return; }
     const update = () => {
@@ -83,8 +83,8 @@ function LoginContent() {
       const resp = await requestClientOtp(phoneNumber);
       setSession(resp);
       setInfo(resp.isNewClient
-        ? "На ваш номер отправлен код подтверждения. Это первый вход — после кода нужно будет указать имя."
-        : "На ваш номер отправлен код подтверждения.");
+        ? "Код отправлен. Это первый вход — после кода нужно будет указать имя."
+        : "Код отправлен на ваш номер.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить код.");
     } finally {
@@ -142,13 +142,11 @@ function LoginContent() {
     setInfo(null);
   }
 
-  // ───────── Telegram bot deeplink auth ─────────
   const [tgSession, setTgSession] = useState<StartTelegramAuthResponse | null>(null);
   const [tgWaiting, setTgWaiting] = useState(false);
   const tgConnectionRef = useRef<{ stop: () => Promise<void> } | null>(null);
   const tgCompletedRef = useRef(false);
 
-  // Cleanup hub connection on unmount
   useEffect(() => {
     return () => {
       tgConnectionRef.current?.stop().catch(() => undefined);
@@ -185,9 +183,6 @@ function LoginContent() {
       setTgSession(session);
       setTgWaiting(true);
 
-      // Trigger the tg:// protocol handler to open the Telegram app.
-      // We use an anchor click instead of window.open so the browser doesn't
-      // open a blank tab if the protocol handler fails.
       const a = document.createElement("a");
       a.href = session.deepLink;
       a.rel = "noopener noreferrer";
@@ -195,7 +190,6 @@ function LoginContent() {
       a.click();
       document.body.removeChild(a);
 
-      // Subscribe to real-time confirmation event
       const conn = await connectTelegramAuthHub(session.nonce, {
         onConfirmed: () => onTelegramConfirmed(session.nonce),
         onCancelled: () => {
@@ -213,78 +207,100 @@ function LoginContent() {
   }
 
   return (
-    <AppShell top={<TopBar title="Вход" backHref="back" />}>
-      <div className="mx-auto max-w-md px-3 xs:px-4">
-        {!session ? (
-          <form className="stitch-card space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onRequestOtp}>
-            <h2 className="text-lg xs:text-xl sm:text-2xl font-bold">Вход в Yalla Farm</h2>
-            <p className="text-xs xs:text-sm text-on-surface-variant">
-              Введите номер телефона, и мы отправим вам код подтверждения по SMS.
+    <AppShell hideFooter top={<TopBar title="Вход" backHref="back" />}>
+      <div className="mx-auto max-w-md">
+        {/* Hero illustration */}
+        <div className="mb-6 flex flex-col items-center gap-4 pt-2">
+          <div className="relative flex h-28 w-28 items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-primary/10" />
+            <span className="absolute -right-2 -top-2 h-6 w-6 rounded-full bg-accent-coral" />
+            <span className="absolute -left-3 bottom-0 h-4 w-4 rounded-full bg-accent-sky" />
+            <span className="absolute right-1 bottom-2 h-3 w-3 rounded-full bg-accent-sun" />
+            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-glass">
+              <Icon name="pharmacy" size={40} />
+            </span>
+          </div>
+          <div className="text-center">
+            <h1 className="font-display text-2xl font-extrabold text-on-surface">
+              {session ? "Подтверждение" : "Добро пожаловать"}
+            </h1>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              {session
+                ? <>Код отправлен на <span className="font-bold text-on-surface">+992 {phoneNumber}</span></>
+                : "Введите номер телефона, чтобы войти или создать аккаунт"}
             </p>
+          </div>
+        </div>
 
-            <label className="block space-y-1">
-              <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Телефон</span>
-              <div className="flex items-center stitch-input p-0 overflow-hidden">
-                <span className="pl-3 pr-1 text-on-surface-variant font-medium select-none flex-shrink-0">+992</span>
+        {!session ? (
+          <form className="space-y-5 rounded-3xl bg-surface-container-lowest p-5 shadow-card" onSubmit={onRequestOtp}>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">
+                Номер телефона
+              </span>
+              <div className="flex items-center gap-2 rounded-2xl bg-surface-container-low px-3.5 focus-within:ring-2 focus-within:ring-primary/30">
+                <span className="text-base">🇹🇯</span>
+                <span className="font-semibold text-on-surface-variant">+992</span>
                 <input
-                  className="flex-1 bg-transparent border-none outline-none py-2 pr-3 text-on-surface"
+                  className="min-w-0 flex-1 bg-transparent py-3.5 text-lg font-semibold tracking-wider text-on-surface placeholder:text-on-surface-variant/50 outline-none tabular-nums"
                   type="tel"
                   inputMode="numeric"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  placeholder="900123456"
+                  placeholder="93 •••• •• ••"
                   required
                 />
               </div>
+              <span className="mt-1.5 block text-[11px] text-on-surface-variant/80">
+                Мы отправим SMS с кодом подтверждения
+              </span>
             </label>
 
-            {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
+            {error ? (
+              <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+            ) : null}
 
-            <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSubmitting}>
-              {isSubmitting ? "Отправляем..." : "Получить код"}
-            </button>
+            <Button type="submit" size="lg" fullWidth rightIcon="arrow-right" loading={isSubmitting}>
+              Получить код
+            </Button>
 
             <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-outline-variant" />
-              <span className="text-xs text-on-surface-variant">или</span>
-              <div className="flex-1 h-px bg-outline-variant" />
+              <span className="h-px flex-1 bg-surface-container-high" />
+              <span className="text-xs font-semibold text-on-surface-variant">или</span>
+              <span className="h-px flex-1 bg-surface-container-high" />
             </div>
 
-            <button
+            <Button
               type="button"
+              variant="telegram"
+              size="lg"
+              fullWidth
+              leftIcon="telegram"
               onClick={onTelegramLoginClick}
               disabled={isSubmitting}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1c8cc4] disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px]"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.871 4.326-2.96-.924c-.643-.204-.66-.643.136-.953l11.566-4.458c.534-.197 1.002.13.834.938z"/>
-              </svg>
               Войти через Telegram
-            </button>
+            </Button>
 
-            <p className="text-[10px] xs:text-xs text-center text-on-surface-variant pt-2">
-              <Link href="/login/admin" className="font-semibold text-on-surface-variant hover:text-primary transition">
-                Вход для администратора
-              </Link>
+            <div className="flex flex-wrap gap-1.5 justify-center pt-1">
+              <Chip tone="primary" leftIcon="bolt" asButton={false}>Быстрая регистрация</Chip>
+              <Chip tone="tertiary" leftIcon="eye" asButton={false}>Безопасно</Chip>
+              <Chip tone="warning" leftIcon="gift" asButton={false}>Бонус 50 TJS</Chip>
+            </div>
+
+            <p className="pt-2 text-center text-[11px] text-on-surface-variant/80">
+              Продолжая, вы принимаете условия сервиса
             </p>
           </form>
         ) : (
-          <form className="stitch-card space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onVerifyOtp}>
-            <h2 className="text-lg xs:text-xl sm:text-2xl font-bold">Подтверждение</h2>
-            <p className="text-xs xs:text-sm text-on-surface-variant">
-              Код отправлен на <span className="font-bold text-on-surface">+992 {phoneNumber}</span>.{" "}
-              <button type="button" className="font-bold text-primary hover:underline" onClick={onChangeNumber}>
-                Изменить
-              </button>
-            </p>
-
-            <label className="block space-y-1">
-              <span className="text-xs xs:text-sm font-medium text-on-surface-variant">
-                Код из SMS ({session.codeLength} цифр)
+          <form className="space-y-5 rounded-3xl bg-surface-container-lowest p-5 shadow-card" onSubmit={onVerifyOtp}>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold text-on-surface-variant">
+                Код из SMS · {session.codeLength} цифр
               </span>
               <input
                 ref={codeInputRef}
-                className="stitch-input text-center text-2xl tracking-[0.4em] font-mono"
+                className="w-full rounded-2xl bg-surface-container-low py-4 text-center font-mono text-3xl tracking-[0.5em] font-bold text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -296,78 +312,94 @@ function LoginContent() {
             </label>
 
             {session.isNewClient ? (
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Ваше имя</span>
-                <input
-                  className="stitch-input"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Как к вам обращаться"
-                  maxLength={64}
-                  required
-                />
-              </label>
+              <Input
+                label="Ваше имя"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Как к вам обращаться"
+                maxLength={64}
+                required
+              />
             ) : null}
 
-            {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
-            {info ? <div className="rounded-xl bg-emerald-100 p-3 text-sm text-emerald-700">{info}</div> : null}
+            {error ? (
+              <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+            ) : null}
+            {info ? (
+              <div className="rounded-2xl bg-accent-mint p-3 text-sm font-semibold text-primary">{info}</div>
+            ) : null}
 
-            <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSubmitting}>
-              {isSubmitting ? "Проверяем..." : "Войти"}
-            </button>
+            <Button type="submit" size="lg" fullWidth loading={isSubmitting}>
+              Войти
+            </Button>
 
-            <button
-              type="button"
-              className="stitch-button-secondary w-full text-sm"
-              onClick={onResend}
-              disabled={isSubmitting || resendSecondsLeft > 0}
-            >
-              {resendSecondsLeft > 0
-                ? `Отправить код повторно через ${resendSecondsLeft} сек.`
-                : "Отправить код повторно"}
-            </button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                fullWidth
+                onClick={onChangeNumber}
+              >
+                Изменить номер
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={onResend}
+                disabled={isSubmitting || resendSecondsLeft > 0}
+              >
+                {resendSecondsLeft > 0 ? `Повторно · ${resendSecondsLeft} с` : "Отправить повторно"}
+              </Button>
+            </div>
           </form>
         )}
+
+        <p className="mt-6 text-center text-xs text-on-surface-variant">
+          Сотрудник аптеки?{" "}
+          <Link href="/login/admin" className="font-bold text-primary hover:underline">
+            Вход для администратора →
+          </Link>
+        </p>
       </div>
 
       {tgWaiting && tgSession ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-3">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeTgModal} />
           <div
-            className="relative w-full max-w-sm rounded-2xl bg-surface-container-lowest p-5 sm:p-6 shadow-2xl space-y-4"
+            className="relative w-full max-w-sm rounded-3xl bg-surface-container-lowest p-6 shadow-glass space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-center w-14 h-14 mx-auto rounded-full bg-[#229ED9]/10 text-[#229ED9]">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.871 4.326-2.96-.924c-.643-.204-.66-.643.136-.953l11.566-4.458c.534-.197 1.002.13.834.938z"/>
-              </svg>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-telegram-soft text-telegram">
+              <Icon name="telegram" size={32} />
             </div>
             <div className="text-center space-y-1.5">
-              <h3 className="text-base sm:text-lg font-bold">Подтвердите вход в Telegram</h3>
-              <p className="text-xs sm:text-sm text-on-surface-variant">
-                Откройте бот <span className="font-mono font-bold text-on-surface">@{tgSession.botUsername}</span>{" "}
-                и нажмите «Подтвердить». После этого вы автоматически вернётесь в свой аккаунт.
+              <h3 className="font-display text-lg font-extrabold">Подтвердите вход в Telegram</h3>
+              <p className="text-sm text-on-surface-variant">
+                Откройте бот{" "}
+                <span className="font-mono font-bold text-on-surface">@{tgSession.botUsername}</span>{" "}
+                и нажмите «Подтвердить».
               </p>
             </div>
 
-            <a
-              href={tgSession.deepLink}
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1c8cc4]"
+            <Button
+              variant="telegram"
+              size="lg"
+              fullWidth
+              leftIcon="telegram"
+              onClick={() => { window.location.href = tgSession.deepLink; }}
             >
               Открыть Telegram
-            </a>
+            </Button>
 
-            <button
-              type="button"
-              onClick={closeTgModal}
-              className="stitch-button-secondary w-full text-sm"
-            >
+            <Button variant="secondary" size="md" fullWidth onClick={closeTgModal}>
               Отмена
-            </button>
+            </Button>
 
-            <p className="text-[10px] text-center text-on-surface-variant">
+            <p className="text-center text-[11px] text-on-surface-variant/80">
               Сессия истекает через {tgSession.ttlSeconds} сек.
             </p>
           </div>

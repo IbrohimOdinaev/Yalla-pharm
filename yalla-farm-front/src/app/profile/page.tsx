@@ -12,6 +12,8 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { LinkPhoneModal } from "@/widgets/profile/LinkPhoneModal";
 import { LinkTelegramModal } from "@/widgets/profile/LinkTelegramModal";
+import { Button, Chip, EmptyState, Icon, Input } from "@/shared/ui";
+import type { IconName } from "@/shared/ui";
 
 export default function ProfilePage() {
   const token = useAppSelector((state) => state.auth.token);
@@ -22,22 +24,18 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  /* profile edit — phone/telegram are read-only; they change only via OTP/bot link flows */
   const [editName, setEditName] = useState("");
   const [editGender, setEditGender] = useState<string>("");
   const [editDob, setEditDob] = useState("");
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  /* delete */
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  /* linking modals */
   const [showLinkPhone, setShowLinkPhone] = useState(false);
   const [showLinkTelegram, setShowLinkTelegram] = useState(false);
 
-  /* cart */
   const { basket, loadBasket } = useCartStore();
 
   useEffect(() => {
@@ -56,28 +54,8 @@ export default function ProfilePage() {
         setIsLoading(false);
       });
 
-    // Load cart
     loadBasket(token);
   }, [token, loadBasket]);
-
-  if (!token) {
-    return (
-      <AppShell top={<TopBar title="Профиль" backHref="back" />}>
-        <div className="stitch-card p-4 xs:p-6 sm:p-8 text-center space-y-2 xs:space-y-3 sm:space-y-4">
-          <div className="mx-auto w-14 h-14 xs:w-16 xs:h-16 rounded-full bg-primary/10 flex items-center justify-center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
-            </svg>
-          </div>
-          <h2 className="text-base xs:text-lg font-bold">Требуется авторизация</h2>
-          <p className="text-xs xs:text-sm text-on-surface-variant">Войдите по SMS, чтобы получить доступ к профилю</p>
-          <div className="flex justify-center gap-2 xs:gap-3">
-            <Link href="/login" className="stitch-button text-sm">Войти по SMS</Link>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
 
   async function onSaveProfile(e: FormEvent) {
     e.preventDefault();
@@ -118,171 +96,234 @@ export default function ProfilePage() {
     router.push("/login");
   }
 
-  return (
-    <AppShell top={<TopBar title="Профиль" backHref="back" />}>
-      <div className="mx-auto max-w-md px-0 xs:px-2 sm:px-4 space-y-2 xs:space-y-3 sm:space-y-5">
-        {isLoading ? <div className="stitch-card p-3 xs:p-4 sm:p-6 text-xs xs:text-sm">Загрузка...</div> : null}
-        {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
+  if (!token) {
+    return (
+      <AppShell top={<TopBar title="Профиль" backHref="back" />}>
+        <EmptyState
+          icon="user"
+          title="Требуется авторизация"
+          description="Войдите по SMS, чтобы получить доступ к профилю"
+          action={
+            <Link href="/login">
+              <Button size="md" rightIcon="arrow-right">Войти по SMS</Button>
+            </Link>
+          }
+        />
+      </AppShell>
+    );
+  }
 
-        {/* Personalized hero */}
+  const phoneLinked = !!profile?.phoneNumber && !profile.phoneNumber.startsWith("tg_");
+  const telegramLinked = !!profile?.telegramUsername || (profile?.telegramId != null && profile?.telegramId !== 0);
+  const initials = (profile?.name || "?")
+    .split(" ")
+    .slice(0, 2)
+    .map((s) => s[0] ?? "")
+    .join("")
+    .toUpperCase();
+
+  return (
+    <AppShell narrow top={<TopBar title="Профиль" backHref="back" />}>
+      <div className="mx-auto max-w-md space-y-4">
+        {isLoading ? (
+          <div className="rounded-3xl bg-surface-container-low p-6 text-sm">Загрузка...</div>
+        ) : null}
+        {error ? (
+          <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+        ) : null}
+
+        {/* Hero card */}
         {profile ? (
-          <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-3 xs:p-4 sm:p-6 text-white">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Мой профиль</p>
-                <h1 className="mt-1 text-base xs:text-lg sm:text-2xl font-extrabold truncate">Здравствуйте, {profile.name || "Клиент"}</h1>
-                {profile.phoneNumber && !profile.phoneNumber.startsWith("tg_") ? (
-                  <p className="mt-1.5 text-xs xs:text-sm opacity-80 font-mono">+992{profile.phoneNumber}</p>
-                ) : profile.telegramUsername ? (
-                  <p className="mt-1.5 text-xs xs:text-sm opacity-80">@{profile.telegramUsername}</p>
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-container p-5 text-white shadow-card">
+            <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
+            <span aria-hidden className="pointer-events-none absolute right-4 bottom-0 h-16 w-16 rounded-full bg-white/10" />
+            <div className="relative flex items-start gap-4">
+              <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/20 font-display text-2xl font-extrabold backdrop-blur">
+                {initials}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Мой профиль</p>
+                <h1 className="mt-1 truncate font-display text-2xl font-extrabold">{profile.name || "Клиент"}</h1>
+                {phoneLinked ? (
+                  <p className="mt-1 font-mono text-sm opacity-90">+992{profile.phoneNumber}</p>
+                ) : telegramLinked ? (
+                  <p className="mt-1 text-sm opacity-90">@{profile.telegramUsername}</p>
                 ) : null}
               </div>
             </div>
-          </div>
+          </section>
         ) : null}
 
+        {/* Quick actions */}
         {profile ? (
-          <>
-            {/* Linking — phone and telegram */}
-            {(() => {
-              const phoneLinked = !!profile.phoneNumber && !profile.phoneNumber.startsWith("tg_");
-              const telegramLinked = !!profile.telegramUsername || (profile.telegramId != null && profile.telegramId !== 0);
-              if (phoneLinked && telegramLinked) return null;
-              return (
-                <div className="stitch-card space-y-3 p-3 xs:p-4 sm:p-5">
-                  <h2 className="text-base xs:text-lg font-bold">Привязка аккаунта</h2>
-                  <p className="text-xs text-on-surface-variant">Привяжите оба способа входа — номер телефона и Telegram — чтобы входить любым из них в один и тот же аккаунт.</p>
+          <section className="grid grid-cols-4 gap-2">
+            <QuickAction href="/orders" icon="orders" label="Заказы" tint="bg-accent-mint" accent="text-primary" />
+            <QuickAction href="/cart" icon="cart" label="Корзина" tint="bg-accent-coral" accent="text-secondary" badge={(basket.positions ?? []).length || undefined} />
+            <QuickAction href="/pharmacies/map" icon="pharmacy" label="Аптеки" tint="bg-accent-sky" accent="text-tertiary" />
+            <QuickAction href="/" icon="bag" label="Каталог" tint="bg-accent-sun" accent="text-accent-sun-ink" />
+          </section>
+        ) : null}
 
-                  {!phoneLinked ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-container-high bg-surface-container-lowest p-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">Номер телефона</p>
-                          <p className="text-xs text-on-surface-variant">Ещё не привязан</p>
-                        </div>
-                      </div>
-                      <button type="button" className="stitch-button px-3 py-2 text-xs flex-shrink-0" onClick={() => setShowLinkPhone(true)}>Привязать</button>
-                    </div>
-                  ) : null}
+        {/* Linking section */}
+        {profile && (!phoneLinked || !telegramLinked) ? (
+          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
+            <div>
+              <h2 className="font-display text-base font-extrabold">Привязка аккаунта</h2>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Привяжите оба способа входа, чтобы всегда иметь доступ.
+              </p>
+            </div>
 
-                  {!telegramLinked ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-container-high bg-surface-container-lowest p-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-[#229ED9]/10 flex items-center justify-center flex-shrink-0">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-[#229ED9]"><path d="M21.943 4.116a1.5 1.5 0 0 0-1.567-.196L2.91 11.123a1.5 1.5 0 0 0 .128 2.787l4.378 1.477 1.69 5.39a1 1 0 0 0 1.69.39l2.42-2.42 4.55 3.34a1.5 1.5 0 0 0 2.367-.94l3-15a1.5 1.5 0 0 0-1.19-1.83zM10 16l-.66 3.13L8 14.5l9-7-7 8.5z"/></svg>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">Telegram</p>
-                          <p className="text-xs text-on-surface-variant">Ещё не привязан</p>
-                        </div>
-                      </div>
-                      <button type="button" className="stitch-button px-3 py-2 text-xs flex-shrink-0" onClick={() => setShowLinkTelegram(true)}>Привязать</button>
-                    </div>
-                  ) : null}
+            {!phoneLinked ? (
+              <LinkRow
+                icon="phone"
+                iconTint="bg-primary/10 text-primary"
+                title="Номер телефона"
+                subtitle="Ещё не привязан"
+                onClick={() => setShowLinkPhone(true)}
+              />
+            ) : null}
+
+            {!telegramLinked ? (
+              <LinkRow
+                icon="telegram"
+                iconTint="bg-telegram-soft text-telegram"
+                title="Telegram"
+                subtitle="Ещё не привязан"
+                onClick={() => setShowLinkTelegram(true)}
+              />
+            ) : null}
+          </section>
+        ) : null}
+
+        {/* Linked contacts */}
+        {profile && (phoneLinked || telegramLinked) ? (
+          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
+            <h2 className="font-display text-base font-extrabold">Привязанные контакты</h2>
+            {phoneLinked ? (
+              <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Icon name="phone" size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold">Номер телефона</p>
+                  <p className="font-mono text-xs text-on-surface-variant">+992{profile.phoneNumber}</p>
                 </div>
-              );
-            })()}
-
-            {/* Profile info */}
-            <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSaveProfile}>
-              <h2 className="text-base xs:text-lg font-bold">Личные данные</h2>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Имя</span>
-                <input className="stitch-input" placeholder="Ваше имя" value={editName} onChange={(e) => setEditName(e.target.value)} />
-              </label>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Пол</span>
-                <select className="stitch-input" value={editGender} onChange={(e) => setEditGender(e.target.value)}>
-                  <option value="">Не указан</option>
-                  <option value="1">Мужской</option>
-                  <option value="2">Женский</option>
-                </select>
-              </label>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Дата рождения</span>
-                <input className="stitch-input" type="date" value={editDob} onChange={(e) => setEditDob(e.target.value)} />
-              </label>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Телефон</span>
-                <input
-                  className="stitch-input bg-surface-container-low cursor-not-allowed font-mono"
-                  type="tel"
-                  value={profile.phoneNumber && !profile.phoneNumber.startsWith("tg_") ? `+992${profile.phoneNumber}` : ""}
-                  readOnly
-                  placeholder="Не привязан"
-                />
-              </label>
-
-              <label className="block space-y-1">
-                <span className="text-xs xs:text-sm font-medium text-on-surface-variant">Telegram</span>
-                <input
-                  className="stitch-input bg-surface-container-low cursor-not-allowed"
-                  type="text"
-                  value={profile.telegramUsername ? `@${profile.telegramUsername}` : ""}
-                  readOnly
-                  placeholder="Не привязан"
-                />
-              </label>
-
-              {profileMsg ? (
-                <div className={`rounded-xl p-3 text-sm ${profileMsg.includes("обновлён") ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                  {profileMsg}
+                <Chip tone="primary" asButton={false} leftIcon="check">Активен</Chip>
+              </div>
+            ) : null}
+            {telegramLinked ? (
+              <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-telegram-soft text-telegram">
+                  <Icon name="telegram" size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold">Telegram</p>
+                  <p className="text-xs text-on-surface-variant">@{profile.telegramUsername}</p>
                 </div>
-              ) : null}
+                <Chip tone="tertiary" asButton={false} leftIcon="check">Подключён</Chip>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
-              <button type="submit" className="stitch-button w-full min-h-[44px]" disabled={isSavingProfile}>
-                {isSavingProfile ? "Сохраняем..." : "Сохранить"}
-              </button>
-            </form>
+        {/* Personal data form */}
+        {profile ? (
+          <form className="space-y-4 rounded-3xl bg-surface-container-lowest p-5 shadow-card" onSubmit={onSaveProfile}>
+            <h2 className="font-display text-base font-extrabold">Личные данные</h2>
 
-            {/* Mini cart preview */}
-            {(basket.positions ?? []).length > 0 ? (
-              <div className="stitch-card p-3 xs:p-4 sm:p-5 space-y-2 xs:space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base xs:text-lg font-bold">Корзина</h2>
-                  <Link href="/cart" className="text-sm font-bold text-primary">Открыть</Link>
-                </div>
-                <p className="text-xs xs:text-sm text-on-surface-variant">{basket.positions!.length} товаров в корзине</p>
+            <Input
+              label="Имя"
+              placeholder="Ваше имя"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">Пол</span>
+              <select
+                className="w-full rounded-2xl bg-surface-container-low px-3.5 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                value={editGender}
+                onChange={(e) => setEditGender(e.target.value)}
+              >
+                <option value="">Не указан</option>
+                <option value="1">Мужской</option>
+                <option value="2">Женский</option>
+              </select>
+            </label>
+
+            <Input
+              label="Дата рождения"
+              type="date"
+              value={editDob}
+              onChange={(e) => setEditDob(e.target.value)}
+            />
+
+            {profileMsg ? (
+              <div
+                className={`rounded-2xl p-3 text-sm font-semibold ${
+                  profileMsg.includes("обновлён")
+                    ? "bg-accent-mint text-primary"
+                    : "bg-secondary/10 text-secondary"
+                }`}
+              >
+                {profileMsg}
               </div>
             ) : null}
 
-            {/* Logout */}
-            <button type="button" className="stitch-button-secondary w-full min-h-[44px]" onClick={onLogout}>
-              Выйти из аккаунта
-            </button>
-
-            {/* Delete account */}
-            <div className="stitch-card space-y-2 xs:space-y-3 p-3 xs:p-4 sm:p-6">
-              <h2 className="text-base xs:text-lg font-bold text-red-700">Удаление аккаунта</h2>
-              <p className="text-xs xs:text-sm text-on-surface-variant">История заказов сохранится, но доступ к профилю будет потерян.</p>
-
-              {!showDeleteConfirm ? (
-                <button type="button" className="rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700" onClick={() => setShowDeleteConfirm(true)}>
-                  Удалить аккаунт
-                </button>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-sm font-bold text-red-700">Вы уверены? Это действие необратимо.</p>
-                  <div className="flex gap-2">
-                    <button type="button" className="rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white" onClick={onDeleteAccount} disabled={isDeleting}>
-                      {isDeleting ? "Удаляем..." : "Да, удалить"}
-                    </button>
-                    <button type="button" className="stitch-button-secondary" onClick={() => setShowDeleteConfirm(false)}>
-                      Отмена
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
+            <Button type="submit" size="md" fullWidth loading={isSavingProfile}>
+              Сохранить
+            </Button>
+          </form>
         ) : null}
+
+        {/* Danger zone */}
+        {profile ? (
+          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
+            <Button variant="secondary" size="md" fullWidth leftIcon="logout" onClick={onLogout}>
+              Выйти из аккаунта
+            </Button>
+
+            {!showDeleteConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full py-2 text-center text-xs font-semibold text-on-surface-variant/70 transition hover:text-secondary"
+              >
+                Удалить аккаунт
+              </button>
+            ) : (
+              <div className="space-y-2 rounded-2xl bg-secondary/10 p-3">
+                <p className="text-sm font-bold text-secondary">
+                  Уверены? Это действие необратимо.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    fullWidth
+                    onClick={onDeleteAccount}
+                    loading={isDeleting}
+                  >
+                    Да, удалить
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    onClick={() => setShowDeleteConfirm(false)}
+                  >
+                    Отмена
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        <p className="pb-4 text-center text-[11px] text-on-surface-variant/60">
+          © Yalla Farm · Душанбе
+        </p>
       </div>
 
       {token ? (
@@ -312,5 +353,69 @@ export default function ProfilePage() {
         </>
       ) : null}
     </AppShell>
+  );
+}
+
+function QuickAction({
+  href,
+  icon,
+  label,
+  tint,
+  accent,
+  badge,
+}: {
+  href: string;
+  icon: IconName;
+  label: string;
+  tint: string;
+  accent: string;
+  badge?: number;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex flex-col items-center gap-2 rounded-3xl bg-surface-container-lowest p-3 shadow-card transition hover:-translate-y-0.5 active:scale-95"
+    >
+      <span className={`relative flex h-12 w-12 items-center justify-center rounded-full ${tint} ${accent}`}>
+        <Icon name={icon} size={22} />
+        {badge ? (
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-extrabold text-white">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-center text-[11px] font-bold leading-tight text-on-surface">{label}</span>
+    </Link>
+  );
+}
+
+function LinkRow({
+  icon,
+  iconTint,
+  title,
+  subtitle,
+  onClick,
+}: {
+  icon: IconName;
+  iconTint: string;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-2xl bg-surface-container-low p-3 text-left transition hover:bg-surface-container-high"
+    >
+      <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${iconTint}`}>
+        <Icon name={icon} size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold">{title}</p>
+        <p className="text-xs text-on-surface-variant">{subtitle}</p>
+      </div>
+      <Icon name="chevron-right" size={18} className="text-on-surface-variant" />
+    </button>
   );
 }

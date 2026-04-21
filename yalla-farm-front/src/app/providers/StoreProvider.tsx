@@ -5,6 +5,7 @@ import { Provider, useDispatch, useSelector } from "react-redux";
 import { store, type RootState } from "@/app/store";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { getStoredToken, setStoredToken } from "@/shared/lib/auth-storage";
+import { stopSignalRConnection } from "@/shared/lib/signalr";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useCartStore } from "@/features/cart/model/cartStore";
 
@@ -48,6 +49,11 @@ function AuthPersistenceBridge() {
     // Load server cart whenever token is available
     if (token) {
       loadServerCart(token).catch(() => undefined);
+    }
+    // Tear down SignalR on logout so no stale connection keeps retrying with
+    // the old (now-invalid) access token and flooding the console with 401s.
+    if (!token && prevTokenRef.current) {
+      stopSignalRConnection().catch(() => undefined);
     }
     prevTokenRef.current = token;
   }, [token, guestMerge, loadServerCart]);

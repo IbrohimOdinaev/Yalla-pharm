@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
+import { PharmacyLogo } from "@/shared/ui";
 
 type Props = {
   open: boolean;
@@ -104,7 +105,7 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
                     <div className="h-24 w-full overflow-hidden bg-surface-container">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={pharmacy.bannerUrl.startsWith("http") ? pharmacy.bannerUrl : `/api/pharmacies/icon/${pharmacy.id}/content`}
+                        src={pharmacy.bannerUrl.startsWith("http") ? pharmacy.bannerUrl : `/api/pharmacies/banner/${pharmacy.id}/content`}
                         alt=""
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -114,21 +115,12 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
 
                   {/* Info row */}
                   <div className={`flex items-center gap-3 p-3 ${isSelected ? "bg-primary/5" : ""}`}>
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={pharmacy.iconUrl?.startsWith("http") ? pharmacy.iconUrl : `/api/pharmacies/icon/${pharmacy.id}/content`}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                          (e.target as HTMLImageElement).nextElementSibling?.removeAttribute("style");
-                        }}
-                      />
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-primary" style={{ display: "none" }}>
-                        <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                      </svg>
-                    </div>
+                    <PharmacyLogo
+                      pharmacyId={pharmacy.id}
+                      iconUrl={pharmacy.iconUrl}
+                      size={40}
+                      className="flex-shrink-0"
+                    />
                     <div className="text-left flex-1 min-w-0">
                       <p className="text-sm font-bold truncate">{pharmacy.title}</p>
                       <p className="text-xs text-on-surface-variant truncate">{pharmacy.address}</p>

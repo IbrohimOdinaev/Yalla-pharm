@@ -13,12 +13,12 @@ import { useBasketLive } from "@/features/cart/model/useBasketLive";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { Button, IconButton, Icon, EmptyState } from "@/shared/ui";
 
 export default function CartPage() {
   const token = useAppSelector((state) => state.auth.token);
   const router = useRouter();
   const { basket, loadBasket, removeItem, setQuantity, isLoading, error } = useCartStore((state) => state);
-  const addItem = useCartStore((state) => state.addItem);
 
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
   const [recommendations, setRecommendations] = useState<ApiMedicine[]>([]);
@@ -30,14 +30,12 @@ export default function CartPage() {
   const loadGuestCart = useGuestCartStore((s) => s.load);
   const removeGuestItem = useGuestCartStore((s) => s.removeItem);
   const setGuestQuantity = useGuestCartStore((s) => s.setQuantity);
-  const addGuestItem = useGuestCartStore((s) => s.addItem);
 
   useEffect(() => {
     if (!token) { loadGuestCart(); return; }
     loadBasket(token).catch(() => undefined);
   }, [token, loadBasket, loadGuestCart]);
 
-  // Load medicine details
   useEffect(() => {
     const serverIds = (basket.positions ?? []).map((item) => item.medicineId);
     const guestIds = isGuest ? guestItems.map((item) => item.medicineId) : [];
@@ -52,7 +50,6 @@ export default function CartPage() {
       .catch(() => undefined);
   }, [basket.positions, guestItems, isGuest]);
 
-  // Unified cart items — sorted by medicine name
   const cartItems = useMemo(() => {
     const items = isGuest
       ? guestItems.map((item) => ({ id: item.medicineId, medicineId: item.medicineId, quantity: item.quantity }))
@@ -64,7 +61,6 @@ export default function CartPage() {
     });
   }, [isGuest, guestItems, basket.positions, medicineMap]);
 
-  // Min total price across all pharmacies
   const cartMinTotal = useMemo(() => {
     return cartItems.reduce((sum, item) => {
       const price = getCheapestPrice(medicineMap[item.medicineId]) ?? 0;
@@ -72,7 +68,8 @@ export default function CartPage() {
     }, 0);
   }, [cartItems, medicineMap]);
 
-  // Load recommendations once based on cart categories
+  const totalUnits = useMemo(() => cartItems.reduce((n, i) => n + i.quantity, 0), [cartItems]);
+
   const recommendationsLoaded = useRef(false);
   useEffect(() => {
     if (recommendationsLoaded.current) return;
@@ -93,7 +90,6 @@ export default function CartPage() {
       .catch(() => undefined);
   }, [cartItems, medicineMap]);
 
-  // Handlers
   const onDecrement = useCallback((itemId: string, medicineId: string, qty: number) => {
     if (qty <= 1) {
       if (isGuest) removeGuestItem(medicineId);
@@ -118,138 +114,158 @@ export default function CartPage() {
     if (isGuest) {
       for (const item of guestItems) removeGuestItem(item.medicineId);
     } else if (token) {
-      // Remove items one by one (clearBasket not exposed in store)
       for (const p of basket.positions ?? []) {
         await removeItem(token, p.id).catch(() => undefined);
       }
     }
   }, [isGuest, token, guestItems, removeGuestItem, basket.positions, removeItem]);
 
-  // Empty cart
   if (cartItems.length === 0 && !isLoading) {
     return (
       <AppShell top={<TopBar title="Корзина" backHref="back" />}>
-        <div className="flex flex-col items-center gap-4 py-12">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-on-surface-variant/40">
-            <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-          </svg>
-          <p className="text-sm text-on-surface-variant">Корзина пустая</p>
-          <Link href="/" className="stitch-button text-sm">Перейти в каталог</Link>
-        </div>
+        <EmptyState
+          icon="cart"
+          title="Корзина пустая"
+          description="Добавьте товары из каталога, чтобы оформить заказ."
+          action={
+            <Link href="/">
+              <Button size="md" rightIcon="arrow-right">В каталог</Button>
+            </Link>
+          }
+        />
       </AppShell>
     );
   }
 
   return (
-    <AppShell top={
-      <TopBar title="Заказ" backHref="back" />
-    }>
-      <div className="space-y-1">
-        {/* Header with total + clear */}
-        <div className="flex items-center justify-between px-1 pb-2">
-          <p className="text-xs xs:text-sm text-on-surface-variant">
-            от <span className="font-bold text-on-surface">{formatMoney(cartMinTotal)}</span>
+    <AppShell top={<TopBar title="Корзина" backHref="back" />}>
+      {/* Header row: total + clear */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-on-surface-variant">
+            {totalUnits} {totalUnits === 1 ? "товар" : totalUnits < 5 ? "товара" : "товаров"}
           </p>
-          <button type="button" onClick={clearAll} className="text-on-surface-variant hover:text-red-600 transition p-1" aria-label="Очистить корзину">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-          </button>
+          <p className="font-display text-xl font-extrabold text-on-surface">
+            от {formatMoney(cartMinTotal)} TJS
+          </p>
         </div>
+        <IconButton
+          icon="trash"
+          variant="danger"
+          size="md"
+          onClick={clearAll}
+          aria-label="Очистить корзину"
+        />
+      </div>
 
-        {error ? <div className="rounded-xl bg-red-100 p-2 xs:p-3 text-xs text-red-700">{error}</div> : null}
+      {error ? (
+        <div className="mb-3 rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+      ) : null}
 
-        {/* Cart items — clean list */}
-        <div className="divide-y divide-surface-container-high">
-          {cartItems.map((item) => {
-            const medicine = medicineMap[item.medicineId];
-            const image = resolveMedicineImageUrl(medicine);
-            const name = medicine ? getMedicineDisplayName(medicine) : `Товар...`;
-            const minPrice = getCheapestPrice(medicine);
+      {/* Items list */}
+      <ul className="space-y-2">
+        {cartItems.map((item) => {
+          const medicine = medicineMap[item.medicineId];
+          const image = resolveMedicineImageUrl(medicine);
+          const name = medicine ? getMedicineDisplayName(medicine) : `Загрузка...`;
+          const minPrice = getCheapestPrice(medicine);
 
-            return (
-              <div key={item.id} className="flex items-center gap-1.5 xs:gap-2.5 py-2.5 xs:py-3.5">
-                {/* Image */}
-                <Link href={`/product/${item.medicineId}`} className="h-12 w-12 xs:h-14 xs:w-14 sm:h-16 sm:w-16 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
-                  {image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={image} alt={name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-outline opacity-40">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
-                      </svg>
-                    </div>
-                  )}
+          return (
+            <li key={item.id} className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+              <Link
+                href={`/product/${item.medicineId}`}
+                className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-accent-mint"
+              >
+                {image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={image} alt={name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-primary/40">
+                    <Icon name="bag" size={24} />
+                  </div>
+                )}
+              </Link>
+
+              <div className="min-w-0 flex-1">
+                <Link
+                  href={`/product/${item.medicineId}`}
+                  className="line-clamp-2 text-sm font-bold leading-tight text-on-surface transition hover:text-primary"
+                >
+                  {name}
                 </Link>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  от{" "}
+                  <span className="font-bold text-primary">
+                    {minPrice ? `${formatMoney(minPrice)} TJS` : "—"}
+                  </span>
+                </p>
+              </div>
 
-                {/* Name + price */}
-                <div className="flex-1 min-w-0">
-                  <Link href={`/product/${item.medicineId}`} className="text-xs xs:text-sm font-bold leading-tight line-clamp-2 hover:text-primary transition">
-                    {name}
-                  </Link>
-                  <p className="text-xs xs:text-sm text-on-surface-variant mt-0.5">
-                    от <span className="font-bold text-on-surface">{minPrice ? formatMoney(minPrice) : "—"}</span>
-                  </p>
-                </div>
-
-                {/* Quantity controls */}
-                <div className="flex items-center gap-0 flex-shrink-0">
+              <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
                   <button
                     type="button"
                     onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
-                    disabled={!isGuest && isLoading}
-                    className="flex h-7 w-7 xs:h-9 xs:w-9 sm:h-10 sm:w-10 items-center justify-center rounded-l-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition text-base xs:text-lg font-bold"
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40"
+                    aria-label="Уменьшить"
                   >
-                    &#8722;
+                    <Icon name="minus" size={16} />
                   </button>
-                  <span className="flex h-7 xs:h-9 sm:h-10 min-w-[1.5rem] xs:min-w-[2rem] items-center justify-center bg-surface-container-low text-[10px] xs:text-xs sm:text-sm font-bold">
+                  <span className="min-w-[1.5rem] text-center text-sm font-extrabold tabular-nums">
                     {item.quantity}
                   </span>
                   <button
                     type="button"
                     onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
-                    disabled={!isGuest && isLoading}
-                    className="flex h-7 w-7 xs:h-9 xs:w-9 sm:h-10 sm:w-10 items-center justify-center rounded-r-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition text-base xs:text-lg font-bold"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40"
+                    aria-label="Увеличить"
                   >
-                    +
+                    <Icon name="plus" size={16} />
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove(item.id, item.medicineId)}
+                  className="text-[11px] font-semibold text-on-surface-variant/70 transition hover:text-secondary"
+                >
+                  Удалить
+                </button>
               </div>
-            );
-          })}
-        </div>
+            </li>
+          );
+        })}
+      </ul>
 
-        {/* Recommendations */}
-        {recommendations.length > 0 && (
-          <div className="pt-4 xs:pt-5 space-y-2 xs:space-y-3">
-            <div className="h-px bg-surface-container-high" />
-            <h3 className="text-base xs:text-lg font-black pt-1">Что-то ещё?</h3>
-            <div className="flex gap-1.5 xs:gap-2 overflow-x-auto pb-2 scrollbar-hide scroll-touch -mx-1.5 px-1.5 xs:-mx-3 xs:px-3 snap-x">
-              {recommendations.map((med) => (
-                <div key={med.id} className="w-[120px] xs:w-[130px] sm:w-[155px] max-w-[160px] flex-shrink-0 snap-start">
-                  <MedicineCard medicine={med} compact />
-                </div>
-              ))}
-            </div>
+      {/* Recommendations */}
+      {recommendations.length > 0 && (
+        <section className="mt-8 space-y-3">
+          <h3 className="font-display text-lg font-extrabold">Добавьте к заказу</h3>
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 snap-x pb-2">
+            {recommendations.map((med) => (
+              <div key={med.id} className="w-[140px] flex-shrink-0 snap-start">
+                <MedicineCard medicine={med} compact />
+              </div>
+            ))}
           </div>
-        )}
+        </section>
+      )}
 
-        {/* Spacer for sticky button */}
-        <div className="h-16 xs:h-20" />
-      </div>
+      {/* Spacer for sticky CTA */}
+      <div className="h-24" />
 
-      {/* Sticky bottom button */}
-      <div className="fixed bottom-14 xs:bottom-16 left-0 right-0 z-30 px-1.5 xs:px-3 sm:px-4 pb-1.5 xs:pb-3">
-        <div className="mx-auto max-w-5xl">
-          <button
+      {/* Sticky CTA */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 px-3 sm:bottom-4">
+        <div className="mx-auto max-w-3xl rounded-full bg-surface-container-lowest p-1.5 shadow-glass">
+          <Button
             type="button"
+            size="lg"
+            fullWidth
+            rightIcon="arrow-right"
             onClick={() => router.push("/cart/pharmacy")}
-            className="stitch-button w-full py-3 xs:py-4 text-sm xs:text-base font-bold rounded-2xl shadow-glass"
             disabled={cartItems.length === 0}
           >
-            Выбрать аптеку
-          </button>
+            Выбрать аптеку · от {formatMoney(cartMinTotal)} TJS
+          </Button>
         </div>
       </div>
     </AppShell>

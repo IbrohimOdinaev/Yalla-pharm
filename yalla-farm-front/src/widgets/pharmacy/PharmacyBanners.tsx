@@ -24,7 +24,7 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
         <h3 className="text-sm xs:text-base sm:text-lg font-bold mb-2">Аптеки</h3>
         <div className="flex gap-2 xs:gap-3 overflow-x-auto pb-2 scrollbar-hide scroll-touch -mx-1.5 px-1.5 xs:-mx-3 xs:px-3 sm:-mx-0 sm:px-0">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-24 xs:h-28 sm:h-32 w-[200px] xs:w-[240px] sm:w-[280px] flex-shrink-0 rounded-xl bg-surface-container-low animate-pulse" />
+            <div key={i} className="h-24 xs:h-28 sm:h-32 w-[200px] xs:w-[240px] sm:w-[280px] flex-shrink-0 rounded-2xl bg-surface-container-low animate-pulse" />
           ))}
         </div>
       </section>
@@ -46,7 +46,7 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
               key={p.id}
               type="button"
               onClick={() => onPharmacyClick(p)}
-              className="relative h-24 xs:h-28 sm:h-32 w-[200px] xs:w-[240px] sm:w-[280px] flex-shrink-0 rounded-xl overflow-hidden snap-start group transition active:scale-95 hover:shadow-card"
+              className="relative h-24 xs:h-28 sm:h-32 w-[200px] xs:w-[240px] sm:w-[280px] flex-shrink-0 rounded-2xl overflow-hidden snap-start group transition active:scale-95 shadow-card hover:shadow-glass"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img

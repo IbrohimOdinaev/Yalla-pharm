@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,79 +9,78 @@
 }
 
 body {
-  @apply bg-surface text-on-surface font-sans;
+  @apply bg-surface text-on-surface font-sans antialiased;
+  font-feature-settings: 'ss01', 'cv11';
 }
 
+h1, h2, h3, h4 {
+  @apply font-display tracking-tight;
+}
+
+/* ── Yandex-flat cards, inputs, buttons ───────────────────────── */
+
 .stitch-card {
-  @apply rounded-2xl border border-surface-container-high bg-surface-container-lowest shadow-card;
+  @apply rounded-2xl bg-surface-container-lowest border border-outline/60;
 }
 
 .stitch-input {
-  @apply w-full rounded-xl border border-surface-container-high bg-surface-container-low px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20;
+  @apply w-full rounded-xl border border-outline/70 bg-surface-container-lowest px-4 py-3 text-sm text-on-surface outline-none transition
+         placeholder:text-on-surface-variant/60
+         focus:border-primary focus:ring-2 focus:ring-primary/20;
 }
 
+/* Primary CTA (legacy class name kept for all stale refs). Yandex-Plus look:
+   warm yellow with near-black text. */
 .stitch-button {
-  @apply rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50;
+  @apply rounded-full bg-accent px-5 py-3 text-sm font-bold text-on-surface transition
+         hover:bg-accent-dark active:scale-[0.98]
+         disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .stitch-button-secondary {
-  @apply rounded-xl bg-surface-container-low px-4 py-3 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high;
+  @apply rounded-full bg-surface-container px-5 py-3 text-sm font-semibold text-on-surface transition
+         hover:bg-surface-container-high active:scale-[0.98];
 }
 
-/* Dropdown animation */
+/* ── Utilities ─────────────────────────────────────────────────── */
+
 @keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-in {
   animation: fadeInDown 0.15s ease-out;
 }
 
-/* Smooth scrollbar */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
 
-/* Glass effect for elevated elements */
 .shadow-glass {
-  box-shadow: 0 8px 30px rgba(22, 27, 41, 0.08);
+  box-shadow: 0 2px 12px rgba(26, 25, 22, 0.04);
 }
 
-/* Mobile touch targets */
 @media (max-width: 639px) {
-  .stitch-button, .stitch-button-secondary {
-    @apply min-h-[40px];
-  }
-  .stitch-input {
-    @apply min-h-[40px] text-base;
-    /* text-base (16px) prevents iOS zoom on focus */
-  }
+  .stitch-button, .stitch-button-secondary { @apply min-h-[40px]; }
+  .stitch-input { @apply min-h-[40px] text-base; }
 }
 
-/* Smooth momentum scroll on iOS */
-.scroll-touch {
-  -webkit-overflow-scrolling: touch;
-}
+.scroll-touch { -webkit-overflow-scrolling: touch; }
 
-/* Safe area for bottom nav */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 
-/* Prevent horizontal scroll on mobile */
-html, body {
-  overflow-x: hidden;
+/* `overflow-x: hidden` on html/body would break `position: sticky` on the
+   top bar because it establishes a new scroll container. `clip` cuts off
+   overflow without becoming a scroll context, so descendant sticky elements
+   continue to pin against the viewport. */
+html, body { overflow-x: clip; }
+
+/* Divider helper — Yandex uses hair-thin dividers */
+.hair-divider {
+  border-bottom: 1px solid #ECEBE7;
 }

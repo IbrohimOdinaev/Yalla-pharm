@@ -9,10 +9,11 @@ import { usePaymentIntentLiveState } from "@/features/checkout/model/usePaymentI
 import type { ApiOrder } from "@/shared/types/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { Button, Icon } from "@/shared/ui";
 
 export default function PaymentAwaitPage() {
   return (
-    <Suspense fallback={<AppShell top={<TopBar title="Ожидание оплаты" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
+    <Suspense fallback={<AppShell hideFooter top={<TopBar title="Ожидание оплаты" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
       <PaymentAwaitContent />
     </Suspense>
   );
@@ -33,7 +34,6 @@ function PaymentAwaitContent() {
     getOrderById(token, orderId).then(setOrder).catch(() => undefined);
   }, [token, orderId]);
 
-  // Countdown from order payment expiry
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   useEffect(() => {
     const expiresAt = order?.paymentExpiresAtUtc;
@@ -47,7 +47,6 @@ function PaymentAwaitContent() {
     return () => clearInterval(interval);
   }, [order?.paymentExpiresAtUtc]);
 
-  // Live state polling
   const liveState = usePaymentIntentLiveState(paymentIntentId || null, token);
 
   useEffect(() => {
@@ -59,8 +58,10 @@ function PaymentAwaitContent() {
 
   if (!orderId && !paymentIntentId) {
     return (
-      <AppShell top={<TopBar title="Ожидание оплаты" backHref="back" />}>
-        <div className="stitch-card p-6 text-sm text-on-surface-variant">Сессия ожидания оплаты не найдена.</div>
+      <AppShell hideFooter top={<TopBar title="Ожидание оплаты" backHref="back" />}>
+        <div className="rounded-3xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">
+          Сессия ожидания оплаты не найдена.
+        </div>
       </AppShell>
     );
   }
@@ -70,50 +71,82 @@ function PaymentAwaitContent() {
   const paymentUrl = order?.paymentUrl;
   const mins = secondsLeft !== null ? Math.floor(secondsLeft / 60) : null;
   const secs = secondsLeft !== null ? secondsLeft % 60 : null;
+  const progress = secondsLeft !== null && order?.paymentExpiresAtUtc
+    ? Math.max(0, Math.min(100, (secondsLeft / (24 * 60 * 60)) * 100))
+    : null;
 
   return (
-    <AppShell top={<TopBar title="Ожидание оплаты" backHref="back" />}>
-      <div className="space-y-5">
-        {/* Hero */}
-        <div className="rounded-2xl bg-gradient-to-br from-primary to-[#0070eb] p-3 xs:p-4 sm:p-6 text-white space-y-2 xs:space-y-3">
-          <p className="text-[10px] xs:text-xs font-bold uppercase tracking-wider opacity-80">Оплата заказа</p>
-          <h1 className="text-lg xs:text-xl sm:text-2xl font-extrabold">Ожидаем подтверждение</h1>
-          <p className="text-sm opacity-80">
-            Заказ #{orderId.slice(0, 8)} {amount > 0 ? <>&middot; {formatMoney(amount, currency)}</> : null}
-          </p>
-          {secondsLeft !== null && secondsLeft > 0 ? (
-            <p className="text-lg font-bold">Осталось: {mins}:{String(secs).padStart(2, "0")}</p>
-          ) : secondsLeft === 0 ? (
-            <p className="text-sm opacity-80">Время истекло</p>
-          ) : null}
-        </div>
+    <AppShell hideFooter top={<TopBar title="Ожидание оплаты" backHref="back" />}>
+      <div className="mx-auto max-w-2xl space-y-4">
+        {/* Hero with timer */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-container p-6 text-white shadow-card">
+          <span aria-hidden className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" />
+          <span aria-hidden className="pointer-events-none absolute -left-4 bottom-0 h-24 w-24 rounded-full bg-white/10" />
+          <div className="relative">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                <Icon name="clock" size={20} />
+              </span>
+              <p className="text-xs font-bold uppercase tracking-wider opacity-90">Оплата заказа</p>
+            </div>
+            <h1 className="font-display text-2xl font-extrabold">Ожидаем оплату</h1>
+            <p className="mt-1 text-sm opacity-90">
+              Заказ #{orderId.slice(0, 8)}
+              {amount > 0 ? ` · ${formatMoney(amount, currency)}` : ""}
+            </p>
 
-        {/* QR iframe */}
+            {secondsLeft !== null && secondsLeft > 0 ? (
+              <>
+                <p className="mt-4 font-display text-4xl font-extrabold tabular-nums">
+                  {mins}:{String(secs).padStart(2, "0")}
+                </p>
+                {progress !== null ? (
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+                    <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
+                  </div>
+                ) : null}
+              </>
+            ) : secondsLeft === 0 ? (
+              <p className="mt-3 text-sm font-bold">Время истекло</p>
+            ) : null}
+          </div>
+        </section>
+
+        {/* Iframe / Payment UI */}
         {paymentUrl ? (
-          <div className="stitch-card overflow-hidden p-0">
+          <section className="overflow-hidden rounded-3xl bg-surface-container-lowest shadow-card">
             <iframe
               title="Страница оплаты"
               src={paymentUrl}
-              className="w-full border-0 sm:min-h-[560px]"
-              style={{ minHeight: "400px" }}
+              className="w-full border-0"
+              style={{ minHeight: "520px" }}
               loading="lazy"
             />
-          </div>
+          </section>
         ) : (
-          <div className="stitch-card p-6 text-sm text-on-surface-variant">Загрузка данных оплаты...</div>
+          <section className="rounded-3xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">
+            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Icon name="clock" size={22} />
+            </span>
+            Загрузка данных оплаты...
+          </section>
         )}
 
         {/* Actions */}
-        <div className="flex flex-col xs:flex-row gap-2 xs:gap-3">
-          {paymentUrl && (
-            <a href={paymentUrl} target="_blank" rel="noreferrer" className="stitch-button text-xs xs:text-sm">
-              Открыть в новом окне
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {paymentUrl ? (
+            <a href={paymentUrl} target="_blank" rel="noreferrer" className="flex-1">
+              <Button size="md" fullWidth rightIcon="arrow-right">Открыть в новом окне</Button>
             </a>
-          )}
-          <button type="button" className="stitch-button-secondary text-sm" onClick={() => router.push("/orders")}>
+          ) : null}
+          <Button variant="secondary" size="md" fullWidth leftIcon="orders" onClick={() => router.push("/orders")}>
             Мои заказы
-          </button>
+          </Button>
         </div>
+
+        <p className="text-center text-[11px] text-on-surface-variant">
+          Мы автоматически обновим страницу, как только оплата подтвердится.
+        </p>
       </div>
     </AppShell>
   );
