@@ -31,6 +31,8 @@ type QuickCategory = {
   palette: CategoryTilePalette;
   label: string;
   keywords?: string[];
+  /** Optional photo (in `public/categories/`) shown instead of the SVG icon. */
+  image?: string;
 };
 
 // Home-feed rails. Each rail resolves its server-side categoryId by matching
@@ -56,21 +58,22 @@ const HOME_RAILS: RailSpec[] = [
 ];
 
 const QUICK_CATEGORIES: QuickCategory[] = [
-  { icon: "thermometer", palette: "coral", label: "Боль и жар", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
-  { icon: "allergy", palette: "rose", label: "Аллергия", keywords: ["аллерг", "антигистамин"] },
-  { icon: "lungs", palette: "sky", label: "Дыхание", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
-  { icon: "pill", palette: "lilac", label: "Антибиотики", keywords: ["антибиотик", "противомикроб"] },
-  { icon: "vitamin", palette: "sun", label: "Витамины", keywords: ["витамин", "бад", "биодобав", "минерал"] },
-  { icon: "heart", palette: "rose", label: "Сердце", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "stomach", palette: "peach", label: "ЖКТ", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
-  { icon: "eye", palette: "sky", label: "Глаза", keywords: ["глаз", "зрени", "офтальм", "капли"] },
-  { icon: "skin", palette: "peach", label: "Кожа и волосы", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
-  { icon: "drop", palette: "coral", label: "Диабет", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
-  { icon: "baby", palette: "sun", label: "Мама и малыш", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
-  { icon: "moon", palette: "lilac", label: "Нервы и сон", keywords: ["нерв", "сон", "успок", "стресс", "антидепресс", "седатив"] },
-  { icon: "bone", palette: "mint", label: "Кости и суставы", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
-  { icon: "lipstick", palette: "rose", label: "Красота", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
-  { icon: "shield", palette: "sage", label: "Иммунитет", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.jpg", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.jpg", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.jpg", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.jpg", keywords: ["антибиотик", "противомикроб"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.jpg", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.jpg", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.jpg", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.jpg", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.jpg", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
+  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.jpg", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.jpg", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["нерв", "сон", "успок", "стресс", "антидепресс", "седатив"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  // "Все категории" intentionally has no `image` — falls back to the grid SVG icon.
   { icon: "grid", palette: "mint", label: "Все категории" },
 ];
 
@@ -482,23 +485,93 @@ function HomeContent() {
 
           {/* Main content — products */}
           <div className="flex-1 min-w-0">
-            {/* Mobile category selector */}
+            {/* Mobile category selector — toggle button + panel.
+                Replaces the native <select> with a styled card that
+                matches the desktop sidebar tone. */}
             <div className="sm:hidden mb-4">
-              <select
-                value={selectedCategoryId}
-                onChange={(e) => { setSelectedCategoryId(e.target.value); setPage(1); fetchMedicines(1, e.target.value, selectedPharmacy?.id); }}
-                className="stitch-input w-full text-sm"
+              <button
+                type="button"
+                onClick={() => setShowAllCategories(!showAllCategories)}
+                className="flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3 text-left transition hover:bg-surface-container"
+                aria-expanded={showAllCategories}
               >
-                <option value="">Все товары</option>
-                {categories.map((cat) => (
-                  <optgroup key={cat.id} label={cat.name}>
-                    <option value={cat.id}>{cat.name}</option>
-                    {(cat.children ?? []).map((sub) => (
-                      <option key={sub.id} value={sub.id}>&nbsp;&nbsp;{sub.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    Каталог
+                  </span>
+                  <span className="truncate text-sm font-bold text-on-surface">
+                    {selectedCatName || "Все товары"}
+                  </span>
+                </span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`flex-shrink-0 text-on-surface-variant transition ${showAllCategories ? "rotate-180" : ""}`}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {showAllCategories ? (
+                <div className="mt-2 stitch-card p-2 max-h-[60vh] overflow-y-auto space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedCategoryId(""); setExpandedCategoryId(""); setPage(1); fetchMedicines(1, "", selectedPharmacy?.id); setShowAllCategories(false); }}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                      !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low"
+                    }`}
+                  >
+                    Все товары
+                  </button>
+                  {categories.map((cat) => {
+                    const isActive = selectedCategoryId === cat.id;
+                    const hasActiveChild = cat.children?.some((ch) => ch.id === selectedCategoryId);
+                    const isExpanded = expandedCategoryId === cat.id;
+                    return (
+                      <div key={cat.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (cat.children?.length) {
+                              setExpandedCategoryId(isExpanded ? "" : cat.id);
+                              setSelectedCategoryId(cat.id);
+                              setPage(1);
+                              fetchMedicines(1, cat.id, selectedPharmacy?.id);
+                            } else {
+                              setSelectedCategoryId(cat.id);
+                              setPage(1);
+                              fetchMedicines(1, cat.id, selectedPharmacy?.id);
+                              setShowAllCategories(false);
+                            }
+                          }}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                            isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low"
+                          }`}
+                        >
+                          <span className="truncate">{cat.name}</span>
+                          {cat.children?.length ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`flex-shrink-0 ml-2 transition ${isExpanded ? "rotate-180" : ""}`}>
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          ) : null}
+                        </button>
+                        {isExpanded && cat.children?.length ? (
+                          <div className="mt-0.5 ml-2 space-y-0.5 border-l-2 border-surface-container-high pl-2">
+                            {cat.children.map((sub) => (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => { setSelectedCategoryId(sub.id); setPage(1); fetchMedicines(1, sub.id, selectedPharmacy?.id); setShowAllCategories(false); }}
+                                className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
+                                  selectedCategoryId === sub.id ? "bg-primary/80 text-white font-semibold" : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
+                                }`}
+                              >
+                                {sub.name}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
 
             {/* Back button + category title */}
@@ -861,6 +934,7 @@ function HomeContent() {
                     icon={cat.icon}
                     palette={cat.palette}
                     label={cat.label}
+                    image={cat.image}
                     onClick={() => onQuickCategoryClick(cat.label)}
                   />
                 </div>

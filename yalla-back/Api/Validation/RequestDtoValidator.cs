@@ -383,16 +383,18 @@ internal static class RequestDtoValidator
     List<ValidationError> errors)
   {
     RequireNotEmpty(request.ClientId, nameof(request.ClientId), errors);
-    RequireNotWhiteSpace(request.Name, nameof(request.Name), errors);
-    RequireDigitsPhone(request.PhoneNumber, nameof(request.PhoneNumber), errors);
+    // Partial update: only validate fields the caller actually sent.
+    RequireOptionalNotWhiteSpace(request.Name, nameof(request.Name), errors);
+    RequireOptionalDigitsPhone(request.PhoneNumber, nameof(request.PhoneNumber), errors);
   }
 
   private static void ValidateUpdateMyClientProfile(
     UpdateMyClientProfileRequest request,
     List<ValidationError> errors)
   {
-    RequireNotWhiteSpace(request.Name, nameof(request.Name), errors);
-    RequireDigitsPhone(request.PhoneNumber, nameof(request.PhoneNumber), errors);
+    // Partial update: only validate fields the caller actually sent.
+    RequireOptionalNotWhiteSpace(request.Name, nameof(request.Name), errors);
+    RequireOptionalDigitsPhone(request.PhoneNumber, nameof(request.PhoneNumber), errors);
   }
 
   private static void ValidateUpdateMedicine(
@@ -435,6 +437,16 @@ internal static class RequestDtoValidator
 
   private static void RequireDigitsPhone(string? value, string field, List<ValidationError> errors)
   {
+    var validationError = UserInputPolicy.ValidatePhoneNumber(value, field);
+    if (validationError is not null)
+      errors.Add(new ValidationError(field, validationError));
+  }
+
+  /** Same as RequireDigitsPhone, but skips validation entirely when the
+   *  caller didn't send the field. Used for partial-update endpoints. */
+  private static void RequireOptionalDigitsPhone(string? value, string field, List<ValidationError> errors)
+  {
+    if (value is null) return;
     var validationError = UserInputPolicy.ValidatePhoneNumber(value, field);
     if (validationError is not null)
       errors.Add(new ValidationError(field, validationError));

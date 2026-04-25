@@ -185,10 +185,10 @@ export function TopBar({
         onClick={onAddressClick}
         className="-mx-1 flex min-w-0 flex-1 flex-col items-start rounded-xl px-1 py-0.5 text-left transition active:bg-surface-container-low/70"
       >
-        <span className="font-display text-lg font-extrabold leading-tight text-on-surface sm:text-xl">
+        <span className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl">
           Yalla Farm
         </span>
-        <span className="mt-0.5 flex w-full items-center gap-1 text-xs text-on-surface-variant sm:text-sm">
+        <span className="mt-0.5 flex w-full min-w-0 items-center gap-1 text-[11px] xs:text-xs text-on-surface-variant sm:text-sm">
           <span className="min-w-0 truncate">{addressText || "Выберите адрес"}</span>
           <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-on-surface text-surface">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">

@@ -27,13 +27,18 @@ type Props = {
   icon: CategoryIconKey;
   palette: CategoryTilePalette;
   label: string;
+  /** Optional photographic image — when set, displayed full-bleed inside
+   *  the tile and replaces the SVG icon. Pastel background still shows
+   *  while the image is loading or if it fails. */
+  image?: string;
   onClick?: () => void;
 };
 
 // Yandex-style: coloured square tile + caption below. Sized big enough to
 // let the multi-colour illustrations breathe — details on thermometer, flower,
-// lungs etc. are lost below ~56px icon size.
-export function CategoryTile({ icon, palette, label, onClick }: Props) {
+// lungs etc. are lost below ~56px icon size. When `image` is provided, the
+// tile renders a real photo instead of the vector icon.
+export function CategoryTile({ icon, palette, label, image, onClick }: Props) {
   const p = palettes[palette];
   return (
     <button
@@ -42,9 +47,19 @@ export function CategoryTile({ icon, palette, label, onClick }: Props) {
       className="group flex flex-col items-center gap-2 transition active:scale-95"
     >
       <span
-        className={`flex h-[104px] w-[104px] items-center justify-center rounded-3xl p-4 ${p.bg} ${p.fg} transition group-hover:scale-105 sm:h-[120px] sm:w-[120px] sm:p-5 lg:h-[132px] lg:w-[132px]`}
+        className={`flex h-[104px] w-[104px] items-center justify-center overflow-hidden rounded-3xl ${image ? "" : "p-4"} ${p.bg} ${p.fg} transition group-hover:scale-105 sm:h-[120px] sm:w-[120px] ${image ? "" : "sm:p-5"} lg:h-[132px] lg:w-[132px]`}
       >
-        <CategoryIcon name={icon} className="h-full w-full" />
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <CategoryIcon name={icon} className="h-full w-full" />
+        )}
       </span>
       <span className="max-w-[120px] text-center text-xs font-semibold leading-tight text-on-surface sm:text-sm">
         {label}

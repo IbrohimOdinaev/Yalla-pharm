@@ -4,6 +4,8 @@ export { IconButton } from "./IconButton";
 export { Chip } from "./Chip";
 export { Badge } from "./Badge";
 export { Input } from "./Input";
+export { Select, type SelectOption } from "./Select";
+export { DatePicker } from "./DatePicker";
 export { SearchBar } from "./SearchBar";
 export { TrustStrip } from "./TrustStrip";
 export { DeliverySegmented } from "./DeliverySegmented";

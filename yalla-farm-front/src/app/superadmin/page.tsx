@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
+import { DatePicker, Select } from "@/shared/ui";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 
@@ -385,10 +386,14 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
         <input className="stitch-input" placeholder="Имя" value={name} onChange={(e) => setName(e.target.value)} required />
         <input className="stitch-input" placeholder="Телефон" value={phone} onChange={(e) => setPhone(e.target.value)} required />
         <input className="stitch-input" type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <select className="stitch-input" value={pharmacyId} onChange={(e) => setPharmacyId(e.target.value)}>
-          <option value="">Без аптеки</option>
-          {pharmacies.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-        </select>
+        <Select
+          value={pharmacyId}
+          onChange={setPharmacyId}
+          options={[
+            { value: "", label: "Без аптеки" },
+            ...pharmacies.map((p) => ({ value: p.id, label: p.title })),
+          ]}
+        />
       </div>
       {msg ? <div className={`text-sm ${msg.includes("создан") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
       <button type="submit" className="stitch-button">Создать</button>
@@ -715,18 +720,18 @@ function MedicinesTab({ token }: { token: string }) {
         <input className="stitch-input w-full" placeholder="Поиск лекарств..." value={query} onChange={(e) => onSearchChange(e.target.value)} />
 
         {/* Category filter */}
-        <select
-          className="stitch-input w-full"
+        <Select
           value={categoryId}
-          onChange={(e) => onCategoryChange(e.target.value)}
-        >
-          <option value="">Все категории</option>
-          {flatCats.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.parentId ? "  └ " : ""}{cat.name}
-            </option>
-          ))}
-        </select>
+          onChange={onCategoryChange}
+          options={[
+            { value: "", label: "Все категории" },
+            ...flatCats.map((cat) => ({
+              value: cat.id,
+              label: cat.name,
+              depth: cat.parentId ? 1 : 0,
+            })),
+          ]}
+        />
 
         {/* Active filter */}
         <div className="flex flex-wrap gap-2">
@@ -1154,11 +1159,12 @@ function OrdersTab({ token }: { token: string }) {
           <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Контроль статусов и подтверждение оплат{dateFilter ? ` · ${dateFilter}` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            className="stitch-input text-xs w-auto"
+          <DatePicker
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
+            onChange={setDateFilter}
+            compact
+            placeholder="Дата"
+            className="w-36"
           />
           {dateFilter ? (
             <button type="button" onClick={() => setDateFilter("")} className="text-xs text-on-surface-variant hover:text-red-600">Сбросить</button>

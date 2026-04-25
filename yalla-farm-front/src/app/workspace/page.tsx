@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney, formatPhone } from "@/shared/lib/format";
+import { DatePicker } from "@/shared/ui";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 
@@ -487,11 +488,12 @@ function OrdersTab({ token }: { token: string }) {
           <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Доска заказов по всем статусам{dateFilter ? ` · ${dateFilter}` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            className="stitch-input text-xs w-auto"
+          <DatePicker
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
+            onChange={setDateFilter}
+            compact
+            placeholder="Дата"
+            className="w-36"
           />
           {dateFilter ? (
             <button type="button" onClick={() => setDateFilter("")} className="text-xs text-on-surface-variant hover:text-red-600">Сбросить</button>

@@ -14,7 +14,7 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { LinkPhoneModal } from "@/widgets/profile/LinkPhoneModal";
 import { LinkTelegramModal } from "@/widgets/profile/LinkTelegramModal";
-import { Button, Chip, EmptyState, Icon, Input } from "@/shared/ui";
+import { Button, Chip, DatePicker, EmptyState, Icon, Input, Select } from "@/shared/ui";
 import type { IconName } from "@/shared/ui";
 
 export default function ProfilePage() {
@@ -287,23 +287,21 @@ export default function ProfilePage() {
 
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">Пол</span>
-              <select
-                className="w-full rounded-2xl bg-surface-container-low px-3.5 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              <Select
                 value={editGender}
-                onChange={(e) => setEditGender(e.target.value)}
-              >
-                <option value="">Не указан</option>
-                <option value="1">Мужской</option>
-                <option value="2">Женский</option>
-              </select>
+                onChange={setEditGender}
+                options={[
+                  { value: "", label: "Не указан" },
+                  { value: "1", label: "Мужской" },
+                  { value: "2", label: "Женский" },
+                ]}
+              />
             </label>
 
-            <Input
-              label="Дата рождения"
-              type="date"
-              value={editDob}
-              onChange={(e) => setEditDob(e.target.value)}
-            />
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">Дата рождения</span>
+              <DatePicker value={editDob} onChange={setEditDob} />
+            </label>
 
             {profileMsg ? (
               <div

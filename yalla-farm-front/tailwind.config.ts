@@ -18,8 +18,13 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     screens: {
+      // Lowered `sm` from the Tailwind default 640 to 540: the layout was
+      // too monolithic between 375 and 640 (phone landscape / narrow tablets
+      // looked identical to small phones). 540 lets cart pills go inline,
+      // grids open up to 3 cols, and pharmacy banners hit their wider size
+      // earlier while still leaving a clear visual gap to `lg` (1024).
       xs: "375px",
-      sm: "640px",
+      sm: "540px",
       md: "768px",
       lg: "1024px",
       xl: "1280px",
