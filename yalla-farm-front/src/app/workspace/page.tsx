@@ -15,7 +15,7 @@ import type { ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
 import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions, adminCancelOrder } from "@/entities/order/admin-api";
 import { AdminOrderDetailModal } from "@/widgets/order/AdminOrderDetailModal";
-import { computeOriginalPaid } from "@/entities/order/totals";
+import { computeOriginalPaid, isOrderDataLost } from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
@@ -39,6 +39,10 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WorkspacePage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
+  // Each admin is bound to exactly one pharmacy. We rely on this to pick
+  // their own pharmacy out of the active list (the backend doesn't ship a
+  // "/me/pharmacy" endpoint yet — the JWT claim is the source of truth).
+  const adminPharmacyId = useAppSelector((state) => state.auth.pharmacyId);
   const [activeTab, setActiveTab] = useState<Tab>("pharmacy");
 
   useEffect(() => {
@@ -67,14 +71,22 @@ export default function WorkspacePage() {
       .catch(() => undefined);
     getActivePharmacies(token)
       .then((pharmacies) => {
-        if (pharmacies.length > 0) {
-          setPharmacyName(pharmacies[0].title);
-          setPharmacyActive(pharmacies[0].isActive ?? true);
+        // Pick the admin's own pharmacy by id (NOT pharmacies[0] — that's
+        // alphabetically NovaFarma for everyone). Fall back to the first
+        // entry only if the JWT didn't carry a pharmacy_id (shouldn't
+        // happen for Admin role).
+        const mine = adminPharmacyId
+          ? pharmacies.find((p) => p.id === adminPharmacyId)
+          : null;
+        const own = mine ?? pharmacies[0];
+        if (own) {
+          setPharmacyName(own.title);
+          setPharmacyActive(own.isActive ?? true);
         }
       })
       .catch(() => undefined);
     getAdminMe(token).then(setAdminIdentity).catch(() => undefined);
-  }, [token, role]);
+  }, [token, role, adminPharmacyId]);
 
   if (!token || role !== "Admin") {
     return (
@@ -127,6 +139,7 @@ export default function WorkspacePage() {
 /* ── Pharmacy Tab ── */
 
 function PharmacyTab({ token }: { token: string }) {
+  const adminPharmacyId = useAppSelector((state) => state.auth.pharmacyId);
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [adminName, setAdminName] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
@@ -137,6 +150,9 @@ function PharmacyTab({ token }: { token: string }) {
   const [pharmaAddress, setPharmaAddress] = useState("");
   const [pharmaActive, setPharmaActive] = useState(true);
   const [pharmaMsg, setPharmaMsg] = useState<string | null>(null);
+  const [isAllDay, setIsAllDay] = useState(true);
+  const [opensAt, setOpensAt] = useState("");
+  const [closesAt, setClosesAt] = useState("");
 
   useEffect(() => {
     getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
@@ -146,13 +162,21 @@ function PharmacyTab({ token }: { token: string }) {
     }).catch(() => undefined);
   }, [token]);
 
-  const pharmacy = pharmacies[0];
+  // Editing the admin's own pharmacy — never the alphabetically-first entry.
+  const pharmacy = adminPharmacyId
+    ? pharmacies.find((p) => p.id === adminPharmacyId)
+    : pharmacies[0];
 
   useEffect(() => {
     if (pharmacy) {
       setPharmaTitle(pharmacy.title);
       setPharmaAddress(pharmacy.address);
       setPharmaActive(pharmacy.isActive ?? true);
+      const hasSchedule = Boolean(pharmacy.opensAt && pharmacy.closesAt);
+      setIsAllDay(!hasSchedule);
+      // Backend returns "HH:mm:ss" — trim to minutes for the <input type="time"> field.
+      setOpensAt(hasSchedule ? (pharmacy.opensAt ?? "").slice(0, 5) : "");
+      setClosesAt(hasSchedule ? (pharmacy.closesAt ?? "").slice(0, 5) : "");
     }
   }, [pharmacy]);
 
@@ -174,8 +198,19 @@ function PharmacyTab({ token }: { token: string }) {
     e.preventDefault();
     if (!pharmacy) return;
     setPharmaMsg(null);
+    if (!isAllDay && (!opensAt || !closesAt)) {
+      setPharmaMsg("Укажите время открытия и закрытия (или включите режим «Круглосуточно»).");
+      return;
+    }
     try {
-      await updatePharmacy(token, { pharmacyId: pharmacy.id, title: pharmaTitle, address: pharmaAddress, isActive: pharmaActive });
+      await updatePharmacy(token, {
+        pharmacyId: pharmacy.id,
+        title: pharmaTitle,
+        address: pharmaAddress,
+        isActive: pharmaActive,
+        opensAt: isAllDay ? "" : opensAt,
+        closesAt: isAllDay ? "" : closesAt,
+      });
       setPharmaMsg("Аптека обновлена.");
       getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
     } catch (err) {
@@ -220,6 +255,62 @@ function PharmacyTab({ token }: { token: string }) {
             <input type="checkbox" checked={pharmaActive} onChange={(e) => setPharmaActive(e.target.checked)} />
             <span>Активна</span>
           </label>
+
+          {/* Opening hours — toggle «Круглосуточно» off to set a schedule.
+              Same-day pickup stops 30 min before closing; enforced on the
+              cart-pharmacy page. */}
+          <div className="rounded-xl bg-surface-container-low p-3 xs:p-4 space-y-2 xs:space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs xs:text-sm font-bold text-on-surface">Время работы</p>
+                <p className="mt-0.5 text-[10px] xs:text-[11px] text-on-surface-variant">
+                  {isAllDay
+                    ? "Аптека работает круглосуточно."
+                    : "Самовывоз доступен, пока до закрытия более 30 минут."}
+                </p>
+              </div>
+              <label className="flex flex-shrink-0 items-center gap-2 text-[11px] xs:text-xs font-semibold">
+                <input
+                  type="checkbox"
+                  checked={isAllDay}
+                  onChange={(e) => {
+                    setIsAllDay(e.target.checked);
+                    if (e.target.checked) {
+                      setOpensAt("");
+                      setClosesAt("");
+                    }
+                  }}
+                />
+                <span>Круглосуточно</span>
+              </label>
+            </div>
+
+            {!isAllDay ? (
+              <div className="grid grid-cols-2 gap-2 xs:gap-3">
+                <label className="block space-y-1">
+                  <span className="text-[11px] xs:text-xs font-medium text-on-surface-variant">Открытие</span>
+                  <input
+                    type="time"
+                    className="stitch-input w-full tabular-nums"
+                    value={opensAt}
+                    onChange={(e) => setOpensAt(e.target.value)}
+                    required={!isAllDay}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] xs:text-xs font-medium text-on-surface-variant">Закрытие</span>
+                  <input
+                    type="time"
+                    className="stitch-input w-full tabular-nums"
+                    value={closesAt}
+                    onChange={(e) => setClosesAt(e.target.value)}
+                    required={!isAllDay}
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
+
           {pharmaMsg ? <div className={`rounded-xl p-3 text-sm ${pharmaMsg.includes("обновлена") ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>{pharmaMsg}</div> : null}
           <button type="submit" className="stitch-button w-full">Обновить аптеку</button>
         </form>
@@ -499,6 +590,11 @@ function OrderCard({
   const phoneDisplay = order.clientPhoneNumber
     ? order.clientPhoneNumber.replace(/^\+?992/, "")
     : undefined;
+  const telegramHandle = order.clientTelegramUsername
+    ? `@${order.clientTelegramUsername.replace(/^@/, "")}`
+    : order.clientTelegramId
+      ? `tg:${order.clientTelegramId}`
+      : undefined;
 
   return (
     <div className={`stitch-card space-y-2 p-3 ${deliveryBorderClass(!!order.isPickup)}`}>
@@ -509,7 +605,9 @@ function OrderCard({
           <span className="font-bold text-sm">{formatMoney(computeOriginalPaid(order), order.currency)}</span>
         </div>
       </div>
+      {order.clientName ? <p className="text-xs font-semibold text-on-surface">{order.clientName}</p> : null}
       {phoneDisplay ? <p className="text-xs font-mono text-on-surface-variant">{phoneDisplay}</p> : null}
+      {telegramHandle ? <p className="text-xs font-mono text-tertiary">{telegramHandle}</p> : null}
 
       {order.createdAtUtc ? (
         <p className="text-xs text-on-surface-variant">
@@ -523,6 +621,15 @@ function OrderCard({
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-800">
           <p className="font-semibold text-[10px] uppercase tracking-wider text-amber-700">Комментарий</p>
           <p className="whitespace-pre-wrap">{order.comment}</p>
+        </div>
+      ) : null}
+
+      {/* Orphan record warning — historic orders whose order_positions rows
+          are missing in the DB. Shows up as "0 TJS / 0 поз." otherwise. */}
+      {isOrderDataLost(order) ? (
+        <div className="flex items-center gap-1.5 rounded-lg bg-amber-100 border border-amber-300 px-2 py-1.5 text-[11px] font-semibold text-amber-800">
+          <span aria-hidden>⚠</span>
+          <span>Данные позиций утеряны</span>
         </div>
       ) : null}
 

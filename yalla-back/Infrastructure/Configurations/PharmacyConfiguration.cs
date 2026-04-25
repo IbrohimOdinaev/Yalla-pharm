@@ -57,6 +57,16 @@ public class PharmacyConfiguration : IEntityTypeConfiguration<Pharmacy>
           .HasMaxLength(1024)
           .IsRequired(false);
 
+        builder.Property(x => x.OpensAt)
+          .HasColumnName("opens_at")
+          .HasColumnType("time without time zone")
+          .IsRequired(false);
+
+        builder.Property(x => x.ClosesAt)
+          .HasColumnName("closes_at")
+          .HasColumnType("time without time zone")
+          .IsRequired(false);
+
         builder.HasIndex(x => x.AdminId)
           .HasDatabaseName("ix_pharmacies_admin_id");
 

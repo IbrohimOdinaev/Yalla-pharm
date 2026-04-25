@@ -14,6 +14,9 @@ const MAP_OPTIONS: google.maps.MapOptions = {
   streetViewControl: false,
   mapTypeControl: false,
   fullscreenControl: false,
+  // "greedy" lets the user pan/zoom with a single finger on mobile. Default
+  // "auto" falls back to "cooperative" on touch devices (needs 2 fingers).
+  gestureHandling: "greedy",
 };
 
 type Props = {

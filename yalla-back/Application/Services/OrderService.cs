@@ -64,6 +64,8 @@ public sealed class OrderService : IOrderService
       .Take(pageSize)
       .ToListAsync(cancellationToken);
 
+    var clientsById = await LoadClientsForOrdersAsync(orders, cancellationToken);
+
     return new GetAllOrdersResponse
     {
       Status = request.Status,
@@ -71,7 +73,7 @@ public sealed class OrderService : IOrderService
       PageSize = pageSize,
       TotalCount = totalCount,
       Orders = orders
-        .Select(ToWorkerOrderResponse)
+        .Select(o => ToWorkerOrderResponse(o, clientsById))
         .ToList()
     };
   }
@@ -223,6 +225,8 @@ public sealed class OrderService : IOrderService
       .Take(pageSize)
       .ToListAsync(cancellationToken);
 
+    var clientsById = await LoadClientsForOrdersAsync(orders, cancellationToken);
+
     return new GetPharmacyOrdersResponse
     {
       WorkerId = worker.Id,
@@ -232,7 +236,7 @@ public sealed class OrderService : IOrderService
       PageSize = pageSize,
       TotalCount = totalCount,
       Orders = orders
-        .Select(ToWorkerOrderResponse)
+        .Select(o => ToWorkerOrderResponse(o, clientsById))
         .ToList()
     };
   }
@@ -260,12 +264,14 @@ public sealed class OrderService : IOrderService
       .Take(take)
       .ToListAsync(cancellationToken);
 
+    var clientsById = await LoadClientsForOrdersAsync(orders, cancellationToken);
+
     return new GetNewOrdersForWorkerResponse
     {
       WorkerId = worker.Id,
       PharmacyId = worker.PharmacyId,
       Orders = orders
-        .Select(ToWorkerOrderResponse)
+        .Select(o => ToWorkerOrderResponse(o, clientsById))
         .ToList()
     };
   }
@@ -401,12 +407,13 @@ public sealed class OrderService : IOrderService
           order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
       }
 
+      var clientsById = await LoadClientsForOrdersAsync(new[] { order }, cancellationToken);
       return new RejectOrderPositionsResponse
       {
         WorkerId = worker.Id,
         OrderId = order.Id,
         RejectedPositionIds = positionIds,
-        Order = ToWorkerOrderResponse(order),
+        Order = ToWorkerOrderResponse(order, clientsById),
         RefundRequest = refundRequest
       };
     }
@@ -1298,15 +1305,44 @@ public sealed class OrderService : IOrderService
     }
   }
 
-  private static WorkerOrderResponse ToWorkerOrderResponse(Order order)
+  /// Batch-load the Client rows referenced by a page of orders so the
+  /// admin-facing mapping can surface customer name / phone / Telegram
+  /// without issuing a query per row.
+  private async Task<IReadOnlyDictionary<Guid, Client>> LoadClientsForOrdersAsync(
+    IEnumerable<Order> orders,
+    CancellationToken cancellationToken)
+  {
+    var clientIds = orders
+      .Where(o => o.ClientId.HasValue)
+      .Select(o => o.ClientId!.Value)
+      .Distinct()
+      .ToList();
+    if (clientIds.Count == 0)
+      return new Dictionary<Guid, Client>();
+    var clients = await _dbContext.Clients
+      .AsNoTracking()
+      .Where(c => clientIds.Contains(c.Id))
+      .ToListAsync(cancellationToken);
+    return clients.ToDictionary(c => c.Id);
+  }
+
+  private static WorkerOrderResponse ToWorkerOrderResponse(
+    Order order,
+    IReadOnlyDictionary<Guid, Client>? clientsById = null)
   {
     var delivery = order.DeliveryData;
     var deliveryCost = delivery?.DeliveryCost ?? 0m;
+    Client? client = null;
+    if (clientsById is not null && order.ClientId.HasValue)
+      clientsById.TryGetValue(order.ClientId.Value, out client);
     return new WorkerOrderResponse
     {
       OrderId = order.Id,
       ClientId = order.ClientId,
       ClientPhoneNumber = order.ClientPhoneNumber,
+      ClientName = client?.Name,
+      ClientTelegramId = client?.TelegramId,
+      ClientTelegramUsername = client?.TelegramUsername,
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
       IsPickup = order.IsPickup,

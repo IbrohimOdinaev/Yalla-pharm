@@ -164,6 +164,9 @@ export type ApiOrder = {
   currency?: string;
   returnCost?: number;
   clientPhoneNumber?: string;
+  clientName?: string | null;
+  clientTelegramId?: number | null;
+  clientTelegramUsername?: string | null;
   orderPlacedAt?: string;
   paymentUrl?: string;
   paymentExpiresAtUtc?: string | null;

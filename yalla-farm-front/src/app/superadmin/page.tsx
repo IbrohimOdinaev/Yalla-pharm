@@ -17,7 +17,7 @@ import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/sha
 import { getClients, deleteClient } from "@/entities/client/admin-api";
 import type { ApiClient } from "@/shared/types/api";
 import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
-import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost } from "@/entities/order/totals";
+import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
 import { getRefundRequests, initiateRefund } from "@/entities/refund/api";
 import { getPaymentSettings, updateDcBaseUrl, type PaymentSettingsSnapshot } from "@/entities/payment-settings/api";
@@ -1052,11 +1052,24 @@ function OrdersTab({ token }: { token: string }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [intents, setIntents] = useState<ApiPaymentIntent[]>([]);
   const [refunds, setRefunds] = useState<ApiRefundRequest[]>([]);
+  const [pharmacyTitleById, setPharmacyTitleById] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null);
   const [returnMode, setReturnMode] = useState(false);
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+
+  // Pharmacy title lookup — backend returns only `pharmacyId` on orders, so
+  // we resolve the readable title client-side. Loaded once per token.
+  useEffect(() => {
+    getAllPharmacies(token)
+      .then((list) => {
+        const map: Record<string, string> = {};
+        for (const p of list) map[p.id] = p.title;
+        setPharmacyTitleById(map);
+      })
+      .catch(() => undefined);
+  }, [token]);
 
   const load = useCallback(() => {
     Promise.all([getAllOrders(token, ""), getPendingPaymentIntents(token), getRefundRequests(token)])
@@ -1212,6 +1225,11 @@ function OrdersTab({ token }: { token: string }) {
                   {/* Orders */}
                   {statusOrders.map(order => {
                     const phone = order.clientPhoneNumber?.replace(/^\+?992/, "") ?? "";
+                    const tgHandle = order.clientTelegramUsername
+                      ? `@${order.clientTelegramUsername.replace(/^@/, "")}`
+                      : order.clientTelegramId
+                        ? `tg:${order.clientTelegramId}`
+                        : "";
                     return (
                       <div key={order.orderId} className={`stitch-card p-3 cursor-pointer hover:ring-1 hover:ring-primary transition ${deliveryBorderClass(!!order.isPickup)}`} onClick={() => openOverlay(order)}>
                         <div className="flex items-center justify-between gap-1">
@@ -1222,10 +1240,22 @@ function OrdersTab({ token }: { token: string }) {
                           <span className="truncate max-w-[140px]">{order.pharmacyTitle ?? "—"}</span>
                           <span className="font-bold">{computeOriginalPaid(order) > 0 ? formatMoney(computeOriginalPaid(order), order.currency) : "—"}</span>
                         </div>
-                        <div className="flex items-center justify-between mt-0.5">
+                        {order.clientName ? (
+                          <p className="mt-0.5 text-[11px] font-semibold truncate">{order.clientName}</p>
+                        ) : null}
+                        <div className="flex items-center justify-between mt-0.5 gap-1">
                           {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : <span/>}
                           {phone ? <span className="text-[10px] font-mono text-on-surface-variant">{phone}</span> : null}
                         </div>
+                        {tgHandle ? (
+                          <p className="text-[10px] font-mono text-tertiary truncate">{tgHandle}</p>
+                        ) : null}
+                        {isOrderDataLost(order) ? (
+                          <div className="mt-1 flex items-center gap-1 rounded-md bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                            <span aria-hidden>⚠</span>
+                            <span>Данные утеряны</span>
+                          </div>
+                        ) : null}
                         {order.status === "OnTheWay" ? (
                           <button
                             type="button"
@@ -1267,6 +1297,16 @@ function OrdersTab({ token }: { token: string }) {
               </button>
             </div>
 
+            {isOrderDataLost(selectedOrder) ? (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-bold">⚠ Данные позиций утеряны</p>
+                <p className="mt-0.5 text-xs text-amber-800">
+                  Этот заказ — исторический: записи позиций отсутствуют в БД.
+                  Сумма и состав показаны как 0 — данные восстановить нельзя.
+                </p>
+              </div>
+            ) : null}
+
             {/* Order info grid */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 text-sm">
               <div className="rounded-xl bg-surface-container-low p-3">
@@ -1285,16 +1325,27 @@ function OrdersTab({ token }: { token: string }) {
                 <p className="text-[10px] text-on-surface-variant uppercase">Дата</p>
                 <p className="font-bold">{selectedOrder.createdAtUtc ? new Date(selectedOrder.createdAtUtc).toLocaleString("ru-RU") : "—"}</p>
               </div>
-              {selectedOrder.clientPhoneNumber ? (
-                <div className="rounded-xl bg-surface-container-low p-3">
+              {selectedOrder.clientPhoneNumber || selectedOrder.clientName || selectedOrder.clientTelegramUsername || selectedOrder.clientTelegramId ? (
+                <div className="rounded-xl bg-surface-container-low p-3 space-y-0.5">
                   <p className="text-[10px] text-on-surface-variant uppercase">Клиент</p>
-                  <p className="font-bold font-mono">{selectedOrder.clientPhoneNumber}</p>
+                  {selectedOrder.clientName ? <p className="font-bold">{selectedOrder.clientName}</p> : null}
+                  {selectedOrder.clientPhoneNumber ? <p className="font-mono text-sm">{selectedOrder.clientPhoneNumber}</p> : null}
+                  {selectedOrder.clientTelegramUsername ? (
+                    <p className="font-mono text-xs text-tertiary">@{selectedOrder.clientTelegramUsername.replace(/^@/, "")}</p>
+                  ) : selectedOrder.clientTelegramId ? (
+                    <p className="font-mono text-xs text-tertiary">tg:{selectedOrder.clientTelegramId}</p>
+                  ) : null}
                 </div>
               ) : null}
               {selectedOrder.pharmacyTitle || selectedOrder.pharmacyId ? (
                 <div className="rounded-xl bg-surface-container-low p-3">
                   <p className="text-[10px] text-on-surface-variant uppercase">Аптека</p>
-                  <p className="font-bold">{selectedOrder.pharmacyTitle || selectedOrder.pharmacyId?.slice(0, 8)}</p>
+                  <p className="font-bold">
+                    {selectedOrder.pharmacyTitle
+                      || (selectedOrder.pharmacyId ? pharmacyTitleById[selectedOrder.pharmacyId] : null)
+                      || selectedOrder.pharmacyId?.slice(0, 8)
+                      || "—"}
+                  </p>
                 </div>
               ) : null}
               {selectedOrder.paymentState ? (

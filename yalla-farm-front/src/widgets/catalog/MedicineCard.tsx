@@ -120,9 +120,9 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
             </span>
           ) : null}
 
-          {/* Quantity badge when in cart */}
+          {/* Quantity badge when in cart — light-blue pill, top-right. */}
           {cartState.inCart ? (
-            <span className="absolute right-2 top-2 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-extrabold text-white">
+            <span className="absolute right-2 top-2 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-[#4FB8DD] px-1.5 text-[11px] font-extrabold text-white shadow-card">
               {cartState.quantity}
             </span>
           ) : null}
@@ -141,8 +141,8 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
         </div>
 
         {/* Info */}
-        <div className={`flex flex-1 flex-col ${compact ? "gap-1 p-2" : "gap-1.5 p-3"}`}>
-          {/* Category or pharmacy hint */}
+        <div className={`flex flex-1 flex-col ${compact ? "gap-1.5 p-2.5" : "gap-2 p-3"}`}>
+          {/* Category hint (non-compact wide layouts only) */}
           {medicine.categoryName && !compact ? (
             <p className="hidden truncate text-[10px] font-semibold text-on-surface-variant sm:block">
               {medicine.categoryName}
@@ -152,70 +152,78 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
           {/* Title */}
           <h3
             className={`line-clamp-2 font-semibold leading-tight text-on-surface ${
-              compact ? "text-[11px] min-h-[1.8rem]" : "text-[12px] sm:text-[13px] min-h-[2rem] sm:min-h-[2.2rem]"
+              compact ? "text-xs min-h-[2rem]" : "text-sm min-h-[2.4rem]"
             }`}
           >
             {name}
           </h3>
 
-          {/* Price */}
-          <div className="mt-auto flex items-baseline gap-1.5">
-            <span
-              className={`font-display font-extrabold text-on-surface tabular-nums ${
-                compact ? "text-sm" : "text-base sm:text-lg"
-              }`}
-            >
-              {price ? `${formatMoney(price)}` : "—"}
-            </span>
-            {price ? (
-              <span className="text-[11px] font-semibold text-on-surface-variant">TJS</span>
-            ) : null}
+          {/* Cart control — price lives inside the pill. Default state: light-blue
+              pill with "{price} TJS  +"; in-cart state: yellow pill with
+              "−  {price} TJS  +". Admin-side cards (hideCart) get a static
+              read-only price strip. */}
+          <div className="mt-auto">
+            {hideCart ? (
+              <div className="flex items-center justify-center rounded-full bg-surface-container py-2">
+                <span className="text-xs font-bold text-on-surface">
+                  {price ? `от ${formatMoney(price)}` : "Нет офферов"}
+                </span>
+              </div>
+            ) : cartState.inCart ? (
+              <div
+                className={`flex items-center justify-between gap-1 rounded-full bg-accent px-0 text-on-surface shadow-card xs:gap-1.5 sm:gap-2 sm:px-0.5 md:px-1 ${
+                  compact ? "h-7 sm:h-8 md:h-9" : "h-8 sm:h-9 md:h-10"
+                }`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={onDecrement}
+                  className="mr-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 sm:h-7 sm:w-7 md:h-8 md:w-8"
+                  aria-label="Уменьшить"
+                >
+                  <Icon name="minus" size={12} strokeWidth={2.4} />
+                </button>
+                <span
+                  className={`min-w-0 flex-1 overflow-hidden text-center font-display font-extrabold tabular-nums whitespace-nowrap leading-none ${
+                    compact
+                      ? "text-[8px] xs:text-[9px] sm:text-[10px] md:text-[11px]"
+                      : "text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs lg:text-sm"
+                  }`}
+                >
+                  {price ? `${formatMoney(price)}` : `×${cartState.quantity}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={onIncrement}
+                  className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 sm:h-7 sm:w-7 md:h-8 md:w-8"
+                  aria-label="Увеличить"
+                >
+                  <Icon name="plus" size={12} strokeWidth={2.4} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onAdd}
+                className={`flex w-full items-center justify-between gap-0.5 rounded-full bg-[#4FB8DD] px-2 font-display text-white shadow-card transition hover:bg-[#3FA5CE] active:scale-[0.98] xs:gap-1 xs:px-3 ${
+                  compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
+                }`}
+                aria-label="В корзину"
+              >
+                <span
+                  className={`font-extrabold tabular-nums whitespace-nowrap leading-none ${
+                    compact
+                      ? "text-[9px] xs:text-[10px] sm:text-[11px]"
+                      : "text-[10px] xs:text-[11px] sm:text-xs md:text-sm"
+                  }`}
+                >
+                  {price ? formatMoney(price) : "—"}
+                </span>
+                <Icon name="plus" size={14} strokeWidth={2.4} />
+              </button>
+            )}
           </div>
-
-          {/* Cart button / controls */}
-          {hideCart ? (
-            <div className="rounded-full bg-surface-container py-1.5 text-center">
-              <span className="text-[11px] font-bold text-on-surface">
-                {price ? `от ${formatMoney(price)}` : "Нет офферов"}
-              </span>
-            </div>
-          ) : cartState.inCart ? (
-            <div
-              className="flex items-center justify-between rounded-full bg-primary p-0.5 text-white"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={onDecrement}
-                className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/10 active:scale-95"
-                aria-label="Уменьшить"
-              >
-                <Icon name="minus" size={14} />
-              </button>
-              <span className={`font-extrabold tabular-nums ${compact ? "text-xs" : "text-sm"}`}>
-                {cartState.quantity}
-              </span>
-              <button
-                type="button"
-                onClick={onIncrement}
-                className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/10 active:scale-95"
-                aria-label="Увеличить"
-              >
-                <Icon name="plus" size={14} />
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={onAdd}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-full bg-secondary font-bold text-white transition hover:bg-secondary-container active:scale-[0.98] ${
-                compact ? "h-8 text-[11px]" : "h-9 text-xs"
-              }`}
-            >
-              <Icon name="bag" size={compact ? 12 : 14} />
-              В корзину
-            </button>
-          )}
         </div>
       </article>
     </div>

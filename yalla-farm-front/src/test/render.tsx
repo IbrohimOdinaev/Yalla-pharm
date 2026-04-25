@@ -8,6 +8,7 @@ type AuthState = {
   token: string | null;
   role: string | null;
   userId: string | null;
+  pharmacyId: string | null;
 };
 
 type RenderWithProvidersOptions = RenderOptions & {
@@ -25,6 +26,7 @@ export function renderWithProviders(
         token: preloadedAuth?.token ?? null,
         role: preloadedAuth?.role ?? null,
         userId: preloadedAuth?.userId ?? null,
+        pharmacyId: preloadedAuth?.pharmacyId ?? null,
       },
     },
   });

@@ -94,4 +94,18 @@ public sealed class BasketController : ControllerBase
     var response = await _clientService.ClearBasketAsync(scopedRequest, cancellationToken);
     return Ok(response);
   }
+
+  /// <summary>
+  /// Computes pharmacy options (per-pharmacy totals, coverage, availability) for an anonymous
+  /// client-supplied cart. Lets the guest UI share the authenticated "от X TJS" best-price pill.
+  /// </summary>
+  [HttpPost("guest-preview")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GuestPreview(
+    [FromBody] GuestBasketPreviewRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _clientService.PreviewGuestBasketAsync(request, cancellationToken);
+    return Ok(response);
+  }
 }

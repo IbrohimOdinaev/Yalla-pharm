@@ -10,6 +10,10 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useBasketLive } from "@/features/cart/model/useBasketLive";
+import {
+  computeBestPriceFromOffers,
+  computeBestPriceFromPharmacyOptions,
+} from "@/features/cart/model/bestPharmacyPrice";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
@@ -61,12 +65,24 @@ export default function CartPage() {
     });
   }, [isGuest, guestItems, basket.positions, medicineMap]);
 
+  const bestPrice = useMemo(() => {
+    if (!isGuest) {
+      const fromServer = computeBestPriceFromPharmacyOptions(
+        basket.pharmacyOptions,
+        cartItems.length,
+      );
+      if (fromServer) return fromServer;
+    }
+    return computeBestPriceFromOffers(cartItems, medicineMap);
+  }, [isGuest, basket.pharmacyOptions, cartItems, medicineMap]);
+
   const cartMinTotal = useMemo(() => {
+    if (bestPrice) return bestPrice.price;
     return cartItems.reduce((sum, item) => {
       const price = getCheapestPrice(medicineMap[item.medicineId]) ?? 0;
       return sum + price * item.quantity;
     }, 0);
-  }, [cartItems, medicineMap]);
+  }, [bestPrice, cartItems, medicineMap]);
 
   const totalUnits = useMemo(() => cartItems.reduce((n, i) => n + i.quantity, 0), [cartItems]);
 
@@ -140,13 +156,13 @@ export default function CartPage() {
   return (
     <AppShell top={<TopBar title="Корзина" backHref="back" />}>
       {/* Header row: total + clear */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-on-surface-variant">
+      <div className="mb-3 flex items-center justify-between gap-2 xs:mb-4">
+        <div className="min-w-0">
+          <p className="text-[11px] text-on-surface-variant xs:text-xs">
             {totalUnits} {totalUnits === 1 ? "товар" : totalUnits < 5 ? "товара" : "товаров"}
           </p>
-          <p className="font-display text-xl font-extrabold text-on-surface">
-            от {formatMoney(cartMinTotal)} TJS
+          <p className="font-display text-lg font-extrabold text-on-surface xs:text-xl">
+            от {formatMoney(cartMinTotal)}
           </p>
         </div>
         <IconButton
@@ -171,17 +187,17 @@ export default function CartPage() {
           const minPrice = getCheapestPrice(medicine);
 
           return (
-            <li key={item.id} className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+            <li key={item.id} className="flex items-center gap-2 rounded-2xl bg-surface-container-lowest p-2.5 shadow-card xs:gap-3 xs:p-3">
               <Link
                 href={`/product/${item.medicineId}`}
-                className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-accent-mint"
+                className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-accent-mint xs:h-14 xs:w-14 xs:rounded-2xl sm:h-16 sm:w-16"
               >
                 {image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={image} alt={name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-primary/40">
-                    <Icon name="bag" size={24} />
+                    <Icon name="bag" size={20} />
                   </div>
                 )}
               </Link>
@@ -189,44 +205,44 @@ export default function CartPage() {
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/product/${item.medicineId}`}
-                  className="line-clamp-2 text-sm font-bold leading-tight text-on-surface transition hover:text-primary"
+                  className="line-clamp-2 text-[12px] font-bold leading-tight text-on-surface transition hover:text-primary xs:text-[13px] sm:text-sm"
                 >
                   {name}
                 </Link>
-                <p className="mt-1 text-xs text-on-surface-variant">
+                <p className="mt-0.5 text-[10px] text-on-surface-variant xs:mt-1 xs:text-[11px] sm:text-xs">
                   от{" "}
                   <span className="font-bold text-primary">
-                    {minPrice ? `${formatMoney(minPrice)} TJS` : "—"}
+                    {minPrice ? `${formatMoney(minPrice)}` : "—"}
                   </span>
                 </p>
               </div>
 
-              <div className="flex flex-shrink-0 flex-col items-end gap-1">
+              <div className="flex flex-shrink-0 flex-col items-end gap-0.5 xs:gap-1">
                 <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
                   <button
                     type="button"
                     onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40"
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40 xs:h-8 xs:w-8"
                     aria-label="Уменьшить"
                   >
-                    <Icon name="minus" size={16} />
+                    <Icon name="minus" size={14} />
                   </button>
-                  <span className="min-w-[1.5rem] text-center text-sm font-extrabold tabular-nums">
+                  <span className="min-w-[1.25rem] text-center text-xs font-extrabold tabular-nums xs:min-w-[1.5rem] xs:text-sm">
                     {item.quantity}
                   </span>
                   <button
                     type="button"
                     onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40"
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40 xs:h-8 xs:w-8"
                     aria-label="Увеличить"
                   >
-                    <Icon name="plus" size={16} />
+                    <Icon name="plus" size={14} />
                   </button>
                 </div>
                 <button
                   type="button"
                   onClick={() => onRemove(item.id, item.medicineId)}
-                  className="text-[11px] font-semibold text-on-surface-variant/70 transition hover:text-secondary"
+                  className="text-[10px] font-semibold text-on-surface-variant/70 transition hover:text-secondary xs:text-[11px]"
                 >
                   Удалить
                 </button>
@@ -236,13 +252,14 @@ export default function CartPage() {
         })}
       </ul>
 
-      {/* Recommendations */}
+      {/* Recommendations — horizontal rail. Cards stay the same size (compact)
+          so two fit visibly on a 360px screen. */}
       {recommendations.length > 0 && (
-        <section className="mt-8 space-y-3">
-          <h3 className="font-display text-lg font-extrabold">Добавьте к заказу</h3>
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 snap-x pb-2">
+        <section className="mt-6 space-y-2 xs:mt-8 xs:space-y-3">
+          <h3 className="font-display text-base font-extrabold xs:text-lg">Добавьте к заказу</h3>
+          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-2 scroll-touch scrollbar-hide snap-x xs:-mx-4 xs:px-4">
             {recommendations.map((med) => (
-              <div key={med.id} className="w-[140px] flex-shrink-0 snap-start">
+              <div key={med.id} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
                 <MedicineCard medicine={med} compact />
               </div>
             ))}
@@ -253,9 +270,9 @@ export default function CartPage() {
       {/* Spacer for sticky CTA */}
       <div className="h-24" />
 
-      {/* Sticky CTA */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 px-3 sm:bottom-4">
-        <div className="mx-auto max-w-3xl rounded-full bg-surface-container-lowest p-1.5 shadow-glass">
+      {/* Sticky CTA — full-width on phones, constrained to 3xl on desktop. */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 px-2 xs:px-3 sm:bottom-4">
+        <div className="mx-auto max-w-3xl rounded-full bg-surface-container-lowest p-1 shadow-glass xs:p-1.5">
           <Button
             type="button"
             size="lg"
@@ -264,7 +281,8 @@ export default function CartPage() {
             onClick={() => router.push("/cart/pharmacy")}
             disabled={cartItems.length === 0}
           >
-            Выбрать аптеку · от {formatMoney(cartMinTotal)} TJS
+            <span className="xs:hidden">Выбрать · от {formatMoney(cartMinTotal)}</span>
+            <span className="hidden xs:inline">Выбрать аптеку · от {formatMoney(cartMinTotal)}</span>
           </Button>
         </div>
       </div>

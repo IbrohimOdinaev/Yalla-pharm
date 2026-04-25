@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 
 type Props = {
   onPharmacyClick: (pharmacy: ActivePharmacy) => void;
@@ -10,6 +11,8 @@ type Props = {
 export function PharmacyBanners({ onPharmacyClick }: Props) {
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
+  const openPicker = usePharmacyStore((s) => s.openPicker);
 
   useEffect(() => {
     getActivePharmacies()
@@ -30,8 +33,6 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
       </section>
     );
   }
-
-  if (pharmacies.length === 0) return null;
 
   return (
     <section>
@@ -65,6 +66,28 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
             </button>
           );
         })}
+
+        {/* Pharmacy picker entry — always last. Opens the full picker modal. */}
+        <button
+          type="button"
+          onClick={openPicker}
+          className="relative h-24 xs:h-28 sm:h-32 w-[200px] xs:w-[240px] sm:w-[280px] flex-shrink-0 rounded-2xl overflow-hidden snap-start flex flex-col items-center justify-center gap-1.5 bg-primary-soft text-primary transition active:scale-95 shadow-card hover:shadow-glass"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+          </div>
+          <p className="text-sm font-bold">
+            {selectedPharmacy ? selectedPharmacy.title : "Все аптеки"}
+          </p>
+          <p className="text-[11px] font-semibold text-primary/80">
+            {selectedPharmacy ? "Изменить" : "Выбрать аптеку"}
+          </p>
+        </button>
       </div>
     </section>
   );

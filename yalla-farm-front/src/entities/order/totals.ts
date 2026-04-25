@@ -59,3 +59,14 @@ export function computeTotalRefund(order: ApiOrder): number {
   if (order.status === "Cancelled") return computeOriginalPaid(order);
   return computeRefundFromPositions(order);
 }
+
+/**
+ * Detects orphan orders whose `order_positions` rows are missing in the DB —
+ * a handful of historic records pre-date the current Order constructor guard
+ * (`positions.Count > 0`) and surface as "0 TJS / 0 поз." cards. UI uses this
+ * to render a "data lost" badge so admins don't read them as legitimate empty
+ * orders.
+ */
+export function isOrderDataLost(order: ApiOrder): boolean {
+  return (order.positions?.length ?? 0) === 0;
+}

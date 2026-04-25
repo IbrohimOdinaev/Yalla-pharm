@@ -990,6 +990,10 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("character varying(1024)")
                         .HasColumnName("banner_url");
 
+                    b.Property<TimeOnly?>("ClosesAt")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("closes_at");
+
                     b.Property<string>("IconUrl")
                         .HasColumnType("text");
 
@@ -1006,6 +1010,10 @@ namespace Yalla.Infrastructure.Migrations
                     b.Property<double?>("Longitude")
                         .HasColumnType("double precision")
                         .HasColumnName("longitude");
+
+                    b.Property<TimeOnly?>("OpensAt")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("opens_at");
 
                     b.Property<string>("Title")
                         .IsRequired()

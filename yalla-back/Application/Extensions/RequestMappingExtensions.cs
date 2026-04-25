@@ -94,8 +94,24 @@ public static class RequestMappingExtensions
         if (request.BannerUrl is not null)
             pharmacy.SetBannerUrl(request.BannerUrl);
 
+        // Opening hours: explicit empty strings clear the schedule (24/7).
+        // `null` leaves the existing value untouched so partial updates don't
+        // accidentally wipe hours when the admin didn't touch those fields.
+        if (request.OpensAt is not null || request.ClosesAt is not null)
+        {
+            var opens = ParseSchedulePart(request.OpensAt);
+            var closes = ParseSchedulePart(request.ClosesAt);
+            pharmacy.SetOpeningHours(opens, closes);
+        }
+
         if (pharmacy.IsActive != request.IsActive)
             pharmacy.ChangeActivity();
+    }
+
+    private static TimeOnly? ParseSchedulePart(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return null;
+        return TimeOnly.Parse(input);
     }
 
     public static void ApplyToDomain(

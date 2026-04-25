@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { getMyProfile, updateMyProfile, deleteMyAccount } from "@/entities/client/api";
+import { getClientOrderHistory } from "@/entities/order/api";
+import { computeNetCost } from "@/entities/order/totals";
 import type { ApiClient } from "@/shared/types/api";
+import { formatMoney } from "@/shared/lib/format";
 import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
 import { clearCredentials } from "@/features/auth/model/authSlice";
-import { useCartStore } from "@/features/cart/model/cartStore";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { LinkPhoneModal } from "@/widgets/profile/LinkPhoneModal";
@@ -36,7 +38,10 @@ export default function ProfilePage() {
   const [showLinkPhone, setShowLinkPhone] = useState(false);
   const [showLinkTelegram, setShowLinkTelegram] = useState(false);
 
-  const { basket, loadBasket } = useCartStore();
+  // Lightweight stats derived from order history. Refunded portions are
+  // already excluded by `computeNetCost`, so totals reflect what the
+  // customer actually paid.
+  const [stats, setStats] = useState({ ordersCount: 0, deliveredCount: 0, totalSpent: 0 });
 
   useEffect(() => {
     if (!token) return;
@@ -53,9 +58,22 @@ export default function ProfilePage() {
         setError(err instanceof Error ? err.message : "Не удалось загрузить профиль.");
         setIsLoading(false);
       });
+  }, [token]);
 
-    loadBasket(token);
-  }, [token, loadBasket]);
+  useEffect(() => {
+    if (!token) return;
+    getClientOrderHistory(token)
+      .then((orders) => {
+        const isFulfilled = (s?: string) => s === "Delivered" || s === "PickedUp";
+        const ordersCount = orders.length;
+        const deliveredCount = orders.filter((o) => isFulfilled(o.status)).length;
+        const totalSpent = orders
+          .filter((o) => isFulfilled(o.status))
+          .reduce((sum, o) => sum + computeNetCost(o), 0);
+        setStats({ ordersCount, deliveredCount, totalSpent });
+      })
+      .catch(() => undefined);
+  }, [token]);
 
   async function onSaveProfile(e: FormEvent) {
     e.preventDefault();
@@ -123,8 +141,8 @@ export default function ProfilePage() {
     .toUpperCase();
 
   return (
-    <AppShell narrow top={<TopBar title="Профиль" backHref="back" />}>
-      <div className="mx-auto max-w-md space-y-4">
+    <AppShell top={<TopBar title="Профиль" backHref="back" />}>
+      <div className="mx-auto max-w-md space-y-4 lg:max-w-5xl">
         {isLoading ? (
           <div className="rounded-3xl bg-surface-container-low p-6 text-sm">Загрузка...</div>
         ) : null}
@@ -134,16 +152,16 @@ export default function ProfilePage() {
 
         {/* Hero card */}
         {profile ? (
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-container p-5 text-white shadow-card">
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-container p-5 text-white shadow-card lg:p-7">
             <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
             <span aria-hidden className="pointer-events-none absolute right-4 bottom-0 h-16 w-16 rounded-full bg-white/10" />
             <div className="relative flex items-start gap-4">
-              <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/20 font-display text-2xl font-extrabold backdrop-blur">
+              <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/20 font-display text-2xl font-extrabold backdrop-blur lg:h-20 lg:w-20 lg:text-3xl">
                 {initials}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Мой профиль</p>
-                <h1 className="mt-1 truncate font-display text-2xl font-extrabold">{profile.name || "Клиент"}</h1>
+                <h1 className="mt-1 truncate font-display text-2xl font-extrabold lg:text-3xl">{profile.name || "Клиент"}</h1>
                 {phoneLinked ? (
                   <p className="mt-1 font-mono text-sm opacity-90">+992{profile.phoneNumber}</p>
                 ) : telegramLinked ? (
@@ -154,16 +172,42 @@ export default function ProfilePage() {
           </section>
         ) : null}
 
-        {/* Quick actions */}
+        {/* Stats — clickable orders count navigates to /orders */}
         {profile ? (
-          <section className="grid grid-cols-4 gap-2">
-            <QuickAction href="/orders" icon="orders" label="Заказы" tint="bg-accent-mint" accent="text-primary" />
-            <QuickAction href="/cart" icon="cart" label="Корзина" tint="bg-accent-coral" accent="text-secondary" badge={(basket.positions ?? []).length || undefined} />
-            <QuickAction href="/pharmacies/map" icon="pharmacy" label="Аптеки" tint="bg-accent-sky" accent="text-tertiary" />
-            <QuickAction href="/" icon="bag" label="Каталог" tint="bg-accent-sun" accent="text-accent-sun-ink" />
+          <section className="grid grid-cols-3 gap-2 sm:gap-3">
+            <Link
+              href="/orders"
+              className="flex flex-col justify-center rounded-2xl bg-surface-container-lowest p-3 text-center shadow-card transition hover:shadow-glass active:scale-[0.98] sm:p-4 lg:p-5"
+            >
+              <p className="font-display text-xl font-extrabold text-primary sm:text-2xl lg:text-3xl tabular-nums">
+                {stats.ordersCount}
+              </p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant sm:text-xs">
+                Заказов
+              </p>
+            </Link>
+            <div className="flex flex-col justify-center rounded-2xl bg-surface-container-lowest p-3 text-center shadow-card sm:p-4 lg:p-5">
+              <p className="font-display text-xl font-extrabold text-emerald-600 sm:text-2xl lg:text-3xl tabular-nums">
+                {stats.deliveredCount}
+              </p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant sm:text-xs">
+                Доставлено
+              </p>
+            </div>
+            <div className="flex flex-col justify-center rounded-2xl bg-surface-container-lowest p-3 text-center shadow-card sm:p-4 lg:p-5">
+              <p className="font-display text-base font-extrabold text-on-surface sm:text-lg lg:text-2xl tabular-nums">
+                {formatMoney(stats.totalSpent)}
+              </p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant sm:text-xs">
+                Потрачено
+              </p>
+            </div>
           </section>
         ) : null}
 
+        {/* Two-column layout on lg+; single column below */}
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+          <div className="space-y-4">
         {/* Linking section */}
         {profile && (!phoneLinked || !telegramLinked) ? (
           <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
@@ -226,7 +270,9 @@ export default function ProfilePage() {
             ) : null}
           </section>
         ) : null}
+          </div>
 
+          <div className="space-y-4">
         {/* Personal data form */}
         {profile ? (
           <form className="space-y-4 rounded-3xl bg-surface-container-lowest p-5 shadow-card" onSubmit={onSaveProfile}>
@@ -320,6 +366,8 @@ export default function ProfilePage() {
             )}
           </section>
         ) : null}
+          </div>
+        </div>
 
         <p className="pb-4 text-center text-[11px] text-on-surface-variant/60">
           © Yalla Farm · Душанбе
@@ -353,39 +401,6 @@ export default function ProfilePage() {
         </>
       ) : null}
     </AppShell>
-  );
-}
-
-function QuickAction({
-  href,
-  icon,
-  label,
-  tint,
-  accent,
-  badge,
-}: {
-  href: string;
-  icon: IconName;
-  label: string;
-  tint: string;
-  accent: string;
-  badge?: number;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-col items-center gap-2 rounded-3xl bg-surface-container-lowest p-3 shadow-card transition hover:-translate-y-0.5 active:scale-95"
-    >
-      <span className={`relative flex h-12 w-12 items-center justify-center rounded-full ${tint} ${accent}`}>
-        <Icon name={icon} size={22} />
-        {badge ? (
-          <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-extrabold text-white">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="text-center text-[11px] font-bold leading-tight text-on-surface">{label}</span>
-    </Link>
   );
 }
 

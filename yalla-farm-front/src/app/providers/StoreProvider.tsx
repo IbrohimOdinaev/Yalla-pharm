@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { Provider, useDispatch, useSelector } from "react-redux";
 import { store, type RootState } from "@/app/store";
 import { setCredentials } from "@/features/auth/model/authSlice";
+import { decodeJwt } from "@/shared/lib/jwt";
 import { getStoredToken, setStoredToken } from "@/shared/lib/auth-storage";
 import { stopSignalRConnection } from "@/shared/lib/signalr";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -23,17 +24,13 @@ function AuthPersistenceBridge() {
   useEffect(() => {
     const fromStorage = getStoredToken();
     if (fromStorage) {
-      // Decode JWT to extract role and userId
-      let role: string | undefined;
-      let userId: string | undefined;
-      try {
-        const payload = JSON.parse(atob(fromStorage.split(".")[1]));
-        const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
-        const rawRole = payload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
-        role = typeof rawRole === "number" ? ROLE_MAP[rawRole] : String(rawRole || "");
-        userId = payload.sub || payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] || undefined;
-      } catch { /* ignore decode errors */ }
-      dispatch(setCredentials({ token: fromStorage, role, userId }));
+      const claims = decodeJwt(fromStorage);
+      dispatch(setCredentials({
+        token: fromStorage,
+        role: claims.role,
+        userId: claims.userId,
+        pharmacyId: claims.pharmacyId,
+      }));
     }
   }, [dispatch]);
 

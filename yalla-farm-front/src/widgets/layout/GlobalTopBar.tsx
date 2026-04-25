@@ -39,8 +39,10 @@ function GlobalTopBarInner() {
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const loadPharmacy = usePharmacyStore((s) => s.load);
+  const isPharmacyPickerOpen = usePharmacyStore((s) => s.isPickerOpen);
+  const openPharmacyPicker = usePharmacyStore((s) => s.openPicker);
+  const closePharmacyPicker = usePharmacyStore((s) => s.closePicker);
   const [showAddressModal, setShowAddressModal] = useState(false);
-  const [showPharmacyModal, setShowPharmacyModal] = useState(false);
 
   useEffect(() => { loadPharmacy(); }, [loadPharmacy]);
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
@@ -62,15 +64,15 @@ function GlobalTopBarInner() {
         pharmacyName={selectedPharmacy?.title}
         pharmacyIconUrl={selectedPharmacy?.iconUrl}
         pharmacyId={selectedPharmacy?.id}
-        onPharmacyClick={() => setShowPharmacyModal(true)}
+        onPharmacyClick={openPharmacyPicker}
       />
       <AddressPickerModal
         open={showAddressModal}
         onClose={() => setShowAddressModal(false)}
       />
       <PharmacyPickerModal
-        open={showPharmacyModal}
-        onClose={() => setShowPharmacyModal(false)}
+        open={isPharmacyPickerOpen}
+        onClose={closePharmacyPicker}
       />
     </>
   );

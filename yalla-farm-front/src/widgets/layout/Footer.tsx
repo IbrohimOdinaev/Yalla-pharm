@@ -5,9 +5,9 @@ export function Footer() {
   return (
     <footer className="mt-12 border-t border-outline/70 bg-surface-container-low">
       <div className="mx-auto w-[90%] py-10">
-        <div className="grid gap-10 md:grid-cols-5">
+        <div className="grid gap-8 sm:grid-cols-2 sm:gap-10 lg:grid-cols-5">
           {/* Brand */}
-          <div className="md:col-span-2">
+          <div className="sm:col-span-2">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white font-display font-extrabold">
                 Y

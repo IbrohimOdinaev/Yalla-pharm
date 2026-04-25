@@ -21,6 +21,14 @@ public sealed class CheckoutSourceRequest
 
   /// <summary>Required when <see cref="Kind"/> is <see cref="CheckoutSourceKind.Explicit"/>.</summary>
   public IReadOnlyCollection<CheckoutPositionDraftRequest>? Positions { get; init; }
+
+  /// <summary>
+  /// When <see cref="Kind"/> is <see cref="CheckoutSourceKind.Explicit"/>, setting this to
+  /// <c>true</c> will remove basket positions whose MedicineId matches an ordered draft after
+  /// the order is successfully created. Intended for the authenticated cart-checkout flow where
+  /// the caller explicitly selects a subset of basket items for a pharmacy. Ignored for other kinds.
+  /// </summary>
+  public bool ConsumeFromBasket { get; init; }
 }
 
 public sealed class CheckoutPositionDraftRequest

@@ -11,4 +11,6 @@ public sealed class PharmacyResponse
   public double? Longitude { get; init; }
   public string? IconUrl { get; init; }
   public string? BannerUrl { get; init; }
+  public TimeOnly? OpensAt { get; init; }
+  public TimeOnly? ClosesAt { get; init; }
 }

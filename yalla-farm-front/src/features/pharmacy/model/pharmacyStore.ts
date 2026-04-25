@@ -10,13 +10,17 @@ type SelectedPharmacy = {
 
 type PharmacyStoreState = {
   selectedPharmacy: SelectedPharmacy | null;
+  isPickerOpen: boolean;
   setPharmacy: (pharmacy: SelectedPharmacy | null) => void;
+  openPicker: () => void;
+  closePicker: () => void;
   load: () => void;
   clear: () => void;
 };
 
 export const usePharmacyStore = create<PharmacyStoreState>((set) => ({
   selectedPharmacy: null,
+  isPickerOpen: false,
   setPharmacy: (pharmacy) => {
     set({ selectedPharmacy: pharmacy });
     if (typeof window !== "undefined") {
@@ -24,6 +28,8 @@ export const usePharmacyStore = create<PharmacyStoreState>((set) => ({
       else localStorage.removeItem(STORAGE_KEY);
     }
   },
+  openPicker: () => set({ isPickerOpen: true }),
+  closePicker: () => set({ isPickerOpen: false }),
   load: () => {
     if (typeof window === "undefined") return;
     const raw = localStorage.getItem(STORAGE_KEY);

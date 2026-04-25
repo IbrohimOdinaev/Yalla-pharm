@@ -12,10 +12,16 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { getPickupAvailability } from "@/features/pharmacy/model/pharmacyHours";
+import { usePharmacyAddresses } from "@/features/pharmacy/model/usePharmacyAddresses";
+import { usePharmacyDeliveryCosts } from "@/features/pharmacy/model/usePharmacyDeliveryCosts";
+import { setGuestCheckoutIntent } from "@/shared/lib/guest-intent";
 
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
 import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 import dynamic from "next/dynamic";
+
+type PharmacySort = "cheapest" | "most-positions";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
@@ -34,6 +40,11 @@ export default function PharmacySelectPage() {
   const [highlightedId, setHighlightedId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isPickup, setIsPickup] = useState(false);
+  const [sortMode, setSortMode] = useState<PharmacySort>("cheapest");
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+
+  const resolvedAddresses = usePharmacyAddresses(pharmacies);
+  const deliveryAddress = useDeliveryAddressStore((s) => s.address);
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -91,13 +102,32 @@ export default function PharmacySelectPage() {
       .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
   }
 
+  // Sort comparator applied to both server-built and guest-computed options.
+  // `cheapest`: ascending by total of in-stock items. `most-positions`: descending
+  // by number of fully-available items, tie-broken by cheaper total.
+  const sortOptions = useCallback(
+    (list: ApiBasketPharmacyOption[]) => {
+      const byCost = (o: ApiBasketPharmacyOption) => availableItemsTotal(o.items);
+      if (sortMode === "most-positions") {
+        return [...list].sort((a, b) => {
+          const ea = a.enoughQuantityMedicinesCount ?? 0;
+          const eb = b.enoughQuantityMedicinesCount ?? 0;
+          if (eb !== ea) return eb - ea;
+          return byCost(a) - byCost(b);
+        });
+      }
+      return [...list].sort((a, b) => byCost(a) - byCost(b));
+    },
+    [sortMode],
+  );
+
   // Build pharmacy options — from server for auth, computed from offers for guests
   const filteredOptions = useMemo(() => {
     const serverOptions = basket.pharmacyOptions ?? [];
     if (serverOptions.length > 0) {
-      return serverOptions
-        .filter((o) => (o.enoughQuantityMedicinesCount ?? 0) > 0)
-        .sort((a, b) => availableItemsTotal(a.items) - availableItemsTotal(b.items));
+      return sortOptions(
+        serverOptions.filter((o) => (o.enoughQuantityMedicinesCount ?? 0) > 0),
+      );
     }
 
     // Guest mode: compute pharmacy options from medicine.offers
@@ -135,7 +165,7 @@ export default function PharmacySelectPage() {
       }
     }
 
-    return Object.entries(pharmacyData)
+    const guestOptions = Object.entries(pharmacyData)
       .filter(([, d]) => d.enough > 0)
       .map(([phId, d]) => {
         const geo = pharmacyGeo[phId];
@@ -148,27 +178,53 @@ export default function PharmacySelectPage() {
           totalMedicinesCount: cartItems.length,
           items: d.items,
         } as ApiBasketPharmacyOption;
-      })
-      .sort((a, b) => (a.totalCost ?? Infinity) - (b.totalCost ?? Infinity));
-  }, [basket.pharmacyOptions, cartItems, medicineMap, pharmacyGeo]);
+      });
+    return sortOptions(guestOptions);
+  }, [basket.pharmacyOptions, cartItems, medicineMap, pharmacyGeo, sortOptions]);
 
-  // Map markers — show all pharmacies with coordinates, add cost if available
+  // Delivery cost per pharmacy — only computed in delivery mode when the
+  // user has saved a destination with coords. Results stream in async;
+  // cards show a skeleton while state === "loading". Declared before the
+  // map-markers memo below so markers can fold delivery into their cost chip.
+  const pharmacyIdsForDelivery = useMemo(
+    () => filteredOptions.map((o) => o.pharmacyId),
+    [filteredOptions],
+  );
+  const deliveryCosts = usePharmacyDeliveryCosts(
+    pharmacyIdsForDelivery,
+    deliveryCoords,
+    deliveryAddress,
+    !isPickup,
+  );
+
+  // Map markers — show all pharmacies with coordinates, add total cost if
+  // available. In delivery mode the chip shows items + Jura delivery summed
+  // (same figure as the sidebar card). In pickup mode, delivery is zero and
+  // never shown — the chip mirrors the items subtotal only.
+  // Prefer the Jura-resolved address for the marker popup (falls back to the
+  // stored address — usually a Plus Code — until the lookup completes).
   const mapMarkers = useMemo(() => {
     const costMap: Record<string, number | undefined> = {};
-    for (const o of filteredOptions) costMap[o.pharmacyId] = availableItemsTotal(o.items);
+    for (const o of filteredOptions) {
+      const items = availableItemsTotal(o.items);
+      const delivery = !isPickup && deliveryCosts[o.pharmacyId]?.state === "ready"
+        ? (deliveryCosts[o.pharmacyId] as { cost: number }).cost
+        : 0;
+      costMap[o.pharmacyId] = items + delivery;
+    }
 
     return pharmacies
       .filter((p) => p.latitude != null && p.longitude != null)
       .map((p) => ({
         id: p.id,
         title: p.title,
-        address: p.address,
+        address: resolvedAddresses[p.id] ?? p.address,
         lat: p.latitude!,
         lng: p.longitude!,
         iconUrl: p.iconUrl,
         cost: costMap[p.id],
       }));
-  }, [pharmacies, filteredOptions]);
+  }, [pharmacies, filteredOptions, resolvedAddresses, isPickup, deliveryCosts]);
 
   // Scroll to pharmacy on map click
   const handlePharmacyMapClick = useCallback((id: string) => {
@@ -178,7 +234,11 @@ export default function PharmacySelectPage() {
     setTimeout(() => setHighlightedId(""), 2000);
   }, []);
 
-  // Select pharmacy — final per-position selection happens on checkout page
+  // Select pharmacy — final per-position selection happens on checkout page.
+  // Auth is gated *here* (not on checkout) so guests land on /checkout already
+  // signed in. The draft is stashed before redirecting; StoreProvider merges
+  // the guest cart into the server basket on login, so the draft's pharmacy +
+  // items match up when the user returns.
   function onSelectPharmacy(option: ApiBasketPharmacyOption) {
     setDraft({
       pharmacyId: option.pharmacyId,
@@ -188,6 +248,11 @@ export default function PharmacySelectPage() {
       ignoredPositionIds: [],
       isPickup,
     });
+    if (!token) {
+      setGuestCheckoutIntent();
+      router.push("/login?redirect=/checkout");
+      return;
+    }
     router.push("/checkout");
   }
 
@@ -246,9 +311,59 @@ export default function PharmacySelectPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Left panel — pharmacy list */}
-        <aside className="w-full md:w-[420px] lg:w-[460px] flex-shrink-0 overflow-y-auto bg-surface-container-low/50 order-2 md:order-1">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Left panel — sort chips + list. Fully collapses (w-0 / h-0) and
+            hands over to a floating "expand" button on the map side when
+            collapsed, so the map takes the full space. */}
+        <aside
+          className={`flex flex-col bg-surface-container-low/50 order-2 md:order-1 overflow-hidden transition-[width,max-height,opacity,transform] duration-300 ease-in-out flex-shrink-0 ${
+            isPanelCollapsed
+              ? "md:w-0 md:-translate-x-2 md:max-h-none max-h-0 -translate-y-2 opacity-0 pointer-events-none w-full"
+              : "md:w-[420px] lg:w-[460px] max-h-[60vh] md:max-h-none translate-x-0 translate-y-0 opacity-100 w-full"
+          }`}
+          aria-hidden={isPanelCollapsed}
+        >
+          {/* Header: sort chips + collapse toggle. Horizontal-scroll strip so
+              chips never get hidden behind the toggle on narrow phones. */}
+          <div className="flex items-center gap-1.5 border-b border-outline/50 bg-surface-container-low/80 px-3 py-2 sticky top-0 z-10">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-hide scroll-touch">
+              <button
+                type="button"
+                onClick={() => setSortMode("cheapest")}
+                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                  sortMode === "cheapest"
+                    ? "bg-primary text-white shadow-card"
+                    : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container"
+                }`}
+              >
+                Самая низкая цена
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortMode("most-positions")}
+                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                  sortMode === "most-positions"
+                    ? "bg-primary text-white shadow-card"
+                    : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container"
+                }`}
+              >
+                Больше позиций
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPanelCollapsed(true)}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-card transition hover:bg-surface-container-high active:scale-95"
+              aria-label="Скрыть список аптек"
+              title="Скрыть список"
+            >
+              <Icon name="chevron-up" size={16} className="md:hidden" />
+              <Icon name="chevron-left" size={16} className="hidden md:block" />
+            </button>
+          </div>
+
+          {/* Cards list */}
+          <div className="flex-1 overflow-y-auto">
           {filteredOptions.length === 0 ? (
             <div className="p-6 text-center text-sm text-on-surface-variant">
               Нет доступных аптек для вашей корзины.
@@ -257,9 +372,16 @@ export default function PharmacySelectPage() {
             <div className="space-y-2 p-3">
               {filteredOptions.map((option) => {
                 const geo = pharmacyGeo[option.pharmacyId];
+                const resolvedAddress =
+                  resolvedAddresses[option.pharmacyId] ?? geo?.address;
                 const isHighlighted = highlightedId === option.pharmacyId;
                 const isExpanded = expandedId === option.pharmacyId;
                 const allAvailable = (option.enoughQuantityMedicinesCount ?? 0) >= (option.totalMedicinesCount ?? 1);
+
+                const pickup = isPickup
+                  ? getPickupAvailability(geo?.opensAt, geo?.closesAt)
+                  : null;
+                const delivery = !isPickup ? deliveryCosts[option.pharmacyId] : undefined;
 
                 return (
                   <div
@@ -280,8 +402,18 @@ export default function PharmacySelectPage() {
 
                       <div className="min-w-0 flex-1">
                         <h3 className="truncate text-sm font-bold text-on-surface">{option.pharmacyTitle ?? "Аптека"}</h3>
-                        {geo?.address ? (
-                          <p className="truncate text-xs text-on-surface-variant">{geo.address}</p>
+                        {resolvedAddress ? (
+                          <p className="truncate text-xs text-on-surface-variant">{resolvedAddress}</p>
+                        ) : null}
+                        {pickup ? (
+                          <p
+                            className={`mt-0.5 flex items-center gap-1 text-[11px] font-semibold ${
+                              pickup.canPickupToday ? "text-primary" : "text-on-surface-variant"
+                            }`}
+                          >
+                            <Icon name="clock" size={12} />
+                            <span className="truncate">{pickup.hoursHint}</span>
+                          </p>
                         ) : null}
                       </div>
                     </div>
@@ -291,12 +423,34 @@ export default function PharmacySelectPage() {
                       const availableTotal = (option.items ?? [])
                         .filter((i) => i.hasEnoughQuantity)
                         .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
+                      const deliveryCost =
+                        delivery?.state === "ready" ? delivery.cost : 0;
+                      const grandTotal = availableTotal + deliveryCost;
                       return (
                         <div className="mt-3 flex items-end justify-between gap-2">
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-display text-xl font-extrabold text-primary tabular-nums">
-                              {formatMoney(availableTotal)} TJS
+                              {formatMoney(grandTotal)}
                             </p>
+                            {!isPickup ? (
+                              <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-on-surface-variant tabular-nums">
+                                <span>Товары: {formatMoney(availableTotal)}</span>
+                                {delivery?.state === "ready" ? (
+                                  <span>
+                                    + Доставка: <span className="font-semibold text-on-surface">{formatMoney(delivery.cost)}</span>
+                                    {delivery.distance > 0 ? (
+                                      <span className="text-on-surface-variant/70"> · {delivery.distance.toFixed(1)} км</span>
+                                    ) : null}
+                                  </span>
+                                ) : delivery?.state === "loading" ? (
+                                  <span className="text-on-surface-variant/70">+ Доставка…</span>
+                                ) : delivery?.state === "error" ? (
+                                  <span className="text-warning">+ Доставка: ошибка расчёта</span>
+                                ) : (
+                                  <span className="text-on-surface-variant/70">+ Доставка</span>
+                                )}
+                              </p>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
@@ -318,7 +472,7 @@ export default function PharmacySelectPage() {
                             rightIcon="arrow-right"
                             onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
                           >
-                            Выбрать
+                            {pickup ? pickup.buttonText : "Выбрать"}
                           </Button>
                         </div>
                       );
@@ -368,16 +522,41 @@ export default function PharmacySelectPage() {
               })}
             </div>
           )}
+          </div>
         </aside>
 
-        {/* Right panel — map */}
-        <div className="flex-1 order-1 md:order-2 h-[40vh] md:h-auto">
+        {/* Right panel — map. On mobile the map normally reserves 40vh so the
+            cards list sits below; when the panel collapses it grabs the full
+            remaining viewport. */}
+        <div
+          className={`relative order-1 md:order-2 md:h-auto transition-[height] duration-300 ${
+            isPanelCollapsed ? "flex-1 h-full" : "h-[40vh] md:flex-1"
+          }`}
+        >
           <PharmacyMap
             className="h-full w-full"
             pharmacies={mapMarkers}
             onPharmacyClick={handlePharmacyMapClick}
             userLocation={deliveryCoords}
           />
+
+          {/* Floating "expand" button — appears only while the sidebar is
+              collapsed. Desktop pins it to left edge, mobile to bottom edge,
+              positioning the chevron toward where the panel will emerge. */}
+          {isPanelCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setIsPanelCollapsed(false)}
+              aria-label="Показать список аптек"
+              title="Показать список аптек"
+              className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95
+                left-3 bottom-3 md:top-3 md:bottom-auto"
+            >
+              <Icon name="chevron-up" size={16} className="md:hidden" />
+              <Icon name="chevron-right" size={16} className="hidden md:block" />
+              <span>Список аптек</span>
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

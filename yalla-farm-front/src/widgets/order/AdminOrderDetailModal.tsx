@@ -19,6 +19,7 @@ import {
   computeRejectedRefund,
   computeReturnedRefund,
   computeNetCost,
+  isOrderDataLost,
 } from "@/entities/order/totals";
 import type { ApiOrder } from "@/shared/types/api";
 
@@ -219,6 +220,16 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
           {error && <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div>}
 
+          {isOrderDataLost(order) ? (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-bold">⚠ Данные позиций утеряны</p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Этот заказ — исторический: записи позиций отсутствуют в БД.
+                Сумма и состав показаны как 0 — данные восстановить нельзя.
+              </p>
+            </div>
+          ) : null}
+
           {/* Info grid */}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 text-sm">
             <div className="rounded-xl bg-surface-container-low p-3">
@@ -249,12 +260,20 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
               <p className="text-[10px] text-on-surface-variant uppercase">Товары</p>
               <p className="font-bold">{formatMoney(computeItemsTotal(order), order.currency)}</p>
             </div>
-            {order.clientPhoneNumber || order.clientId ? (
-              <div className="rounded-xl bg-surface-container-low p-3">
+            {order.clientPhoneNumber || order.clientId || order.clientName || order.clientTelegramUsername || order.clientTelegramId ? (
+              <div className="rounded-xl bg-surface-container-low p-3 space-y-0.5">
                 <p className="text-[10px] text-on-surface-variant uppercase">Клиент</p>
-                <p className="font-bold font-mono">
-                  {order.clientPhoneNumber || order.clientId?.slice(0, 8)}
-                </p>
+                {order.clientName ? <p className="font-bold">{order.clientName}</p> : null}
+                {order.clientPhoneNumber ? (
+                  <p className="font-mono text-sm">{order.clientPhoneNumber}</p>
+                ) : order.clientId ? (
+                  <p className="font-mono text-sm">{order.clientId.slice(0, 8)}</p>
+                ) : null}
+                {order.clientTelegramUsername ? (
+                  <p className="font-mono text-xs text-tertiary">@{order.clientTelegramUsername.replace(/^@/, "")}</p>
+                ) : order.clientTelegramId ? (
+                  <p className="font-mono text-xs text-tertiary">tg:{order.clientTelegramId}</p>
+                ) : null}
               </div>
             ) : null}
             {order.paymentState ? (

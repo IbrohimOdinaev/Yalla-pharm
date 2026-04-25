@@ -12,6 +12,8 @@ import {
 } from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { usePharmacyAddresses } from "@/features/pharmacy/model/usePharmacyAddresses";
+import { getPickupAvailability } from "@/features/pharmacy/model/pharmacyHours";
 import type { ApiOrder } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useAppSelector } from "@/shared/lib/redux";
@@ -76,6 +78,11 @@ function isActiveOrder(order: ApiOrder): boolean {
   return ACTIVE_STATUSES.has(order.status) || isAwaitingPayment(order);
 }
 
+/** Pickup orders that are still in-pharmacy and haven't been handed over yet.
+ * For these we compute "забрать сегодня/завтра" each render so the hint stays
+ * fresh as the current time crosses the pharmacy's 30-minute cutoff. */
+const PICKUP_HINT_STATUSES = new Set(["New", "UnderReview", "Preparing", "Ready"]);
+
 export default function OrdersPage() {
   const token = useAppSelector((state) => state.auth.token);
   const addCartItem = useCartStore((s) => s.addItem);
@@ -89,6 +96,10 @@ export default function OrdersPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [repeatingId, setRepeatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("active");
+
+  // Resolve Plus-Code pharmacy addresses to human-readable Jura text.
+  const pharmacyList = Object.values(pharmacyMap);
+  const resolvedAddresses = usePharmacyAddresses(pharmacyList);
 
   // Load order list + details for each + pharmacies
   const loadAll = useCallback(async () => {
@@ -303,6 +314,13 @@ export default function OrdersPage() {
           const refundAmount = computeTotalRefund(d);
           const originalPaid = totalsOriginalPaid(d);
           const pharmacy = pharmacyMap[d.pharmacyId ?? ""];
+          // For active pickup orders, compute "today/tomorrow" hint on every
+          // render so the cutoff flip happens live (no stale data). Skipped
+          // for delivery orders and for orders already past pickup.
+          const pickupHint =
+            d.isPickup && PICKUP_HINT_STATUSES.has(order.status) && pharmacy
+              ? getPickupAvailability(pharmacy.opensAt, pharmacy.closesAt)
+              : null;
 
           return (
             <article key={order.orderId} className="overflow-hidden rounded-3xl bg-surface-container-lowest shadow-card">
@@ -322,6 +340,19 @@ export default function OrdersPage() {
                     ) : null}
                   </div>
                   {pharmacy ? <p className="text-xs font-semibold text-on-surface-variant">{pharmacy.title}</p> : null}
+                  {pickupHint ? (
+                    <p
+                      className={`flex items-center gap-1 text-[11px] font-semibold ${
+                        pickupHint.canPickupToday ? "text-primary" : "text-warning"
+                      }`}
+                    >
+                      <Icon name="clock" size={12} />
+                      <span className="truncate">
+                        {pickupHint.buttonText}
+                        {pickupHint.isAllDay ? "" : ` · ${pickupHint.hoursHint}`}
+                      </span>
+                    </p>
+                  ) : null}
                   {order.createdAtUtc ? (
                     <p className="text-[11px] text-on-surface-variant/70">
                       {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
@@ -379,7 +410,24 @@ export default function OrdersPage() {
                         <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
                           <p className="text-[10px] text-on-surface-variant uppercase">Аптека</p>
                           <p className="text-[10px] xs:text-xs sm:text-sm font-bold">{pharmacy.title}</p>
-                          {pharmacy.address ? <p className="text-[10px] text-on-surface-variant">{pharmacy.address}</p> : null}
+                          {(resolvedAddresses[pharmacy.id] ?? pharmacy.address) ? (
+                            <p className="text-[10px] text-on-surface-variant">
+                              {resolvedAddresses[pharmacy.id] ?? pharmacy.address}
+                            </p>
+                          ) : null}
+                          {pickupHint ? (
+                            <p
+                              className={`mt-1 flex items-center gap-1 text-[10px] font-semibold ${
+                                pickupHint.canPickupToday ? "text-primary" : "text-warning"
+                              }`}
+                            >
+                              <Icon name="clock" size={10} />
+                              <span>
+                                {pickupHint.buttonText}
+                                {pickupHint.isAllDay ? "" : ` · ${pickupHint.hoursHint}`}
+                              </span>
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
                       <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">

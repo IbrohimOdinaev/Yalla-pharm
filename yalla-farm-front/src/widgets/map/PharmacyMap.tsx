@@ -21,6 +21,9 @@ const MAP_OPTIONS: google.maps.MapOptions = {
   mapTypeControl: false,
   fullscreenControl: false,
   mapId: MAP_ID,
+  // "greedy" lets the user pan/zoom with a single finger on mobile. Default
+  // "auto" falls back to "cooperative" on touch devices (needs 2 fingers).
+  gestureHandling: "greedy",
 };
 
 export type PharmacyMarker = {
@@ -360,7 +363,8 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
     const price = document.createElement("span");
     price.className =
       "flex-shrink-0 rounded-full bg-accent px-2.5 py-1 text-xs font-extrabold text-on-surface";
-    price.textContent = `${formatMoney(pharmacy.cost!)} TJS`;
+    // formatMoney already appends the currency suffix — no trailing "TJS".
+    price.textContent = formatMoney(pharmacy.cost!);
     pill.appendChild(price);
   }
 

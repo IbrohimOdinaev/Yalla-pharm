@@ -17,7 +17,7 @@ import { searchAddress, type AddressSuggestion } from "@/shared/api/address";
 // token so the user never sees it.
 const PLUS_CODE_RE = /^[23456789CFGHJMPQRVWX]{4,7}\+[23456789CFGHJMPQRVWX]{0,4},?\s*/i;
 
-function stripPlusCode(text: string): string {
+export function stripPlusCode(text: string): string {
   return text.replace(PLUS_CODE_RE, "").trim();
 }
 
@@ -25,11 +25,22 @@ function hasPlusCode(text: string): boolean {
   return PLUS_CODE_RE.test(text);
 }
 
+// JURA returns `title` (specific, e.g. "кӯчаи Деҳотӣ, 23/2") and `address`
+// (broader, e.g. "кӯчаи Деҳотӣ"). When one string contains the other, joining
+// them with a comma duplicates the shared prefix in the rendered text.
+function addressContains(outer: string, inner: string): boolean {
+  if (!outer || !inner) return false;
+  return outer.toLowerCase().includes(inner.toLowerCase());
+}
+
 function formatSuggestion(s: AddressSuggestion): string {
   const title = (s.title ?? "").trim();
   const address = (s.address ?? "").trim();
-  if (title && address && title !== address) return `${title}, ${address}`;
-  return title || address;
+  if (!title) return address;
+  if (!address || title === address) return title;
+  if (addressContains(title, address)) return title;
+  if (addressContains(address, title)) return address;
+  return `${title}, ${address}`;
 }
 
 export class JuraMapProvider implements MapProvider {
@@ -44,10 +55,18 @@ export class JuraMapProvider implements MapProvider {
   async suggest(query: string): Promise<SuggestItem[]> {
     const results = await searchAddress(query);
     this._lastSuggestions = results;
-    return results.map((r) => ({
-      title: r.title,
-      subtitle: r.address !== r.title ? r.address : undefined,
-    }));
+    return results.map((r) => {
+      const title = (r.title ?? "").trim();
+      const address = (r.address ?? "").trim();
+      // Drop the subtitle when `address` is already embedded in `title` —
+      // otherwise `AddressAutocomplete.onSelect` joins "title, subtitle" and
+      // the street name gets duplicated in the picked string.
+      const subtitle =
+        address && address !== title && !addressContains(title, address)
+          ? address
+          : undefined;
+      return { title: title || address, subtitle };
+    });
   }
 
   async geocode(address: string): Promise<GeoPoint | null> {

@@ -52,7 +52,11 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!pharmacyId) { router.replace("/cart/pharmacy"); return; }
-    if (token) loadBasket(token).catch(() => undefined);
+    // Auth is gated at the pharmacy-picker step — but if the user lands here
+    // without a token (e.g. direct URL, stale tab) kick them to login with a
+    // return-to-checkout hop so the flow stays consistent.
+    if (!token) { router.replace("/login?redirect=/checkout"); return; }
+    loadBasket(token).catch(() => undefined);
   }, [token, pharmacyId, router, loadBasket]);
 
   useEffect(() => {
@@ -136,16 +140,18 @@ export default function CheckoutPage() {
   }, [pharmacyId, isPickup, setDeliveryCost, setDeliveryAddressData]);
 
   useEffect(() => {
-    if (savedCoords && savedAddress && !isPickup && deliveryCost == null) {
+    if (savedCoords && savedAddress && !isPickup) {
       doCalculateDelivery(savedCoords, savedAddress);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedCoords, savedAddress, isPickup]);
+  }, [savedCoords?.lat, savedCoords?.lng, savedAddress, isPickup]);
 
   const totalAmount = itemsAmount + (isPickup ? 0 : (deliveryCost ?? 0));
 
   async function onSubmit() {
     if (!pharmacyId) return;
+    // Defensive: the pharmacy-picker step gates auth, but if the user ends up
+    // here without a token (direct URL / stale tab), redirect to login.
     if (!token) {
       router.push("/login?redirect=/checkout");
       return;
@@ -158,9 +164,24 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
     setError(null);
 
+    // Explicit source — send exactly the medicines the user selected for this
+    // pharmacy, so the backend doesn't sweep in unrelated basket items (e.g. a
+    // medicine left from a prior session that the chosen pharmacy doesn't sell).
+    // `consumeFromBasket: true` tells the backend to drop matching basket rows
+    // after the order is created.
+    const explicitPositions = checkoutItems
+      .filter((i) => selectedMedIds.has(i.medicineId))
+      .map((i) => ({
+        medicineId: i.medicineId,
+        quantity: Math.min(i.foundQuantity, i.requestedQuantity),
+      }))
+      .filter((p) => p.quantity > 0);
+
+    // Positions the user unchecked on this screen — they chose to skip them for
+    // this order, so clean them out of the basket too (mirrors the prior UX).
     const positionsByMedId: Record<string, string> = {};
     for (const p of basket.positions ?? []) positionsByMedId[p.medicineId] = p.id;
-    const ignoredPositionIds = checkoutItems
+    const uncheckedBasketPositionIds = checkoutItems
       .filter((i) => !selectedMedIds.has(i.medicineId))
       .map((i) => positionsByMedId[i.medicineId])
       .filter((id): id is string => Boolean(id));
@@ -175,16 +196,21 @@ export default function CheckoutPage() {
         deliveryLatitude: localCoords?.lat ?? savedCoords?.lat ?? null,
         deliveryLongitude: localCoords?.lng ?? savedCoords?.lng ?? null,
         idempotencyKey,
-        ignoredPositionIds,
+        ignoredPositionIds: [] as string[],
         comment: comment.trim() ? comment.trim() : null,
+        source: {
+          kind: 2, // CheckoutSourceKind.Explicit
+          positions: explicitPositions,
+          consumeFromBasket: true,
+        },
       };
 
       await apiFetch("/api/clients/checkout/preview", { method: "POST", token, body: payload });
       const checkout = await apiFetch<ApiCheckoutResponse>("/api/clients/checkout", { method: "POST", token, body: payload });
 
-      if (ignoredPositionIds.length > 0) {
+      if (uncheckedBasketPositionIds.length > 0) {
         await Promise.all(
-          ignoredPositionIds.map((positionId) =>
+          uncheckedBasketPositionIds.map((positionId) =>
             removeFromBasket(token, positionId).catch(() => undefined)
           )
         );
@@ -461,13 +487,11 @@ export default function CheckoutPage() {
             loading={isSubmitting || isCalculating}
             disabled={selectedCount === 0 || (!isPickup && !localAddress && !savedAddress) || !hasContact}
           >
-            {!token
-              ? "Войти и подтвердить"
-              : selectedCount === 0
-                ? "Выберите позиции"
-                : !hasContact
-                  ? "Нужен контакт"
-                  : `Подтвердить · ${formatMoney(totalAmount)} TJS`}
+            {selectedCount === 0
+              ? "Выберите позиции"
+              : !hasContact
+                ? "Нужен контакт"
+                : `Подтвердить · ${formatMoney(totalAmount)}`}
           </Button>
         </div>
       </div>

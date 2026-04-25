@@ -7,6 +7,7 @@ import { adminLogin, superAdminLogin } from "@/entities/auth/api";
 import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
+import { decodeJwt } from "@/shared/lib/jwt";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { Button, Icon, IconButton } from "@/shared/ui";
@@ -50,7 +51,14 @@ function AdminLoginContent() {
         ? (ROLE_MAP[response.role] ?? staffRole)
         : String(response.role);
 
-      dispatch(setCredentials({ token: response.accessToken, role, userId: response.userId }));
+      // Pull pharmacy_id from the JWT — admin tokens always carry it.
+      const claims = decodeJwt(response.accessToken);
+      dispatch(setCredentials({
+        token: response.accessToken,
+        role,
+        userId: response.userId,
+        pharmacyId: claims.pharmacyId,
+      }));
 
       if (redirectTo) router.push(redirectTo);
       else if (role === "Admin") router.push("/workspace");

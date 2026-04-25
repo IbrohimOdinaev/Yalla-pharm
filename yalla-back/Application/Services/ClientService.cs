@@ -888,20 +888,7 @@ public sealed class ClientService : IClientService
               paymentComment: paymentResponse.PaymentComment,
               expiresAtUtc: DateTime.UtcNow.AddMinutes(Math.Max(1, _paymentOptions.PendingConfirmationTimeoutMinutes)));
 
-            // Basket cleanup — only when source is the basket.
-            if (sourceKind == CheckoutSourceKind.Basket)
-            {
-                var basketIdsToRemove = acceptedDrafts
-                    .Where(d => d.BasketPositionId.HasValue)
-                    .Select(d => d.BasketPositionId!.Value)
-                    .ToHashSet();
-                var basketPositionsToRemove = client.BasketPositions
-                    .Where(bp => basketIdsToRemove.Contains(bp.Id))
-                    .ToList();
-                foreach (var bp in basketPositionsToRemove)
-                    client.RemoveBasketPosition(bp);
-                _dbContext.BasketPositions.RemoveRange(basketPositionsToRemove);
-            }
+            CleanupBasketAfterCheckout(client, acceptedDrafts, sourceKind, request.Source?.ConsumeFromBasket ?? false);
 
             client.AddOrder(order);
             _dbContext.Orders.Add(order);
@@ -1068,19 +1055,7 @@ public sealed class ClientService : IClientService
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            if (sourceKind == CheckoutSourceKind.Basket)
-            {
-                var basketIdsToRemove = acceptedDrafts
-                    .Where(d => d.BasketPositionId.HasValue)
-                    .Select(d => d.BasketPositionId!.Value)
-                    .ToHashSet();
-                var basketPositionsToRemove = client.BasketPositions
-                    .Where(bp => basketIdsToRemove.Contains(bp.Id))
-                    .ToList();
-                foreach (var bp in basketPositionsToRemove)
-                    client.RemoveBasketPosition(bp);
-                _dbContext.BasketPositions.RemoveRange(basketPositionsToRemove);
-            }
+            CleanupBasketAfterCheckout(client, acceptedDrafts, sourceKind, request.Source?.ConsumeFromBasket ?? false);
 
             _dbContext.PaymentIntents.Add(paymentIntent);
 
@@ -1462,6 +1437,53 @@ public sealed class ClientService : IClientService
               $"Ignored basket positions were not found in client basket: {string.Join(", ", invalidIgnoredIds)}.");
     }
 
+    /// <summary>
+    /// Removes basket positions consumed by the order. For <see cref="CheckoutSourceKind.Basket"/>
+    /// source, positions are matched by <c>BasketPositionId</c> (exact rows the user selected).
+    /// For <see cref="CheckoutSourceKind.Explicit"/> source with <c>ConsumeFromBasket=true</c>,
+    /// positions are matched by <c>MedicineId</c> — the caller picked a subset of the cart for a
+    /// specific pharmacy and those items should leave the cart after the order is created.
+    /// </summary>
+    private void CleanupBasketAfterCheckout(
+      Client client,
+      IReadOnlyCollection<PositionDraft> acceptedDrafts,
+      CheckoutSourceKind sourceKind,
+      bool consumeFromBasket)
+    {
+        List<BasketPosition> basketPositionsToRemove;
+
+        if (sourceKind == CheckoutSourceKind.Basket)
+        {
+            var basketIdsToRemove = acceptedDrafts
+                .Where(d => d.BasketPositionId.HasValue)
+                .Select(d => d.BasketPositionId!.Value)
+                .ToHashSet();
+            basketPositionsToRemove = client.BasketPositions
+                .Where(bp => basketIdsToRemove.Contains(bp.Id))
+                .ToList();
+        }
+        else if (sourceKind == CheckoutSourceKind.Explicit && consumeFromBasket)
+        {
+            var medicineIds = acceptedDrafts
+                .Select(d => d.MedicineId)
+                .ToHashSet();
+            basketPositionsToRemove = client.BasketPositions
+                .Where(bp => medicineIds.Contains(bp.MedicineId))
+                .ToList();
+        }
+        else
+        {
+            return;
+        }
+
+        if (basketPositionsToRemove.Count == 0)
+            return;
+
+        foreach (var bp in basketPositionsToRemove)
+            client.RemoveBasketPosition(bp);
+        _dbContext.BasketPositions.RemoveRange(basketPositionsToRemove);
+    }
+
     private async Task<CheckoutEvaluation> BuildCheckoutEvaluationAsync(
       IReadOnlyCollection<PositionDraft> drafts,
       Guid pharmacyId,
@@ -1614,10 +1636,26 @@ public sealed class ClientService : IClientService
         if (basketPositions.Count == 0)
             return result;
 
-        var medicineIds = basketPositions
-          .Select(x => x.MedicineId)
-          .Distinct()
+        var medicineQuantities = basketPositions
+          .Select(x => (x.MedicineId, x.Quantity))
           .ToList();
+
+        result.PharmacyOptions = await ComputePharmacyOptionsAsync(medicineQuantities, cancellationToken);
+        return result;
+    }
+
+    /// <summary>
+    /// Core pharmacy-options computation shared by authenticated basket loads and the guest
+    /// preview endpoint. Given a flat list of (medicineId, quantity) pairs, returns per-pharmacy
+    /// totals, coverage ratios and availability flags — the same shape the frontend consumes for
+    /// best-price pills and the pharmacy picker.
+    /// </summary>
+    private async Task<IReadOnlyCollection<BasketPharmacyOptionResponse>> ComputePharmacyOptionsAsync(
+      IReadOnlyCollection<(Guid MedicineId, int Quantity)> positions,
+      CancellationToken cancellationToken)
+    {
+        if (positions.Count == 0)
+            return [];
 
         var pharmacies = await _dbContext.Pharmacies
           .AsNoTracking()
@@ -1625,7 +1663,12 @@ public sealed class ClientService : IClientService
           .ToListAsync(cancellationToken);
 
         if (pharmacies.Count == 0)
-            return result;
+            return [];
+
+        var medicineIds = positions
+          .Select(x => x.MedicineId)
+          .Distinct()
+          .ToList();
 
         var offers = await _dbContext.Offers
           .AsNoTracking()
@@ -1642,23 +1685,23 @@ public sealed class ClientService : IClientService
           x => x);
 
         var options = new List<BasketPharmacyOptionResponse>(pharmacies.Count);
-        var totalMedicinesCount = basketPositions.Count;
+        var totalMedicinesCount = positions.Count;
 
         foreach (var pharmacy in pharmacies)
         {
             var foundMedicinesCount = 0;
             var enoughQuantityMedicinesCount = 0;
             var totalCost = 0m;
-            var items = new List<BasketPharmacyItemResponse>(basketPositions.Count);
+            var items = new List<BasketPharmacyItemResponse>(positions.Count);
 
-            foreach (var basketPosition in basketPositions)
+            foreach (var (medicineId, quantity) in positions)
             {
-                if (!offerLookup.TryGetValue((pharmacy.PharmacyId, basketPosition.MedicineId), out var offer))
+                if (!offerLookup.TryGetValue((pharmacy.PharmacyId, medicineId), out var offer))
                 {
                     items.Add(new BasketPharmacyItemResponse
                     {
-                        MedicineId = basketPosition.MedicineId,
-                        RequestedQuantity = basketPosition.Quantity,
+                        MedicineId = medicineId,
+                        RequestedQuantity = quantity,
                         IsFound = false,
                         FoundQuantity = 0,
                         HasEnoughQuantity = false,
@@ -1670,16 +1713,16 @@ public sealed class ClientService : IClientService
 
                 foundMedicinesCount++;
 
-                var hasEnoughQuantity = offer.StockQuantity >= basketPosition.Quantity;
+                var hasEnoughQuantity = offer.StockQuantity >= quantity;
                 if (hasEnoughQuantity)
                     enoughQuantityMedicinesCount++;
 
-                totalCost += offer.Price * basketPosition.Quantity;
+                totalCost += offer.Price * quantity;
 
                 items.Add(new BasketPharmacyItemResponse
                 {
-                    MedicineId = basketPosition.MedicineId,
-                    RequestedQuantity = basketPosition.Quantity,
+                    MedicineId = medicineId,
+                    RequestedQuantity = quantity,
                     IsFound = true,
                     FoundQuantity = offer.StockQuantity,
                     HasEnoughQuantity = hasEnoughQuantity,
@@ -1706,14 +1749,44 @@ public sealed class ClientService : IClientService
             });
         }
 
-        result.PharmacyOptions = options
+        return options
           .OrderByDescending(x => x.FoundMedicinesCount)
           .ThenByDescending(x => x.EnoughQuantityMedicinesCount)
           .ThenByDescending(x => x.TotalCost)
           .ThenBy(x => x.PharmacyTitle)
           .ToList();
+    }
 
-        return result;
+    public async Task<GuestBasketPreviewResponse> PreviewGuestBasketAsync(
+      GuestBasketPreviewRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Positions.Count == 0)
+            return new GuestBasketPreviewResponse { PharmacyOptions = [] };
+
+        // Dedupe by medicineId and sum quantities so callers that send duplicate
+        // rows (or repeat a medicine via multiple cart events) still get a clean
+        // per-pharmacy breakdown. Invalid entries are dropped rather than 400'd
+        // because the guest cart is client-authored.
+        var byMedicine = new Dictionary<Guid, int>();
+        foreach (var p in request.Positions)
+        {
+            if (p.MedicineId == Guid.Empty || p.Quantity <= 0)
+                continue;
+            byMedicine[p.MedicineId] = byMedicine.GetValueOrDefault(p.MedicineId) + p.Quantity;
+        }
+
+        if (byMedicine.Count == 0)
+            return new GuestBasketPreviewResponse { PharmacyOptions = [] };
+
+        var positions = byMedicine
+          .Select(kv => (kv.Key, kv.Value))
+          .ToList();
+
+        var options = await ComputePharmacyOptionsAsync(positions, cancellationToken);
+        return new GuestBasketPreviewResponse { PharmacyOptions = options };
     }
 
     private async Task EnsurePhoneIsAvailableAsync(

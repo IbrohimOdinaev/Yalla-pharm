@@ -23,10 +23,15 @@ const ACCENT_BAR: Record<NonNullable<Props["accent"]>, string> = {
 };
 
 const SKELETONS = Array.from({ length: 6 }, (_, i) => i);
+/** Max cards shown per rail. Desktop lays out one row of 6 at lg+; on smaller
+ * breakpoints the same 6 items wrap into 2–3 rows. "All →" takes users to the
+ * full category view for more. */
+const RAIL_MAX_CARDS = 6;
 
-// Yandex-Apteka-style horizontal shelf of product cards. Meant to be stacked
-// several times on the home feed (Popular / Pain / Vitamins / Heart / ...),
-// separated only by whitespace and a bold section heading.
+// Yandex-Apteka-style product rail. Uses a responsive grid that fits exactly
+// 6 cards per row at lg+ and wraps to fewer columns on narrower screens.
+// Previous horizontal-scroll variant caused the first card to appear clipped
+// on initial render; the grid avoids that entirely.
 export function MedicineRail({
   title,
   subtitle,
@@ -36,6 +41,8 @@ export function MedicineRail({
   accent = "primary",
 }: Props) {
   if (!isLoading && medicines.length === 0) return null;
+
+  const visible = medicines.slice(0, RAIL_MAX_CARDS);
 
   return (
     <section className="space-y-3">
@@ -63,28 +70,19 @@ export function MedicineRail({
         ) : null}
       </div>
 
-      {/* Horizontal scroll strip — breaks out of AppShell's 90% width padding on
-          each side so cards look edge-to-edge like in Yandex/Apteka.ru feeds. */}
-      <div className="flex gap-2.5 sm:gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-[5vw] px-[5vw] pb-2 snap-x">
+      {/* Responsive grid — 2 cols on phones, 3 on xs, 4 on md, 6 on lg+. */}
+      <div className="grid grid-cols-2 gap-2.5 xs:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6">
         {isLoading
           ? SKELETONS.map((i) => (
-              <div
-                key={i}
-                className="w-[140px] xs:w-[150px] sm:w-[170px] flex-shrink-0 space-y-2 snap-start"
-              >
+              <div key={i} className="space-y-2">
                 <Skeleton className="aspect-square w-full" />
                 <Skeleton className="h-3 w-4/5" rounded="md" />
                 <Skeleton className="h-4 w-2/5" rounded="md" />
-                <Skeleton className="h-8 w-full" rounded="full" />
+                <Skeleton className="h-10 w-full" rounded="full" />
               </div>
             ))
-          : medicines.map((medicine) => (
-              <div
-                key={medicine.id}
-                className="w-[140px] xs:w-[150px] sm:w-[170px] flex-shrink-0 snap-start"
-              >
-                <MedicineCard medicine={medicine} compact />
-              </div>
+          : visible.map((medicine) => (
+              <MedicineCard key={medicine.id} medicine={medicine} />
             ))}
       </div>
     </section>

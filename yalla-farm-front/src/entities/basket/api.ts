@@ -1,5 +1,5 @@
 import { apiFetch } from "@/shared/api/http-client";
-import type { ApiBasket } from "@/shared/types/api";
+import type { ApiBasket, ApiBasketPharmacyOption } from "@/shared/types/api";
 
 export async function getBasket(token: string): Promise<ApiBasket> {
   const response = await apiFetch<{
@@ -65,4 +65,20 @@ export async function clearBasket(token: string): Promise<ApiBasket> {
     body: {}
   });
   return getBasket(token);
+}
+
+/**
+ * Anonymous per-pharmacy breakdown for the guest cart. The same best-price logic
+ * the authenticated top-bar uses works on the returned `pharmacyOptions`, so the
+ * guest pill can show "от X TJS" identically.
+ */
+export async function getGuestBasketPreview(
+  positions: Array<{ medicineId: string; quantity: number }>,
+): Promise<ApiBasketPharmacyOption[]> {
+  if (positions.length === 0) return [];
+  const response = await apiFetch<{ pharmacyOptions?: ApiBasketPharmacyOption[] }>(
+    "/api/basket/guest-preview",
+    { method: "POST", body: { positions } },
+  );
+  return Array.isArray(response?.pharmacyOptions) ? response.pharmacyOptions : [];
 }

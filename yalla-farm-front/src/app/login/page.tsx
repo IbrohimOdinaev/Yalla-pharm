@@ -9,6 +9,7 @@ import {
   resendClientOtp,
   startTelegramAuth,
   completeTelegramAuth,
+  pollTelegramAuth,
   type RequestClientOtpResponse,
   type StartTelegramAuthResponse,
 } from "@/entities/auth/api";
@@ -183,21 +184,26 @@ function LoginContent() {
       setTgSession(session);
       setTgWaiting(true);
 
+      // SignalR is a fast-path optimisation only. Mobile browsers often drop
+      // the WebSocket (1006) when the user leaves the tab for the Telegram
+      // app — we must not surface that as an error. The polling effect
+      // below is the reliable source of truth.
+      connectTelegramAuthHub(session.nonce, {
+        onConfirmed: () => onTelegramConfirmed(session.nonce),
+        onCancelled: () => {
+          setError("Вход отменён в Telegram.");
+          closeTgModal();
+        },
+      })
+        .then((conn) => { tgConnectionRef.current = conn; })
+        .catch(() => { /* swallow — polling covers it */ });
+
       const a = document.createElement("a");
       a.href = session.deepLink;
       a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-
-      const conn = await connectTelegramAuthHub(session.nonce, {
-        onConfirmed: () => onTelegramConfirmed(session.nonce),
-        onCancelled: () => {
-          setError("Вход отменён в Telegram.");
-          closeTgModal();
-        },
-      });
-      tgConnectionRef.current = conn;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось запустить вход через Telegram.");
       closeTgModal();
@@ -205,6 +211,51 @@ function LoginContent() {
       setIsSubmitting(false);
     }
   }
+
+  // Reliable fallback for mobile: poll the backend until Telegram confirms
+  // the nonce. Also re-checks immediately when the user returns to the tab
+  // (after tapping through the Telegram app).
+  useEffect(() => {
+    if (!tgSession) return;
+    const nonce = tgSession.nonce;
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled || tgCompletedRef.current) return;
+      try {
+        const { status } = await pollTelegramAuth(nonce);
+        if (cancelled || tgCompletedRef.current) return;
+        if (status === "confirmed") {
+          onTelegramConfirmed(nonce);
+        } else if (status === "cancelled") {
+          setError("Вход отменён в Telegram.");
+          closeTgModal();
+        } else if (status === "expired") {
+          setError("Сессия входа истекла. Попробуйте ещё раз.");
+          closeTgModal();
+        }
+        // "pending" / "consumed" → keep waiting silently.
+      } catch {
+        /* transient network error — try again next tick */
+      }
+    }
+
+    tick();
+    const interval = setInterval(tick, 2500);
+    function onVisibility() {
+      if (document.visibilityState === "visible") tick();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    // `onTelegramConfirmed` / `closeTgModal` are safe to reference via closure:
+    // they dedupe through `tgCompletedRef` and operate on stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tgSession]);
 
   return (
     <AppShell hideFooter top={<TopBar title="Вход" backHref="back" />}>
@@ -285,7 +336,6 @@ function LoginContent() {
             <div className="flex flex-wrap gap-1.5 justify-center pt-1">
               <Chip tone="primary" leftIcon="bolt" asButton={false}>Быстрая регистрация</Chip>
               <Chip tone="tertiary" leftIcon="eye" asButton={false}>Безопасно</Chip>
-              <Chip tone="warning" leftIcon="gift" asButton={false}>Бонус 50 TJS</Chip>
             </div>
 
             <p className="pt-2 text-center text-[11px] text-on-surface-variant/80">

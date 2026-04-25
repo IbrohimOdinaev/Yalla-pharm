@@ -21,6 +21,13 @@ public class Pharmacy
 
     public string? BannerUrl { get; private set; }
 
+    /// Opening time (local). Null together with <see cref="ClosesAt"/> means
+    /// the pharmacy is treated as 24/7.
+    public TimeOnly? OpensAt { get; private set; }
+
+    /// Closing time (local). See <see cref="OpensAt"/>.
+    public TimeOnly? ClosesAt { get; private set; }
+
     private readonly List<Order> _orders = new();
     public IReadOnlyCollection<Order> Orders => _orders.AsReadOnly();
 
@@ -98,6 +105,18 @@ public class Pharmacy
     public void SetBannerUrl(string? bannerUrl)
     {
         BannerUrl = string.IsNullOrWhiteSpace(bannerUrl) ? null : bannerUrl.Trim();
+    }
+
+    /// Both arguments must be provided together (pharmacy open from X to Y)
+    /// or both null (24/7). Mixing — e.g. setting open but not close — is a
+    /// domain error because schedule queries rely on the pair being coherent.
+    public void SetOpeningHours(TimeOnly? opensAt, TimeOnly? closesAt)
+    {
+        if (opensAt.HasValue != closesAt.HasValue)
+            throw new DomainArgumentException("OpensAt and ClosesAt must be both set or both null (24/7).");
+
+        OpensAt = opensAt;
+        ClosesAt = closesAt;
     }
 
     public void ChangeActivity()

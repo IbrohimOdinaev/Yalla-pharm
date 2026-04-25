@@ -72,4 +72,8 @@ public interface IClientService
     Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
       CheckoutBasketRequest request,
       CancellationToken cancellationToken = default);
+
+    Task<GuestBasketPreviewResponse> PreviewGuestBasketAsync(
+      GuestBasketPreviewRequest request,
+      CancellationToken cancellationToken = default);
 }
