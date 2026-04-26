@@ -209,22 +209,13 @@ if (applyMigrationsOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-}
-
-// Backfill default banner URL for any pharmacy without one (uses picsum.photos seeded by id)
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var pharmaciesWithoutBanner = await db.Pharmacies
-        .Where(p => p.BannerUrl == null)
-        .ToListAsync();
-    foreach (var pharmacy in pharmaciesWithoutBanner)
-    {
-        pharmacy.SetBannerUrl($"https://picsum.photos/seed/{pharmacy.Id}/800/240");
-    }
-    if (pharmaciesWithoutBanner.Count > 0)
-        await db.SaveChangesAsync();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
+    logger.LogInformation("EF migrations: {AppliedCount} applied, {PendingCount} pending. Pending: {Pending}",
+        applied.Length, pending.Length, pending.Length == 0 ? "(none)" : string.Join(", ", pending));
+    await db.Database.MigrateAsync();
+    logger.LogInformation("EF migrations applied successfully.");
 }
 
 if (app.Environment.IsDevelopment())
