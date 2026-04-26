@@ -28,12 +28,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const setServerQty = useCartStore((state) => state.setQuantity);
   const removeServerItem = useCartStore((state) => state.removeItem);
 
-  // Catalog tiles render at ~120-160px depending on breakpoint; ask the API
-  // for a 240-wide WebP so we serve a ~10KB thumb instead of the multi-MB
-  // original from MinIO.
-  const thumbUrl = useMemo(() => getMinimalImageUrl(medicine, 240), [medicine]);
+  // Catalog tiles render up to ~280 CSS px on desktop; on retina (DPR=2) the
+  // browser maps that to ~560 device pixels. Request 480 so we have enough
+  // resolution to look crisp on HiDPI without sending the multi-MB original.
+  const thumbUrl = useMemo(() => getMinimalImageUrl(medicine, 480), [medicine]);
   const allImages = useMemo(() => {
-    const imgs = (medicine.images ?? []).map((i) => imageUrl(i, 240)).filter(Boolean);
+    const imgs = (medicine.images ?? []).map((i) => imageUrl(i, 480)).filter(Boolean);
     return imgs.length > 0 ? imgs : thumbUrl ? [thumbUrl] : [];
   }, [medicine, thumbUrl]);
   const price = getCheapestPrice(medicine);

@@ -5,7 +5,12 @@ namespace Yalla.Infrastructure.Storage;
 
 public sealed class SkiaImageResizer : IImageResizer
 {
-    public byte[]? ResizeToWebp(ReadOnlySpan<byte> source, int targetWidth, int quality = 80)
+    // Mitchell-Netravali cubic gives sharp, artifact-free downscales for
+    // photographic content — the default SKSamplingOptions is nearest-
+    // neighbour, which produces visibly blocky thumbnails on retina screens.
+    private static readonly SKSamplingOptions Sampling = new(SKCubicResampler.Mitchell);
+
+    public byte[]? ResizeToWebp(ReadOnlySpan<byte> source, int targetWidth, int quality = 90)
     {
         if (source.IsEmpty || targetWidth <= 0)
             return null;
@@ -21,7 +26,7 @@ public sealed class SkiaImageResizer : IImageResizer
         var width = Math.Min(targetWidth, bitmap.Width);
         var height = (int)Math.Round(bitmap.Height * ((double)width / bitmap.Width));
 
-        using var resized = bitmap.Resize(new SKImageInfo(width, height), SKSamplingOptions.Default);
+        using var resized = bitmap.Resize(new SKImageInfo(width, height), Sampling);
         if (resized is null) return null;
 
         using var image = SKImage.FromBitmap(resized);
