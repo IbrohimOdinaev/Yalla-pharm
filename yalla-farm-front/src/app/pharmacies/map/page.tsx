@@ -97,8 +97,10 @@ export default function PharmaciesMapPage() {
                     {pharmacy.iconUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={pharmacy.iconUrl.startsWith("http") ? pharmacy.iconUrl : `/api/pharmacies/icon/${pharmacy.id}/content`}
+                        src={pharmacy.iconUrl.startsWith("http") ? pharmacy.iconUrl : `/api/pharmacies/icon/${pharmacy.id}/content?w=120`}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover"
                       />
                     ) : (

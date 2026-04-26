@@ -63,6 +63,7 @@ public static class DependencyInjection
     });
 
     services.AddSingleton<IMedicineImageStorage, MinIoMedicineImageStorage>();
+    services.AddSingleton<IImageResizer, SkiaImageResizer>();
     services.Configure<SmsVerificationOptions>(options =>
     {
       options.RegistrationEnabled = !bool.TryParse(config[$"{SmsVerificationOptions.SectionName}:RegistrationEnabled"], out var registrationEnabled)

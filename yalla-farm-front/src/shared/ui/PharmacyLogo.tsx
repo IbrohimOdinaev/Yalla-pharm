@@ -19,8 +19,11 @@ type Props = {
 // failed request still landed in the network log as a noisy 404.
 export function PharmacyLogo({ pharmacyId, iconUrl, alt = "", size = 40, className = "" }: Props) {
   const hasIcon = Boolean(iconUrl);
+  // Round up the requested render size to the nearest server bucket so
+  // browsers/CDN re-use the same cached variant across consumers.
+  const widthBucket = size <= 120 ? 120 : size <= 240 ? 240 : 480;
   const src = hasIcon
-    ? (iconUrl!.startsWith("http") ? iconUrl! : `/api/pharmacies/icon/${pharmacyId}/content`)
+    ? (iconUrl!.startsWith("http") ? iconUrl! : `/api/pharmacies/icon/${pharmacyId}/content?w=${widthBucket}`)
     : null;
 
   const dim = { width: size, height: size };

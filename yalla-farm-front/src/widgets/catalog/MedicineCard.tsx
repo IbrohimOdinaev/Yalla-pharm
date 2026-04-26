@@ -28,9 +28,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const setServerQty = useCartStore((state) => state.setQuantity);
   const removeServerItem = useCartStore((state) => state.removeItem);
 
-  const thumbUrl = useMemo(() => getMinimalImageUrl(medicine), [medicine]);
+  // Catalog tiles render at ~120-160px depending on breakpoint; ask the API
+  // for a 240-wide WebP so we serve a ~10KB thumb instead of the multi-MB
+  // original from MinIO.
+  const thumbUrl = useMemo(() => getMinimalImageUrl(medicine, 240), [medicine]);
   const allImages = useMemo(() => {
-    const imgs = (medicine.images ?? []).map((i) => imageUrl(i)).filter(Boolean);
+    const imgs = (medicine.images ?? []).map((i) => imageUrl(i, 240)).filter(Boolean);
     return imgs.length > 0 ? imgs : thumbUrl ? [thumbUrl] : [];
   }, [medicine, thumbUrl]);
   const price = getCheapestPrice(medicine);

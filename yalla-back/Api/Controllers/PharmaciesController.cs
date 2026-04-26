@@ -14,16 +14,28 @@ public sealed class PharmaciesController : ControllerBase
 {
   private readonly IPharmacyWorkerService _pharmacyWorkerService;
   private readonly IMedicineImageStorage _imageStorage;
+  private readonly IImageResizer _imageResizer;
   private readonly IAppDbContext _db;
 
   public PharmaciesController(
     IPharmacyWorkerService pharmacyWorkerService,
     IMedicineImageStorage imageStorage,
+    IImageResizer imageResizer,
     IAppDbContext db)
   {
     _pharmacyWorkerService = pharmacyWorkerService;
     _imageStorage = imageStorage;
+    _imageResizer = imageResizer;
     _db = db;
+  }
+
+  private static readonly int[] WidthBuckets = [120, 240, 480, 800];
+  private static int? BucketWidth(int? requested)
+  {
+    if (requested is null or <= 0) return null;
+    foreach (var bucket in WidthBuckets)
+      if (requested <= bucket) return bucket;
+    return null;
   }
 
   [HttpGet]
@@ -128,7 +140,10 @@ public sealed class PharmaciesController : ControllerBase
 
   [HttpGet("icon/{pharmacyId:guid}/content")]
   [AllowAnonymous]
-  public async Task<IActionResult> GetIconContent(Guid pharmacyId, CancellationToken cancellationToken)
+  public async Task<IActionResult> GetIconContent(
+    Guid pharmacyId,
+    [FromQuery(Name = "w")] int? width,
+    CancellationToken cancellationToken)
   {
     var pharmacy = await _db.Pharmacies.FindAsync([pharmacyId], cancellationToken)
       ?? throw new InvalidOperationException("Pharmacy not found.");
@@ -136,10 +151,11 @@ public sealed class PharmaciesController : ControllerBase
     if (string.IsNullOrEmpty(pharmacy.IconUrl))
       return NotFound();
 
-    // ETag = the MinIO storage key. Each re-upload mints a new key, so the
-    // ETag changes only when the icon actually changes; browsers/CDN can
-    // revalidate cheaply without re-streaming the bytes.
-    var etag = $"\"{pharmacy.IconUrl}\"";
+    // ETag = the MinIO storage key + width bucket. Each re-upload mints a new
+    // key (so the ETag changes when the icon actually changes); each width
+    // gets its own cache entry.
+    var bucket = BucketWidth(width);
+    var etag = $"\"{pharmacy.IconUrl}-w{(bucket?.ToString() ?? "orig")}\"";
     if (Request.Headers.TryGetValue("If-None-Match", out var inm) && inm.ToString() == etag)
     {
       Response.Headers.ETag = etag;
@@ -150,7 +166,16 @@ public sealed class PharmaciesController : ControllerBase
     var content = await _imageStorage.GetContentAsync(pharmacy.IconUrl, cancellationToken);
     Response.Headers.ETag = etag;
     Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
-    return File(content.Content, content.ContentType);
+
+    if (bucket is null)
+      return File(content.Content, content.ContentType);
+
+    using var ms = new MemoryStream();
+    await content.Content.CopyToAsync(ms, cancellationToken);
+    var resized = _imageResizer.ResizeToWebp(ms.ToArray(), bucket.Value);
+    if (resized is null)
+      return File(ms.ToArray(), content.ContentType);
+    return File(resized, "image/webp");
   }
 
   [HttpDelete("icon")]
@@ -210,7 +235,10 @@ public sealed class PharmaciesController : ControllerBase
 
   [HttpGet("banner/{pharmacyId:guid}/content")]
   [AllowAnonymous]
-  public async Task<IActionResult> GetBannerContent(Guid pharmacyId, CancellationToken cancellationToken)
+  public async Task<IActionResult> GetBannerContent(
+    Guid pharmacyId,
+    [FromQuery(Name = "w")] int? width,
+    CancellationToken cancellationToken)
   {
     var pharmacy = await _db.Pharmacies.FindAsync([pharmacyId], cancellationToken)
       ?? throw new InvalidOperationException("Pharmacy not found.");
@@ -222,7 +250,8 @@ public sealed class PharmaciesController : ControllerBase
     if (pharmacy.BannerUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
       return Redirect(pharmacy.BannerUrl);
 
-    var etag = $"\"{pharmacy.BannerUrl}\"";
+    var bucket = BucketWidth(width);
+    var etag = $"\"{pharmacy.BannerUrl}-w{(bucket?.ToString() ?? "orig")}\"";
     if (Request.Headers.TryGetValue("If-None-Match", out var inm) && inm.ToString() == etag)
     {
       Response.Headers.ETag = etag;
@@ -233,7 +262,16 @@ public sealed class PharmaciesController : ControllerBase
     var content = await _imageStorage.GetContentAsync(pharmacy.BannerUrl, cancellationToken);
     Response.Headers.ETag = etag;
     Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
-    return File(content.Content, content.ContentType);
+
+    if (bucket is null)
+      return File(content.Content, content.ContentType);
+
+    using var ms = new MemoryStream();
+    await content.Content.CopyToAsync(ms, cancellationToken);
+    var resized = _imageResizer.ResizeToWebp(ms.ToArray(), bucket.Value);
+    if (resized is null)
+      return File(ms.ToArray(), content.ContentType);
+    return File(resized, "image/webp");
   }
 
   [HttpDelete("banner")]

@@ -382,7 +382,7 @@ export default function CheckoutPage() {
             {checkoutItems.map((item) => {
               const med = medicineMap[item.medicineId];
               const name = med ? getMedicineDisplayName(med) : item.medicineId;
-              const imgUrl = med ? resolveMedicineImageUrl(med) : "";
+              const imgUrl = med ? resolveMedicineImageUrl(med, 120) : "";
               const enough = item.hasEnoughQuantity;
               const partial = item.isFound && !enough && item.foundQuantity > 0;
               const missing = !item.isFound || item.foundQuantity <= 0;

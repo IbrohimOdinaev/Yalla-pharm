@@ -314,7 +314,7 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
   const iconSrc = pharmacy.iconUrl
     ? pharmacy.iconUrl.startsWith("http")
       ? pharmacy.iconUrl
-      : `/api/pharmacies/icon/${pharmacy.id}/content`
+      : `/api/pharmacies/icon/${pharmacy.id}/content?w=120`
     : null;
 
   const hasCost = typeof pharmacy.cost === "number" && pharmacy.cost > 0;

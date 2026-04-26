@@ -39,9 +39,12 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
       <h3 className="text-sm xs:text-base sm:text-lg font-bold mb-2">Аптеки</h3>
       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide scroll-touch snap-x snap-mandatory">
         {pharmacies.map((p) => {
+          // Banner cards render up to ~280 CSS px wide; ask the API for a
+          // 480-wide WebP (covers retina). External (picsum) URLs are passed
+          // through unchanged — we can't resize what we don't host.
           const bannerSrc = p.bannerUrl?.startsWith("http")
             ? p.bannerUrl
-            : `/api/pharmacies/banner/${p.id}/content`;
+            : `/api/pharmacies/banner/${p.id}/content?w=480`;
           return (
             <button
               key={p.id}

@@ -54,8 +54,8 @@ export default function ProductDetailsPage() {
       });
   }, [id]);
 
-  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined), [medicine]);
-  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined);
+  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
+  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
   const offersCount = medicine?.offers?.length ?? 0;
   const inStock = (medicine?.offers ?? []).some((o) => (o.stockQuantity ?? 0) > 0);

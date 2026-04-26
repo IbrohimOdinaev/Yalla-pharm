@@ -182,7 +182,7 @@ export default function CartPage() {
       <ul className="space-y-2">
         {cartItems.map((item) => {
           const medicine = medicineMap[item.medicineId];
-          const image = resolveMedicineImageUrl(medicine);
+          const image = resolveMedicineImageUrl(medicine, 120);
           const name = medicine ? getMedicineDisplayName(medicine) : `Загрузка...`;
           const minPrice = getCheapestPrice(medicine);
 

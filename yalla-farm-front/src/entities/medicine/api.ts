@@ -16,40 +16,45 @@ export async function getMedicineById(id: string): Promise<ApiMedicine> {
   return response.medicine;
 }
 
-/** Get image URL by image object */
-export function imageUrl(img?: { id?: string; url?: string }): string {
+/** Get image URL by image object. Pass `width` to request a server-resized
+ *  WebP variant — the backend buckets to {120, 240, 480, 800}. Anything
+ *  larger or no width returns the original. */
+export function imageUrl(img?: { id?: string; url?: string }, width?: number): string {
   if (!img) return "";
   if (img.url) return img.url;
-  if (img.id) return `${env.apiBaseUrl}/api/medicines/images/${img.id}/content`;
+  if (img.id) {
+    const base = `${env.apiBaseUrl}/api/medicines/images/${img.id}/content`;
+    return width ? `${base}?w=${width}` : base;
+  }
   return "";
 }
 
 /** Minimal image (for catalog grid thumbnails) */
-export function getMinimalImageUrl(medicine?: ApiMedicine): string {
+export function getMinimalImageUrl(medicine?: ApiMedicine, width?: number): string {
   const images = medicine?.images ?? [];
   const minimal = images.find((i) => i.isMinimal);
-  if (minimal) return imageUrl(minimal);
+  if (minimal) return imageUrl(minimal, width);
   const main = images.find((i) => i.isMain);
-  if (main) return imageUrl(main);
-  return imageUrl(images[0]);
+  if (main) return imageUrl(main, width);
+  return imageUrl(images[0], width);
 }
 
 /** Main image (for product detail hero) */
-export function getMainImageUrl(medicine?: ApiMedicine): string {
+export function getMainImageUrl(medicine?: ApiMedicine, width?: number): string {
   const images = medicine?.images ?? [];
   const main = images.find((i) => i.isMain);
-  if (main) return imageUrl(main);
-  return imageUrl(images[0]);
+  if (main) return imageUrl(main, width);
+  return imageUrl(images[0], width);
 }
 
 /** All gallery images: main first, then non-minimal others */
-export function getGalleryImages(medicine?: ApiMedicine): string[] {
+export function getGalleryImages(medicine?: ApiMedicine, width?: number): string[] {
   const images = medicine?.images ?? [];
   if (!images.length) return [];
   const main = images.find((i) => i.isMain);
   const others = images.filter((i) => !i.isMain && !i.isMinimal);
   const ordered = [main, ...others].filter(Boolean);
-  return ordered.map((i) => imageUrl(i!)).filter(Boolean);
+  return ordered.map((i) => imageUrl(i!, width)).filter(Boolean);
 }
 
 /** Cheapest price — uses minPrice from catalog API, falls back to offers, then medicine.price */
@@ -61,8 +66,8 @@ export function getCheapestPrice(medicine?: ApiMedicine): number | undefined {
 }
 
 /** Legacy: first image (backwards compat) */
-export function resolveMedicineImageUrl(medicine?: ApiMedicine): string {
-  return getMinimalImageUrl(medicine);
+export function resolveMedicineImageUrl(medicine?: ApiMedicine, width?: number): string {
+  return getMinimalImageUrl(medicine, width);
 }
 
 export function getMedicineDisplayName(medicine: ApiMedicine): string {

@@ -47,8 +47,8 @@ export function ProductModal() {
     return () => { document.body.style.overflow = ""; };
   }, [productId]);
 
-  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined), [medicine]);
-  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined);
+  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
+  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
 
   const handleAdd = useCallback(() => {

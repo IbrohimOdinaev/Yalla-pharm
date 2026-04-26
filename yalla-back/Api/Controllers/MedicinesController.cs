@@ -15,11 +15,25 @@ public sealed class MedicinesController : ControllerBase
 {
   private readonly IMedicineService _medicineService;
   private readonly IMedicineSearchEngine _searchEngine;
+  private readonly IImageResizer _imageResizer;
 
-  public MedicinesController(IMedicineService medicineService, IMedicineSearchEngine searchEngine)
+  public MedicinesController(IMedicineService medicineService, IMedicineSearchEngine searchEngine, IImageResizer imageResizer)
   {
     _medicineService = medicineService;
     _searchEngine = searchEngine;
+    _imageResizer = imageResizer;
+  }
+
+  // Snap caller-requested widths to a small fixed set so Cloudflare/CDN caches
+  // a bounded number of variants per source image. Anything above the largest
+  // bucket — or no width at all — falls through to the original.
+  private static readonly int[] WidthBuckets = [120, 240, 480, 800];
+  private static int? BucketWidth(int? requested)
+  {
+    if (requested is null or <= 0) return null;
+    foreach (var bucket in WidthBuckets)
+      if (requested <= bucket) return bucket;
+    return null;
   }
 
   [HttpGet]
@@ -194,12 +208,14 @@ public sealed class MedicinesController : ControllerBase
   [AllowAnonymous]
   public async Task<IActionResult> GetImageContent(
     Guid medicineImageId,
+    [FromQuery(Name = "w")] int? width,
     CancellationToken cancellationToken)
   {
     // Image rows are immutable: once an upload finishes the row never mutates,
     // the next upload creates a new row + new id. So the URL itself is the
     // version key — safe to mark immutable and let Cloudflare cache it forever.
-    var etag = $"\"{medicineImageId:N}\"";
+    var bucket = BucketWidth(width);
+    var etag = $"\"{medicineImageId:N}-w{(bucket?.ToString() ?? "orig")}\"";
     if (Request.Headers.TryGetValue("If-None-Match", out var inm) && inm.ToString() == etag)
     {
       Response.Headers.ETag = etag;
@@ -210,7 +226,19 @@ public sealed class MedicinesController : ControllerBase
     var image = await _medicineService.GetMedicineImageContentAsync(medicineImageId, cancellationToken);
     Response.Headers.ETag = etag;
     Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-    return File(image.Content, image.ContentType);
+
+    if (bucket is null)
+      return File(image.Content, image.ContentType);
+
+    using var ms = new MemoryStream();
+    await image.Content.CopyToAsync(ms, cancellationToken);
+    var resized = _imageResizer.ResizeToWebp(ms.ToArray(), bucket.Value);
+    if (resized is null)
+    {
+      ms.Position = 0;
+      return File(ms.ToArray(), image.ContentType);
+    }
+    return File(resized, "image/webp");
   }
 
   [HttpDelete("images")]
