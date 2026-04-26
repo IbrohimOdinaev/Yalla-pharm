@@ -39,12 +39,18 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
       <h3 className="text-sm xs:text-base sm:text-lg font-bold mb-2">Аптеки</h3>
       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide scroll-touch snap-x snap-mandatory">
         {pharmacies.map((p) => {
-          // Banner cards render up to ~280 CSS px wide; ask the API for a
-          // 480-wide WebP (covers retina). External (picsum) URLs are passed
-          // through unchanged — we can't resize what we don't host.
-          const bannerSrc = p.bannerUrl?.startsWith("http")
-            ? p.bannerUrl
+          // Banner cards render up to ~280 CSS px wide. For server-hosted
+          // banners emit a srcSet so retina (DPR=2) gets the 800-px variant
+          // and standard screens stay on the cheaper 480. External (picsum)
+          // URLs are passed through unchanged — we can't resize what we
+          // don't host.
+          const isExternal = p.bannerUrl?.startsWith("http") ?? false;
+          const bannerSrc = isExternal
+            ? p.bannerUrl!
             : `/api/pharmacies/banner/${p.id}/content?w=480`;
+          const bannerSrcSet = isExternal
+            ? undefined
+            : `/api/pharmacies/banner/${p.id}/content?w=480 1x, /api/pharmacies/banner/${p.id}/content?w=800 2x`;
           return (
             <button
               key={p.id}
@@ -55,6 +61,7 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={bannerSrc}
+                srcSet={bannerSrcSet}
                 alt={p.title}
                 loading="lazy"
                 decoding="async"

@@ -19,12 +19,17 @@ type Props = {
 // failed request still landed in the network log as a noisy 404.
 export function PharmacyLogo({ pharmacyId, iconUrl, alt = "", size = 40, className = "" }: Props) {
   const hasIcon = Boolean(iconUrl);
-  // Round up the requested render size to the nearest server bucket so
-  // browsers/CDN re-use the same cached variant across consumers.
-  const widthBucket = size <= 120 ? 120 : size <= 240 ? 240 : 480;
+  // Round CSS render size up to the nearest server bucket for 1x. For retina
+  // (2x), step one bucket up so HiDPI screens still get a sharp logo.
+  const oneXBucket = size <= 120 ? 120 : size <= 240 ? 240 : 480;
+  const twoXBucket = oneXBucket === 120 ? 240 : oneXBucket === 240 ? 480 : 800;
+  const isExternal = hasIcon && iconUrl!.startsWith("http");
   const src = hasIcon
-    ? (iconUrl!.startsWith("http") ? iconUrl! : `/api/pharmacies/icon/${pharmacyId}/content?w=${widthBucket}`)
+    ? (isExternal ? iconUrl! : `/api/pharmacies/icon/${pharmacyId}/content?w=${oneXBucket}`)
     : null;
+  const srcSet = hasIcon && !isExternal
+    ? `/api/pharmacies/icon/${pharmacyId}/content?w=${oneXBucket} 1x, /api/pharmacies/icon/${pharmacyId}/content?w=${twoXBucket} 2x`
+    : undefined;
 
   const dim = { width: size, height: size };
 
@@ -44,6 +49,7 @@ export function PharmacyLogo({ pharmacyId, iconUrl, alt = "", size = 40, classNa
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
+      srcSet={srcSet}
       alt={alt}
       loading="lazy"
       decoding="async"

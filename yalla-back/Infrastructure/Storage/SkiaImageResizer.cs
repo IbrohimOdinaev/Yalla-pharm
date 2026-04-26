@@ -10,7 +10,7 @@ public sealed class SkiaImageResizer : IImageResizer
     // neighbour, which produces visibly blocky thumbnails on retina screens.
     private static readonly SKSamplingOptions Sampling = new(SKCubicResampler.Mitchell);
 
-    public byte[]? ResizeToWebp(ReadOnlySpan<byte> source, int targetWidth, int quality = 90)
+    public byte[]? ResizeToWebp(ReadOnlySpan<byte> source, int targetWidth, int quality = 92)
     {
         if (source.IsEmpty || targetWidth <= 0)
             return null;

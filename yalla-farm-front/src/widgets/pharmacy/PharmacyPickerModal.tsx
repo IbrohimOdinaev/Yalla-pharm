@@ -106,6 +106,7 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={pharmacy.bannerUrl.startsWith("http") ? pharmacy.bannerUrl : `/api/pharmacies/banner/${pharmacy.id}/content?w=480`}
+                        srcSet={pharmacy.bannerUrl.startsWith("http") ? undefined : `/api/pharmacies/banner/${pharmacy.id}/content?w=480 1x, /api/pharmacies/banner/${pharmacy.id}/content?w=800 2x`}
                         alt=""
                         loading="lazy"
                         decoding="async"

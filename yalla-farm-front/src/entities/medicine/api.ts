@@ -29,6 +29,16 @@ export function imageUrl(img?: { id?: string; url?: string }, width?: number): s
   return "";
 }
 
+/** Build a srcSet with 1x/2x density descriptors so the browser picks the
+ *  right server-resized variant based on the device pixel ratio. Returns
+ *  empty string for external (img.url) or missing images — they can't be
+ *  re-served at multiple resolutions. */
+export function imageSrcSet(img?: { id?: string; url?: string }, oneXWidth = 480, twoXWidth?: number): string {
+  if (!img?.id || img.url) return "";
+  const retina = twoXWidth ?? Math.min(oneXWidth * 2, 800);
+  return `${imageUrl(img, oneXWidth)} 1x, ${imageUrl(img, retina)} 2x`;
+}
+
 /** Minimal image (for catalog grid thumbnails) */
 export function getMinimalImageUrl(medicine?: ApiMedicine, width?: number): string {
   const images = medicine?.images ?? [];

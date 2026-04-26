@@ -7,7 +7,7 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useProductModalStore } from "@/features/product-modal/model/productModalStore";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { getMedicineDisplayName, getMinimalImageUrl, getCheapestPrice, imageUrl } from "@/entities/medicine/api";
+import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
 import { Icon } from "@/shared/ui";
 
 type MedicineCardProps = {
@@ -28,14 +28,20 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const setServerQty = useCartStore((state) => state.setQuantity);
   const removeServerItem = useCartStore((state) => state.removeItem);
 
-  // Catalog tiles render up to ~280 CSS px on desktop; on retina (DPR=2) the
-  // browser maps that to ~560 device pixels. Request 480 so we have enough
-  // resolution to look crisp on HiDPI without sending the multi-MB original.
-  const thumbUrl = useMemo(() => getMinimalImageUrl(medicine, 480), [medicine]);
-  const allImages = useMemo(() => {
-    const imgs = (medicine.images ?? []).map((i) => imageUrl(i, 480)).filter(Boolean);
-    return imgs.length > 0 ? imgs : thumbUrl ? [thumbUrl] : [];
-  }, [medicine, thumbUrl]);
+  // Hold onto the image refs (not pre-built URLs) so we can emit a srcSet
+  // alongside src — the browser then picks 480w for normal screens and 800w
+  // for retina automatically based on devicePixelRatio.
+  const imageRefs = useMemo(() => {
+    const imgs = medicine.images ?? [];
+    if (imgs.length > 0) return imgs;
+    // Fallback chain: minimal → main → first
+    const minimal = imgs.find((i) => i.isMinimal);
+    if (minimal) return [minimal];
+    const main = imgs.find((i) => i.isMain);
+    if (main) return [main];
+    return imgs[0] ? [imgs[0]] : [];
+  }, [medicine.images]);
+  const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 480)).filter(Boolean), [imageRefs]);
   const price = getCheapestPrice(medicine);
   const offersCount = medicine.offers?.length ?? 0;
   const [imgIndex, setImgIndex] = useState(0);
@@ -107,6 +113,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={allImages[imgIndex] ?? allImages[0]}
+              srcSet={imageSrcSet(imageRefs[imgIndex] ?? imageRefs[0], 480, 800) || undefined}
               alt={name}
               loading="lazy"
               decoding="async"
