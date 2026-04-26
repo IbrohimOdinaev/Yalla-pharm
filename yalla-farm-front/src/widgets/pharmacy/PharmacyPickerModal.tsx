@@ -107,6 +107,8 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
                       <img
                         src={pharmacy.bannerUrl.startsWith("http") ? pharmacy.bannerUrl : `/api/pharmacies/banner/${pharmacy.id}/content`}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                       />

@@ -42,6 +42,8 @@ export function PharmacyLogo({ pharmacyId, iconUrl, alt = "", size = 40, classNa
     <img
       src={src}
       alt={alt}
+      loading="lazy"
+      decoding="async"
       className={`rounded-full object-cover ${className}`}
       style={dim}
     />

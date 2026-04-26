@@ -136,7 +136,20 @@ public sealed class PharmaciesController : ControllerBase
     if (string.IsNullOrEmpty(pharmacy.IconUrl))
       return NotFound();
 
+    // ETag = the MinIO storage key. Each re-upload mints a new key, so the
+    // ETag changes only when the icon actually changes; browsers/CDN can
+    // revalidate cheaply without re-streaming the bytes.
+    var etag = $"\"{pharmacy.IconUrl}\"";
+    if (Request.Headers.TryGetValue("If-None-Match", out var inm) && inm.ToString() == etag)
+    {
+      Response.Headers.ETag = etag;
+      Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
+      return StatusCode(StatusCodes.Status304NotModified);
+    }
+
     var content = await _imageStorage.GetContentAsync(pharmacy.IconUrl, cancellationToken);
+    Response.Headers.ETag = etag;
+    Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
     return File(content.Content, content.ContentType);
   }
 
@@ -209,7 +222,17 @@ public sealed class PharmaciesController : ControllerBase
     if (pharmacy.BannerUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
       return Redirect(pharmacy.BannerUrl);
 
+    var etag = $"\"{pharmacy.BannerUrl}\"";
+    if (Request.Headers.TryGetValue("If-None-Match", out var inm) && inm.ToString() == etag)
+    {
+      Response.Headers.ETag = etag;
+      Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
+      return StatusCode(StatusCodes.Status304NotModified);
+    }
+
     var content = await _imageStorage.GetContentAsync(pharmacy.BannerUrl, cancellationToken);
+    Response.Headers.ETag = etag;
+    Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
     return File(content.Content, content.ContentType);
   }
 

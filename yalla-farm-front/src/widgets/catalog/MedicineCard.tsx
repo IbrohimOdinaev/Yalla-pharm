@@ -105,6 +105,8 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
             <img
               src={allImages[imgIndex] ?? allImages[0]}
               alt={name}
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-contain p-2 transition group-hover:scale-[1.03]"
             />
           ) : (

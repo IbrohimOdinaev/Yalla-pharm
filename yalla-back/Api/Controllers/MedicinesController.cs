@@ -196,7 +196,20 @@ public sealed class MedicinesController : ControllerBase
     Guid medicineImageId,
     CancellationToken cancellationToken)
   {
+    // Image rows are immutable: once an upload finishes the row never mutates,
+    // the next upload creates a new row + new id. So the URL itself is the
+    // version key — safe to mark immutable and let Cloudflare cache it forever.
+    var etag = $"\"{medicineImageId:N}\"";
+    if (Request.Headers.TryGetValue("If-None-Match", out var inm) && inm.ToString() == etag)
+    {
+      Response.Headers.ETag = etag;
+      Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+      return StatusCode(StatusCodes.Status304NotModified);
+    }
+
     var image = await _medicineService.GetMedicineImageContentAsync(medicineImageId, cancellationToken);
+    Response.Headers.ETag = etag;
+    Response.Headers.CacheControl = "public, max-age=31536000, immutable";
     return File(image.Content, image.ContentType);
   }
 

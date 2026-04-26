@@ -98,27 +98,21 @@ public sealed class MinIoMedicineImageStorage : IMedicineImageStorage
 
     try
     {
-      var stat = await _minioClient.StatObjectAsync(
-        new StatObjectArgs()
-          .WithBucket(_options.BucketName)
-          .WithObject(key),
-        cancellationToken).ConfigureAwait(false);
-
       var output = new MemoryStream();
-      await _minioClient.GetObjectAsync(
+      var stat = await _minioClient.GetObjectAsync(
         new GetObjectArgs()
           .WithBucket(_options.BucketName)
           .WithObject(key)
-          .WithCallbackStream(stream => stream.CopyTo(output)),
+          .WithCallbackStream((stream, ct) => stream.CopyToAsync(output, ct)),
         cancellationToken).ConfigureAwait(false);
 
       output.Position = 0;
       return new MedicineImageContent
       {
         Content = output,
-        ContentType = string.IsNullOrWhiteSpace(stat.ContentType)
-          ? "application/octet-stream"
-          : stat.ContentType
+        ContentType = !string.IsNullOrWhiteSpace(stat?.ContentType)
+          ? stat.ContentType
+          : GuessContentTypeFromKey(key)
       };
     }
     catch (Exception ex)
@@ -202,6 +196,21 @@ public sealed class MinIoMedicineImageStorage : IMedicineImageStorage
       $"{message} Endpoint='{_options.Endpoint}', UseSsl={_options.UseSsl}. " +
       "Check that MinIO is running and the endpoint/credentials are correct.",
       innerException);
+  }
+
+  private static string GuessContentTypeFromKey(string key)
+  {
+    var ext = Path.GetExtension(key).ToLowerInvariant();
+    return ext switch
+    {
+      ".jpg" or ".jpeg" => "image/jpeg",
+      ".png" => "image/png",
+      ".webp" => "image/webp",
+      ".gif" => "image/gif",
+      ".svg" => "image/svg+xml",
+      ".avif" => "image/avif",
+      _ => "application/octet-stream"
+    };
   }
 
   private static string BuildImageKey(string fileName)

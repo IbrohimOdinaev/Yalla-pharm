@@ -53,6 +53,8 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
               <img
                 src={bannerSrc}
                 alt={p.title}
+                loading="lazy"
+                decoding="async"
                 className="absolute inset-0 w-full h-full object-cover"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
               />
