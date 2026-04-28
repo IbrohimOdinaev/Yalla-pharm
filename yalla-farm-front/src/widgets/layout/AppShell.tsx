@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { BottomNav } from "@/widgets/layout/BottomNav";
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
 import { Footer } from "@/widgets/layout/Footer";
-import { ProductModal } from "@/widgets/product/ProductModal";
 
 type AppShellProps = {
   top?: ReactNode;
@@ -21,15 +20,14 @@ export function AppShell({ top, children, hideGlobalNav, hideFooter, narrow }: A
       {!hideGlobalNav ? <GlobalTopBar /> : null}
       {top}
       <main
-        className={`mx-auto w-[90%] flex-1 pb-24 pt-3 xs:pt-4 sm:pt-6 overflow-x-hidden ${
-          narrow ? "max-w-3xl" : ""
+        className={`mx-auto w-full flex-1 px-3 pb-24 pt-3 xs:pt-4 sm:px-6 sm:pt-6 lg:px-8 overflow-x-hidden ${
+          narrow ? "max-w-3xl" : "max-w-[1440px]"
         }`}
       >
         {children}
       </main>
       {!hideFooter ? <Footer /> : null}
       <BottomNav />
-      <ProductModal />
     </div>
   );
 }

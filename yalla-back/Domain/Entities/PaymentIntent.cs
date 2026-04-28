@@ -27,6 +27,9 @@ public sealed class PaymentIntent
   public DateTime? ConfirmedAtUtc { get; private set; }
   public Guid? ConfirmedByUserId { get; private set; }
   public string? RejectReason { get; private set; }
+  public int? Entrance { get; private set; }
+  public int? Floor { get; private set; }
+  public int? Apartment { get; private set; }
 
   public IReadOnlyCollection<PaymentIntentPosition> Positions => _positions.AsReadOnly();
 
@@ -49,7 +52,10 @@ public sealed class PaymentIntent
     string? paymentComment,
     string idempotencyKey,
     IReadOnlyCollection<PaymentIntentPosition> positions,
-    DateTime createdAtUtc)
+    DateTime createdAtUtc,
+    int? entrance = null,
+    int? floor = null,
+    int? apartment = null)
   {
     if (reservedOrderId == Guid.Empty)
       throw new DomainArgumentException("ReservedOrderId can't be empty.");
@@ -99,9 +105,20 @@ public sealed class PaymentIntent
     ConfirmedAtUtc = null;
     ConfirmedByUserId = null;
     RejectReason = null;
+    Entrance = NormalizeNonNegativeInt(entrance, nameof(Entrance));
+    Floor = NormalizeNonNegativeInt(floor, nameof(Floor));
+    Apartment = NormalizeNonNegativeInt(apartment, nameof(Apartment));
 
     foreach (var position in positions)
       _positions.Add(position.AttachToPaymentIntent(Id));
+  }
+
+  private static int? NormalizeNonNegativeInt(int? value, string name)
+  {
+    if (value is null) return null;
+    if (value.Value < 0)
+      throw new DomainArgumentException($"{name} can't be negative.");
+    return value.Value;
   }
 
   public void MarkConfirmed(Guid confirmedByUserId, DateTime confirmedAtUtc)

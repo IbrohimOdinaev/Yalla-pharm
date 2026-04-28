@@ -1,10 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useCallback } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
-import { useProductModalStore } from "@/features/product-modal/model/productModalStore";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
@@ -94,15 +94,20 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
     }
   }
 
-  const openProduct = useProductModalStore((s) => s.open);
   const name = getMedicineDisplayName(medicine);
 
+  // Link wraps the whole card so search engines see a real <a href> per
+  // product. In normal navigation the @modal intercept catches this URL
+  // and overlays the product modal; on direct visit / refresh, the
+  // /product/[id] full page renders. Cart buttons below call
+  // e.preventDefault() which Next.js Link respects.
   return (
-    <div
-      className="group h-full cursor-pointer"
-      onClick={() => openProduct(medicine.id)}
+    <Link
+      href={`/product/${medicine.id}`}
+      prefetch={false}
+      className="group block h-full"
     >
-      <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/50 bg-surface-container-lowest transition hover:border-on-surface/30 hover:shadow-card">
+      <article className="flex h-full flex-col overflow-hidden rounded-2xl bg-surface-container-lowest transition hover:shadow-card">
         {/* Image */}
         <div
           className="relative aspect-square overflow-hidden bg-surface-container-low"
@@ -238,6 +243,6 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
           </div>
         </div>
       </article>
-    </div>
+    </Link>
   );
 }

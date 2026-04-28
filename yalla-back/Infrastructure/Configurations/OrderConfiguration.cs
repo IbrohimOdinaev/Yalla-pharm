@@ -151,6 +151,18 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .HasColumnType("character varying(1024)")
           .HasMaxLength(1024);
 
+        builder.Property(x => x.Entrance)
+          .HasColumnName("entrance")
+          .HasColumnType("integer");
+
+        builder.Property(x => x.Floor)
+          .HasColumnName("floor")
+          .HasColumnType("integer");
+
+        builder.Property(x => x.Apartment)
+          .HasColumnName("apartment")
+          .HasColumnType("integer");
+
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_orders_client_id");
 

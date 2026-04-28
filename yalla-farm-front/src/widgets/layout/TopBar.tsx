@@ -20,6 +20,10 @@ type TopBarProps = {
   homeMode?: boolean;
   onSearchClick?: () => void;
   addressText?: string;
+  /** User-defined label for the active delivery address ("Дом", "Работа").
+   *  When non-empty it's shown in place of the raw street, in black, so the
+   *  user recognises their saved place at a glance. */
+  addressTitle?: string;
   onAddressClick?: () => void;
   onLogoClick?: () => void;
   pharmacyName?: string;
@@ -37,6 +41,7 @@ export function TopBar({
   homeMode,
   onSearchClick,
   addressText,
+  addressTitle,
   onAddressClick,
   onLogoClick,
   pharmacyName,
@@ -147,10 +152,11 @@ export function TopBar({
         type="button"
         onClick={onAddressClick}
         className="flex flex-shrink items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container sm:text-sm sm:px-3.5"
+        title={addressTitle ? addressText : undefined}
       >
         <Icon name="pin" size={14} className="flex-shrink-0 text-secondary" />
-        <span className="truncate max-w-[120px] sm:max-w-[160px] lg:max-w-[140px] xl:max-w-[200px]">
-          {addressText || "Выберите адрес"}
+        <span className="truncate max-w-[120px] sm:max-w-[160px] lg:max-w-[140px] xl:max-w-[200px] text-on-surface">
+          {addressTitle || addressText || "Выберите адрес"}
         </span>
         <Icon name="chevron-down" size={12} className="flex-shrink-0 text-on-surface-variant" />
       </button>
@@ -175,28 +181,49 @@ export function TopBar({
       </button>
     );
 
-    // Borderless button next to the logo — two lines:
-    //   • brand name in bold display type
-    //   • current delivery address + filled-circle chevron (opens address picker)
-    // Background is transparent so it reads as plain text until tapped.
-    const MobileAddressPill = (
-      <button
-        type="button"
-        onClick={onAddressClick}
-        className="-mx-1 flex min-w-0 flex-1 flex-col items-start rounded-xl px-1 py-0.5 text-left transition active:bg-surface-container-low/70"
-      >
-        <span className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl">
-          Yalla Farm
-        </span>
-        <span className="mt-0.5 flex w-full min-w-0 items-center gap-1 text-[11px] xs:text-xs text-on-surface-variant sm:text-sm">
-          <span className="min-w-0 truncate">{addressText || "Выберите адрес"}</span>
+    // Mobile header column next to the logo — two stacked, INDEPENDENTLY
+    // clickable rows so the brand label opens "/" while the address row opens
+    // the address picker. Previously a single button wrapped both, which made
+    // tapping "Yalla Farm" trigger the address modal.
+    const MobileBrandAndAddress = (
+      <div className="-mx-1 flex min-w-0 flex-1 flex-col items-start px-1 py-0.5">
+        {onLogoClick ? (
+          <button
+            type="button"
+            onClick={onLogoClick}
+            className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl rounded transition active:bg-surface-container-low/70"
+          >
+            Yalla Farm
+          </button>
+        ) : (
+          <Link
+            href="/"
+            className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl rounded transition active:bg-surface-container-low/70"
+          >
+            Yalla Farm
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={onAddressClick}
+          className="mt-0.5 flex w-full min-w-0 items-center gap-1 rounded text-[11px] xs:text-xs sm:text-sm transition active:bg-surface-container-low/70"
+          title={addressTitle ? addressText : undefined}
+        >
+          {/* Pin icon — makes the row read as an address even when only a
+              short user label ("Kulob") is shown. */}
+          <Icon name="pin" size={12} className="flex-shrink-0 text-secondary" />
+          <span
+            className={`min-w-0 truncate ${addressTitle ? "font-semibold text-on-surface" : "text-on-surface-variant"}`}
+          >
+            {addressTitle || addressText || "Выберите адрес"}
+          </span>
           <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-on-surface text-surface">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </span>
-        </span>
-      </button>
+        </button>
+      </div>
     );
 
     const SearchInner = (
@@ -269,12 +296,14 @@ export function TopBar({
           </span>
         </Link>
       ) : (
+        // Empty state — keep the same brand-cyan capsule as the populated
+        // state so the cart action stays visually anchored on the bar.
         <Link
           href="/cart"
-          className="relative hidden h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition hover:bg-surface-container-high sm:flex sm:h-11 sm:w-11"
+          className="relative hidden h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-11"
           aria-label="Корзина"
         >
-          <Icon name="bag" size={20} />
+          <Icon name="bag" size={20} strokeWidth={2.2} />
         </Link>
       );
 
@@ -394,34 +423,36 @@ export function TopBar({
     return (
       <>
       <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-xl">
-        {/* DESKTOP (lg+): single row with inline pills. */}
-        <div className="hidden h-[60px] items-center gap-3 px-5 lg:flex lg:px-6">
-          {LogoLink}
-          {DesktopSearch}
-          <div className="flex items-center gap-2 min-w-0">
-            {DesktopAddressPill}
-            {PharmacyPill}
-          </div>
-          <span className="flex-1" />
-          {!onCartRoute ? CartButton : null}
-          {renderProfileButton(menuRefDesktop)}
-        </div>
-
-        {/* MOBILE (< lg): two rows — logo+address+(cart sm+)+profile, then
-            wide search. The inline cart fills the gap left by the floating
-            pill, which is phone-only. */}
-        <div className="lg:hidden">
-          <div className="flex items-center gap-3 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="mx-auto w-full max-w-[1440px]">
+          {/* DESKTOP (lg+): single row with inline pills. */}
+          <div className="hidden h-[60px] items-center gap-3 px-5 lg:flex lg:px-8">
             {LogoLink}
-            {MobileAddressPill}
-            {!onCartRoute ? CartButton : null}
-            {renderProfileButton(menuRefMobile)}
-          </div>
-          {MobileSearch ? (
-            <div className="px-3 pb-3 sm:px-4 sm:pb-4">
-              {MobileSearch}
+            {DesktopSearch}
+            <div className="flex items-center gap-2 min-w-0">
+              {DesktopAddressPill}
+              {PharmacyPill}
             </div>
-          ) : null}
+            <span className="flex-1" />
+            {!onCartRoute ? CartButton : null}
+            {renderProfileButton(menuRefDesktop)}
+          </div>
+
+          {/* MOBILE (< lg): two rows — logo+address+(cart sm+)+profile, then
+              wide search. The inline cart fills the gap left by the floating
+              pill, which is phone-only. */}
+          <div className="lg:hidden">
+            <div className="flex items-center gap-3 px-3 py-2.5 sm:px-6 sm:py-3">
+              {LogoLink}
+              {MobileBrandAndAddress}
+              {!onCartRoute ? CartButton : null}
+              {renderProfileButton(menuRefMobile)}
+            </div>
+            {MobileSearch ? (
+              <div className="px-3 pb-3 sm:px-6 sm:pb-4">
+                {MobileSearch}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="hair-divider" />
       </header>
@@ -453,7 +484,7 @@ export function TopBar({
   // ── DEFAULT MODE: back + title ───────────────────────────────────
   return (
     <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xl">
-      <div className="flex h-14 items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           {backHref ? (
             backHref === "back" ? (

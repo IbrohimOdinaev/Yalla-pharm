@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
 import { getCatalogMedicinesPaginated, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
@@ -8,7 +8,9 @@ import { getCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiPharmacyMedicinesGroup } from "@/shared/types/api";
 import { HeroCarousel } from "@/widgets/catalog/HeroCarousel";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 import { MedicineRail } from "@/widgets/catalog/MedicineRail";
+import Link from "next/link";
 import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
 import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
 import { AppShell } from "@/widgets/layout/AppShell";
@@ -16,7 +18,6 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { TrustStrip } from "@/shared/ui";
 import { useAppSelector } from "@/shared/lib/redux";
 
-import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
@@ -79,16 +80,38 @@ const QUICK_CATEGORIES: QuickCategory[] = [
 
 export default function HomePage() {
   return (
-    <Suspense fallback={<AppShell top={undefined}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
+    <Suspense fallback={<HomeFallback />}>
       <HomeContent />
     </Suspense>
+  );
+}
+
+function HomeFallback() {
+  return (
+    <AppShell>
+      <div className="space-y-6 sm:space-y-8">
+        <div className="flex gap-3 overflow-hidden">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex flex-col items-center gap-2">
+              <div className="h-[80px] w-[80px] animate-pulse rounded-2xl bg-surface-container-high sm:h-[92px] sm:w-[92px] lg:h-[104px] lg:w-[104px]" />
+              <div className="h-3 w-16 animate-pulse rounded-md bg-surface-container-high" />
+            </div>
+          ))}
+        </div>
+        <div className="h-32 animate-pulse rounded-2xl bg-surface-container-high" />
+        <div className="grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <MedicineCardSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+    </AppShell>
   );
 }
 
 function HomeContent() {
   const role = useAppSelector((s) => s.auth.role);
   const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
-  const deliveryAddress = useDeliveryAddressStore((s) => s.address);
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const searchParams = useSearchParams();
@@ -102,26 +125,32 @@ function HomeContent() {
 
   // Restore view & query from URL params on mount
   const urlSearch = searchParams.get("search") ?? "";
+  const urlPharmacy = searchParams.get("pharmacy") ?? "";
 
-  // View mode: "home" | "search" | "catalog"
-  const [view, setView] = useState<"home" | "search" | "catalog">(searchParams.has("search") ? "search" : "home");
+  // View mode: "home" | "search" — catalog moved to dedicated /catalog routes
+  // for SEO-friendly URLs.
+  const [view, setView] = useState<"home" | "search">(searchParams.has("search") ? "search" : "home");
+
+  // Push current search filters into the address bar via replaceState so the
+  // URL is shareable / back-buttonable for any combination of (query, pharmacy
+  // filter). Used by every filter change site — typing, suggestion picks,
+  // pharmacy chip toggles, popular queries, clears.
+  function syncSearchUrl(q: string, pharmacyIdFilter: string) {
+    const url = new URL(window.location.href);
+    if (q.trim()) url.searchParams.set("search", q.trim());
+    else url.searchParams.set("search", "");
+    if (pharmacyIdFilter) url.searchParams.set("pharmacy", pharmacyIdFilter);
+    else url.searchParams.delete("pharmacy");
+    window.history.replaceState({}, "", url.toString());
+    replaceLastNavigation(url.pathname + url.search);
+  }
 
   // Address modal — auto-open on first visit if no address saved
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const addressChecked = useRef(false);
 
-  // Catalog (home view)
-  const [medicines, setMedicines] = useState<ApiMedicine[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [categories, setCategories] = useState<ApiCategory[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
-  const [expandedCategoryId, setExpandedCategoryId] = useState<string>("");
-  const [showAllCategories, setShowAllCategories] = useState(false);
 
   // Search view
   const [query, setQuery] = useState(urlSearch);
@@ -140,13 +169,10 @@ function HomeContent() {
   const CARDS_PER_SCROLL_PAGE = 20;
 
   // Pharmacy filter in search
-  const [showPharmacyFilter, setShowPharmacyFilter] = useState(false);
   const [selectedSearchPharmacyId, setSelectedSearchPharmacyId] = useState<string>("");
   // When user enters search via a pharmacy banner, this pin overrides the global pharmacy
   // until search is closed. After exit, global selection is used again.
   const [pinnedSearchPharmacy, setPinnedSearchPharmacy] = useState<ActivePharmacy | null>(null);
-
-  const isInitialLoad = useRef(true);
 
   useEffect(() => {
     getCategories().then(setCategories).catch(() => undefined);
@@ -170,21 +196,29 @@ function HomeContent() {
   // independently. Keyed map makes it trivial to skip already-fetched rails on
   // re-render and to blow the whole cache when the pharmacy filter changes.
   const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>({});
-  // Resolves RailSpec.keywords → concrete categoryId using the loaded
-  // categories tree. `null` keyword list stays null (the "Popular" rail).
-  const railCategoryIds = useMemo(() => {
+  // Resolves RailSpec.keywords → concrete category (id + slug) using the
+  // loaded categories tree. `null` keyword list stays null (the "Popular" rail).
+  type RailCatRef = { id: string | null; slug: string | null } | undefined;
+  const railCategoryRefs = useMemo(() => {
     const allCats = [...categories, ...categories.flatMap((c) => c.children ?? [])];
-    const out: Record<string, string | null | undefined> = {};
+    const out: Record<string, RailCatRef> = {};
     for (const spec of HOME_RAILS) {
       if (spec.keywords === null) {
-        out[spec.id] = null;
+        out[spec.id] = { id: null, slug: null };
         continue;
       }
       const match = allCats.find((c) => spec.keywords!.some((kw) => c.name.toLowerCase().includes(kw)));
-      out[spec.id] = match?.id;
+      out[spec.id] = match ? { id: match.id, slug: match.slug } : undefined;
     }
     return out;
   }, [categories]);
+  const railCategoryIds = useMemo(() => {
+    const out: Record<string, string | null | undefined> = {};
+    for (const [k, v] of Object.entries(railCategoryRefs)) {
+      out[k] = v === undefined ? undefined : v.id;
+    }
+    return out;
+  }, [railCategoryRefs]);
 
   // Reset the rail cache whenever the user switches pharmacy — stock differs.
   useEffect(() => {
@@ -211,29 +245,6 @@ function HomeContent() {
     }
   }, [categories.length, railCategoryIds, selectedPharmacy?.id, railMeds]);
 
-  const fetchMedicines = useCallback((p = 1, catId = "", pharmId?: string) => {
-    if (isInitialLoad.current) setIsLoading(true);
-    else setIsSearching(true);
-    setError(null);
-
-    getCatalogMedicinesPaginated(p, 24, catId || undefined, pharmId || undefined)
-      .then((data) => {
-        setMedicines(Array.isArray(data?.medicines) ? data.medicines : []);
-        const total = data?.totalCount ?? 0;
-        const size = data?.pageSize ?? 24;
-        setTotalPages(Math.max(1, Math.ceil(total / size)));
-        setPage(data?.page ?? p);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Не удалось загрузить каталог.");
-      })
-      .finally(() => { setIsLoading(false); setIsSearching(false); isInitialLoad.current = false; });
-  }, []);
-
-  useOfferLiveUpdates(useCallback(() => {
-    fetchMedicines(page, selectedCategoryId, selectedPharmacy?.id);
-  }, [fetchMedicines, page, selectedCategoryId, selectedPharmacy?.id]));
-
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
   // Auto-open address modal on first visit if no address stored
@@ -247,12 +258,8 @@ function HomeContent() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchMedicines(1, selectedCategoryId, selectedPharmacy?.id);
-  }, [fetchMedicines, selectedCategoryId, selectedPharmacy?.id]);
-
   // Search by pharmacy
-  function doSearch(q: string) {
+  function doSearch(q: string, presetPharmacyId?: string) {
     if (!q.trim()) {
       setPharmacyResults([]);
       setSearchTotalCount(0);
@@ -265,10 +272,17 @@ function HomeContent() {
         setPharmacyResults(data.pharmacies ?? []);
         setSearchTotalCount(data.totalCount ?? 0);
         setPharmacyScrollPage({});
-        // Pinned pharmacy (from banner click) wins over global selection
-        if (pinnedSearchPharmacy && (data.pharmacies ?? []).some((p) => p.pharmacyId === pinnedSearchPharmacy.id)) {
+        const groups = data.pharmacies ?? [];
+        // Resolution priority for pre-selecting the pharmacy chip:
+        //   1. explicit preset (from URL on mount or pharmacy chip click)
+        //   2. pinned pharmacy (entered search via banner)
+        //   3. globally selected pharmacy (top-bar pharmacy picker)
+        //   4. nothing — "Все аптеки" view
+        if (presetPharmacyId && groups.some((p) => p.pharmacyId === presetPharmacyId)) {
+          setSelectedSearchPharmacyId(presetPharmacyId);
+        } else if (pinnedSearchPharmacy && groups.some((p) => p.pharmacyId === pinnedSearchPharmacy.id)) {
           setSelectedSearchPharmacyId(pinnedSearchPharmacy.id);
-        } else if (!pinnedSearchPharmacy && selectedPharmacy && (data.pharmacies ?? []).some((p) => p.pharmacyId === selectedPharmacy.id)) {
+        } else if (!pinnedSearchPharmacy && selectedPharmacy && groups.some((p) => p.pharmacyId === selectedPharmacy.id)) {
           setSelectedSearchPharmacyId(selectedPharmacy.id);
         } else {
           setSelectedSearchPharmacyId("");
@@ -299,11 +313,7 @@ function HomeContent() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       doSearch(value);
-      const url = new URL(window.location.href);
-      if (value.trim()) url.searchParams.set("search", value.trim());
-      else url.searchParams.delete("search");
-      window.history.replaceState({}, "", url.toString());
-      replaceLastNavigation(url.pathname + url.search);
+      syncSearchUrl(value, selectedSearchPharmacyId);
     }, 350);
   }
 
@@ -312,10 +322,7 @@ function HomeContent() {
     setQuery(initialQuery);
     if (initialQuery) {
       doSearch(initialQuery);
-      const url = new URL(window.location.href);
-      url.searchParams.set("search", initialQuery);
-      window.history.replaceState({}, "", url.toString());
-      replaceLastNavigation(url.pathname + url.search);
+      syncSearchUrl(initialQuery, selectedSearchPharmacyId);
     }
     setTimeout(() => searchInputRef.current?.focus(), 100);
   }
@@ -348,7 +355,6 @@ function HomeContent() {
     setSearchTotalCount(0);
     setSearchError(null);
     setSelectedSearchPharmacyId("");
-    setShowPharmacyFilter(false);
     setPinnedSearchPharmacy(null);
     // Use browser history — it knows the real previous URL even when typing
     // in the search box (replaceState doesn't add new entries)
@@ -366,35 +372,29 @@ function HomeContent() {
     setQuery("");
     setPharmacyResults([]);
     setSearchTotalCount(0);
-    // Push a new browser history entry so back works naturally
+    // Push a new browser history entry so back works naturally; pre-encode the
+    // pharmacy filter so a refresh keeps the chip selected.
     const url = new URL(window.location.href);
     url.searchParams.set("search", "");
+    url.searchParams.set("pharmacy", pharmacy.id);
     navRouter.push(url.pathname + url.search);
     setTimeout(() => searchInputRef.current?.focus(), 100);
   }
 
-  // Restore search results from URL on mount
+  // Restore search results from URL on mount, including pharmacy filter so
+  // shared / refreshed links land on the same filtered results the user sent.
   const searchRestored = useRef(false);
   useEffect(() => {
     if (searchRestored.current || !urlSearch) return;
     searchRestored.current = true;
-    doSearch(urlSearch);
-  }, [urlSearch]);
+    doSearch(urlSearch, urlPharmacy || undefined);
+  }, [urlSearch, urlPharmacy]);
 
-  function onCategorySelect(catId: string) {
-    const newId = catId === selectedCategoryId ? "" : catId;
-    setSelectedCategoryId(newId);
-    setPage(1);
-    fetchMedicines(1, newId, selectedPharmacy?.id);
-  }
-
-  // Match quick category label to actual category via keywords
+  // Match quick category label to actual category via keywords, then
+  // navigate to its dedicated /catalog/[slug] page (SEO).
   function onQuickCategoryClick(label: string) {
     if (label === "Все категории") {
-      setSelectedCategoryId("");
-      setExpandedCategoryId("");
-      setView("catalog");
-      fetchMedicines(1, "", selectedPharmacy?.id);
+      navRouter.push("/catalog");
       return;
     }
     const quickCat = QUICK_CATEGORIES.find((c) => c.label === label);
@@ -404,233 +404,8 @@ function HomeContent() {
       const name = c.name.toLowerCase();
       return keywords.some((kw) => name.includes(kw));
     });
-    if (match) {
-      setSelectedCategoryId(match.id);
-      const parent = categories.find((c) => c.children?.some((ch) => ch.id === match.id));
-      if (parent) setExpandedCategoryId(parent.id);
-      else if (match.children?.length) setExpandedCategoryId(match.id);
-      setView("catalog");
-      fetchMedicines(1, match.id, selectedPharmacy?.id);
-    }
-  }
-
-  function goToPage(p: number) {
-    if (p < 1 || p > totalPages) return;
-    setPage(p);
-    fetchMedicines(p, selectedCategoryId, selectedPharmacy?.id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  // ── CATALOG VIEW ──
-  if (view === "catalog") {
-    const selectedCatName = [...categories, ...categories.flatMap((c) => c.children ?? [])].find((c) => c.id === selectedCategoryId)?.name;
-    return (
-      <AppShell>
-        <div className="flex gap-6 min-h-[60vh]">
-          {/* Sidebar — categories */}
-          <aside className="hidden sm:block w-[220px] lg:w-[260px] flex-shrink-0">
-            <div className="sticky top-32">
-              <h2 className="text-lg font-bold mb-3">Каталог</h2>
-              <nav className="space-y-0.5 max-h-[70vh] overflow-y-auto pr-1">
-                <button
-                  type="button"
-                  onClick={() => { setSelectedCategoryId(""); setExpandedCategoryId(""); fetchMedicines(1, "", selectedPharmacy?.id); }}
-                  className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition ${!selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"}`}
-                >
-                  Все товары
-                </button>
-                {categories.map((cat) => {
-                  const isActive = selectedCategoryId === cat.id;
-                  const hasActiveChild = cat.children?.some((ch) => ch.id === selectedCategoryId);
-                  const isExpanded = expandedCategoryId === cat.id;
-                  return (
-                    <div key={cat.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (cat.children?.length) {
-                            setExpandedCategoryId(isExpanded ? "" : cat.id);
-                          }
-                          setSelectedCategoryId(cat.id);
-                          setPage(1);
-                          fetchMedicines(1, cat.id, selectedPharmacy?.id);
-                        }}
-                        className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition flex items-center justify-between ${isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"}`}
-                      >
-                        <span className="truncate">{cat.name}</span>
-                        {cat.children?.length ? (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`flex-shrink-0 ml-1 transition ${isExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9"/></svg>
-                        ) : null}
-                      </button>
-                      {isExpanded && cat.children?.length ? (
-                        <div className="ml-3 mt-0.5 space-y-0.5 border-l-2 border-surface-container-high pl-2">
-                          {cat.children.map((sub) => (
-                            <button
-                              key={sub.id}
-                              type="button"
-                              onClick={() => { setSelectedCategoryId(sub.id); setPage(1); fetchMedicines(1, sub.id, selectedPharmacy?.id); }}
-                              className={`w-full text-left rounded-lg px-3 py-1.5 text-sm transition ${selectedCategoryId === sub.id ? "bg-primary/80 text-white font-semibold" : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"}`}
-                            >
-                              {sub.name}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </nav>
-            </div>
-          </aside>
-
-          {/* Main content — products */}
-          <div className="flex-1 min-w-0">
-            {/* Mobile category selector — toggle button + panel.
-                Replaces the native <select> with a styled card that
-                matches the desktop sidebar tone. */}
-            <div className="sm:hidden mb-4">
-              <button
-                type="button"
-                onClick={() => setShowAllCategories(!showAllCategories)}
-                className="flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3 text-left transition hover:bg-surface-container"
-                aria-expanded={showAllCategories}
-              >
-                <span className="flex min-w-0 flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                    Каталог
-                  </span>
-                  <span className="truncate text-sm font-bold text-on-surface">
-                    {selectedCatName || "Все товары"}
-                  </span>
-                </span>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`flex-shrink-0 text-on-surface-variant transition ${showAllCategories ? "rotate-180" : ""}`}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-
-              {showAllCategories ? (
-                <div className="mt-2 stitch-card p-2 max-h-[60vh] overflow-y-auto space-y-0.5">
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedCategoryId(""); setExpandedCategoryId(""); setPage(1); fetchMedicines(1, "", selectedPharmacy?.id); setShowAllCategories(false); }}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                      !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low"
-                    }`}
-                  >
-                    Все товары
-                  </button>
-                  {categories.map((cat) => {
-                    const isActive = selectedCategoryId === cat.id;
-                    const hasActiveChild = cat.children?.some((ch) => ch.id === selectedCategoryId);
-                    const isExpanded = expandedCategoryId === cat.id;
-                    return (
-                      <div key={cat.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (cat.children?.length) {
-                              setExpandedCategoryId(isExpanded ? "" : cat.id);
-                              setSelectedCategoryId(cat.id);
-                              setPage(1);
-                              fetchMedicines(1, cat.id, selectedPharmacy?.id);
-                            } else {
-                              setSelectedCategoryId(cat.id);
-                              setPage(1);
-                              fetchMedicines(1, cat.id, selectedPharmacy?.id);
-                              setShowAllCategories(false);
-                            }
-                          }}
-                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                            isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low"
-                          }`}
-                        >
-                          <span className="truncate">{cat.name}</span>
-                          {cat.children?.length ? (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`flex-shrink-0 ml-2 transition ${isExpanded ? "rotate-180" : ""}`}>
-                              <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                          ) : null}
-                        </button>
-                        {isExpanded && cat.children?.length ? (
-                          <div className="mt-0.5 ml-2 space-y-0.5 border-l-2 border-surface-container-high pl-2">
-                            {cat.children.map((sub) => (
-                              <button
-                                key={sub.id}
-                                type="button"
-                                onClick={() => { setSelectedCategoryId(sub.id); setPage(1); fetchMedicines(1, sub.id, selectedPharmacy?.id); setShowAllCategories(false); }}
-                                className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
-                                  selectedCategoryId === sub.id ? "bg-primary/80 text-white font-semibold" : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
-                                }`}
-                              >
-                                {sub.name}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-
-            {/* Back button + category title */}
-            <div className="flex items-center gap-3 mb-4">
-              <button type="button" onClick={() => { setView("home"); setSelectedCategoryId(""); }} className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-container-low text-primary hover:bg-surface-container-high transition">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-              </button>
-              <h1 className="text-xl sm:text-2xl font-extrabold">{selectedCatName || "Все товары"}</h1>
-            </div>
-
-            {/* Subcategory chips */}
-            {selectedCategoryId && (() => {
-              const sel = categories.find((c) => c.id === selectedCategoryId);
-              if (sel?.children?.length) {
-                return (
-                  <div className="flex gap-2 flex-wrap mb-4">
-                    {sel.children.map((sub) => (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        onClick={() => { setSelectedCategoryId(sub.id); setExpandedCategoryId(sel.id); setPage(1); fetchMedicines(1, sub.id, selectedPharmacy?.id); }}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${selectedCategoryId === sub.id ? "bg-primary text-white border-primary" : "border-surface-container-high hover:bg-surface-container-low"}`}
-                      >
-                        {sub.name}
-                      </button>
-                    ))}
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            {isLoading ? <div className="stitch-card p-6 text-sm">Загружаем товары...</div> : null}
-            {error ? <div className="rounded-xl bg-red-100 p-4 text-sm text-red-700">{error}</div> : null}
-
-            {!isLoading && !error ? (
-              medicines.length === 0 ? (
-                <div className="stitch-card p-6 text-sm text-on-surface-variant">Ничего не найдено.</div>
-              ) : (
-                <div className={`grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 transition-opacity duration-200 ${isSearching ? "opacity-50" : "opacity-100"}`}>
-                  {medicines.map((medicine) => (
-                    <MedicineCard key={medicine.id} medicine={medicine} />
-                  ))}
-                </div>
-              )
-            ) : null}
-
-            {/* Pagination */}
-            {!isLoading && !error && totalPages > 1 ? (
-              <div className="flex items-center justify-center gap-3 pt-4">
-                <button type="button" className="stitch-button-secondary px-4 py-2 text-sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>Назад</button>
-                <span className="text-sm font-semibold text-on-surface-variant tabular-nums">{page} / {totalPages}</span>
-                <button type="button" className="stitch-button-secondary px-4 py-2 text-sm" disabled={page >= totalPages} onClick={() => goToPage(page + 1)}>Вперёд</button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </AppShell>
-    );
+    if (match) navRouter.push(`/catalog/${match.slug}`);
+    else navRouter.push("/catalog");
   }
 
   // ── SEARCH VIEW ──
@@ -661,7 +436,7 @@ function HomeContent() {
               {query && (
                 <button
                   type="button"
-                  onClick={() => { setQuery(""); setPharmacyResults([]); setSearchTotalCount(0); searchInputRef.current?.focus(); }}
+                  onClick={() => { setQuery(""); setPharmacyResults([]); setSearchTotalCount(0); syncSearchUrl("", selectedSearchPharmacyId); searchInputRef.current?.focus(); }}
                   className="flex h-8 w-8 xs:h-9 xs:w-9 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition"
                   aria-label="Очистить"
                 >
@@ -682,6 +457,7 @@ function HomeContent() {
                       setShowSuggestions(false);
                       setQuery(s.title);
                       doSearch(s.title);
+                      syncSearchUrl(s.title, selectedSearchPharmacyId);
                     }}
                   >
                     <div className="min-w-0">
@@ -714,7 +490,7 @@ function HomeContent() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); }}
+                        onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); syncSearchUrl(query, ""); }}
                         className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-container-low hover:bg-surface-container-high transition"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -727,7 +503,7 @@ function HomeContent() {
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   <button
                     type="button"
-                    onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); }}
+                    onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); syncSearchUrl(query, ""); }}
                     className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
                       !selectedSearchPharmacyId
                         ? "bg-primary text-white shadow-sm"
@@ -741,10 +517,10 @@ function HomeContent() {
                       key={group.pharmacyId}
                       type="button"
                       onClick={() => {
+                        const next = selectedSearchPharmacyId === group.pharmacyId ? "" : group.pharmacyId;
                         if (selectedSearchPharmacyId === group.pharmacyId) setPinnedSearchPharmacy(null);
-                        setSelectedSearchPharmacyId(
-                          selectedSearchPharmacyId === group.pharmacyId ? "" : group.pharmacyId
-                        );
+                        setSelectedSearchPharmacyId(next);
+                        syncSearchUrl(query, next);
                       }}
                       className={`flex items-center gap-2 rounded-full px-1 pr-3 py-1 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
                         selectedSearchPharmacyId === group.pharmacyId
@@ -789,7 +565,7 @@ function HomeContent() {
                     <button
                       key={q}
                       type="button"
-                      onClick={() => { setQuery(q); doSearch(q); }}
+                      onClick={() => { setQuery(q); doSearch(q); syncSearchUrl(q, selectedSearchPharmacyId); }}
                       className="rounded-full bg-surface-container-low px-3 py-1.5 xs:px-4 xs:py-2 text-xs xs:text-sm font-medium text-on-surface hover:bg-surface-container-high transition"
                     >
                       {q}
@@ -799,11 +575,13 @@ function HomeContent() {
               </div>
             )}
 
-            {/* Loading */}
+            {/* Loading — show skeletons of the same shape as results so the page
+                doesn't reflow when data arrives. */}
             {searchLoading && (
-              <div className="flex items-center gap-2 py-4">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <span className="text-sm text-on-surface-variant">Ищем...</span>
+              <div className="grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <MedicineCardSkeleton key={i} compact />
+                ))}
               </div>
             )}
 
@@ -949,87 +727,19 @@ function HomeContent() {
           {/* Pharmacy banners */}
           <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
 
-          {/* All categories dropdown */}
-          {showAllCategories && categories.length > 0 && (
-            <div className="stitch-card p-3 space-y-1 max-h-[60vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold">Все категории</h3>
-                <button type="button" onClick={() => setShowAllCategories(false)} className="text-xs text-primary font-bold">Закрыть</button>
-              </div>
-              <button
-                type="button"
-                onClick={() => { onCategorySelect(""); setShowAllCategories(false); }}
-                className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                  !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low"
-                }`}
-              >
-                Все товары
-              </button>
-              {categories.map((cat) => (
-                <div key={cat.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (cat.children?.length) {
-                        setExpandedCategoryId(expandedCategoryId === cat.id ? "" : cat.id);
-                      }
-                      onCategorySelect(cat.id);
-                      if (!cat.children?.length) setShowAllCategories(false);
-                    }}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition flex items-center justify-between ${
-                      selectedCategoryId === cat.id ? "bg-primary text-white" : "hover:bg-surface-container-low"
-                    }`}
-                  >
-                    {cat.name}
-                    {cat.children?.length ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition ${expandedCategoryId === cat.id ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9"/></svg>
-                    ) : null}
-                  </button>
-                  {expandedCategoryId === cat.id && cat.children?.length ? (
-                    <div className="pl-3 space-y-0.5">
-                      {cat.children.map((sub) => (
-                        <button
-                          key={sub.id}
-                          type="button"
-                          onClick={() => { onCategorySelect(sub.id); setShowAllCategories(false); }}
-                          className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
-                            selectedCategoryId === sub.id ? "bg-primary/80 text-white font-bold" : "text-on-surface-variant hover:bg-surface-container-low"
-                          }`}
-                        >
-                          {sub.name}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Selected category chip */}
-          {selectedCategoryId && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => onCategorySelect("")}
-                className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary flex items-center gap-1"
-              >
-                {[...categories, ...categories.flatMap((c) => c.children ?? [])].find((c) => c.id === selectedCategoryId)?.name}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          )}
-
           {/* Rails — fixed-count horizontal shelves, one per popular category.
               Each fetches independently so they flip from skeleton → content
               as their data arrives. Empty rails (no matching category or
-              zero stock) are hidden automatically by MedicineRail. */}
+              zero stock) are hidden automatically by MedicineRail.
+              "Все →" navigates to the dedicated /catalog/[slug] route so
+              search engines can index each category page. */}
           <div className="space-y-8 sm:space-y-12">
             {HOME_RAILS.map((spec) => {
-              const catId = railCategoryIds[spec.id];
+              const ref = railCategoryRefs[spec.id];
               // Keyword-defined rail that found no matching category → drop it.
-              if (spec.keywords !== null && !catId) return null;
+              if (spec.keywords !== null && (ref === undefined || !ref.id)) return null;
               const meds = railMeds[spec.id];
+              const target = ref?.slug ? `/catalog/${ref.slug}` : "/catalog";
               return (
                 <MedicineRail
                   key={spec.id}
@@ -1037,17 +747,7 @@ function HomeContent() {
                   accent={spec.accent}
                   medicines={meds ?? []}
                   isLoading={meds === undefined}
-                  onViewAll={() => {
-                    if (catId) {
-                      setSelectedCategoryId(catId);
-                      const parent = categories.find((c) => c.children?.some((ch) => ch.id === catId));
-                      if (parent) setExpandedCategoryId(parent.id);
-                    } else {
-                      setSelectedCategoryId("");
-                    }
-                    setView("catalog");
-                    fetchMedicines(1, catId || "", selectedPharmacy?.id);
-                  }}
+                  onViewAll={() => navRouter.push(target)}
                 />
               );
             })}
@@ -1055,18 +755,12 @@ function HomeContent() {
 
           {/* Footer CTA to the full catalog */}
           <div className="flex justify-center pt-4">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategoryId("");
-                setExpandedCategoryId("");
-                setView("catalog");
-                fetchMedicines(1, "", selectedPharmacy?.id);
-              }}
+            <Link
+              href="/catalog"
               className="rounded-full bg-surface-container px-6 py-3 text-sm font-bold text-on-surface transition hover:bg-surface-container-high"
             >
               Открыть каталог →
-            </button>
+            </Link>
           </div>
       </div>
     </AppShell>

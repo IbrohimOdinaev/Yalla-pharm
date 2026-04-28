@@ -131,6 +131,18 @@ public sealed class PaymentIntentConfiguration : IEntityTypeConfiguration<Paymen
       .HasColumnType("character varying(512)")
       .HasMaxLength(512);
 
+    builder.Property(x => x.Entrance)
+      .HasColumnName("entrance")
+      .HasColumnType("integer");
+
+    builder.Property(x => x.Floor)
+      .HasColumnName("floor")
+      .HasColumnType("integer");
+
+    builder.Property(x => x.Apartment)
+      .HasColumnName("apartment")
+      .HasColumnType("integer");
+
     builder.HasIndex(x => x.ReservedOrderId)
       .IsUnique()
       .HasDatabaseName("ux_payment_intents_reserved_order_id");

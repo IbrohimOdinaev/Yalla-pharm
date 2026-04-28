@@ -4,6 +4,7 @@ import { create } from "zustand";
 
 const STORAGE_KEY = "yalla.delivery.address";
 const COORDS_STORAGE_KEY = "yalla.delivery.coords";
+const TITLE_STORAGE_KEY = "yalla.delivery.title";
 const HISTORY_STORAGE_KEY = "yalla.delivery.history";
 
 type Coords = { lat: number; lng: number };
@@ -18,11 +19,15 @@ export type SavedAddress = {
 type DeliveryAddressState = {
   address: string;
   coords: Coords | null;
+  /** Optional user-defined label for the active address (e.g. "Дом", "Работа").
+   *  Set when the user picks an already-named saved address; cleared on free-form
+   *  address picks (typing or map drag) so the label never lies about the place. */
+  title: string | null;
   /** Saved address history for the current user */
   savedAddresses: SavedAddress[];
   setAddress: (address: string) => void;
   setCoords: (coords: Coords | null) => void;
-  setAddressWithCoords: (address: string, coords: Coords | null) => void;
+  setAddressWithCoords: (address: string, coords: Coords | null, title?: string | null) => void;
   load: () => void;
   /** Load saved address history for a specific user (call after login) */
   loadHistory: (userId: string) => void;
@@ -55,12 +60,15 @@ const MAX_SAVED_ADDRESSES = 10;
 export const useDeliveryAddressStore = create<DeliveryAddressState>((set, get) => ({
   address: "",
   coords: null,
+  title: null,
   savedAddresses: [],
   setAddress: (address) => {
-    set({ address });
+    // Free-form address change has no associated label — clear it.
+    set({ address, title: null });
     if (typeof window !== "undefined") {
       if (address) localStorage.setItem(STORAGE_KEY, address);
       else localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(TITLE_STORAGE_KEY);
     }
   },
   setCoords: (coords) => {
@@ -70,13 +78,16 @@ export const useDeliveryAddressStore = create<DeliveryAddressState>((set, get) =
       else localStorage.removeItem(COORDS_STORAGE_KEY);
     }
   },
-  setAddressWithCoords: (address, coords) => {
-    set({ address, coords });
+  setAddressWithCoords: (address, coords, title) => {
+    const nextTitle = title ?? null;
+    set({ address, coords, title: nextTitle });
     if (typeof window !== "undefined") {
       if (address) localStorage.setItem(STORAGE_KEY, address);
       else localStorage.removeItem(STORAGE_KEY);
       if (coords) localStorage.setItem(COORDS_STORAGE_KEY, JSON.stringify(coords));
       else localStorage.removeItem(COORDS_STORAGE_KEY);
+      if (nextTitle) localStorage.setItem(TITLE_STORAGE_KEY, nextTitle);
+      else localStorage.removeItem(TITLE_STORAGE_KEY);
     }
   },
   load: () => {
@@ -87,6 +98,8 @@ export const useDeliveryAddressStore = create<DeliveryAddressState>((set, get) =
     if (savedCoords) {
       try { set({ coords: JSON.parse(savedCoords) }); } catch { /* ignore */ }
     }
+    const savedTitle = localStorage.getItem(TITLE_STORAGE_KEY);
+    if (savedTitle) set({ title: savedTitle });
   },
   loadHistory: (userId) => {
     set({ savedAddresses: readHistory(userId) });
