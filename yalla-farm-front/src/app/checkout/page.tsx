@@ -37,9 +37,11 @@ export default function CheckoutPage() {
 
   const savedAddress = useDeliveryAddressStore((s) => s.address);
   const savedCoords = useDeliveryAddressStore((s) => s.coords);
+  const savedAddressTitle = useDeliveryAddressStore((s) => s.title);
 
   const [localAddress, setLocalAddress] = useState(savedAddress);
   const [localCoords, setLocalCoords] = useState<GeoPoint | null>(savedCoords);
+  const [localAddressTitle, setLocalAddressTitle] = useState<string | null>(savedAddressTitle);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -49,6 +51,9 @@ export default function CheckoutPage() {
   const [selectedMedIds, setSelectedMedIds] = useState<Set<string>>(new Set());
   const [selectionInited, setSelectionInited] = useState(false);
   const [comment, setComment] = useState("");
+  const [entrance, setEntrance] = useState("");
+  const [floor, setFloor] = useState("");
+  const [apartment, setApartment] = useState("");
 
   useEffect(() => {
     if (!pharmacyId) { router.replace("/cart/pharmacy"); return; }
@@ -188,16 +193,24 @@ export default function CheckoutPage() {
 
     try {
       const idempotencyKey = buildCheckoutIdempotencyKey();
+      const effectiveAddress = localAddress || savedAddress;
+      const effectiveTitle = localAddressTitle ?? savedAddressTitle;
       const payload = {
         pharmacyId,
         isPickup,
-        deliveryAddress: localAddress || savedAddress,
-        deliveryAddressTitle: localAddress || savedAddress,
+        deliveryAddress: effectiveAddress,
+        // Pass the user-chosen label when available (so it's persisted on the
+        // ClientAddress record); otherwise fall back to the raw address — the
+        // backend uses this for delivery API title and admin display.
+        deliveryAddressTitle: effectiveTitle ?? effectiveAddress,
         deliveryLatitude: localCoords?.lat ?? savedCoords?.lat ?? null,
         deliveryLongitude: localCoords?.lng ?? savedCoords?.lng ?? null,
         idempotencyKey,
         ignoredPositionIds: [] as string[],
         comment: comment.trim() ? comment.trim() : null,
+        entrance: parsePositiveInt(entrance),
+        floor: parsePositiveInt(floor),
+        apartment: parsePositiveInt(apartment),
         source: {
           kind: 2, // CheckoutSourceKind.Explicit
           positions: explicitPositions,
@@ -232,12 +245,18 @@ export default function CheckoutPage() {
 
   function onAddressModalClose() {
     setShowAddressModal(false);
-    const storeAddress = useDeliveryAddressStore.getState().address;
-    const storeCoords = useDeliveryAddressStore.getState().coords;
+    const storeState = useDeliveryAddressStore.getState();
+    const storeAddress = storeState.address;
+    const storeCoords = storeState.coords;
+    const storeTitle = storeState.title;
     if (storeAddress && storeAddress !== localAddress) {
       setLocalAddress(storeAddress);
       setLocalCoords(storeCoords);
+      setLocalAddressTitle(storeTitle);
       if (storeCoords) doCalculateDelivery(storeCoords, storeAddress);
+    } else if (storeTitle !== localAddressTitle) {
+      // Title may have changed (rename) without address changing.
+      setLocalAddressTitle(storeTitle);
     }
   }
 
@@ -321,12 +340,34 @@ export default function CheckoutPage() {
                 <Icon name="pin" size={18} />
               </span>
               <span className="min-w-0 flex-1">
+                {/* When a saved address has a user label (Дом/Работа), show it
+                    as the headline so the user recognises the place at a
+                    glance; the raw street stays as the secondary line. */}
                 <span className="block truncate text-sm font-bold text-on-surface">
-                  {localAddress || savedAddress || "Выберите адрес"}
+                  {localAddressTitle || savedAddressTitle || localAddress || savedAddress || "Выберите адрес"}
                 </span>
-                <span className="block text-[11px] text-on-surface-variant">Душанбе</span>
+                <span className="block truncate text-[11px] text-on-surface-variant">
+                  {(localAddressTitle || savedAddressTitle)
+                    ? (localAddress || savedAddress || "Душанбе")
+                    : "Душанбе"}
+                </span>
               </span>
             </button>
+
+            {/* Уточнение адреса для курьера: подъезд / этаж / квартира.
+                Не валидируем — поля свободные, только числа. Все три
+                необязательны: заказ оформляется и без них. */}
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                Уточнение для курьера
+              </p>
+              <p className="text-[10px] text-on-surface-variant/70">необязательно</p>
+            </div>
+            <div className="mt-1.5 grid grid-cols-3 gap-2">
+              <NumericField label="Подъезд" value={entrance} onChange={setEntrance} />
+              <NumericField label="Этаж" value={floor} onChange={setFloor} />
+              <NumericField label="Квартира" value={apartment} onChange={setApartment} />
+            </div>
           </section>
         ) : null}
 
@@ -496,5 +537,43 @@ export default function CheckoutPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function parsePositiveInt(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
+  return n;
+}
+
+function NumericField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+        {label}
+      </span>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value}
+        onChange={(e) => {
+          const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+          onChange(digits);
+        }}
+        placeholder="—"
+        className="w-full rounded-2xl bg-surface-container-low px-3 py-2 text-center text-sm tabular-nums outline-none focus:ring-2 focus:ring-primary/30"
+      />
+    </label>
   );
 }

@@ -1,6 +1,6 @@
 import type { ApiMedicine } from "@/shared/types/api";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
-import { Skeleton } from "@/shared/ui";
+import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 
 type Props = {
   /** Eye-catching section heading shown above the rail. */
@@ -73,14 +73,7 @@ export function MedicineRail({
       {/* Responsive grid — 2 cols on phones, 3 on xs, 4 on md, 6 on lg+. */}
       <div className="grid grid-cols-2 gap-2.5 xs:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6">
         {isLoading
-          ? SKELETONS.map((i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="aspect-square w-full" />
-                <Skeleton className="h-3 w-4/5" rounded="md" />
-                <Skeleton className="h-4 w-2/5" rounded="md" />
-                <Skeleton className="h-10 w-full" rounded="full" />
-              </div>
-            ))
+          ? SKELETONS.map((i) => <MedicineCardSkeleton key={i} />)
           : visible.map((medicine) => (
               <MedicineCard key={medicine.id} medicine={medicine} />
             ))}

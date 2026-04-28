@@ -245,6 +245,9 @@ public sealed class ClientsController : ControllerBase
       IdempotencyKey = idempotencyKey,
       IgnoredPositionIds = request.IgnoredPositionIds,
       Comment = request.Comment,
+      Entrance = request.Entrance,
+      Floor = request.Floor,
+      Apartment = request.Apartment,
       Source = request.Source
     };
 

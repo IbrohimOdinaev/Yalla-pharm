@@ -298,7 +298,10 @@ public sealed class PaymentIntentService : IPaymentIntentService
           positions: orderPositions,
           idempotencyKey: paymentIntent.IdempotencyKey,
           orderPlacedAt: nowUtc,
-          isPickup: paymentIntent.IsPickup);
+          isPickup: paymentIntent.IsPickup,
+          entrance: paymentIntent.Entrance,
+          floor: paymentIntent.Floor,
+          apartment: paymentIntent.Apartment);
 
         existingOrder.MarkManualPaymentConfirmed(
           amount: paymentIntent.Amount,

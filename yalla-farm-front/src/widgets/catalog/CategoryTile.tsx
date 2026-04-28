@@ -47,7 +47,7 @@ export function CategoryTile({ icon, palette, label, image, onClick }: Props) {
       className="group flex flex-col items-center gap-2 transition active:scale-95"
     >
       <span
-        className={`flex h-[104px] w-[104px] items-center justify-center overflow-hidden rounded-3xl ${image ? "" : "p-4"} ${p.bg} ${p.fg} transition group-hover:scale-105 sm:h-[120px] sm:w-[120px] ${image ? "" : "sm:p-5"} lg:h-[132px] lg:w-[132px]`}
+        className={`flex h-[80px] w-[80px] items-center justify-center overflow-hidden rounded-2xl ${image ? "" : "p-3"} ${p.bg} ${p.fg} transition group-hover:scale-105 sm:h-[92px] sm:w-[92px] ${image ? "" : "sm:p-3.5"} lg:h-[104px] lg:w-[104px]`}
       >
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -62,7 +62,7 @@ export function CategoryTile({ icon, palette, label, image, onClick }: Props) {
           <CategoryIcon name={icon} className="h-full w-full" />
         )}
       </span>
-      <span className="max-w-[120px] text-center text-xs font-semibold leading-tight text-on-surface sm:text-sm">
+      <span className="max-w-[104px] text-center text-[11px] font-semibold leading-tight text-on-surface sm:text-xs">
         {label}
       </span>
     </button>

@@ -1015,7 +1015,10 @@ public sealed class ClientService : IClientService
           paymentComment: paymentResponse.PaymentComment,
           idempotencyKey: normalizedIdempotencyKey,
           positions: snapshotPositions,
-          createdAtUtc: nowUtc);
+          createdAtUtc: nowUtc,
+          entrance: request.Entrance,
+          floor: request.Floor,
+          apartment: request.Apartment);
 
         var orderPositions = evaluation.Positions
           .Select(x => new OrderPosition(

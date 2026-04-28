@@ -150,7 +150,10 @@ public static class RequestMappingExtensions
           positions,
           request.IdempotencyKey,
           isPickup: request.IsPickup,
-          comment: request.Comment);
+          comment: request.Comment,
+          entrance: request.Entrance,
+          floor: request.Floor,
+          apartment: request.Apartment);
     }
 
     public static async Task<Client> GetTrackedClientOrThrowAsync(

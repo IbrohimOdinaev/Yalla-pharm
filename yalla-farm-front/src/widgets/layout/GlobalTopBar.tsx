@@ -26,6 +26,7 @@ function GlobalTopBarFallback() {
       title="Yalla Farm"
       homeMode
       addressText=""
+      addressTitle=""
       pharmacyName=""
       pharmacyIconUrl={null}
     />
@@ -36,6 +37,7 @@ function GlobalTopBarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
+  const deliveryAddressTitle = useDeliveryAddressStore((s) => s.title);
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const loadPharmacy = usePharmacyStore((s) => s.load);
@@ -60,6 +62,7 @@ function GlobalTopBarInner() {
         onLogoClick={() => { window.location.href = "/"; }}
         onSearchClick={() => router.push("/?search=")}
         addressText={deliveryAddress}
+        addressTitle={deliveryAddressTitle ?? ""}
         onAddressClick={() => setShowAddressModal(true)}
         pharmacyName={selectedPharmacy?.title}
         pharmacyIconUrl={selectedPharmacy?.iconUrl}

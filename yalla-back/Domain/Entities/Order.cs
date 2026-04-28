@@ -54,6 +54,15 @@ public class Order
     /// <summary>Optional free-form comment left by the client at checkout (max 1024).</summary>
     public string? Comment { get; private set; }
 
+    /// <summary>Подъезд / building entrance.</summary>
+    public int? Entrance { get; private set; }
+
+    /// <summary>Этаж / floor.</summary>
+    public int? Floor { get; private set; }
+
+    /// <summary>Квартира / apartment number.</summary>
+    public int? Apartment { get; private set; }
+
     private readonly List<OrderPosition> _positions = new();
 
     public IReadOnlyCollection<OrderPosition> Positions => _positions.AsReadOnly();
@@ -72,7 +81,10 @@ public class Order
       string? idempotencyKey = null,
       DateTime? orderPlacedAt = null,
       bool isPickup = false,
-      string? comment = null)
+      string? comment = null,
+      int? entrance = null,
+      int? floor = null,
+      int? apartment = null)
     {
         if (id == Guid.Empty)
             throw new DomainArgumentException("Id can't be empty.");
@@ -116,6 +128,17 @@ public class Order
         PaymentAmount = Cost;
         PaymentConfirmedAtUtc = DateTime.UtcNow;
         Comment = NormalizeOptionalString(comment, 1024, "Comment");
+        Entrance = NormalizeNonNegativeInt(entrance, "Entrance");
+        Floor = NormalizeNonNegativeInt(floor, "Floor");
+        Apartment = NormalizeNonNegativeInt(apartment, "Apartment");
+    }
+
+    private static int? NormalizeNonNegativeInt(int? value, string name)
+    {
+        if (value is null) return null;
+        if (value.Value < 0)
+            throw new DomainArgumentException($"{name} can't be negative.");
+        return value.Value;
     }
 
     public void SetComment(string? comment)

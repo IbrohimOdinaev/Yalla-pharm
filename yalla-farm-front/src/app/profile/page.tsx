@@ -14,6 +14,7 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { LinkPhoneModal } from "@/widgets/profile/LinkPhoneModal";
 import { LinkTelegramModal } from "@/widgets/profile/LinkTelegramModal";
+import { SavedAddressesSection } from "@/widgets/profile/SavedAddressesSection";
 import { Button, Chip, DatePicker, EmptyState, Icon, Input, Select } from "@/shared/ui";
 import type { IconName } from "@/shared/ui";
 
@@ -270,6 +271,9 @@ export default function ProfilePage() {
             ) : null}
           </section>
         ) : null}
+
+        {/* Saved delivery addresses */}
+        {token ? <SavedAddressesSection token={token} /> : null}
           </div>
 
           <div className="space-y-4">
