@@ -49,13 +49,13 @@ type RailSpec = {
 
 const HOME_RAILS: RailSpec[] = [
   { id: "popular", title: "Популярные товары", accent: "accent", keywords: null },
-  { id: "pain", title: "Боль и жар", accent: "secondary", keywords: ["боль", "жар", "обезболив", "анальг"] },
+  { id: "pain", title: "Боль и жар", accent: "secondary", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
   { id: "vitamins", title: "Витамины и БАД", accent: "accent", keywords: ["витамин", "бад", "биодобав"] },
-  { id: "cold", title: "Простуда и дыхание", accent: "tertiary", keywords: ["кашел", "бронх", "респират", "простуд"] },
+  { id: "cold", title: "Простуда и дыхание", accent: "tertiary", keywords: ["дыхат", "респират", "кашел", "бронх", "простуд", "грипп", "орви"] },
   { id: "allergy", title: "Аллергия", accent: "secondary", keywords: ["аллерг", "антигистамин"] },
-  { id: "gi", title: "ЖКТ и пищеварение", accent: "primary", keywords: ["жкт", "желуд", "пищевар", "гастро"] },
-  { id: "heart", title: "Сердце и давление", accent: "secondary", keywords: ["сердц", "кардио", "давлен"] },
-  { id: "baby", title: "Мама и малыш", accent: "primary", keywords: ["малыш", "беремен", "дет"] },
+  { id: "gi", title: "ЖКТ и пищеварение", accent: "primary", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { id: "heart", title: "Сердце и давление", accent: "secondary", keywords: ["серд", "сосуд", "кардио", "давлен", "гиперт"] },
+  { id: "baby", title: "Мама и малыш", accent: "primary", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
 ];
 
 const QUICK_CATEGORIES: QuickCategory[] = [
@@ -70,7 +70,7 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.jpg", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
   { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.jpg", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
   { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.jpg", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
-  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["нерв", "сон", "успок", "стресс", "антидепресс", "седатив"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
   { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
   { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
   { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
