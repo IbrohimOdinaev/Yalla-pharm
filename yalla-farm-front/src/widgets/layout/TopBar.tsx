@@ -458,7 +458,9 @@ export function TopBar({
       </header>
 
       {/* Floating cart — phone only (sm:hidden), shown when basket has
-          items and the user isn't already on /cart or /checkout. */}
+          items and the user isn't already on /cart or /checkout.
+          Sized ~60% larger than the original h-10 pill so the price stays
+          readable at thumb-distance. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
           href="/cart"
@@ -467,10 +469,10 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed bottom-6 right-4 z-40 flex h-10 items-center gap-1.5 rounded-full bg-[#3FC5C4] px-3 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] safe-bottom sm:hidden"
+          className="fixed bottom-6 right-4 z-40 flex h-16 items-center gap-2.5 rounded-full bg-[#3FC5C4] px-5 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] safe-bottom sm:hidden"
         >
-          <Icon name="bag" size={18} strokeWidth={2.2} />
-          <span className="font-display text-xs font-extrabold tabular-nums">
+          <Icon name="bag" size={28} strokeWidth={2.2} />
+          <span className="font-display text-base font-extrabold tabular-nums">
             {bestPrice
               ? `от ${formatMoney(bestPrice.price)}`
               : `${cartCount}`}

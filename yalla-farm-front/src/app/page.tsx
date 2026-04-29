@@ -59,6 +59,10 @@ const HOME_RAILS: RailSpec[] = [
 ];
 
 const QUICK_CATEGORIES: QuickCategory[] = [
+  // "Все категории" first — anchors the rail with the catch-all so users
+  // who don't see their target among the quick tiles immediately know
+  // where to look. No `image` — falls back to the grid SVG icon.
+  { icon: "grid", palette: "mint", label: "Все категории" },
   { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.jpg", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
   { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.jpg", keywords: ["аллерг", "антигистамин"] },
   { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.jpg", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
@@ -74,8 +78,6 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
   { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
   { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
-  // "Все категории" intentionally has no `image` — falls back to the grid SVG icon.
-  { icon: "grid", palette: "mint", label: "Все категории" },
 ];
 
 export default function HomePage() {
