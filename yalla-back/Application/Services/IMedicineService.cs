@@ -30,6 +30,17 @@ public interface IMedicineService
     GetMedicineByIdRequest request,
     CancellationToken cancellationToken = default);
 
+  /// <summary>
+  /// Lookup by URL-friendly slug (sourced from WooCommerce). Returns the
+  /// same shape as GetMedicineByIdAsync — a unified response keeps the
+  /// front-end product page agnostic about whether it received an id or
+  /// a slug. Throws if the slug is unknown / inactive (mirrors id lookup).
+  /// </summary>
+  Task<GetMedicineByIdResponse> GetMedicineBySlugAsync(
+    string slug,
+    bool includeInactive,
+    CancellationToken cancellationToken = default);
+
   Task<SearchMedicinesResponse> SearchMedicinesAsync(
     SearchMedicinesRequest request,
     CancellationToken cancellationToken = default);

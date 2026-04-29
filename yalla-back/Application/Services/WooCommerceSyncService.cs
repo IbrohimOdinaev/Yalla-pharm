@@ -35,12 +35,12 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
     {
         if (payload.Id <= 0) return;
 
-        var medicineId = await _dbContext.Medicines
+        var medicine = await _dbContext.Medicines
+            .AsTracking()
             .Where(x => x.WooCommerceId == payload.Id)
-            .Select(x => (Guid?)x.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (medicineId is null)
+        if (medicine is null)
         {
             _logger.LogWarning("Webhook: Medicine not found for WooCommerceId {WcId}", payload.Id);
             return;
@@ -58,11 +58,17 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
             return;
         }
 
-        await UpsertOfferAsync(medicineId.Value, price, stock, cancellationToken);
+        // Always pull the latest slug + display name from the webhook payload.
+        // WC slugs change rarely but a rename does invalidate the old URL —
+        // the API maps both old and new IDs/slugs so existing /product/{slug}
+        // links keep resolving.
+        ApplyMetadata(medicine, payload);
+
+        await UpsertOfferAsync(medicine.Id, price, stock, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Webhook update: WC:{WcId} → Medicine {MedicineId}, price={Price}, stock={Stock}",
-            payload.Id, medicineId.Value, price, stock);
+            payload.Id, medicine.Id, price, stock);
     }
 
     public async Task ProcessDeleteAsync(int wooCommerceId, CancellationToken cancellationToken = default)
@@ -88,6 +94,98 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Webhook delete: WC:{WcId} → offer stock set to 0", wooCommerceId);
+    }
+
+    public async Task<int> BackfillCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl) || string.IsNullOrWhiteSpace(_options.ConsumerKey))
+        {
+            _logger.LogWarning("WC backfill skipped: BaseUrl or ConsumerKey not configured");
+            return 0;
+        }
+
+        if (_options.PharmacyId == Guid.Empty)
+        {
+            _logger.LogWarning("WC backfill skipped: PharmacyId not configured");
+            return 0;
+        }
+
+        int totalSynced = 0;
+        int? totalPages = null;
+        // Page-level retries: WC tends to throw transient 5xx / connection
+        // resets under load. Stopping the whole sweep on a single bad page
+        // leaves thousands of products without a slug — instead retry the
+        // page a few times, then move on.
+        const int maxRetriesPerPage = 3;
+
+        for (int page = 1; ; page++)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            // No `modified_after` filter — sweep every product. Used right
+            // after the slug column is added so existing medicines acquire
+            // their slug without waiting for an upstream price/stock change.
+            // per_page=50 instead of the polling default of 100 — WC's
+            // hosting cuts large response streams under combined load
+            // (background poll + backfill + webhook traffic).
+            var url = $"{_options.BaseUrl}/wp-json/wc/v3/products?per_page=50&page={page}";
+            List<WooCommerceWebhookPayload>? products = null;
+            int attempt = 0;
+            int? pageTotalPages = null;
+
+            while (attempt < maxRetriesPerPage)
+            {
+                attempt++;
+                try
+                {
+                    var response = await _httpClient.GetAsync(url, cancellationToken);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning("WC Backfill: HTTP {StatusCode} on page {Page} (attempt {Attempt})",
+                            response.StatusCode, page, attempt);
+                    }
+                    else
+                    {
+                        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                        products = JsonSerializer.Deserialize<List<WooCommerceWebhookPayload>>(json);
+                        if (response.Headers.TryGetValues("X-WP-TotalPages", out var tp) &&
+                            int.TryParse(tp.First(), out var parsed))
+                            pageTotalPages = parsed;
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "WC Backfill: HTTP error on page {Page} (attempt {Attempt})", page, attempt);
+                }
+
+                if (attempt < maxRetriesPerPage)
+                    await Task.Delay(TimeSpan.FromSeconds(2 * attempt), cancellationToken);
+            }
+
+            if (pageTotalPages.HasValue) totalPages = pageTotalPages;
+
+            if (products == null)
+            {
+                // All retries failed — admin can re-run the endpoint to pick
+                // up where we left off. Don't abort the sweep; later pages may
+                // still succeed (HTTP errors are often per-page).
+                _logger.LogWarning("WC Backfill: page {Page} skipped after {Retries} retries", page, maxRetriesPerPage);
+            }
+            else
+            {
+                if (products.Count == 0) break;
+                totalSynced += await SyncBatchAsync(products, cancellationToken);
+            }
+
+            if (totalPages.HasValue && page >= totalPages.Value) break;
+            // Soft pacing — WC is fronted by hosting that 502s on bursts; a
+            // small inter-page delay keeps the sweep within polite limits.
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+        }
+
+        _logger.LogInformation("WC Backfill: Synced {Count} medicines from full catalog", totalSynced);
+        return totalSynced;
     }
 
     public async Task PollUpdatedProductsAsync(CancellationToken cancellationToken = default)
@@ -163,14 +261,16 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         var ids = products.Where(p => p.Id > 0).Select(p => p.Id).Distinct().ToList();
         if (ids.Count == 0) return 0;
 
+        // Fetch tracked medicines (not anonymous projection) so we can update
+        // title/slug alongside offers in the same transaction.
         var medicines = await _dbContext.Medicines
+            .AsTracking()
             .Where(m => m.WooCommerceId.HasValue && ids.Contains(m.WooCommerceId.Value))
-            .Select(m => new { m.Id, WcId = m.WooCommerceId!.Value })
-            .ToDictionaryAsync(x => x.WcId, x => x.Id, ct);
+            .ToDictionaryAsync(m => m.WooCommerceId!.Value, ct);
 
         if (medicines.Count == 0) return 0;
 
-        var medicineIds = medicines.Values.ToList();
+        var medicineIds = medicines.Values.Select(m => m.Id).ToList();
         var offers = await _dbContext.Offers
             .AsTracking()
             .Where(o => o.PharmacyId == pharmacyId && medicineIds.Contains(o.MedicineId))
@@ -179,7 +279,9 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         int synced = 0;
         foreach (var product in products)
         {
-            if (!medicines.TryGetValue(product.Id, out var medicineId)) continue;
+            if (!medicines.TryGetValue(product.Id, out var medicine)) continue;
+
+            ApplyMetadata(medicine, product);
 
             if (!TryComputeStock(product, out var stock))
             {
@@ -193,22 +295,39 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
                 continue;
             }
 
-            if (offers.TryGetValue(medicineId, out var offer))
+            if (offers.TryGetValue(medicine.Id, out var offer))
             {
                 offer.SetPrice(price);
                 offer.SetStockQuantity(stock);
             }
             else
             {
-                var newOffer = new Offer(medicineId, pharmacyId, stock, price);
+                var newOffer = new Offer(medicine.Id, pharmacyId, stock, price);
                 _dbContext.Offers.Add(newOffer);
-                offers[medicineId] = newOffer;
+                offers[medicine.Id] = newOffer;
             }
             synced++;
         }
 
         await _dbContext.SaveChangesAsync(ct);
         return synced;
+    }
+
+    /// <summary>
+    /// Copy the latest WC display name and slug onto the medicine entity.
+    /// We only overwrite Title when WC sends a non-empty value (don't blank
+    /// out admin-edited names if WC is missing the field) and we always
+    /// refresh Slug — empty string clears the local slug, preserving the
+    /// "no SEO route" branch in the front-end resolver.
+    /// </summary>
+    private static void ApplyMetadata(Medicine medicine, WooCommerceWebhookPayload product)
+    {
+        if (!string.IsNullOrWhiteSpace(product.Name))
+        {
+            medicine.SetTitle(product.Name.Trim());
+        }
+        // Slug column is nullable; empty string from WC is treated as "clear".
+        medicine.SetSlug(product.Slug);
     }
 
     private async Task UpsertOfferAsync(Guid medicineId, decimal price, int stock, CancellationToken ct)

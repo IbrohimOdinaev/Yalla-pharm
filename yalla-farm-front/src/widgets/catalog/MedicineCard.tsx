@@ -95,6 +95,10 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   }
 
   const name = getMedicineDisplayName(medicine);
+  // Prefer the human-readable slug from WooCommerce — falls back to the GUID
+  // for medicines that haven't synced yet. The /product/[id] route resolves
+  // either form, so swapping doesn't break older links shared via chat.
+  const productHref = `/product/${medicine.slug || medicine.id}`;
 
   // Link wraps the whole card so search engines see a real <a href> per
   // product. In normal navigation the @modal intercept catches this URL
@@ -103,7 +107,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   // e.preventDefault() which Next.js Link respects.
   return (
     <Link
-      href={`/product/${medicine.id}`}
+      href={productHref}
       prefetch={false}
       className="group block h-full"
     >

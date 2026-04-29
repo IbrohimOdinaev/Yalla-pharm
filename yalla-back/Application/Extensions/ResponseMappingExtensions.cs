@@ -43,6 +43,7 @@ public static class ResponseMappingExtensions
             Description = medicine.Description,
             IsActive = medicine.IsActive,
             WooCommerceId = medicine.WooCommerceId,
+            Slug = medicine.Slug,
             CategoryId = medicine.CategoryId,
             CategoryName = medicine.Category?.Name,
             Images = medicine.Images.Select(x => x.ToResponse()).ToList(),
