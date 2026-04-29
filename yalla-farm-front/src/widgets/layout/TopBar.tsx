@@ -469,13 +469,15 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed bottom-6 right-4 z-40 flex h-16 w-[180px] items-center justify-center gap-2.5 rounded-full bg-[#3FC5C4] px-5 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] safe-bottom sm:hidden"
+          className="fixed bottom-6 right-4 z-40 flex h-16 w-[200px] items-center justify-center gap-2 rounded-full bg-[#3FC5C4] px-4 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] safe-bottom sm:hidden"
         >
-          <Icon name="bag" size={28} strokeWidth={2.2} />
+          <Icon name="bag" size={26} strokeWidth={2.2} className="flex-shrink-0" />
           {/* Fixed-width text container so different price strings (3 vs 6
               digits) don't shift the icon left/right and the pill itself
-              never resizes — the chip needs to live in a stable spot. */}
-          <span className="block w-[100px] text-center font-display text-base font-extrabold tabular-nums">
+              never resizes. whitespace-nowrap keeps the price on a single
+              line; tabular-nums gives every digit the same advance so the
+              text-content footprint stays stable as the price changes. */}
+          <span className="block w-[120px] whitespace-nowrap text-center font-display text-sm font-extrabold tabular-nums">
             {bestPrice
               ? `от ${formatMoney(bestPrice.price)}`
               : `${cartCount}`}
