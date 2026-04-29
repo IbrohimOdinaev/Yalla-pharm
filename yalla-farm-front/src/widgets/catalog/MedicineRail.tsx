@@ -70,8 +70,11 @@ export function MedicineRail({
         ) : null}
       </div>
 
-      {/* Responsive grid — 2 cols on phones, 3 on xs, 4 on md, 6 on lg+. */}
-      <div className="grid grid-cols-2 gap-2.5 xs:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6">
+      {/* Responsive grid — 2 cols on every phone width up to sm (540px),
+          then 3, 4, 6 on wider screens. Keeping 2 below sm so the title
+          / price text on each card has room to breathe and titles can
+          render on 2 lines without truncation. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6">
         {isLoading
           ? SKELETONS.map((i) => <MedicineCardSkeleton key={i} />)
           : visible.map((medicine) => (
