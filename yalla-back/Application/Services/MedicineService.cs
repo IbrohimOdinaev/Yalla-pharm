@@ -210,6 +210,7 @@ public sealed class MedicineService : IMedicineService
               Id = x.Id,
               Title = x.Title,
               Articul = x.Articul,
+              Slug = x.Slug,
               IsActive = x.IsActive,
               CategoryName = x.Category != null ? x.Category.Name : null,
               MinPrice = filterPharmacyId.HasValue
@@ -287,6 +288,7 @@ public sealed class MedicineService : IMedicineService
               Id = x.Id,
               Title = x.Title,
               Articul = x.Articul,
+              Slug = x.Slug,
               IsActive = x.IsActive,
               CategoryName = x.Category != null ? x.Category.Name : null,
               MinPrice = x.Offers.Any(o => o.Price > 0)
@@ -409,6 +411,7 @@ public sealed class MedicineService : IMedicineService
               x.Id,
               x.Title,
               x.Articul,
+              x.Slug,
               TitleStarts = EF.Functions.Like(x.Title.ToLower(), prefixPattern),
               ArticulStarts = EF.Functions.Like(x.Articul.ToLower(), prefixPattern),
               TitleContains = EF.Functions.Like(x.Title.ToLower(), containsPattern),
@@ -463,6 +466,7 @@ public sealed class MedicineService : IMedicineService
                   Id = x.Id,
                   Title = x.Title,
                   Articul = x.Articul,
+                  Slug = x.Slug,
                   IsActive = true,
                   MinPrice = minPrices.TryGetValue(x.Id, out var mp) ? mp : null,
                   Images = imagesByMedicineId.TryGetValue(x.Id, out var value)
@@ -513,6 +517,7 @@ public sealed class MedicineService : IMedicineService
               offer.MedicineId,
               MedicineTitle = medicine.Title,
               MedicineArticul = medicine.Articul,
+              MedicineSlug = medicine.Slug,
               offer.Price,
               offer.StockQuantity
           }).ToListAsync(cancellationToken);
@@ -571,6 +576,7 @@ public sealed class MedicineService : IMedicineService
                         Id = first.MedicineId,
                         Title = first.MedicineTitle,
                         Articul = first.MedicineArticul,
+                        Slug = first.MedicineSlug,
                         IsActive = true,
                         MinPrice = minPrice > 0 ? minPrice : null,
                         Images = imagesByMedicineId.TryGetValue(first.MedicineId, out var imgs) ? imgs : []
