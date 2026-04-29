@@ -267,12 +267,11 @@ export default function CartPage() {
         </section>
       )}
 
-      {/* Spacer for sticky CTA */}
-      <div className="h-24" />
-
-      {/* Sticky CTA — full-width on phones, constrained to 3xl on desktop. */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 px-2 xs:px-3 sm:bottom-4">
-        <div className="mx-auto max-w-3xl rounded-full bg-surface-container-lowest p-1 shadow-glass xs:p-1.5">
+      {/* Inline CTA — sits below the upsell rail so users see the
+          recommendations first and the button doesn't overlap them.
+          Constrained to max-w-3xl on desktop to align with the cart list. */}
+      <div className="mt-6 mb-4 xs:mt-8">
+        <div className="mx-auto max-w-3xl">
           <Button
             type="button"
             size="lg"
