@@ -170,10 +170,16 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
             </p>
           ) : null}
 
-          {/* Title */}
+          {/* Title — wider card on 2-col phone layout fits 3 lines on the
+              non-compact variant; compact (search-result fixed-width cards)
+              still clamps to 2 since their column is narrower. min-h locks
+              the row height so prices align across cards regardless of how
+              many lines a title actually wraps to. */}
           <h3
-            className={`line-clamp-2 font-semibold leading-tight text-on-surface ${
-              compact ? "text-xs min-h-[2rem]" : "text-sm min-h-[2.4rem]"
+            className={`font-semibold leading-tight text-on-surface ${
+              compact
+                ? "line-clamp-2 text-[11px] min-h-[2rem] xs:text-xs"
+                : "line-clamp-3 text-[13px] min-h-[3.6rem] xs:text-sm xs:min-h-[3.8rem]"
             }`}
           >
             {name}
@@ -191,25 +197,31 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
                 </span>
               </div>
             ) : cartState.inCart ? (
+              // Yellow in-cart pill — kept the same height + full-width as
+              // the blue add pill below so toggling between states doesn't
+              // jiggle the card row. Heights / breakpoints mirror the blue
+              // variant exactly.
               <div
-                className={`flex items-center justify-between gap-1 rounded-full bg-accent px-0 text-on-surface shadow-card xs:gap-1.5 sm:gap-2 sm:px-0.5 md:px-1 ${
-                  compact ? "h-7 sm:h-8 md:h-9" : "h-8 sm:h-9 md:h-10"
+                className={`flex w-full items-center justify-between gap-0.5 rounded-full bg-accent px-1 text-on-surface shadow-card xs:gap-1 xs:px-1.5 ${
+                  compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
                 }`}
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   type="button"
                   onClick={onDecrement}
-                  className="mr-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 sm:h-7 sm:w-7 md:h-8 md:w-8"
+                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 ${
+                    compact ? "h-6 w-6 xs:h-7 xs:w-7" : "h-7 w-7 xs:h-8 xs:w-8"
+                  }`}
                   aria-label="Уменьшить"
                 >
-                  <Icon name="minus" size={12} strokeWidth={2.4} />
+                  <Icon name="minus" size={14} strokeWidth={2.4} />
                 </button>
                 <span
                   className={`min-w-0 flex-1 overflow-hidden text-center font-display font-extrabold tabular-nums whitespace-nowrap leading-none ${
                     compact
-                      ? "text-[8px] xs:text-[9px] sm:text-[10px] md:text-[11px]"
-                      : "text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs lg:text-sm"
+                      ? "text-[10px] xs:text-[11px] sm:text-xs"
+                      : "text-[11px] xs:text-xs sm:text-sm"
                   }`}
                 >
                   {price ? `${formatMoney(price)}` : `×${cartState.quantity}`}
@@ -217,10 +229,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
                 <button
                   type="button"
                   onClick={onIncrement}
-                  className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 sm:h-7 sm:w-7 md:h-8 md:w-8"
+                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 ${
+                    compact ? "h-6 w-6 xs:h-7 xs:w-7" : "h-7 w-7 xs:h-8 xs:w-8"
+                  }`}
                   aria-label="Увеличить"
                 >
-                  <Icon name="plus" size={12} strokeWidth={2.4} />
+                  <Icon name="plus" size={14} strokeWidth={2.4} />
                 </button>
               </div>
             ) : (
