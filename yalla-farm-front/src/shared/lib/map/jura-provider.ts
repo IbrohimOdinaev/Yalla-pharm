@@ -17,12 +17,22 @@ import { searchAddress, type AddressSuggestion } from "@/shared/api/address";
 // token so the user never sees it.
 const PLUS_CODE_RE = /^[23456789CFGHJMPQRVWX]{4,7}\+[23456789CFGHJMPQRVWX]{0,4},?\s*/i;
 
+// "lat, lng" coord fallback that google-provider emits when geocoding fails or
+// returns nothing. Sending this to JURA's /api/address/search produces a 400
+// because JURA expects a place name, not numbers. Detect the pattern and skip
+// the search instead.
+const COORD_LIKE_RE = /^\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*$/;
+
 export function stripPlusCode(text: string): string {
   return text.replace(PLUS_CODE_RE, "").trim();
 }
 
 function hasPlusCode(text: string): boolean {
   return PLUS_CODE_RE.test(text);
+}
+
+function isCoordString(text: string): boolean {
+  return COORD_LIKE_RE.test(text);
 }
 
 // JURA returns `title` (specific, e.g. "кӯчаи Деҳотӣ, 23/2") and `address`
@@ -53,6 +63,12 @@ export class JuraMapProvider implements MapProvider {
   }
 
   async suggest(query: string): Promise<SuggestItem[]> {
+    // Coordinate-style input ("38.55, 68.78") never matches a JURA place;
+    // skip the search and avoid a guaranteed 400 from the backend.
+    if (isCoordString(query)) {
+      this._lastSuggestions = [];
+      return [];
+    }
     const results = await searchAddress(query);
     this._lastSuggestions = results;
     return results.map((r) => {
@@ -101,8 +117,10 @@ export class JuraMapProvider implements MapProvider {
     const cleanedText = stripPlusCode(rawText);
     const coordFallback = `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
 
-    // 2-char minimum protects Jura's search from wasteful calls.
-    if (cleanedText.length >= 2) {
+    // 2-char minimum protects Jura's search from wasteful calls; coord-only
+    // text (e.g. when Google falls back to "38.55, 68.78") is rejected by
+    // JURA with 400, so we skip those too.
+    if (cleanedText.length >= 2 && !isCoordString(cleanedText)) {
       try {
         const suggestions = await searchAddress(cleanedText);
         if (suggestions.length > 0) {
