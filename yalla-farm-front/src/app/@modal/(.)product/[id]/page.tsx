@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
   getMedicineByIdOrSlug,
   getMedicineDisplayName,
@@ -13,70 +14,54 @@ import { formatMoney } from "@/shared/lib/format";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useAppSelector } from "@/shared/lib/redux";
-import { useProductModalStore } from "@/features/product-modal/model/productModalStore";
 import { Skeleton } from "@/shared/ui";
 
-/**
- * Global product detail modal. Mounted once by AppShell — every page gets
- * the modal "for free". Driven by `useProductModalStore` (no URL change),
- * replacing the previous Next.js parallel/intercepting-route setup that
- * tripped a framework crash inside `applyRouterStatePatchToTree`.
- *
- * Direct visits / refreshes still hit `/product/[id]/page.tsx` for SEO and
- * shareable links. Card clicks open the modal in-place; modifier-clicks
- * (cmd/ctrl/shift) fall through to the underlying anchor and open the full
- * page in a new tab as the user expects.
- */
-export function ProductModal() {
-  const productIdOrSlug = useProductModalStore((s) => s.productIdOrSlug);
-  const close = useProductModalStore((s) => s.close);
+// Intercepting route — Next.js renders this in the `@modal` slot when the user
+// arrives at /product/[id] from an in-app link. Direct visits / refreshes
+// fall through to the canonical /product/[id]/page.tsx full page (good for
+// SEO). Closing the modal calls router.back() to drop the URL segment.
+export default function InterceptedProductModal() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const productId = String(params?.id || "");
 
   const token = useAppSelector((s) => s.auth.token);
   const addItem = useCartStore((s) => s.addItem);
   const addGuestItem = useGuestCartStore((s) => s.addItem);
 
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
-  // Reset transient state every time the active product changes; on close
-  // (productIdOrSlug → null) we drop the medicine entirely so the next open
-  // doesn't flash stale content.
-  useEffect(() => {
-    if (!productIdOrSlug) {
-      setMedicine(null);
-      setError(null);
-      setQuantity(1);
-      setActiveImageIdx(0);
-      return;
+  const close = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.replace("/");
     }
+  }, [router]);
+
+  useEffect(() => {
+    if (!productId) return;
     setIsLoading(true);
     setError(null);
-    setQuantity(1);
-    setActiveImageIdx(0);
-    getMedicineByIdOrSlug(productIdOrSlug)
+    getMedicineByIdOrSlug(productId)
       .then((m) => { setMedicine(m); setIsLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : "Ошибка загрузки"); setIsLoading(false); });
-  }, [productIdOrSlug]);
+  }, [productId]);
 
-  // ESC closes the modal — mounted only while open so we don't leak a
-  // listener across the whole session.
   useEffect(() => {
-    if (!productIdOrSlug) return;
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") close(); }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [productIdOrSlug, close]);
+  }, [close]);
 
-  // Lock body scroll while open. Restore on close even if the component
-  // re-renders during the open lifetime (the cleanup unconditionally clears).
   useEffect(() => {
-    if (!productIdOrSlug) return;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, [productIdOrSlug]);
+  }, []);
 
   const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
   const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
@@ -88,8 +73,6 @@ export function ProductModal() {
     else addGuestItem(medicine.id, quantity);
     close();
   }, [token, medicine, quantity, addItem, addGuestItem, close]);
-
-  if (!productIdOrSlug) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

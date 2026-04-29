@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { BottomNav } from "@/widgets/layout/BottomNav";
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
 import { Footer } from "@/widgets/layout/Footer";
-import { ProductModal } from "@/widgets/product/ProductModal";
 
 type AppShellProps = {
   top?: ReactNode;
@@ -29,9 +28,6 @@ export function AppShell({ top, children, hideGlobalNav, hideFooter, narrow }: A
       </main>
       {!hideFooter ? <Footer /> : null}
       <BottomNav />
-      {/* Single global product modal — controlled by useProductModalStore.
-          Mounted here so every page wrapped by AppShell gets it for free. */}
-      <ProductModal />
     </div>
   );
 }
