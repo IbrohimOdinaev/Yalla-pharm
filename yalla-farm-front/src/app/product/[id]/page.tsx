@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getMedicineById, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
+import { getMedicineByIdOrSlug, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useCartStore } from "@/features/cart/model/cartStore";
@@ -32,7 +32,7 @@ export default function ProductDetailsPage() {
 
   useOfferLiveUpdates(useCallback((payload) => {
     if (medicine && payload.medicineId === medicine.id) {
-      getMedicineById(id).then(setMedicine).catch(() => undefined);
+      getMedicineByIdOrSlug(id).then(setMedicine).catch(() => undefined);
     }
   }, [medicine, id]));
 
@@ -43,7 +43,7 @@ export default function ProductDetailsPage() {
       return;
     }
 
-    getMedicineById(id)
+    getMedicineByIdOrSlug(id)
       .then((value) => {
         setMedicine(value);
         setIsLoading(false);

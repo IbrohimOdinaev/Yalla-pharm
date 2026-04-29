@@ -216,6 +216,40 @@ if (applyMigrationsOnStartup)
         applied.Length, pending.Length, pending.Length == 0 ? "(none)" : string.Join(", ", pending));
     await db.Database.MigrateAsync();
     logger.LogInformation("EF migrations applied successfully.");
+
+    // One-shot WooCommerce slug backfill: when the AddMedicineSlug migration
+    // first runs, the slug column is NULL for every existing medicine. Detect
+    // that condition and pull slugs from WC right after migrations so SEO
+    // routes work on first deploy without an admin manually triggering the
+    // POST /api/medicines/backfill-from-woocommerce endpoint. Self-clearing —
+    // subsequent restarts find no NULL+WcId rows and skip the network call.
+    var needsBackfill = await db.Set<Yalla.Domain.Entities.Medicine>()
+        .AnyAsync(m => m.WooCommerceId != null && m.Slug == null);
+    if (needsBackfill)
+    {
+        // Fire-and-forget: a 5800-product sweep takes minutes and would block
+        // the health check otherwise. The service runs to completion in the
+        // background; failures are already logged inside BackfillCatalogAsync.
+        // Capture the IServiceProvider so we get a fresh DI scope (the outer
+        // `scope` is disposed when this block exits).
+        var rootProvider = app.Services;
+        _ = Task.Run(async () =>
+        {
+            using var bgScope = rootProvider.CreateScope();
+            var bgLogger = bgScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            var bgSync = bgScope.ServiceProvider.GetRequiredService<Yalla.Application.Services.IWooCommerceSyncService>();
+            try
+            {
+                var synced = await bgSync.BackfillCatalogAsync();
+                bgLogger.LogInformation("Startup WC backfill: {Count} medicines acquired slug", synced);
+            }
+            catch (Exception ex)
+            {
+                bgLogger.LogError(ex, "Startup WC backfill failed; admin can retry via the /api/medicines/backfill-from-woocommerce endpoint");
+            }
+        });
+        logger.LogInformation("Startup WC backfill kicked off in background");
+    }
 }
 
 if (app.Environment.IsDevelopment())

@@ -18,6 +18,14 @@ public class Medicine
 
     public int? WooCommerceId { get; private set; }
 
+    /// <summary>
+    /// URL-friendly slug, sourced from the WooCommerce product `slug` field
+    /// (kebab-case latin, e.g. "hichoma-orig-zard-6"). Used for SEO routes
+    /// like /product/{slug}. Optional — medicines created via admin without
+    /// a WC link won't have one. Unique when present.
+    /// </summary>
+    public string? Slug { get; private set; }
+
     public Guid? Id1C { get; private set; }
 
     public Guid? CategoryId { get; private set; }
@@ -110,6 +118,16 @@ public class Medicine
     public void SetWooCommerceId(int? wooCommerceId)
     {
         WooCommerceId = wooCommerceId;
+    }
+
+    /// <summary>
+    /// Set the URL slug. Empty / whitespace clears it (stored as null).
+    /// Trim + lowercase to defend against accidental case mismatches in
+    /// downstream lookups; uniqueness is enforced at the DB level.
+    /// </summary>
+    public void SetSlug(string? slug)
+    {
+        Slug = string.IsNullOrWhiteSpace(slug) ? null : slug.Trim().ToLowerInvariant();
     }
 
     public void SetId1C(Guid? id1C)

@@ -8,6 +8,7 @@ public sealed class MedicineResponse
   public string Description { get; init; } = string.Empty;
   public bool IsActive { get; init; }
   public int? WooCommerceId { get; init; }
+  public string? Slug { get; init; }
   public Guid? CategoryId { get; init; }
   public string? CategoryName { get; init; }
   public IReadOnlyCollection<MedicineImageResponse> Images { get; init; } = [];

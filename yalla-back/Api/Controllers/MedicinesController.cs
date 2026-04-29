@@ -16,12 +16,18 @@ public sealed class MedicinesController : ControllerBase
   private readonly IMedicineService _medicineService;
   private readonly IMedicineSearchEngine _searchEngine;
   private readonly IImageResizer _imageResizer;
+  private readonly IWooCommerceSyncService _wooSyncService;
 
-  public MedicinesController(IMedicineService medicineService, IMedicineSearchEngine searchEngine, IImageResizer imageResizer)
+  public MedicinesController(
+    IMedicineService medicineService,
+    IMedicineSearchEngine searchEngine,
+    IImageResizer imageResizer,
+    IWooCommerceSyncService wooSyncService)
   {
     _medicineService = medicineService;
     _searchEngine = searchEngine;
     _imageResizer = imageResizer;
+    _wooSyncService = wooSyncService;
   }
 
   // Snap caller-requested widths to a small fixed set so Cloudflare/CDN caches
@@ -73,6 +79,31 @@ public sealed class MedicinesController : ControllerBase
       MedicineId = medicineId,
       IncludeInactive = role == Role.Admin || role == Role.SuperAdmin
     }, cancellationToken);
+
+    return Ok(response);
+  }
+
+  /// <summary>
+  /// Lookup by URL-friendly slug (e.g. /api/medicines/by-slug/hichoma-orig-zard-6).
+  /// Mirrors the GUID lookup — same response shape — so the front-end product
+  /// page can fetch with whichever identifier the route gives it.
+  /// </summary>
+  [HttpGet("by-slug/{slug}")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GetBySlug(
+    string slug,
+    CancellationToken cancellationToken)
+  {
+    var role = Role.Client;
+    if (User.Identity?.IsAuthenticated == true)
+    {
+      role = User.GetRequiredRole();
+    }
+
+    var response = await _medicineService.GetMedicineBySlugAsync(
+      slug,
+      includeInactive: role == Role.Admin || role == Role.SuperAdmin,
+      cancellationToken);
 
     return Ok(response);
   }
@@ -168,6 +199,21 @@ public sealed class MedicinesController : ControllerBase
   {
     await _searchEngine.ReindexAllAsync(cancellationToken);
     return Ok(new { message = "Reindex completed" });
+  }
+
+  /// <summary>
+  /// One-shot full-catalog WooCommerce sweep — paginates every WC product
+  /// and writes title/slug onto matching medicines. Run this once after the
+  /// AddMedicineSlug migration so existing rows acquire their slug without
+  /// waiting for an upstream price/stock change to trigger the regular poll.
+  /// Idempotent: re-running is safe (just rewrites the same fields).
+  /// </summary>
+  [HttpPost("backfill-from-woocommerce")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> BackfillFromWooCommerce(CancellationToken cancellationToken)
+  {
+    var synced = await _wooSyncService.BackfillCatalogAsync(cancellationToken);
+    return Ok(new { message = "Backfill completed", synced });
   }
 
   [HttpPost("images")]

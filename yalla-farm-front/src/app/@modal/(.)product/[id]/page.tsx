@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  getMedicineById,
+  getMedicineByIdOrSlug,
   getMedicineDisplayName,
   getMainImageUrl,
   getGalleryImages,
@@ -47,7 +47,7 @@ export default function InterceptedProductModal() {
     if (!productId) return;
     setIsLoading(true);
     setError(null);
-    getMedicineById(productId)
+    getMedicineByIdOrSlug(productId)
       .then((m) => { setMedicine(m); setIsLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : "Ошибка загрузки"); setIsLoading(false); });
   }, [productId]);

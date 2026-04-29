@@ -40,6 +40,10 @@ export type ApiMedicineOffer = {
 
 export type ApiMedicine = {
   id: string;
+  /** URL-friendly slug (kebab-case latin) sourced from WooCommerce. Optional —
+   *  pre-WC medicines or admin-created ones may not have one. Frontend uses
+   *  it for SEO routes and falls back to `id` when missing. */
+  slug?: string;
   title?: string;
   name?: string;
   articul?: string;

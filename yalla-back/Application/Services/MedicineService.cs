@@ -343,6 +343,37 @@ public sealed class MedicineService : IMedicineService
         };
     }
 
+    public async Task<GetMedicineByIdResponse> GetMedicineBySlugAsync(
+      string slug,
+      bool includeInactive,
+      CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+            throw new InvalidOperationException("Slug can't be empty.");
+
+        // Slugs are stored lower-cased on write; lower the lookup so URLs are
+        // case-insensitive in practice (defensive — Next.js routes preserve
+        // case, but pasted links from chat clients often arrive normalized).
+        var normalizedSlug = slug.Trim().ToLowerInvariant();
+
+        var medicine = await _dbContext.Medicines
+          .AsNoTracking()
+          .Include(x => x.Atributes)
+          .Include(x => x.Images)
+          .Include(x => x.Category)
+          .FirstOrDefaultAsync(
+            x => x.Slug == normalizedSlug && (includeInactive || x.IsActive),
+            cancellationToken)
+          ?? throw new InvalidOperationException($"Medicine with slug '{slug}' was not found.");
+
+        var offers = await BuildMedicineOffersAsync(medicine.Id, cancellationToken);
+
+        return new GetMedicineByIdResponse
+        {
+            Medicine = medicine.ToResponse(offers)
+        };
+    }
+
     public async Task<SearchMedicinesResponse> SearchMedicinesAsync(
       SearchMedicinesRequest request,
       CancellationToken cancellationToken = default)

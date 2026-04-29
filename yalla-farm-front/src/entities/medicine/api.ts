@@ -16,6 +16,29 @@ export async function getMedicineById(id: string): Promise<ApiMedicine> {
   return response.medicine;
 }
 
+export async function getMedicineBySlug(slug: string): Promise<ApiMedicine> {
+  const response = await apiFetch<{ medicine?: ApiMedicine }>(`/api/medicines/by-slug/${encodeURIComponent(slug)}`);
+  if (!response?.medicine) {
+    throw new Error("Товар не найден.");
+  }
+
+  return response.medicine;
+}
+
+// UUID v4-ish detector — covers the canonical hex+dash form we always emit.
+// Anything that doesn't match is treated as a slug, even if numeric, since
+// numeric ids aren't used in this API.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Resolve a product by either id or slug — used by /product/[id] routes that
+ *  don't know which form the user arrived with. Old GUID links keep working;
+ *  new slug links resolve through the by-slug endpoint. */
+export async function getMedicineByIdOrSlug(idOrSlug: string): Promise<ApiMedicine> {
+  return UUID_RE.test(idOrSlug)
+    ? getMedicineById(idOrSlug)
+    : getMedicineBySlug(idOrSlug);
+}
+
 /** Get image URL by image object. Pass `width` to request a server-resized
  *  WebP variant — the backend buckets to {120, 240, 480, 800}. Anything
  *  larger or no width returns the original. */
