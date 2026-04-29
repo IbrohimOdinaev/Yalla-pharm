@@ -27,9 +27,33 @@ export type DeliveryStatusResponse = {
   deliveryCost: number;
 };
 
+/**
+ * Reject a delivery calc request before it leaves the browser when the
+ * destination coords are missing or out of the valid Mercator range. The
+ * backend (and JURA below it) returns 400 for these payloads — failing fast
+ * keeps the network panel quiet and lets callers surface a UX error instead
+ * of waiting for a doomed roundtrip.
+ */
+function isValidCoord(lat: unknown, lng: unknown): boolean {
+  return (
+    typeof lat === "number" && Number.isFinite(lat) && lat >= -90 && lat <= 90 &&
+    typeof lng === "number" && Number.isFinite(lng) && lng >= -180 && lng <= 180
+  );
+}
+
+export class DeliveryCoordError extends Error {
+  constructor() {
+    super("Координаты адреса доставки не определены. Выберите адрес из подсказок или на карте.");
+    this.name = "DeliveryCoordError";
+  }
+}
+
 export async function calculateDelivery(
   request: CalculateDeliveryRequest
 ): Promise<CalculateDeliveryResponse> {
+  if (!isValidCoord(request.toLatitude, request.toLongitude)) {
+    throw new DeliveryCoordError();
+  }
   return apiFetch<CalculateDeliveryResponse>("/api/delivery/calculate", {
     method: "POST",
     body: request,
