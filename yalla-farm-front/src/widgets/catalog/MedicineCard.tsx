@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useCallback } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
+import { useProductModalStore } from "@/features/product-modal/model/productModalStore";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
@@ -95,20 +95,30 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   }
 
   const name = getMedicineDisplayName(medicine);
-  // Prefer the human-readable slug from WooCommerce — falls back to the GUID
-  // for medicines that haven't synced yet. The /product/[id] route resolves
-  // either form, so swapping doesn't break older links shared via chat.
+  // Slug-first href so the underlying anchor still gives crawlers and
+  // right-click → "open in new tab" the SEO route /product/{slug}.
+  // Falls back to the GUID for medicines that haven't synced yet.
   const productHref = `/product/${medicine.slug || medicine.id}`;
+  const openProductModal = useProductModalStore((s) => s.open);
 
-  // Link wraps the whole card so search engines see a real <a href> per
-  // product. In normal navigation the @modal intercept catches this URL
-  // and overlays the product modal; on direct visit / refresh, the
-  // /product/[id] full page renders. Cart buttons below call
-  // e.preventDefault() which Next.js Link respects.
+  function onCardClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    // Modifier-clicks (cmd/ctrl/shift) and middle-click should fall through
+    // to the anchor's default — opens /product/{slug} in a new tab. Plain
+    // left-click intercepts and opens the in-page modal instead, no URL
+    // change. (target=_blank or download flows are not in play here.)
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    openProductModal(medicine.slug || medicine.id);
+  }
+
+  // Plain <a> rather than Next.js <Link> — we don't want client-side
+  // prefetch / SPA navigation here, the anchor exists purely for SEO and
+  // modifier-click fallback. Cart buttons below call e.preventDefault().
   return (
-    <Link
+    // eslint-disable-next-line @next/next/no-html-link-for-pages
+    <a
       href={productHref}
-      prefetch={false}
+      onClick={onCardClick}
       className="group block h-full"
     >
       <article className="flex h-full flex-col overflow-hidden rounded-2xl bg-surface-container-lowest transition hover:shadow-card">
@@ -247,6 +257,6 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
           </div>
         </div>
       </article>
-    </Link>
+    </a>
   );
 }
