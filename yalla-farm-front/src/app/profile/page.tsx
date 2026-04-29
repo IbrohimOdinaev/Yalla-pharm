@@ -143,7 +143,10 @@ export default function ProfilePage() {
 
   return (
     <AppShell top={<TopBar title="Профиль" backHref="back" />}>
-      <div className="mx-auto max-w-md space-y-4 lg:max-w-5xl">
+      {/* min-w-0 lets descendant flex/grid children shrink past their
+          intrinsic size on narrow viewports (down to ~340px) instead of
+          forcing the wrapper to overflow horizontally. */}
+      <div className="mx-auto min-w-0 max-w-md space-y-4 lg:max-w-5xl">
         {isLoading ? (
           <div className="rounded-3xl bg-surface-container-low p-6 text-sm">Загрузка...</div>
         ) : null}
@@ -153,20 +156,20 @@ export default function ProfilePage() {
 
         {/* Hero card */}
         {profile ? (
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-container p-5 text-white shadow-card lg:p-7">
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-container p-4 text-white shadow-card xs:p-5 lg:p-7">
             <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
             <span aria-hidden className="pointer-events-none absolute right-4 bottom-0 h-16 w-16 rounded-full bg-white/10" />
-            <div className="relative flex items-start gap-4">
-              <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/20 font-display text-2xl font-extrabold backdrop-blur lg:h-20 lg:w-20 lg:text-3xl">
+            <div className="relative flex items-start gap-3 xs:gap-4">
+              <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-white/20 font-display text-xl font-extrabold backdrop-blur xs:h-16 xs:w-16 xs:text-2xl lg:h-20 lg:w-20 lg:text-3xl">
                 {initials}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Мой профиль</p>
-                <h1 className="mt-1 truncate font-display text-2xl font-extrabold lg:text-3xl">{profile.name || "Клиент"}</h1>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 xs:text-[11px]">Мой профиль</p>
+                <h1 className="mt-1 truncate font-display text-xl font-extrabold xs:text-2xl lg:text-3xl">{profile.name || "Клиент"}</h1>
                 {phoneLinked ? (
-                  <p className="mt-1 font-mono text-sm opacity-90">+992{profile.phoneNumber}</p>
+                  <p className="mt-1 truncate font-mono text-xs opacity-90 xs:text-sm">+992{profile.phoneNumber}</p>
                 ) : telegramLinked ? (
-                  <p className="mt-1 text-sm opacity-90">@{profile.telegramUsername}</p>
+                  <p className="mt-1 truncate text-xs opacity-90 xs:text-sm">@{profile.telegramUsername}</p>
                 ) : null}
               </div>
             </div>
@@ -175,44 +178,48 @@ export default function ProfilePage() {
 
         {/* Stats — clickable orders count navigates to /orders */}
         {profile ? (
-          <section className="grid grid-cols-3 gap-2 sm:gap-3">
+          <section className="grid grid-cols-3 gap-1.5 xs:gap-2 sm:gap-3">
             <Link
               href="/orders"
-              className="flex flex-col justify-center rounded-2xl bg-surface-container-lowest p-3 text-center shadow-card transition hover:shadow-glass active:scale-[0.98] sm:p-4 lg:p-5"
+              className="flex min-w-0 flex-col justify-center rounded-2xl bg-surface-container-lowest p-2 text-center shadow-card transition hover:shadow-glass active:scale-[0.98] xs:p-3 sm:p-4 lg:p-5"
             >
-              <p className="font-display text-xl font-extrabold text-primary sm:text-2xl lg:text-3xl tabular-nums">
+              <p className="font-display text-lg font-extrabold text-primary xs:text-xl sm:text-2xl lg:text-3xl tabular-nums">
                 {stats.ordersCount}
               </p>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant sm:text-xs">
+              <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant xs:text-[10px] sm:text-xs">
                 Заказов
               </p>
             </Link>
-            <div className="flex flex-col justify-center rounded-2xl bg-surface-container-lowest p-3 text-center shadow-card sm:p-4 lg:p-5">
-              <p className="font-display text-xl font-extrabold text-emerald-600 sm:text-2xl lg:text-3xl tabular-nums">
+            <div className="flex min-w-0 flex-col justify-center rounded-2xl bg-surface-container-lowest p-2 text-center shadow-card xs:p-3 sm:p-4 lg:p-5">
+              <p className="font-display text-lg font-extrabold text-emerald-600 xs:text-xl sm:text-2xl lg:text-3xl tabular-nums">
                 {stats.deliveredCount}
               </p>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant sm:text-xs">
+              <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant xs:text-[10px] sm:text-xs">
                 Доставлено
               </p>
             </div>
-            <div className="flex flex-col justify-center rounded-2xl bg-surface-container-lowest p-3 text-center shadow-card sm:p-4 lg:p-5">
-              <p className="font-display text-base font-extrabold text-on-surface sm:text-lg lg:text-2xl tabular-nums">
+            <div className="flex min-w-0 flex-col justify-center rounded-2xl bg-surface-container-lowest p-2 text-center shadow-card xs:p-3 sm:p-4 lg:p-5">
+              {/* Money string can grow long ("1 234.50"); shrink the digit
+                  size further on tiny screens and let it truncate. */}
+              <p className="truncate font-display text-xs font-extrabold text-on-surface xs:text-sm sm:text-lg lg:text-2xl tabular-nums">
                 {formatMoney(stats.totalSpent)}
               </p>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant sm:text-xs">
+              <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant xs:text-[10px] sm:text-xs">
                 Потрачено
               </p>
             </div>
           </section>
         ) : null}
 
-        {/* Two-column layout on lg+; single column below */}
+        {/* Two-column layout on lg+; single column below. Both columns get
+            min-w-0 so cards inside can shrink to the column width — without
+            it, grid columns default to min-content and overflow at <380px. */}
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
         {/* Linking section */}
         {profile && (!phoneLinked || !telegramLinked) ? (
-          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
-            <div>
+          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-4 shadow-card sm:p-5">
+            <div className="min-w-0">
               <h2 className="font-display text-base font-extrabold">Привязка аккаунта</h2>
               <p className="mt-1 text-xs text-on-surface-variant">
                 Привяжите оба способа входа, чтобы всегда иметь доступ.
@@ -243,30 +250,38 @@ export default function ProfilePage() {
 
         {/* Linked contacts */}
         {profile && (phoneLinked || telegramLinked) ? (
-          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
+          <section className="space-y-2 rounded-3xl bg-surface-container-lowest p-4 shadow-card sm:p-5">
             <h2 className="font-display text-base font-extrabold">Привязанные контакты</h2>
             {phoneLinked ? (
-              <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <div className="flex items-center gap-2 rounded-2xl bg-surface-container-low p-2.5 sm:gap-3 sm:p-3">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary sm:h-10 sm:w-10">
                   <Icon name="phone" size={18} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold">Номер телефона</p>
-                  <p className="font-mono text-xs text-on-surface-variant">+992{profile.phoneNumber}</p>
+                  <p className="truncate text-sm font-bold">Номер телефона</p>
+                  <p className="truncate font-mono text-xs text-on-surface-variant">+992{profile.phoneNumber}</p>
                 </div>
-                <Chip tone="primary" asButton={false} leftIcon="check">Активен</Chip>
+                {/* On phones we drop the chip text and keep only a check
+                    badge to free horizontal space; full label returns at sm+. */}
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary sm:hidden">
+                  <Icon name="check" size={14} />
+                </span>
+                <Chip tone="primary" asButton={false} leftIcon="check" className="hidden sm:inline-flex">Активен</Chip>
               </div>
             ) : null}
             {telegramLinked ? (
-              <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-telegram-soft text-telegram">
+              <div className="flex items-center gap-2 rounded-2xl bg-surface-container-low p-2.5 sm:gap-3 sm:p-3">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-telegram-soft text-telegram sm:h-10 sm:w-10">
                   <Icon name="telegram" size={18} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold">Telegram</p>
-                  <p className="text-xs text-on-surface-variant">@{profile.telegramUsername}</p>
+                  <p className="truncate text-sm font-bold">Telegram</p>
+                  <p className="truncate text-xs text-on-surface-variant">@{profile.telegramUsername}</p>
                 </div>
-                <Chip tone="tertiary" asButton={false} leftIcon="check">Подключён</Chip>
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-tertiary-soft text-tertiary sm:hidden">
+                  <Icon name="check" size={14} />
+                </span>
+                <Chip tone="tertiary" asButton={false} leftIcon="check" className="hidden sm:inline-flex">Подключён</Chip>
               </div>
             ) : null}
           </section>
@@ -276,7 +291,7 @@ export default function ProfilePage() {
         {token ? <SavedAddressesSection token={token} /> : null}
           </div>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
         {/* Personal data form */}
         {profile ? (
           <form className="space-y-4 rounded-3xl bg-surface-container-lowest p-5 shadow-card" onSubmit={onSaveProfile}>
@@ -425,14 +440,14 @@ function LinkRow({
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-2xl bg-surface-container-low p-3 text-left transition hover:bg-surface-container-high"
     >
-      <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${iconTint}`}>
+      <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full sm:h-10 sm:w-10 ${iconTint}`}>
         <Icon name={icon} size={18} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold">{title}</p>
-        <p className="text-xs text-on-surface-variant">{subtitle}</p>
+        <p className="truncate text-sm font-bold">{title}</p>
+        <p className="truncate text-xs text-on-surface-variant">{subtitle}</p>
       </div>
-      <Icon name="chevron-right" size={18} className="text-on-surface-variant" />
+      <Icon name="chevron-right" size={18} className="flex-shrink-0 text-on-surface-variant" />
     </button>
   );
 }

@@ -56,9 +56,9 @@ export function SavedAddressesSection({ token }: Props) {
   }
 
   return (
-    <section className="space-y-3 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <section className="space-y-3 rounded-3xl bg-surface-container-lowest p-4 shadow-card sm:p-5">
+      <div className="flex items-start justify-between gap-3 min-w-0">
+        <div className="min-w-0">
           <h2 className="font-display text-base font-extrabold">Сохранённые адреса</h2>
           <p className="mt-1 text-xs text-on-surface-variant">
             Сохранённые адреса появятся в выборе доставки при оформлении заказа
@@ -75,8 +75,8 @@ export function SavedAddressesSection({ token }: Props) {
       ) : (
         <ul className="space-y-2">
           {named.map((a) => (
-            <li key={a.id} className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
-              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <li key={a.id} className="flex items-center gap-2 rounded-2xl bg-surface-container-low p-2.5 sm:gap-3 sm:p-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary sm:h-10 sm:w-10">
                 <Icon name="pin" size={18} />
               </span>
               <div className="min-w-0 flex-1">
@@ -86,11 +86,11 @@ export function SavedAddressesSection({ token }: Props) {
               <button
                 type="button"
                 onClick={() => openEdit(a)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition sm:h-8 sm:w-8"
                 aria-label="Изменить"
                 title="Изменить"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:h-4 sm:w-4">
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                 </svg>
@@ -98,11 +98,11 @@ export function SavedAddressesSection({ token }: Props) {
               <button
                 type="button"
                 onClick={() => onDelete(a)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-on-surface-variant hover:bg-red-50 hover:text-red-500 transition"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-red-50 hover:text-red-500 transition sm:h-8 sm:w-8"
                 aria-label="Удалить"
                 title="Удалить"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="sm:h-3.5 sm:w-3.5">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
