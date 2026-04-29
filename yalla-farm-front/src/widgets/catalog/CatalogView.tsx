@@ -165,7 +165,12 @@ export function CatalogView({ categorySlug }: Props) {
                         type="button"
                         onClick={() => {
                           if (cat.children?.length) {
+                            // Parent → only toggle expansion. Same
+                            // rationale as the mobile accordion below:
+                            // parents rarely have products of their own,
+                            // and tapping one shouldn't apply a filter.
                             setExpandedCategoryId(isExpanded ? "" : cat.id);
+                            return;
                           }
                           router.push(`/catalog/${cat.slug}`);
                         }}
@@ -268,12 +273,19 @@ export function CatalogView({ categorySlug }: Props) {
                       type="button"
                       onClick={() => {
                         if (cat.children?.length) {
+                          // Parent with children → only toggle the
+                          // expansion arrow. We don't navigate to the
+                          // parent's listing (those rarely contain
+                          // products of their own here) and we don't
+                          // close the panel — the user is mid-drill-down,
+                          // a close would force a re-open to pick a sub.
                           setExpandedCategoryId(isExpanded ? "" : cat.id);
-                          router.push(`/catalog/${cat.slug}`);
-                        } else {
-                          router.push(`/catalog/${cat.slug}`);
-                          setShowMobileCategories(false);
+                          return;
                         }
+                        // Leaf category → apply filter and dismiss the
+                        // accordion so the grid is fully visible.
+                        router.push(`/catalog/${cat.slug}`);
+                        setShowMobileCategories(false);
                       }}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold transition ${
                         isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low"
