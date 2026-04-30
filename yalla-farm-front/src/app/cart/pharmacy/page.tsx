@@ -553,19 +553,23 @@ export default function PharmacySelectPage() {
             userLocation={deliveryCoords}
           />
 
-          {/* Floating "expand" button — appears only while the sidebar is
-              collapsed. Pinned to the top-right corner on every viewport
-              so it doesn't overlap with map controls/markers below or
-              with iOS Safari's bottom toolbar. */}
+          {/* Floating "expand" button — visible while the sidebar is
+              collapsed. Position depends on which side the panel emerges
+              from: phone (panel slides up from below) → button at
+              top-right of the map; md+ (panel docks to the left) →
+              button at top-left so it sits just outside the panel slot.
+              Chevron icon mirrors the gesture too. */}
           {isPanelCollapsed ? (
             <button
               type="button"
               onClick={() => setIsPanelCollapsed(false)}
               aria-label="Показать список аптек"
               title="Показать список аптек"
-              className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95"
+              className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95
+                right-3 top-3 md:left-3 md:right-auto"
             >
-              <Icon name="chevron-down" size={16} />
+              <Icon name="chevron-down" size={16} className="md:hidden" />
+              <Icon name="chevron-right" size={16} className="hidden md:block" />
               <span>Список аптек</span>
             </button>
           ) : null}
