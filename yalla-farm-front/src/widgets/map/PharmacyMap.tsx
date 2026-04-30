@@ -167,8 +167,17 @@ export function PharmacyMap({
           map,
           position: { lat: pharmacy.lat, lng: pharmacy.lng },
           content,
-          // Anchor the pin's visual tail (not its centre) on the geo coord.
           gmpClickable: true,
+          // Hide a marker when its bubble would collide with a higher-
+          // priority neighbour. Pharmacies stay readable instead of
+          // stacking on top of each other; the user zooms in to see the
+          // hidden ones. zIndex ranks priority — markers with cheaper
+          // (lower) cost are nudged to the top so the best price is the
+          // one that survives a collision.
+          collisionBehavior: google.maps.CollisionBehavior.OPTIONAL_AND_HIDES_LOWER_PRIORITY,
+          zIndex: typeof pharmacy.cost === "number" && pharmacy.cost > 0
+            ? -Math.round(pharmacy.cost)
+            : 0,
         });
         marker.addListener("gmp-click", () => {
           onPharmacyClickRef.current?.(pharmacy.id);
@@ -301,11 +310,32 @@ export function PharmacyMap({
   );
 }
 
+// Light-blue bubble color used by the marker pill + tail. Kept as a literal
+// rather than a Tailwind token because the SVG-style border-color shorthand
+// for the tail must resolve at runtime.
+const BUBBLE_BG = "#BAE6FD"; // tailwind sky-200
+const BUBBLE_RING = "rgba(56, 189, 248, 0.4)"; // sky-400 @ 40%
+
+// Tail tip horizontal position, measured from the content's left edge in
+// pixels. Picked at the bubble's bottom-LEFT corner area (inside the
+// border-radius so the triangle visually attaches to the bubble cleanly).
+// The transform below uses this constant to shift the whole content so the
+// tail tip ends up at the AdvancedMarker's default bottom-center anchor —
+// the tip is what marks the exact pharmacy coord.
+const TAIL_TIP_OFFSET_PX = 24;
+
 /**
- * Build the DOM tree for a pharmacy pin: a Yandex-Apteka-style horizontal
- * white pill with a round logo avatar, the pharmacy name, and (if provided)
- * a yellow price chip. Below it hangs a white triangle tail whose tip marks
- * the exact geo coordinate.
+ * Build the DOM tree for a pharmacy pin.
+ *
+ * Layout: a horizontal speech-bubble (avatar + name + optional price chip)
+ * with a downward-pointing tail anchored at the bubble's bottom-LEFT corner.
+ * The bubble sits up-and-to-the-right of the geo coord; the corner tail's
+ * tip lines up exactly with the coord (rather than the bubble's centre, so
+ * the user reads the marker visually pointing at "this pharmacy is here").
+ *
+ * Sizing: Tailwind responsive utilities scale the bubble down at narrower
+ * viewports — the marker shrinks roughly proportionally to screen width
+ * via `sm:` and `md:` breakpoints applied to padding, gap, avatar, font.
  *
  * Returned as a real HTMLElement so we can hand it to AdvancedMarkerElement's
  * `content` — the native marker layer takes care of positioning from here.
@@ -320,16 +350,22 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
   const hasCost = typeof pharmacy.cost === "number" && pharmacy.cost > 0;
 
   const root = document.createElement("div");
-  root.className = "flex flex-col items-start cursor-pointer select-none";
-  // Push the marker up so the tail's tip sits on the geo coord instead of
-  // the marker's centre.
-  root.style.transform = "translateY(-50%)";
+  root.className = "cursor-pointer select-none flex flex-col items-stretch";
+  // Anchor math: AdvancedMarker positions content with its bottom-center at
+  // the geo coord. We want the tail TIP at the coord instead. The tail tip
+  // sits at TAIL_TIP_OFFSET_PX from the content's left edge, while the
+  // default anchor is at width/2 from left. translateX(calc(50% - Npx))
+  // shifts the content right by (W/2 − N), making the tail tip align with
+  // the original anchor X regardless of how wide the bubble grows.
+  root.style.transform = `translateX(calc(50% - ${TAIL_TIP_OFFSET_PX}px))`;
   root.setAttribute("aria-label", pharmacy.title);
 
   const pill = document.createElement("div");
   pill.className =
-    "flex items-center gap-2.5 rounded-full bg-surface-container-lowest pl-1 pr-3.5 py-1 shadow-float ring-1 ring-black/5 transition hover:ring-2 hover:ring-primary";
-  pill.style.transition = "transform 150ms ease-out, box-shadow 150ms ease-out";
+    "flex items-center gap-1.5 sm:gap-2 rounded-2xl pl-0.5 pr-2 py-0.5 sm:pr-2.5 sm:py-1 shadow-float transition";
+  pill.style.background = BUBBLE_BG;
+  pill.style.boxShadow = `0 4px 12px rgba(0,0,0,0.15), inset 0 0 0 1px ${BUBBLE_RING}`;
+  pill.style.transition = "transform 150ms ease-out";
   pill.addEventListener("mouseenter", () => {
     pill.style.transform = "scale(1.05)";
   });
@@ -339,7 +375,7 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
 
   const avatar = document.createElement("div");
   avatar.className =
-    "flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-soft";
+    "flex h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-white";
   if (iconSrc) {
     const img = document.createElement("img");
     img.src = iconSrc;
@@ -348,41 +384,50 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
     img.className = "h-full w-full object-cover";
     avatar.appendChild(img);
   } else {
-    // Inline pharmacy SVG fallback — matches Icon name="pharmacy".
     avatar.innerHTML =
-      '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E8B60" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>';
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>';
   }
   pill.appendChild(avatar);
 
   const name = document.createElement("span");
-  name.className = "max-w-[180px] truncate text-sm font-extrabold text-on-surface";
+  name.className = "max-w-[100px] sm:max-w-[140px] md:max-w-[180px] truncate text-[11px] sm:text-xs md:text-sm font-extrabold text-on-surface";
   name.textContent = pharmacy.title;
   pill.appendChild(name);
 
   if (hasCost) {
     const price = document.createElement("span");
     price.className =
-      "flex-shrink-0 rounded-full bg-accent px-2.5 py-1 text-xs font-extrabold text-on-surface";
-    // formatMoney already appends the currency suffix — no trailing "TJS".
+      "flex-shrink-0 rounded-full bg-accent px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-extrabold text-on-surface tabular-nums";
     price.textContent = formatMoney(pharmacy.cost!);
     pill.appendChild(price);
   }
 
   root.appendChild(pill);
 
+  // Tail row: zero-height, holds the absolutely-positioned triangle. The
+  // wrapper's bottom edge (= triangle tip) is the bottom of the content
+  // box, which is what AdvancedMarker's default anchor ties to.
+  const tailRow = document.createElement("div");
+  tailRow.style.position = "relative";
+  tailRow.style.height = "10px";
+
   const tail = document.createElement("span");
   tail.setAttribute("aria-hidden", "true");
-  tail.className = "-mt-[2px]";
   Object.assign(tail.style, {
-    marginLeft: "20px",
+    position: "absolute",
+    // 16px from left so the 16px-wide triangle's centre is at 24px
+    // from the content's left edge — matching TAIL_TIP_OFFSET_PX.
+    left: `${TAIL_TIP_OFFSET_PX - 8}px`,
+    top: "0",
     width: "0",
     height: "0",
     borderLeft: "8px solid transparent",
     borderRight: "8px solid transparent",
-    borderTop: "10px solid #FFFFFF",
+    borderTop: `10px solid ${BUBBLE_BG}`,
     filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.1))",
   } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
-  root.appendChild(tail);
+  tailRow.appendChild(tail);
+  root.appendChild(tailRow);
 
   return root;
 }
