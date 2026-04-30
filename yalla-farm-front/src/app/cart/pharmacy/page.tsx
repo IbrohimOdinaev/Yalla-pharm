@@ -323,17 +323,26 @@ export default function PharmacySelectPage() {
         <h1 className="ml-auto hidden text-sm font-bold text-on-surface sm:block">Выберите аптеку</h1>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* Left panel — sort chips + list. Fully collapses (w-0 / h-0) and
-            hands over to a floating "expand" button on the map side when
-            collapsed, so the map takes the full space. */}
+      {/* Main content — map fills the whole area, pharmacy panel slides in
+          on top of it as an absolute overlay. The map element itself never
+          resizes regardless of panel state, so Google Maps doesn't trigger
+          a relayout / re-tile / "shake" each time the user toggles the
+          list on or off. */}
+      <div className="flex-1 overflow-hidden relative">
+        {/* Pharmacy panel — absolute overlay. Phone: docked to the bottom
+            edge, slides down off-screen when collapsed. Desktop (md+):
+            docked to the left edge full-height, slides off to the left.
+            translate-X/Y handles the open/close so layout never reflows.
+            pointer-events-none only after it slides off so the map below
+            stays interactive without click-stealing. */}
         <aside
-          className={`flex flex-col bg-surface-container-low/50 order-2 md:order-1 overflow-hidden transition-[width,max-height,opacity,transform] duration-300 ease-in-out flex-shrink-0 ${
-            isPanelCollapsed
-              ? "md:w-0 md:-translate-x-2 md:max-h-none max-h-0 -translate-y-2 opacity-0 pointer-events-none w-full"
-              : "md:w-[420px] lg:w-[460px] max-h-[60vh] md:max-h-none translate-x-0 translate-y-0 opacity-100 w-full"
-          }`}
+          className={`absolute z-30 flex flex-col bg-surface-container-low overflow-hidden shadow-glass transition-transform duration-300 ease-in-out
+            inset-x-0 bottom-0 max-h-[60vh] rounded-t-2xl
+            md:inset-y-0 md:left-0 md:right-auto md:bottom-auto md:max-h-none md:w-[420px] md:rounded-t-none lg:w-[460px]
+            ${isPanelCollapsed
+              ? "translate-y-full md:-translate-x-full md:translate-y-0 pointer-events-none"
+              : "translate-y-0"
+            }`}
           aria-hidden={isPanelCollapsed}
         >
           {/* Header: sort chips + collapse toggle. Horizontal-scroll strip so
@@ -538,14 +547,10 @@ export default function PharmacySelectPage() {
           </div>
         </aside>
 
-        {/* Right panel — map. On mobile the map normally reserves 40vh so the
-            cards list sits below; when the panel collapses it grabs the full
-            remaining viewport. */}
-        <div
-          className={`relative order-1 md:order-2 md:h-auto transition-[height] duration-300 ${
-            isPanelCollapsed ? "flex-1 h-full" : "h-[40vh] md:flex-1"
-          }`}
-        >
+        {/* Map fills the entire viewport area, identical size at all
+            times — the panel slides on top of it instead of pushing it
+            around, so Google Maps never sees its container resize. */}
+        <div className="absolute inset-0">
           <PharmacyMap
             className="h-full w-full"
             pharmacies={mapMarkers}
