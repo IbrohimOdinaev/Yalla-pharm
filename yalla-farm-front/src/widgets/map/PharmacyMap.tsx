@@ -15,11 +15,15 @@ const LIBRARIES: ("places" | "marker")[] = ["places", "marker"];
 const MAP_ID = "DEMO_MAP_ID";
 
 const MAP_OPTIONS: google.maps.MapOptions = {
-  disableDefaultUI: false,
-  zoomControl: true,
+  disableDefaultUI: true,
+  zoomControl: false,
   streetViewControl: false,
   mapTypeControl: false,
   fullscreenControl: false,
+  rotateControl: false,
+  scaleControl: false,
+  // Keep keyboard shortcuts for power users (no on-screen control though).
+  keyboardShortcuts: true,
   mapId: MAP_ID,
   // "greedy" lets the user pan/zoom with a single finger on mobile. Default
   // "auto" falls back to "cooperative" on touch devices (needs 2 fingers).
@@ -345,7 +349,7 @@ const BUBBLE_RING = "rgba(56, 189, 248, 0.4)"; // sky-400 @ 40%
 // The transform below uses this constant to shift the whole content so the
 // tail tip ends up at the AdvancedMarker's default bottom-center anchor —
 // the tip is what marks the exact pharmacy coord.
-const TAIL_TIP_OFFSET_PX = 24;
+const TAIL_TIP_OFFSET_PX = 20;
 
 /**
  * Build the DOM tree for a pharmacy pin.
@@ -384,8 +388,10 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
   root.setAttribute("aria-label", pharmacy.title);
 
   const pill = document.createElement("div");
+  // Phone (default) values are ~20% smaller than the sm+ breakpoint —
+  // markers stay readable on a 360px screen without crowding the map.
   pill.className =
-    "flex items-center gap-1.5 sm:gap-2 rounded-2xl pl-0.5 pr-2 py-0.5 sm:pr-2.5 sm:py-1 shadow-float transition";
+    "flex items-center gap-1 sm:gap-2 rounded-xl sm:rounded-2xl pl-0.5 pr-1.5 py-0.5 sm:pr-2.5 sm:py-1 shadow-float transition";
   pill.style.background = BUBBLE_BG;
   pill.style.boxShadow = `0 4px 12px rgba(0,0,0,0.15), inset 0 0 0 1px ${BUBBLE_RING}`;
   pill.style.transition = "transform 150ms ease-out";
@@ -398,7 +404,7 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
 
   const avatar = document.createElement("div");
   avatar.className =
-    "flex h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-white";
+    "flex h-6 w-6 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-white";
   if (iconSrc) {
     const img = document.createElement("img");
     img.src = iconSrc;
@@ -408,19 +414,19 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
     avatar.appendChild(img);
   } else {
     avatar.innerHTML =
-      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>';
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>';
   }
   pill.appendChild(avatar);
 
   const name = document.createElement("span");
-  name.className = "max-w-[100px] sm:max-w-[140px] md:max-w-[180px] truncate text-[11px] sm:text-xs md:text-sm font-extrabold text-on-surface";
+  name.className = "max-w-[80px] sm:max-w-[140px] md:max-w-[180px] truncate text-[10px] sm:text-xs md:text-sm font-extrabold text-on-surface";
   name.textContent = pharmacy.title;
   pill.appendChild(name);
 
   if (hasCost) {
     const price = document.createElement("span");
     price.className =
-      "flex-shrink-0 rounded-full bg-accent px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-extrabold text-on-surface tabular-nums";
+      "flex-shrink-0 rounded-full bg-accent px-1 sm:px-2 py-0 sm:py-0.5 text-[9px] sm:text-xs font-extrabold text-on-surface tabular-nums";
     price.textContent = formatMoney(pharmacy.cost!);
     pill.appendChild(price);
   }
@@ -432,21 +438,20 @@ function createPinElement(pharmacy: PharmacyMarker): HTMLElement {
   // box, which is what AdvancedMarker's default anchor ties to.
   const tailRow = document.createElement("div");
   tailRow.style.position = "relative";
-  tailRow.style.height = "10px";
+  tailRow.style.height = "8px";
 
   const tail = document.createElement("span");
   tail.setAttribute("aria-hidden", "true");
   Object.assign(tail.style, {
     position: "absolute",
-    // 16px from left so the 16px-wide triangle's centre is at 24px
-    // from the content's left edge — matching TAIL_TIP_OFFSET_PX.
-    left: `${TAIL_TIP_OFFSET_PX - 8}px`,
+    // Triangle 14px wide × 8px tall — centre at TAIL_TIP_OFFSET_PX.
+    left: `${TAIL_TIP_OFFSET_PX - 7}px`,
     top: "0",
     width: "0",
     height: "0",
-    borderLeft: "8px solid transparent",
-    borderRight: "8px solid transparent",
-    borderTop: `10px solid ${BUBBLE_BG}`,
+    borderLeft: "7px solid transparent",
+    borderRight: "7px solid transparent",
+    borderTop: `8px solid ${BUBBLE_BG}`,
     filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.1))",
   } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
   tailRow.appendChild(tail);
