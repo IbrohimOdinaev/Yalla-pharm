@@ -168,13 +168,14 @@ export function PharmacyMap({
           position: { lat: pharmacy.lat, lng: pharmacy.lng },
           content,
           gmpClickable: true,
-          // Hide a marker when its bubble would collide with a higher-
-          // priority neighbour. Pharmacies stay readable instead of
-          // stacking on top of each other; the user zooms in to see the
-          // hidden ones. zIndex ranks priority — markers with cheaper
-          // (lower) cost are nudged to the top so the best price is the
-          // one that survives a collision.
-          collisionBehavior: google.maps.CollisionBehavior.OPTIONAL_AND_HIDES_LOWER_PRIORITY,
+          // REQUIRED — every pharmacy stays visible at every zoom level.
+          // (We tried OPTIONAL_AND_HIDES_LOWER_PRIORITY for collision
+          // handling, but it made markers disappear at common zooms;
+          // the user prefers seeing all of them and stacking visually
+          // at low zoom over having any one go missing.)
+          collisionBehavior: google.maps.CollisionBehavior.REQUIRED,
+          // zIndex still tracks "cheaper-on-top" so when bubbles do
+          // overlap, the lower-priced one paints in front.
           zIndex: typeof pharmacy.cost === "number" && pharmacy.cost > 0
             ? -Math.round(pharmacy.cost)
             : 0,
@@ -196,6 +197,40 @@ export function PharmacyMap({
       markersRef.current.clear();
     };
   }, []);
+
+  // Auto-fit map bounds so every pharmacy + the user dot are visible the
+  // moment the picker first shows them. Runs ONCE per mount (i.e. once
+  // per "open" of the picker) — after the user pans/zooms manually we
+  // don't fight them. centerPinMode is a different flow (address picker),
+  // skip there.
+  const boundsFittedRef = useRef(false);
+  useEffect(() => {
+    if (centerPinMode) return;
+    if (!map || boundsFittedRef.current) return;
+    if (pharmacies.length === 0) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    for (const p of pharmacies) bounds.extend({ lat: p.lat, lng: p.lng });
+    if (userLocation) bounds.extend({ lat: userLocation.lat, lng: userLocation.lng });
+
+    // Padding leaves room for the floating overlay (Список аптек CTA,
+    // marker speech bubbles which extend up-right of their coord, etc.).
+    map.fitBounds(bounds, { top: 80, right: 60, bottom: 80, left: 60 });
+
+    // Single pharmacy → fitBounds collapses to one point and zooms to
+    // max. Cap with a sane neighbourhood-level zoom so the user gets
+    // street context, not a blurred close-up.
+    if (pharmacies.length === 1 && !userLocation) {
+      const onceListener = google.maps.event.addListenerOnce(map, "idle", () => {
+        const z = map.getZoom();
+        if (typeof z === "number" && z > 16) map.setZoom(15);
+      });
+      // Avoid the unused-var warning if listener fires async.
+      void onceListener;
+    }
+
+    boundsFittedRef.current = true;
+  }, [map, pharmacies, userLocation, centerPinMode]);
 
   if (loadError) {
     return (
