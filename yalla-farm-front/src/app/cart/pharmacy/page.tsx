@@ -265,7 +265,11 @@ export default function PharmacySelectPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-surface">
+    // h-[100dvh] (dynamic viewport) instead of h-screen so iOS Safari's
+    // retractable URL bar doesn't crop the bottom of the layout when
+    // it's expanded. h-screen is kept first as a fallback for browsers
+    // without dvh support.
+    <div className="h-screen h-[100dvh] flex flex-col bg-surface">
       {/* Global header — search, address, cart, account */}
       <GlobalTopBar />
 
@@ -549,8 +553,8 @@ export default function PharmacySelectPage() {
               onClick={() => setIsPanelCollapsed(false)}
               aria-label="Показать список аптек"
               title="Показать список аптек"
-              className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95
-                left-3 bottom-3 md:top-3 md:bottom-auto"
+              className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95 safe-bottom
+                left-3 bottom-4 md:top-3 md:bottom-auto"
             >
               <Icon name="chevron-up" size={16} className="md:hidden" />
               <Icon name="chevron-right" size={16} className="hidden md:block" />

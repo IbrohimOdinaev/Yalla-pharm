@@ -127,8 +127,14 @@ function ProductModalInner() {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={close} />
 
+      {/* Modal box: outer wrapper does NOT scroll — it stays fixed at
+          max-h-[90vh] and the X button lives on it (absolute) so it
+          stays anchored to the modal's top-right regardless of
+          scroll position inside. The inner div below is the actual
+          scrollable surface. min-h-0 lets the flex child shrink so
+          overflow-y-auto kicks in. */}
       <div
-        className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-2xl"
+        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-surface rounded-2xl shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -136,12 +142,13 @@ function ProductModalInner() {
         <button
           type="button"
           onClick={close}
-          className="absolute top-3 right-3 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition"
+          className="absolute top-3 right-3 z-20 flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition shadow-card"
           aria-label="Закрыть"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl">
         {isLoading ? (
           <div className="p-5 sm:p-6">
             <div className="flex flex-col sm:flex-row gap-5 sm:gap-6">
@@ -257,6 +264,7 @@ function ProductModalInner() {
             ) : null}
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );

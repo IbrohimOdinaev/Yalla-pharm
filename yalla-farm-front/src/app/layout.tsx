@@ -16,6 +16,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // viewport-fit=cover is what makes env(safe-area-inset-*) become
+  // non-zero on iOS — required for safe-bottom utility to push content
+  // above the home indicator and Safari's retractable bottom toolbar.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
