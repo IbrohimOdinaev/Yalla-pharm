@@ -136,10 +136,13 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
       onClick={onCardClick}
       className="group block h-full"
     >
-      <article className="flex h-full flex-col overflow-hidden rounded-2xl bg-surface-container-lowest transition hover:shadow-card">
+      {/* Frame moved from inner image to outer card: a thin border outlines
+          the whole card, and the image area now sits flush with the card
+          body (no grey contrast block behind the photo). */}
+      <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition hover:border-on-surface/30 hover:shadow-card">
         {/* Image */}
         <div
-          className="relative aspect-square overflow-hidden bg-surface-container-low"
+          className="relative aspect-square overflow-hidden"
           onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
           onTouchEnd={onSwipe}
         >
