@@ -91,11 +91,21 @@ export function PharmacyMap({
   }, [onPharmacyClick]);
 
   const center = useMemo(() => {
-    if (selectedPoint) return { lat: selectedPoint.lat, lng: selectedPoint.lng };
-    if (userLocation) return { lat: userLocation.lat, lng: userLocation.lng };
-    if (pharmacies.length > 0) return { lat: pharmacies[0].lat, lng: pharmacies[0].lng };
+    // Address picker (centerPinMode) follows the user's pin / location.
+    // Pharmacy picker (the other use of this map) always opens centred on
+    // Dushanbe so the whole city + every pharmacy fits in view from the
+    // first frame, regardless of which one happens to be first in the list.
+    if (centerPinMode) {
+      if (selectedPoint) return { lat: selectedPoint.lat, lng: selectedPoint.lng };
+      if (userLocation) return { lat: userLocation.lat, lng: userLocation.lng };
+    }
     return DUSHANBE_CENTER;
-  }, [pharmacies, userLocation, selectedPoint]);
+  }, [centerPinMode, userLocation, selectedPoint]);
+
+  // Dushanbe-scale zoom — wide enough to show major districts and the
+  // pharmacies scattered across the city, tight enough to read street names.
+  // Address picker keeps its previous neighbourhood-level zoom.
+  const initialZoom = centerPinMode ? 14 : 13;
 
   const handleMapClick = useCallback(
     async (e: google.maps.MapMouseEvent) => {
@@ -198,39 +208,17 @@ export function PharmacyMap({
     };
   }, []);
 
-  // Auto-fit map bounds so every pharmacy + the user dot are visible the
-  // moment the picker first shows them. Runs ONCE per mount (i.e. once
-  // per "open" of the picker) — after the user pans/zooms manually we
-  // don't fight them. centerPinMode is a different flow (address picker),
-  // skip there.
-  const boundsFittedRef = useRef(false);
+  // Re-centre on Dushanbe + reset the zoom every time the picker opens.
+  // The component remounts per open, so this runs once per mount; user
+  // panning/zooming after that is preserved.
+  const initialCenteredRef = useRef(false);
   useEffect(() => {
     if (centerPinMode) return;
-    if (!map || boundsFittedRef.current) return;
-    if (pharmacies.length === 0) return;
-
-    const bounds = new google.maps.LatLngBounds();
-    for (const p of pharmacies) bounds.extend({ lat: p.lat, lng: p.lng });
-    if (userLocation) bounds.extend({ lat: userLocation.lat, lng: userLocation.lng });
-
-    // Padding leaves room for the floating overlay (Список аптек CTA,
-    // marker speech bubbles which extend up-right of their coord, etc.).
-    map.fitBounds(bounds, { top: 80, right: 60, bottom: 80, left: 60 });
-
-    // Single pharmacy → fitBounds collapses to one point and zooms to
-    // max. Cap with a sane neighbourhood-level zoom so the user gets
-    // street context, not a blurred close-up.
-    if (pharmacies.length === 1 && !userLocation) {
-      const onceListener = google.maps.event.addListenerOnce(map, "idle", () => {
-        const z = map.getZoom();
-        if (typeof z === "number" && z > 16) map.setZoom(15);
-      });
-      // Avoid the unused-var warning if listener fires async.
-      void onceListener;
-    }
-
-    boundsFittedRef.current = true;
-  }, [map, pharmacies, userLocation, centerPinMode]);
+    if (!map || initialCenteredRef.current) return;
+    map.setCenter(DUSHANBE_CENTER);
+    map.setZoom(initialZoom);
+    initialCenteredRef.current = true;
+  }, [map, centerPinMode, initialZoom]);
 
   if (loadError) {
     return (
@@ -274,7 +262,7 @@ export function PharmacyMap({
       <GoogleMap
         mapContainerClassName="h-full w-full"
         center={centerPinMode ? undefined : center}
-        zoom={14}
+        zoom={initialZoom}
         options={MAP_OPTIONS}
         onLoad={(m) => {
           mapRef.current = m;
