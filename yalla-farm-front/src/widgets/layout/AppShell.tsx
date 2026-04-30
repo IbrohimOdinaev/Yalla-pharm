@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { BottomNav } from "@/widgets/layout/BottomNav";
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
 import { Footer } from "@/widgets/layout/Footer";
+import { ProductModal } from "@/widgets/product/ProductModal";
 
 type AppShellProps = {
   top?: ReactNode;
@@ -28,6 +29,10 @@ export function AppShell({ top, children, hideGlobalNav, hideFooter, narrow }: A
       </main>
       {!hideFooter ? <Footer /> : null}
       <BottomNav />
+      {/* Single global product modal — opened by `?product={slug}` in the
+          URL. MedicineCard pushes this query param on click; closing the
+          modal calls router.back() so browser back also closes it. */}
+      <ProductModal />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useCallback } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -95,20 +95,45 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   }
 
   const name = getMedicineDisplayName(medicine);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   // Prefer the human-readable slug from WooCommerce — falls back to the GUID
-  // for medicines that haven't synced yet. The /product/[id] route resolves
-  // either form, so swapping doesn't break older links shared via chat.
-  const productHref = `/product/${medicine.slug || medicine.id}`;
+  // for medicines that haven't synced yet. /product/[id] resolves either.
+  const productKey = medicine.slug || medicine.id;
+  const productHref = `/product/${productKey}`;
 
-  // Link wraps the whole card so search engines see a real <a href> per
-  // product. In normal navigation the @modal intercept catches this URL
-  // and overlays the product modal; on direct visit / refresh, the
-  // /product/[id] full page renders. Cart buttons below call
-  // e.preventDefault() which Next.js Link respects.
+  function onCardClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    // Modifier-click → let the anchor's default behavior open
+    // /product/{slug} in a new tab. Plain left-click intercepts and
+    // pushes ?product={slug} into the current URL so the global
+    // ProductModal opens in place. Implementation detail: we use
+    // router.replace when a product modal is ALREADY open (replacing
+    // one product with another shouldn't add a history entry per click,
+    // otherwise back-button would step through every product viewed
+    // before closing the modal). On first open we use router.push so
+    // browser-back closes the modal naturally.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    const params = new URLSearchParams(searchParams.toString());
+    const wasOpen = params.has("product");
+    if (params.get("product") === productKey) return; // same product → no-op
+    params.set("product", productKey);
+    const url = `${pathname}?${params.toString()}`;
+    if (wasOpen) router.replace(url, { scroll: false });
+    else router.push(url, { scroll: false });
+  }
+
+  // Plain <a> rather than Next.js <Link> so we don't trigger client-side
+  // navigation on click — the anchor exists purely for SEO crawlers
+  // and middle-/right-click "open in new tab" flows. Cart buttons below
+  // call e.preventDefault() to suppress the modal trigger when toggling
+  // quantities inside the card.
   return (
-    <Link
+    // eslint-disable-next-line @next/next/no-html-link-for-pages
+    <a
       href={productHref}
-      prefetch={false}
+      onClick={onCardClick}
       className="group block h-full"
     >
       <article className="flex h-full flex-col overflow-hidden rounded-2xl bg-surface-container-lowest transition hover:shadow-card">
@@ -261,6 +286,6 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
           </div>
         </div>
       </article>
-    </Link>
+    </a>
   );
 }

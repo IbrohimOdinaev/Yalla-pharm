@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   getMedicineByIdOrSlug,
   getMedicineDisplayName,
@@ -16,52 +16,99 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useAppSelector } from "@/shared/lib/redux";
 import { Skeleton } from "@/shared/ui";
 
-// Intercepting route — Next.js renders this in the `@modal` slot when the user
-// arrives at /product/[id] from an in-app link. Direct visits / refreshes
-// fall through to the canonical /product/[id]/page.tsx full page (good for
-// SEO). Closing the modal calls router.back() to drop the URL segment.
-export default function InterceptedProductModal() {
-  const params = useParams<{ id: string }>();
+/**
+ * Global product detail modal driven by `?product={slug}` query string —
+ * no Next.js parallel/intercepting routes (those crash the framework's
+ * applyRouterStatePatchToTree on certain transitions in 15.5.x).
+ *
+ * Click on a product card → `MedicineCard` does `router.push("?product=…")`,
+ * adding a single history entry; this modal reads the param via
+ * `useSearchParams` and opens. Closing the modal calls `router.back()`,
+ * which removes the param and restores the prior URL — browser back
+ * therefore closes the modal natively too. The standalone
+ * `/product/[id]/page.tsx` route still serves direct visits, refreshes,
+ * and shareable SEO links.
+ *
+ * Wrapped in Suspense because `useSearchParams` requires it during
+ * static prerender of any page that mounts AppShell.
+ */
+export function ProductModal() {
+  return (
+    <Suspense fallback={null}>
+      <ProductModalInner />
+    </Suspense>
+  );
+}
+
+function ProductModalInner() {
   const router = useRouter();
-  const productId = String(params?.id || "");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const productIdOrSlug = searchParams.get("product");
 
   const token = useAppSelector((s) => s.auth.token);
   const addItem = useCartStore((s) => s.addItem);
   const addGuestItem = useGuestCartStore((s) => s.addItem);
 
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
-  const close = useCallback(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-    } else {
-      router.replace("/");
-    }
-  }, [router]);
-
+  // Reset transient state on every product change. When the param drops
+  // (modal closing), drop the medicine entirely so the next open doesn't
+  // flash stale content.
   useEffect(() => {
-    if (!productId) return;
+    if (!productIdOrSlug) {
+      setMedicine(null);
+      setError(null);
+      setQuantity(1);
+      setActiveImageIdx(0);
+      return;
+    }
     setIsLoading(true);
     setError(null);
-    getMedicineByIdOrSlug(productId)
-      .then((m) => { setMedicine(m); setIsLoading(false); })
-      .catch((err) => { setError(err instanceof Error ? err.message : "Ошибка загрузки"); setIsLoading(false); });
-  }, [productId]);
+    setQuantity(1);
+    setActiveImageIdx(0);
+    let cancelled = false;
+    getMedicineByIdOrSlug(productIdOrSlug)
+      .then((m) => { if (!cancelled) { setMedicine(m); setIsLoading(false); } })
+      .catch((err) => { if (!cancelled) { setError(err instanceof Error ? err.message : "Ошибка загрузки"); setIsLoading(false); } });
+    return () => { cancelled = true; };
+  }, [productIdOrSlug]);
 
+  // close() removes the `product` query param. Prefer router.back() —
+  // when the modal was opened via a card click that pushed to history,
+  // back() naturally drops the entry without rebuilding the URL. Fallback
+  // to router.replace() for direct visits where there's no prior entry to
+  // pop (e.g. user lands on `/?product=xxx` from an external link).
+  const close = useCallback(() => {
+    if (!productIdOrSlug) return;
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("product");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [productIdOrSlug, router, pathname, searchParams]);
+
+  // ESC to close — only listening while open keeps the listener scoped.
   useEffect(() => {
+    if (!productIdOrSlug) return;
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") close(); }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [close]);
+  }, [productIdOrSlug, close]);
 
+  // Lock body scroll while open.
   useEffect(() => {
+    if (!productIdOrSlug) return;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, []);
+  }, [productIdOrSlug]);
 
   const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
   const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
@@ -73,6 +120,8 @@ export default function InterceptedProductModal() {
     else addGuestItem(medicine.id, quantity);
     close();
   }, [token, medicine, quantity, addItem, addGuestItem, close]);
+
+  if (!productIdOrSlug) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
