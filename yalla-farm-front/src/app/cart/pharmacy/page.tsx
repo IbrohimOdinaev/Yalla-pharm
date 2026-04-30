@@ -226,10 +226,19 @@ export default function PharmacySelectPage() {
       }));
   }, [pharmacies, filteredOptions, resolvedAddresses, isPickup, deliveryCosts]);
 
-  // Scroll to pharmacy on map click
+  // Tap on a map marker → make sure the side panel is open, then scroll
+  // its card into view and highlight it briefly so the user immediately
+  // sees the pharmacy's price/items in the list.
   const handlePharmacyMapClick = useCallback((id: string) => {
-    const el = cardRefs.current[id];
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setIsPanelCollapsed(false);
+    // Defer scroll until the panel has actually painted (it animates in
+    // when toggling collapsed → expanded; without the rAF the cardRef
+    // measurement is taken against a width-0 panel and scrollIntoView
+    // becomes a no-op on phones).
+    requestAnimationFrame(() => {
+      const el = cardRefs.current[id];
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
     setHighlightedId(id);
     setTimeout(() => setHighlightedId(""), 2000);
   }, []);
@@ -545,19 +554,18 @@ export default function PharmacySelectPage() {
           />
 
           {/* Floating "expand" button — appears only while the sidebar is
-              collapsed. Desktop pins it to left edge, mobile to bottom edge,
-              positioning the chevron toward where the panel will emerge. */}
+              collapsed. Pinned to the top-right corner on every viewport
+              so it doesn't overlap with map controls/markers below or
+              with iOS Safari's bottom toolbar. */}
           {isPanelCollapsed ? (
             <button
               type="button"
               onClick={() => setIsPanelCollapsed(false)}
               aria-label="Показать список аптек"
               title="Показать список аптек"
-              className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95 safe-bottom
-                left-3 bottom-4 md:top-3 md:bottom-auto"
+              className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95"
             >
-              <Icon name="chevron-up" size={16} className="md:hidden" />
-              <Icon name="chevron-right" size={16} className="hidden md:block" />
+              <Icon name="chevron-down" size={16} />
               <span>Список аптек</span>
             </button>
           ) : null}
