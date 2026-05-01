@@ -248,14 +248,14 @@ export function TopBar({
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high lg:max-w-[420px]"
+          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high lg:max-w-[588px]"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high lg:max-w-[420px]"
+          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high lg:max-w-[588px]"
         >
           {SearchInner}
         </Link>
