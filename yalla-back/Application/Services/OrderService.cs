@@ -388,7 +388,12 @@ public sealed class OrderService : IOrderService
         LogStatusTransition(order.Id, oldStatus, order.Status, "RejectOrderPositionsAutoCancel", worker.Id);
       }
 
-      var refundRequest = CreateRefundRequestStub(order.Id, order.ReturnCost);
+      var refundRequest = CreateAndStageRefundRequest(
+        order: order,
+        amount: order.ReturnCost,
+        reason: "Аптека отклонила позиции из заказа",
+        type: RefundType.WithoutProductReturn,
+        positionEntries: positionsToReject.Select(p => (p, p.Quantity)));
 
       _logger.LogInformation(
         "Order {OrderId} positions rejected by worker {WorkerId}. Cost: {Cost}, ReturnCost: {ReturnCost}, Status: {Status}.",
@@ -688,6 +693,7 @@ public sealed class OrderService : IOrderService
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.Positions)
+        .ThenInclude(x => x.Medicine)
         .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(x => x.Id == orderId, cancellationToken)
         ?? throw new InvalidOperationException($"Order '{orderId}' was not found.");
@@ -713,7 +719,12 @@ public sealed class OrderService : IOrderService
       }
 
       var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
-      _ = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+      _ = CreateAndStageRefundRequest(
+        order: order,
+        amount: order.Cost + deliveryCost,
+        reason: $"Доставка JURA отменена: {reason}",
+        type: RefundType.WithoutProductReturn,
+        positionEntries: positionsToRestore.Select(p => (p, p.Quantity)));
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
@@ -891,6 +902,7 @@ public sealed class OrderService : IOrderService
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.Positions)
+        .ThenInclude(x => x.Medicine)
         .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(
           x => x.Id == request.OrderId && x.ClientId == request.ClientId,
@@ -928,7 +940,12 @@ public sealed class OrderService : IOrderService
       }
 
       var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
-      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+      var refundRequest = CreateAndStageRefundRequest(
+        order: order,
+        amount: order.Cost + deliveryCost,
+        reason: "Заказ отменён клиентом",
+        type: RefundType.WithoutProductReturn,
+        positionEntries: positionsToRestore.Select(p => (p, p.Quantity)));
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
@@ -970,6 +987,7 @@ public sealed class OrderService : IOrderService
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.Positions)
+        .ThenInclude(x => x.Medicine)
         .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(
           x => x.Id == orderId && x.PharmacyId == pharmacyId,
@@ -1007,7 +1025,12 @@ public sealed class OrderService : IOrderService
       }
 
       var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
-      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+      var refundRequest = CreateAndStageRefundRequest(
+        order: order,
+        amount: order.Cost + deliveryCost,
+        reason: "Заказ отменён администратором аптеки",
+        type: RefundType.WithoutProductReturn,
+        positionEntries: positionsToRestore.Select(p => (p, p.Quantity)));
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
@@ -1060,6 +1083,7 @@ public sealed class OrderService : IOrderService
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.Positions)
+        .ThenInclude(x => x.Medicine)
         .FirstOrDefaultAsync(x => x.Id == request.OrderId, cancellationToken)
         ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
 
@@ -1093,7 +1117,24 @@ public sealed class OrderService : IOrderService
       }
 
       // Refund = current ReturnCost (rejected + returned) recalculated by domain.
-      var refundRequest = CreateRefundRequestStub(order.Id, order.ReturnCost);
+      // Position entries: include both physically returned units (this-call delta tracked
+      // in `byPositionId`) AND any rejected positions that contribute to ReturnCost — so
+      // the refund row breakdown matches the amount we're refunding.
+      var refundEntries = new List<(OrderPosition Position, int Quantity)>();
+      foreach (var p in order.Positions.Where(p => p.IsRejected))
+        refundEntries.Add((p, p.Quantity));
+      foreach (var p in order.Positions.Where(p => !p.IsRejected && p.ReturnedQuantity > 0))
+      {
+        var qty = byPositionId.TryGetValue(p.Id, out var newQty) ? newQty : p.ReturnedQuantity;
+        if (qty > 0)
+          refundEntries.Add((p, qty));
+      }
+      var refundRequest = CreateAndStageRefundRequest(
+        order: order,
+        amount: order.ReturnCost,
+        reason: "Возврат товара клиентом",
+        type: RefundType.WithProductReturn,
+        positionEntries: refundEntries);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
@@ -1131,6 +1172,7 @@ public sealed class OrderService : IOrderService
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.Positions)
+        .ThenInclude(x => x.Medicine)
         .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(x => x.Id == orderId, cancellationToken)
         ?? throw new InvalidOperationException($"Order '{orderId}' was not found.");
@@ -1157,7 +1199,12 @@ public sealed class OrderService : IOrderService
       }
 
       var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
-      var refundRequest = CreateRefundRequestStub(order.Id, order.Cost + deliveryCost);
+      var refundRequest = CreateAndStageRefundRequest(
+        order: order,
+        amount: order.Cost + deliveryCost,
+        reason: "Заказ отменён супер-администратором",
+        type: RefundType.WithoutProductReturn,
+        positionEntries: positionsToRestore.Select(p => (p, p.Quantity)));
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
@@ -1431,15 +1478,63 @@ public sealed class OrderService : IOrderService
       paidAtUtc: paidAtUtc);
   }
 
-  private static RefundRequestStubResponse CreateRefundRequestStub(Guid orderId, decimal amount)
+  /// <summary>
+  /// Stage a real <see cref="RefundRequest"/> in the change tracker. Caller is expected to
+  /// invoke <c>SaveChangesAsync</c> as part of the same transaction. Returns the legacy
+  /// <see cref="RefundRequestStubResponse"/> shape so existing API responses don't change.
+  /// Returns a no-op stub (no DB write) when there's nothing to refund (zero amount) or
+  /// the order has no associated client (e.g. orphaned by client deletion).
+  /// </summary>
+  private RefundRequestStubResponse CreateAndStageRefundRequest(
+    Order order,
+    decimal amount,
+    string reason,
+    RefundType type,
+    IEnumerable<(OrderPosition Position, int Quantity)> positionEntries)
   {
+    if (amount <= 0 || order.ClientId is null)
+    {
+      return new RefundRequestStubResponse
+      {
+        RefundRequestId = Guid.Empty,
+        OrderId = order.Id,
+        Amount = amount,
+        CreatedAtUtc = DateTime.UtcNow,
+        Status = "NoOp"
+      };
+    }
+
+    var positions = positionEntries
+      .Where(e => e.Quantity > 0)
+      .Select(e => new RefundRequestPosition(
+        orderPositionId: e.Position.Id,
+        medicineId: e.Position.MedicineId,
+        medicineName: e.Position.Medicine?.Title ?? "—",
+        quantity: e.Quantity,
+        unitPrice: e.Position.OfferSnapshot.Price))
+      .ToList();
+
+    var currency = string.IsNullOrWhiteSpace(order.PaymentCurrency) ? "TJS" : order.PaymentCurrency;
+    var refund = new RefundRequest(
+      orderId: order.Id,
+      clientId: order.ClientId.Value,
+      pharmacyId: order.PharmacyId,
+      amount: amount,
+      currency: currency,
+      paymentTransactionId: null,
+      reason: reason,
+      type: type,
+      positions: positions);
+
+    _dbContext.RefundRequests.Add(refund);
+
     return new RefundRequestStubResponse
     {
-      RefundRequestId = Guid.NewGuid(),
-      OrderId = orderId,
+      RefundRequestId = refund.Id,
+      OrderId = order.Id,
       Amount = amount,
-      CreatedAtUtc = DateTime.UtcNow,
-      Status = "CreatedStub"
+      CreatedAtUtc = refund.CreatedAtUtc,
+      Status = refund.Status.ToString()
     };
   }
 

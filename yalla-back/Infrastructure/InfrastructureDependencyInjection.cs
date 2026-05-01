@@ -14,7 +14,7 @@ using Yalla.Infrastructure.Storage;
 using Yalla.Infrastructure.WooCommerce;
 using Yalla.Infrastructure.Jura;
 using Yalla.Infrastructure.Search;
-using Yalla.Application.Common;
+using Yalla.Infrastructure.Telegram;
 using Yalla.Application.Services;
 
 namespace Yalla.Infrastructure;
@@ -190,6 +190,29 @@ public static class DependencyInjection
     services.AddHostedService<OrderStatusSmsEnqueueHostedService>();
     services.AddHostedService<SmsOutboxDispatcherHostedService>();
     services.AddHostedService<ManualPaymentTimeoutHostedService>();
+
+    // Telegram order-status outbox (mirror of SMS pipeline)
+    services.Configure<TelegramOutboxOptions>(options =>
+    {
+      options.Enabled = !bool.TryParse(config[$"{TelegramOutboxOptions.SectionName}:Enabled"], out var enabled) || enabled;
+      options.BatchSize = int.TryParse(config[$"{TelegramOutboxOptions.SectionName}:BatchSize"], out var batchSize)
+        ? batchSize
+        : 50;
+      options.PollIntervalSeconds = int.TryParse(config[$"{TelegramOutboxOptions.SectionName}:PollIntervalSeconds"], out var pollIntervalSeconds)
+        ? pollIntervalSeconds
+        : 15;
+      options.MaxAttempts = int.TryParse(config[$"{TelegramOutboxOptions.SectionName}:MaxAttempts"], out var maxAttempts)
+        ? maxAttempts
+        : 5;
+      options.RetryBackoffSeconds = int.TryParse(config[$"{TelegramOutboxOptions.SectionName}:RetryBackoffSeconds"], out var retryBackoffSeconds)
+        ? retryBackoffSeconds
+        : 30;
+      options.RetentionDays = int.TryParse(config[$"{TelegramOutboxOptions.SectionName}:RetentionDays"], out var retentionDays)
+        ? retentionDays
+        : 7;
+    });
+    services.AddHostedService<OrderStatusTelegramEnqueueHostedService>();
+    services.AddHostedService<TelegramOutboxDispatcherHostedService>();
 
     // WooCommerce sync
     services.Configure<WooCommerceOptions>(config.GetSection(WooCommerceOptions.SectionName));

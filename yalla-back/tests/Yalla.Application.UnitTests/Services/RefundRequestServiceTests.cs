@@ -57,7 +57,7 @@ public sealed class RefundRequestServiceTests
     Assert.Equal(1, response.TotalCount);
     Assert.Single(response.RefundRequests);
     Assert.Equal(created.Id, response.RefundRequests.Single().RefundRequestId);
-    Assert.Equal(RefundRequestStatus.Created, response.RefundRequests.Single().Status);
+    Assert.Equal(RefundRequestStatus.Created.ToString(), response.RefundRequests.Single().Status);
   }
 
   [Fact]

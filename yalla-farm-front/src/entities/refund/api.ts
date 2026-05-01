@@ -9,3 +9,7 @@ export async function getRefundRequests(token: string, page = 1, pageSize = 20):
 export async function initiateRefund(token: string, refundRequestId: string): Promise<void> {
   await apiFetch<unknown>("/api/refund-requests/initiate", { method: "POST", token, body: { refundRequestId } });
 }
+
+export async function completeRefund(token: string, refundRequestId: string): Promise<void> {
+  await apiFetch<unknown>("/api/refund-requests/complete", { method: "POST", token, body: { refundRequestId } });
+}

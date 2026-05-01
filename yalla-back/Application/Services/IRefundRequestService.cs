@@ -12,4 +12,8 @@ public interface IRefundRequestService
   Task<InitiateRefundBySuperAdminResponse> InitiateRefundBySuperAdminAsync(
     InitiateRefundBySuperAdminRequest request,
     CancellationToken cancellationToken = default);
+
+  Task<CompleteRefundBySuperAdminResponse> CompleteRefundBySuperAdminAsync(
+    CompleteRefundBySuperAdminRequest request,
+    CancellationToken cancellationToken = default);
 }

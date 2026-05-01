@@ -15,7 +15,6 @@ import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/Catego
 import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
 import { AppShell } from "@/widgets/layout/AppShell";
 
-import { TrustStrip } from "@/shared/ui";
 import { useAppSelector } from "@/shared/lib/redux";
 
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
@@ -723,8 +722,6 @@ function HomeContent() {
           </section>
 
           <HeroCarousel />
-
-          <TrustStrip />
 
           {/* Pharmacy banners */}
           <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />

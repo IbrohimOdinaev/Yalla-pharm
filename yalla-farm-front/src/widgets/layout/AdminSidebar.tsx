@@ -42,7 +42,9 @@ export function AdminSidebar() {
 
   function onLogout() {
     dispatch(clearCredentials());
-    router.push("/login/admin");
+    // Replace so the admin URL leaves the history stack — Back can't return
+    // the user to the now-unauthorized workspace.
+    router.replace("/");
   }
 
   return (

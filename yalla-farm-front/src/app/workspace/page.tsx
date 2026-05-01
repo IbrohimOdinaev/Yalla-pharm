@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney, formatPhone } from "@/shared/lib/format";
@@ -40,6 +40,17 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WorkspacePage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
+  const router = useRouter();
+
+  // Auth gate — bounce unauthenticated/non-admin visitors to the home page.
+  // `replace` swaps the current entry so Back doesn't return them here.
+  // Triggers on logout (state goes null) and on direct hits to /workspace
+  // by users who never logged in.
+  useEffect(() => {
+    if (!token || role !== "Admin") {
+      router.replace("/");
+    }
+  }, [token, role, router]);
   // Each admin is bound to exactly one pharmacy. We rely on this to pick
   // their own pharmacy out of the active list (the backend doesn't ship a
   // "/me/pharmacy" endpoint yet — the JWT claim is the source of truth).
@@ -89,14 +100,10 @@ export default function WorkspacePage() {
     getAdminMe(token).then(setAdminIdentity).catch(() => undefined);
   }, [token, role, adminPharmacyId]);
 
+  // Render nothing while the auth-gate effect above performs the redirect —
+  // avoids a flash of the "Access denied" stub on logout / direct hits.
   if (!token || role !== "Admin") {
-    return (
-      <AppShell top={<TopBar title="Workspace" showLogout />} hideGlobalNav>
-        <div className="stitch-card p-6 text-sm">
-          Доступ только для администраторов. <Link href="/login" className="font-bold text-primary">Войти</Link>
-        </div>
-      </AppShell>
-    );
+    return null;
   }
 
   return (

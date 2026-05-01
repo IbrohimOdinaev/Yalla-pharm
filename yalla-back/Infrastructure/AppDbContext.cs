@@ -25,8 +25,10 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<PaymentIntentPosition> PaymentIntentPositions => Set<PaymentIntentPosition>();
   public DbSet<CheckoutRequest> CheckoutRequests => Set<CheckoutRequest>();
   public DbSet<RefundRequest> RefundRequests => Set<RefundRequest>();
+  public DbSet<RefundRequestPosition> RefundRequestPositions => Set<RefundRequestPosition>();
   public DbSet<SmsVerificationSession> SmsVerificationSessions => Set<SmsVerificationSession>();
   public DbSet<SmsOutboxMessage> SmsOutboxMessages => Set<SmsOutboxMessage>();
+  public DbSet<TelegramOutboxMessage> TelegramOutboxMessages => Set<TelegramOutboxMessage>();
   public DbSet<TelegramAuthSession> TelegramAuthSessions => Set<TelegramAuthSession>();
   public DbSet<Category> Categories => Set<Category>();
   public DbSet<DeliveryData> DeliveryData => Set<DeliveryData>();

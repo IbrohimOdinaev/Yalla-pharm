@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
@@ -20,7 +21,7 @@ import type { ApiClient } from "@/shared/types/api";
 import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
 import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
-import { getRefundRequests, initiateRefund } from "@/entities/refund/api";
+import { getRefundRequests, completeRefund } from "@/entities/refund/api";
 import { getPaymentSettings, updateDcBaseUrl, type PaymentSettingsSnapshot } from "@/entities/payment-settings/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
@@ -35,7 +36,17 @@ type Tab = "pharmacies" | "medicines" | "orders";
 export default function SuperAdminPage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("pharmacies");
+
+  // Auth gate — bounce unauthenticated/non-super visitors to the home page.
+  // `replace` swaps the current entry so Back can't return them to /superadmin.
+  // Triggers on logout (state goes null) and on direct hits by users without a session.
+  useEffect(() => {
+    if (!token || role !== "SuperAdmin") {
+      router.replace("/");
+    }
+  }, [token, role, router]);
 
   // Sync activeTab from URL hash — poll because hashchange is unreliable with SPA
   useEffect(() => {
@@ -50,14 +61,10 @@ export default function SuperAdminPage() {
     return () => { clearInterval(interval); window.removeEventListener("hashchange", syncHash); };
   }, []);
 
+  // Render nothing while the auth-gate effect above performs the redirect —
+  // avoids a flash of the "Access denied" stub on logout / direct hits.
   if (!token || role !== "SuperAdmin") {
-    return (
-      <AppShell top={<TopBar title="SuperAdmin" showLogout />} hideGlobalNav>
-        <div className="stitch-card p-6 text-sm">
-          Доступ только для суперадминистраторов. <Link href="/login" className="font-bold text-primary">Войти</Link>
-        </div>
-      </AppShell>
-    );
+    return null;
   }
 
   return (
@@ -1174,36 +1181,6 @@ function OrdersTab({ token }: { token: string }) {
 
       {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
-      {/* Refunds section */}
-      {refunds.length > 0 ? (
-        <section className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5 opacity-80">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-on-surface-variant">Запросы на возврат</h3>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-600">{refunds.length}</span>
-          </div>
-          <div className="space-y-2">
-            {refunds.map((refund) => (
-              <div key={refund.refundRequestId} className="flex items-center justify-between rounded-xl bg-surface-container-low p-3 text-sm">
-                <div>
-                  <span className="font-bold">{formatMoney(refund.amount, refund.currency)}</span>
-                  <p className="text-xs text-on-surface-variant">{refund.reason ?? "Без причины"}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${refund.status === "Completed" ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800"}`}>{refund.status}</span>
-                  {refund.status !== "Completed" && refund.status !== "Failed" ? (
-                    <button type="button" className="stitch-button text-xs" onClick={async () => {
-                      if (!confirm(`Инициировать возврат #${refund.refundRequestId.slice(0,8)}?`)) return;
-                      await initiateRefund(token, refund.refundRequestId).catch(() => undefined);
-                      load();
-                    }}>Возврат</button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {/* Kanban columns */}
       <section>
         <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Заказы ({filteredOrders.length})</h3>
@@ -1242,9 +1219,13 @@ function OrdersTab({ token }: { token: string }) {
                           <span className="text-[10px] text-on-surface-variant font-mono">#{order.orderId.slice(0, 8)}</span>
                           <DeliveryBadge isPickup={!!order.isPickup} iconOnly />
                         </div>
-                        <div className="flex items-center justify-between text-sm mt-1">
-                          <span className="truncate max-w-[140px]">{order.pharmacyTitle ?? "—"}</span>
-                          <span className="font-bold">{computeOriginalPaid(order) > 0 ? formatMoney(computeOriginalPaid(order), order.currency) : "—"}</span>
+                        <div className="flex items-center justify-between text-sm mt-1 gap-2">
+                          {order.pharmacyTitle ? (
+                            <span className="truncate max-w-[140px]">{order.pharmacyTitle}</span>
+                          ) : <span />}
+                          {computeOriginalPaid(order) > 0 ? (
+                            <span className="font-bold">{formatMoney(computeOriginalPaid(order), order.currency)}</span>
+                          ) : null}
                         </div>
                         {order.clientName ? (
                           <p className="mt-0.5 text-[11px] font-semibold truncate">{order.clientName}</p>
@@ -1285,6 +1266,25 @@ function OrdersTab({ token }: { token: string }) {
               </div>
             );
           })}
+
+          {/* Refund kanban columns — sit at the end of the horizontal scroll
+              alongside order-status columns so the SuperAdmin can shepherd
+              refund workflows in the same workspace as order workflows. */}
+          <RefundKanbanColumn
+            title="Возвраты средств"
+            dotClassName="bg-amber-500"
+            refunds={refunds.filter((r) => r.status !== "Completed")}
+            token={token}
+            onChange={load}
+            showCompleteAction
+          />
+          <RefundKanbanColumn
+            title="Возвращённые средства"
+            dotClassName="bg-emerald-500"
+            refunds={refunds.filter((r) => r.status === "Completed")}
+            token={token}
+            onChange={load}
+          />
         </div>
       </section>
 
@@ -1556,6 +1556,162 @@ function OrdersTab({ token }: { token: string }) {
             ) : null}
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Refund kanban column — sits at the end of the order kanban horizontal scroll
+ * to keep refund triage in the same operational workspace as order triage.
+ *
+ * Two columns are rendered on the page:
+ *  - Active refunds (status != Completed): each card has a "Подтвердить возврат
+ *    средств" action that flips status → Completed and moves the card to the
+ *    completed column on the next data reload.
+ *  - Completed refunds: read-only ledger.
+ *
+ * Card layout matches the order card (same width, same compact info density)
+ * so the SuperAdmin can scan all columns with a single eye-track.
+ */
+function RefundKanbanColumn({
+  title,
+  dotClassName,
+  refunds,
+  token,
+  onChange,
+  showCompleteAction,
+}: {
+  title: string;
+  dotClassName: string;
+  refunds: ApiRefundRequest[];
+  token: string;
+  onChange: () => void;
+  showCompleteAction?: boolean;
+}) {
+  return (
+    <div className="min-w-[220px] xs:min-w-[250px] sm:min-w-[280px] flex-shrink-0 rounded-2xl bg-surface-container-low p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${dotClassName}`} />
+          <h4 className="text-[10px] xs:text-xs sm:text-sm font-bold">{title}</h4>
+        </div>
+        <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-bold">
+          {refunds.length}
+        </span>
+      </div>
+      <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+        {refunds.length === 0 ? (
+          <p className="text-xs text-on-surface-variant text-center py-4">Пусто</p>
+        ) : (
+          refunds.map((refund) => (
+            <RefundKanbanCard
+              key={refund.refundRequestId}
+              refund={refund}
+              token={token}
+              onChange={onChange}
+              showCompleteAction={!!showCompleteAction}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RefundKanbanCard({
+  refund,
+  token,
+  onChange,
+  showCompleteAction,
+}: {
+  refund: ApiRefundRequest;
+  token: string;
+  onChange: () => void;
+  showCompleteAction: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const isProductReturn = refund.type === 1;
+  const positions = refund.positions ?? [];
+  const positionsCount = positions.reduce((sum, p) => sum + (p.quantity ?? 0), 0);
+
+  // Completion is allowed from any non-terminal state (Created or InitiatedBySuperAdmin).
+  // Rejected is terminal-and-not-refundable; Completed is already done. Both hide the button.
+  const canComplete = showCompleteAction
+    && refund.status !== "Completed"
+    && refund.status !== "Rejected";
+
+  // Border accent mirrors the type indicator (amber = with product return, emerald = without).
+  const borderClass = isProductReturn ? "border-l-4 border-amber-400" : "border-l-4 border-emerald-400";
+
+  return (
+    <div className={`stitch-card p-3 ${borderClass}`}>
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[10px] text-on-surface-variant font-mono">
+          #{refund.refundRequestId.slice(0, 8)}
+        </span>
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase ${
+            isProductReturn ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+          }`}
+          title={isProductReturn ? "С возвратом товара" : "Без возврата товара"}
+        >
+          {isProductReturn ? "товар" : "ден."}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-sm mt-1 gap-2">
+        {refund.pharmacyTitle ? (
+          <span className="truncate max-w-[140px]">{refund.pharmacyTitle}</span>
+        ) : <span />}
+        <span className="font-bold tabular-nums">{formatMoney(refund.amount, refund.currency)}</span>
+      </div>
+      {refund.clientName ? (
+        <p className="mt-0.5 text-[11px] font-semibold truncate">{refund.clientName}</p>
+      ) : null}
+      <div className="flex items-center justify-between mt-0.5 gap-1">
+        {refund.createdAtUtc ? (
+          <p className="text-[10px] text-on-surface-variant">
+            {new Date(refund.createdAtUtc).toLocaleDateString("ru-RU")}
+          </p>
+        ) : <span />}
+        <span className="text-[10px] text-on-surface-variant">
+          {positions.length}поз · {positionsCount}ед
+        </span>
+      </div>
+      {/* Order context — order id + status chip. Helps connect the refund back to the
+          order that triggered it without opening anything. */}
+      {refund.orderId ? (
+        <p className="text-[10px] text-on-surface-variant/80 truncate">
+          Заказ #{refund.orderId.slice(0, 8)}{refund.orderStatus ? ` · ${refund.orderStatus}` : ""}
+        </p>
+      ) : null}
+      {refund.status === "Completed" && refund.updatedAtUtc ? (
+        <p className="text-[10px] text-emerald-700 font-semibold">
+          Возвращён {new Date(refund.updatedAtUtc).toLocaleDateString("ru-RU")}
+        </p>
+      ) : null}
+
+      {/* Confirm refund — flips status → Completed and the card jumps to the
+          "Возвращённые средства" column on the next reload. */}
+      {canComplete ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            if (!confirm(`Подтвердить возврат ${formatMoney(refund.amount, refund.currency)} клиенту?`)) return;
+            setBusy(true);
+            try {
+              await completeRefund(token, refund.refundRequestId);
+              onChange();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] xs:text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+        >
+          {busy ? "..." : "Подтвердить возврат"}
+        </button>
       ) : null}
     </div>
   );

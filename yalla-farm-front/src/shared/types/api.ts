@@ -144,14 +144,41 @@ export type ApiOrderPosition = {
   isRejected?: boolean;
 };
 
+export type ApiRefundRequestPosition = {
+  refundRequestPositionId: string;
+  orderPositionId: string;
+  medicineId: string;
+  medicineName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+/** Backend `RefundType` enum: 0 = WithoutProductReturn, 1 = WithProductReturn. */
+export type ApiRefundType = 0 | 1;
+
 export type ApiRefundRequest = {
   refundRequestId: string;
-  orderId?: string;
+  orderId?: string | null;
+  clientId?: string;
+  pharmacyId?: string;
+  paymentTransactionId?: string | null;
   reason?: string;
+  /** Backend serialises enum as string; "Created" | "InitiatedBySuperAdmin" | "Completed" | "Rejected". */
   status?: string;
+  /** Numeric enum value as serialised by JSON. */
+  type?: ApiRefundType;
   amount?: number;
   currency?: string;
-  createdAt?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
+  // Denormalised order/client/pharmacy context for the SuperAdmin listing.
+  orderStatus?: string | null;
+  orderCost?: number | null;
+  pharmacyTitle?: string | null;
+  clientName?: string | null;
+  clientPhoneNumber?: string | null;
+  positions?: ApiRefundRequestPosition[];
 };
 
 export type ApiOrder = {

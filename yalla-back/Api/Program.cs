@@ -250,6 +250,132 @@ if (applyMigrationsOnStartup)
         });
         logger.LogInformation("Startup WC backfill kicked off in background");
     }
+
+    // One-shot data fix #1: reclassify legacy pickup orders that ended up in
+    // Status.Delivered (the old Ready→Delivered code path for IsPickup=true)
+    // to Status.PickedUp now that the enum has it as a distinct terminal
+    // state. The kanban groups by status string, so orders stuck as Delivered
+    // showed up in "Доставлен" instead of "Забран клиентом". Self-clearing.
+    var legacyPickupCount = await db.Orders
+        .Where(o => o.IsPickup && o.Status == Yalla.Domain.Enums.Status.Delivered)
+        .ExecuteUpdateAsync(setters => setters.SetProperty(o => o.Status, Yalla.Domain.Enums.Status.PickedUp));
+    if (legacyPickupCount > 0)
+    {
+        logger.LogInformation(
+            "Reclassified {Count} legacy pickup orders Delivered → PickedUp",
+            legacyPickupCount);
+    }
+
+    // One-shot data fix #2: backfill RefundRequest rows for orders that already
+    // reached a refund-eligible state (Cancelled / Returned / has rejected
+    // positions) before the real refund pipeline shipped — those orders only
+    // ever got a stub response, never a DB record. Self-clearing — subsequent
+    // restarts find no candidates because every newly cancelled/returned order
+    // now writes a real RefundRequest at transition time.
+    var refundBackfillCandidates = await db.Orders
+        .AsNoTracking()
+        .Where(o => o.ClientId != null
+            && (o.Status == Yalla.Domain.Enums.Status.Cancelled
+                || o.Status == Yalla.Domain.Enums.Status.Returned
+                || o.Positions.Any(p => p.IsRejected))
+            && !db.RefundRequests.Any(r => r.OrderId == o.Id))
+        .Select(o => o.Id)
+        .ToListAsync();
+
+    if (refundBackfillCandidates.Count > 0)
+    {
+        var created = 0;
+        foreach (var orderId in refundBackfillCandidates)
+        {
+            var order = await db.Orders
+                .Include(o => o.Positions).ThenInclude(p => p.Medicine)
+                .Include(o => o.DeliveryData)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+            if (order is null || order.ClientId is null) continue;
+
+            var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
+            Yalla.Domain.Enums.RefundType type;
+            decimal amount;
+            string reason;
+            List<Yalla.Domain.Entities.RefundRequestPosition> positions;
+
+            if (order.Status == Yalla.Domain.Enums.Status.Returned)
+            {
+                // Customer received goods and returned them — physical product return.
+                type = Yalla.Domain.Enums.RefundType.WithProductReturn;
+                amount = order.ReturnCost;
+                reason = "Backfill: возврат товара клиентом";
+                positions = order.Positions
+                    .Where(p => p.IsRejected || p.ReturnedQuantity > 0)
+                    .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
+                        orderPositionId: p.Id,
+                        medicineId: p.MedicineId,
+                        medicineName: p.Medicine?.Title ?? "—",
+                        quantity: p.IsRejected ? p.Quantity : p.ReturnedQuantity,
+                        unitPrice: p.OfferSnapshot.Price))
+                    .ToList();
+            }
+            else if (order.Status == Yalla.Domain.Enums.Status.Cancelled)
+            {
+                // Cancelled — full refund of original total (everything paid).
+                type = Yalla.Domain.Enums.RefundType.WithoutProductReturn;
+                amount = order.Cost + order.ReturnCost + deliveryCost;
+                reason = "Backfill: заказ отменён";
+                positions = order.Positions
+                    .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
+                        orderPositionId: p.Id,
+                        medicineId: p.MedicineId,
+                        medicineName: p.Medicine?.Title ?? "—",
+                        quantity: p.Quantity,
+                        unitPrice: p.OfferSnapshot.Price))
+                    .ToList();
+            }
+            else
+            {
+                // Non-terminal order with rejected positions — partial refund for the rejects only.
+                type = Yalla.Domain.Enums.RefundType.WithoutProductReturn;
+                amount = order.ReturnCost;
+                reason = "Backfill: отклонённые позиции";
+                positions = order.Positions
+                    .Where(p => p.IsRejected)
+                    .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
+                        orderPositionId: p.Id,
+                        medicineId: p.MedicineId,
+                        medicineName: p.Medicine?.Title ?? "—",
+                        quantity: p.Quantity,
+                        unitPrice: p.OfferSnapshot.Price))
+                    .ToList();
+            }
+
+            // Skip silently when there's nothing meaningful to refund (zero amount
+            // or no positions). Possible for orders that ended up in an odd state.
+            if (amount <= 0 || positions.Count == 0) continue;
+
+            var currency = string.IsNullOrWhiteSpace(order.PaymentCurrency) ? "TJS" : order.PaymentCurrency;
+            var refund = new Yalla.Domain.Entities.RefundRequest(
+                orderId: order.Id,
+                clientId: order.ClientId.Value,
+                pharmacyId: order.PharmacyId,
+                amount: amount,
+                currency: currency,
+                paymentTransactionId: null,
+                reason: reason,
+                type: type,
+                positions: positions);
+
+            db.RefundRequests.Add(refund);
+            created++;
+        }
+
+        if (created > 0)
+        {
+            await db.SaveChangesAsync();
+            logger.LogInformation(
+                "Backfilled {Count} RefundRequest rows for legacy orders (out of {Candidates} candidates).",
+                created,
+                refundBackfillCandidates.Count);
+        }
+    }
 }
 
 if (app.Environment.IsDevelopment())

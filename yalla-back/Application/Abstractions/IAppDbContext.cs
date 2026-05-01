@@ -21,8 +21,10 @@ public interface IAppDbContext
     DbSet<PaymentIntentPosition> PaymentIntentPositions { get; }
     DbSet<CheckoutRequest> CheckoutRequests { get; }
     DbSet<RefundRequest> RefundRequests { get; }
+    DbSet<RefundRequestPosition> RefundRequestPositions { get; }
     DbSet<SmsVerificationSession> SmsVerificationSessions { get; }
     DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
+    DbSet<TelegramOutboxMessage> TelegramOutboxMessages { get; }
     DbSet<TelegramAuthSession> TelegramAuthSessions { get; }
     DbSet<User> Users { get; }
     DbSet<Category> Categories { get; }
