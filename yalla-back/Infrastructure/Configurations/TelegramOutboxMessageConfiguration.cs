@@ -1,0 +1,123 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
+
+namespace Yalla.Infrastructure.Configurations;
+
+public sealed class TelegramOutboxMessageConfiguration : IEntityTypeConfiguration<TelegramOutboxMessage>
+{
+  public void Configure(EntityTypeBuilder<TelegramOutboxMessage> builder)
+  {
+    builder.ToTable("telegram_outbox_messages");
+
+    builder.HasKey(x => x.Id);
+
+    builder.Property(x => x.Id)
+      .HasColumnName("id")
+      .HasColumnType("uuid")
+      .ValueGeneratedOnAdd()
+      .IsRequired();
+
+    builder.Property(x => x.OrderId)
+      .HasColumnName("order_id")
+      .HasColumnType("uuid")
+      .IsRequired();
+
+    builder.Property(x => x.ChatId)
+      .HasColumnName("chat_id")
+      .HasColumnType("bigint")
+      .IsRequired();
+
+    builder.Property(x => x.StatusSnapshot)
+      .HasColumnName("status_snapshot")
+      .HasColumnType("integer")
+      .HasConversion<int>()
+      .IsRequired();
+
+    builder.Property(x => x.MessageKey)
+      .HasColumnName("message_key")
+      .HasColumnType("character varying(64)")
+      .HasMaxLength(64);
+
+    builder.Property(x => x.Message)
+      .HasColumnName("message")
+      .HasColumnType("character varying(4000)")
+      .HasMaxLength(4000)
+      .IsRequired();
+
+    builder.Property(x => x.AttemptCount)
+      .HasColumnName("attempt_count")
+      .HasColumnType("integer")
+      .HasDefaultValue(0)
+      .IsRequired();
+
+    builder.Property(x => x.NextAttemptAtUtc)
+      .HasColumnName("next_attempt_at_utc")
+      .HasColumnType("timestamp without time zone")
+      .HasConversion(
+        value => DateTime.SpecifyKind(value, DateTimeKind.Unspecified),
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc))
+      .IsRequired();
+
+    builder.Property(x => x.SentAtUtc)
+      .HasColumnName("sent_at_utc")
+      .HasColumnType("timestamp without time zone")
+      .HasConversion(
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified) : value,
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
+
+    builder.Property(x => x.State)
+      .HasColumnName("state")
+      .HasColumnType("integer")
+      .HasConversion<int>()
+      .HasDefaultValue(TelegramOutboxState.Pending)
+      .IsRequired();
+
+    builder.Property(x => x.TelegramMessageId)
+      .HasColumnName("telegram_message_id")
+      .HasColumnType("bigint");
+
+    builder.Property(x => x.LastErrorCode)
+      .HasColumnName("last_error_code")
+      .HasColumnType("character varying(64)")
+      .HasMaxLength(64);
+
+    builder.Property(x => x.LastErrorMessage)
+      .HasColumnName("last_error_message")
+      .HasColumnType("character varying(512)")
+      .HasMaxLength(512);
+
+    builder.Property(x => x.CreatedAtUtc)
+      .HasColumnName("created_at_utc")
+      .HasColumnType("timestamp without time zone")
+      .HasConversion(
+        value => DateTime.SpecifyKind(value, DateTimeKind.Unspecified),
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc))
+      .IsRequired();
+
+    builder.Property(x => x.UpdatedAtUtc)
+      .HasColumnName("updated_at_utc")
+      .HasColumnType("timestamp without time zone")
+      .HasConversion(
+        value => DateTime.SpecifyKind(value, DateTimeKind.Unspecified),
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc))
+      .IsRequired();
+
+    builder.HasIndex(x => new { x.OrderId, x.StatusSnapshot, x.ChatId })
+      .IsUnique()
+      .HasDatabaseName("ux_tg_outbox_order_status_chat")
+      .HasFilter("message_key IS NULL");
+
+    builder.HasIndex(x => new { x.OrderId, x.MessageKey, x.ChatId })
+      .IsUnique()
+      .HasDatabaseName("ux_tg_outbox_order_msgkey_chat")
+      .HasFilter("message_key IS NOT NULL");
+
+    builder.HasIndex(x => new { x.State, x.NextAttemptAtUtc })
+      .HasDatabaseName("ix_tg_outbox_state_next_attempt_at_utc");
+
+    builder.HasIndex(x => x.CreatedAtUtc)
+      .HasDatabaseName("ix_tg_outbox_created_at_utc");
+  }
+}

@@ -173,6 +173,100 @@ public sealed class SmsOutboxHostedServicesTests
     Assert.Equal(2, scriptedSender.CallCount);
   }
 
+  [Theory]
+  [InlineData(Status.UnderReview)]
+  [InlineData(Status.Preparing)]
+  [InlineData(Status.Ready)]
+  [InlineData(Status.OnTheWay)]
+  [InlineData(Status.DriverArrived)]
+  [InlineData(Status.Delivered)]
+  [InlineData(Status.PickedUp)]
+  [InlineData(Status.Cancelled)]
+  [InlineData(Status.Returned)]
+  public async Task Enqueue_ShouldFireForAllClientFacingStatuses(Status status)
+  {
+    using var testScope = TestDbFactory.Create();
+    var db = testScope.Db;
+    await SeedOrderWithStatusAsync(db, status);
+    db.ChangeTracker.Clear();
+
+    using var provider = BuildServiceProvider(db, smsSender: null);
+    var enqueueService = new OrderStatusSmsEnqueueHostedService(
+      provider.GetRequiredService<IServiceScopeFactory>(),
+      Options.Create(new SmsOutboxOptions { Enabled = true, BatchSize = 50, PollIntervalSeconds = 5 }),
+      Options.Create(new SmsTemplatesOptions { Provider = "OsonSms" }),
+      NullLogger<OrderStatusSmsEnqueueHostedService>.Instance);
+
+    await enqueueService.RunOnceAsync(CancellationToken.None);
+
+    var enqueued = await db.SmsOutboxMessages.AsNoTracking().SingleAsync();
+    Assert.Equal(status, enqueued.StatusSnapshot);
+    Assert.Equal(SmsOutboxState.Pending, enqueued.State);
+    Assert.False(string.IsNullOrWhiteSpace(enqueued.Message));
+  }
+
+  [Fact]
+  public async Task Enqueue_ShouldSkip_NewStatus_BecauseItsTransient()
+  {
+    // `Status.New` is the pre-checkout state; UnderReview is the first client-visible
+    // transition, so the enqueue worker must NOT generate SMS for orders still in New.
+    using var testScope = TestDbFactory.Create();
+    var db = testScope.Db;
+    await SeedOrderWithStatusAsync(db, Status.New);
+    db.ChangeTracker.Clear();
+
+    using var provider = BuildServiceProvider(db, smsSender: null);
+    var enqueueService = new OrderStatusSmsEnqueueHostedService(
+      provider.GetRequiredService<IServiceScopeFactory>(),
+      Options.Create(new SmsOutboxOptions { Enabled = true, BatchSize = 50, PollIntervalSeconds = 5 }),
+      Options.Create(new SmsTemplatesOptions { Provider = "OsonSms" }),
+      NullLogger<OrderStatusSmsEnqueueHostedService>.Instance);
+
+    await enqueueService.RunOnceAsync(CancellationToken.None);
+
+    Assert.Equal(0, await db.SmsOutboxMessages.CountAsync());
+  }
+
+  private static async Task SeedOrderWithStatusAsync(AppDbContext db, Status status)
+  {
+    var client = TestDbFactory.CreateClient($"Client {status}", "900111000");
+    var superAdmin = TestDbFactory.CreateUser($"SA {status}", "900111001", Role.SuperAdmin);
+    var pharmacy = TestDbFactory.CreatePharmacy($"P {status}", "Dushanbe", superAdmin.Id);
+    var medicine = TestDbFactory.CreateMedicine($"Med {status}", $"ART-{status}");
+    var offer = TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, stock: 10, price: 12m);
+
+    db.Clients.Add(client);
+    db.Users.Add(superAdmin);
+    db.Pharmacies.Add(pharmacy);
+    db.Medicines.Add(medicine);
+    db.Offers.Add(offer);
+    await db.SaveChangesAsync();
+
+    var orderId = Guid.NewGuid();
+    var order = new Order(
+      id: orderId,
+      clientId: client.Id,
+      clientPhoneNumber: client.PhoneNumber,
+      pharmacyId: pharmacy.Id,
+      deliveryAddress: "Dushanbe",
+      positions:
+      [
+        new OrderPosition(orderId, medicine.Id, medicine, new OfferSnapshot(pharmacy.Id, 12m), 1)
+      ]);
+
+    db.Orders.Add(order);
+    client.AddOrder(order);
+    await db.SaveChangesAsync();
+
+    if (status != Status.New)
+    {
+      // Drive the order forward through NextStage steps (or use Cancel) so we land on the
+      // requested status without bypassing domain invariants.
+      await db.Database.ExecuteSqlInterpolatedAsync(
+        $"UPDATE orders SET status = {(int)status} WHERE id = {orderId}");
+    }
+  }
+
   private static async Task SeedOrderAsync(AppDbContext db)
   {
     var client = TestDbFactory.CreateClient("Client Sms", "900777111");
@@ -208,6 +302,11 @@ public sealed class SmsOutboxHostedServicesTests
     db.Orders.Add(order);
     client.AddOrder(order);
     await db.SaveChangesAsync();
+
+    // Move order into a notifiable status; seed defaults to Status.New which is excluded
+    // from the enqueue worker (it's the pre-checkout transient state).
+    await db.Database.ExecuteSqlInterpolatedAsync(
+      $"UPDATE orders SET status = {(int)Status.UnderReview} WHERE id = {orderId}");
   }
 
   private static ServiceProvider BuildServiceProvider(AppDbContext db, ISmsSender? smsSender)

@@ -46,23 +46,52 @@ public sealed class RefundRequestService : IRefundRequestService
       query = query.Where(x => x.Status == request.Status.Value);
 
     var totalCount = await query.CountAsync(cancellationToken);
-    var refundRequests = await query
-      .OrderByDescending(x => x.CreatedAtUtc)
-      .Skip((page - 1) * pageSize)
-      .Take(pageSize)
-      .Select(x => new RefundRequestResponse
+
+    // Single-roundtrip projection: join order, client, pharmacy, and the refund's
+    // own position rows so the SuperAdmin listing has all data inline. Outer joins
+    // (left-join semantics via DefaultIfEmpty) so a refund whose order has been
+    // deleted still surfaces with empty order context rather than disappearing.
+    var refundRequests = await (
+      from r in query.OrderByDescending(x => x.CreatedAtUtc).Skip((page - 1) * pageSize).Take(pageSize)
+      join o in _dbContext.Orders.AsNoTracking() on r.OrderId equals o.Id into orderJoin
+      from o in orderJoin.DefaultIfEmpty()
+      join c in _dbContext.Clients.AsNoTracking() on r.ClientId equals c.Id into clientJoin
+      from c in clientJoin.DefaultIfEmpty()
+      join p in _dbContext.Pharmacies.AsNoTracking() on r.PharmacyId equals p.Id into pharmJoin
+      from p in pharmJoin.DefaultIfEmpty()
+      select new RefundRequestResponse
       {
-        RefundRequestId = x.Id,
-        OrderId = x.OrderId,
-        ClientId = x.ClientId,
-        PharmacyId = x.PharmacyId,
-        PaymentTransactionId = x.PaymentTransactionId,
-        Amount = x.Amount,
-        Currency = x.Currency,
-        Reason = x.Reason,
-        Status = x.Status,
-        CreatedAtUtc = x.CreatedAtUtc,
-        UpdatedAtUtc = x.UpdatedAtUtc
+        RefundRequestId = r.Id,
+        OrderId = r.OrderId,
+        ClientId = r.ClientId,
+        PharmacyId = r.PharmacyId,
+        PaymentTransactionId = r.PaymentTransactionId,
+        Amount = r.Amount,
+        Currency = r.Currency,
+        Reason = r.Reason,
+        Status = r.Status.ToString(),
+        Type = r.Type,
+        CreatedAtUtc = r.CreatedAtUtc,
+        UpdatedAtUtc = r.UpdatedAtUtc,
+        OrderStatus = o != null ? o.Status.ToString() : null,
+        OrderCost = o != null ? (decimal?)o.Cost : null,
+        PharmacyTitle = p != null ? p.Title : null,
+        ClientName = c != null ? c.Name : null,
+        ClientPhoneNumber = c != null ? c.PhoneNumber : null,
+        Positions = _dbContext.RefundRequestPositions
+          .AsNoTracking()
+          .Where(rp => rp.RefundRequestId == r.Id)
+          .Select(rp => new RefundRequestPositionResponse
+          {
+            RefundRequestPositionId = rp.Id,
+            OrderPositionId = rp.OrderPositionId,
+            MedicineId = rp.MedicineId,
+            MedicineName = rp.MedicineName,
+            Quantity = rp.Quantity,
+            UnitPrice = rp.UnitPrice,
+            LineTotal = rp.LineTotal
+          })
+          .ToList()
       })
       .ToListAsync(cancellationToken);
 
@@ -108,6 +137,54 @@ public sealed class RefundRequestService : IRefundRequestService
         refundRequest.Status);
 
       return new InitiateRefundBySuperAdminResponse
+      {
+        SuperAdminId = superAdmin.Id,
+        RefundRequestId = refundRequest.Id,
+        PreviousStatus = oldStatus,
+        Status = refundRequest.Status,
+        UpdatedAtUtc = refundRequest.UpdatedAtUtc
+      };
+    }
+    catch (Exception)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      throw;
+    }
+  }
+
+  public async Task<CompleteRefundBySuperAdminResponse> CompleteRefundBySuperAdminAsync(
+    CompleteRefundBySuperAdminRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    if (request.RefundRequestId == Guid.Empty)
+      throw new DomainArgumentException("RefundRequestId can't be empty.");
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      var superAdmin = await GetSuperAdminOrThrowAsync(request.SuperAdminId, asTracking: true, cancellationToken);
+
+      var refundRequest = await _dbContext.RefundRequests
+        .AsTracking()
+        .FirstOrDefaultAsync(x => x.Id == request.RefundRequestId, cancellationToken)
+        ?? throw new InvalidOperationException($"RefundRequest '{request.RefundRequestId}' was not found.");
+
+      var oldStatus = refundRequest.Status;
+      refundRequest.MarkCompleted();
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+
+      _logger.LogInformation(
+        "RefundRequest {RefundRequestId} completed by SuperAdmin {SuperAdminId}: {OldStatus} -> {NewStatus}.",
+        refundRequest.Id,
+        superAdmin.Id,
+        oldStatus,
+        refundRequest.Status);
+
+      return new CompleteRefundBySuperAdminResponse
       {
         SuperAdminId = superAdmin.Id,
         RefundRequestId = refundRequest.Id,

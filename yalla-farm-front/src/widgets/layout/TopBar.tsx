@@ -112,7 +112,15 @@ export function TopBar({
     const wasAdminLike = role === "Admin" || role === "SuperAdmin";
     dispatch(clearCredentials());
     setMenuOpen(false);
-    router.push(wasAdminLike ? "/login/admin" : "/login");
+    // Admin/SuperAdmin → home via replace so the admin URL leaves the history
+    // stack and the browser Back button can't bounce the user into the now-
+    // unauthorized workspace/superadmin page. Client logout keeps the login
+    // route as the natural next step.
+    if (wasAdminLike) {
+      router.replace("/");
+    } else {
+      router.push("/login");
+    }
   }
 
   const roleLabels: Record<string, string> = {

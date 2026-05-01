@@ -42,4 +42,19 @@ public sealed class RefundRequestsController : ControllerBase
     var response = await _refundRequestService.InitiateRefundBySuperAdminAsync(scopedRequest, cancellationToken);
     return Ok(response);
   }
+
+  [HttpPost("complete")]
+  public async Task<IActionResult> CompleteBySuperAdmin(
+    [FromBody] CompleteRefundBySuperAdminRequest request,
+    CancellationToken cancellationToken)
+  {
+    var scopedRequest = new CompleteRefundBySuperAdminRequest
+    {
+      SuperAdminId = User.GetRequiredUserId(),
+      RefundRequestId = request.RefundRequestId
+    };
+
+    var response = await _refundRequestService.CompleteRefundBySuperAdminAsync(scopedRequest, cancellationToken);
+    return Ok(response);
+  }
 }

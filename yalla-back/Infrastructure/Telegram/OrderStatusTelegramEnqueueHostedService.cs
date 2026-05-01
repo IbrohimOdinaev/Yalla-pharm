@@ -7,30 +7,33 @@ using Npgsql;
 using Yalla.Application.Common;
 using Yalla.Application.Services;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
 
-namespace Yalla.Infrastructure.Sms;
+namespace Yalla.Infrastructure.Telegram;
 
-public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
+/// <summary>
+/// Mirror of <see cref="Yalla.Infrastructure.Sms.OrderStatusSmsEnqueueHostedService"/> for the
+/// Telegram channel. Polls orders and enqueues a <see cref="TelegramOutboxMessage"/> for any
+/// (Order, Status, Client.TelegramId) tuple that has no row yet. Skips clients without a bound
+/// TelegramId — they continue to receive SMS only.
+/// </summary>
+public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
 {
   private readonly IServiceScopeFactory _scopeFactory;
-  private readonly SmsOutboxOptions _options;
-  private readonly SmsTemplatesOptions _templatesOptions;
-  private readonly ILogger<OrderStatusSmsEnqueueHostedService> _logger;
+  private readonly TelegramOutboxOptions _options;
+  private readonly ILogger<OrderStatusTelegramEnqueueHostedService> _logger;
 
-  public OrderStatusSmsEnqueueHostedService(
+  public OrderStatusTelegramEnqueueHostedService(
     IServiceScopeFactory scopeFactory,
-    IOptions<SmsOutboxOptions> options,
-    IOptions<SmsTemplatesOptions> templatesOptions,
-    ILogger<OrderStatusSmsEnqueueHostedService> logger)
+    IOptions<TelegramOutboxOptions> options,
+    ILogger<OrderStatusTelegramEnqueueHostedService> logger)
   {
     ArgumentNullException.ThrowIfNull(scopeFactory);
     ArgumentNullException.ThrowIfNull(options);
-    ArgumentNullException.ThrowIfNull(templatesOptions);
     ArgumentNullException.ThrowIfNull(logger);
 
     _scopeFactory = scopeFactory;
     _options = options.Value;
-    _templatesOptions = templatesOptions.Value;
     _logger = logger;
   }
 
@@ -38,7 +41,7 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
   {
     if (!_options.Enabled)
     {
-      _logger.LogInformation("Order status SMS enqueue worker is disabled by configuration.");
+      _logger.LogInformation("Order status Telegram enqueue worker is disabled by configuration.");
       return;
     }
 
@@ -46,7 +49,7 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
     using var timer = new PeriodicTimer(interval);
 
     _logger.LogInformation(
-      "Order status SMS enqueue worker started. PollIntervalSeconds={PollIntervalSeconds}, BatchSize={BatchSize}",
+      "Order status Telegram enqueue worker started. PollIntervalSeconds={PollIntervalSeconds}, BatchSize={BatchSize}",
       interval.TotalSeconds,
       Math.Max(1, _options.BatchSize));
 
@@ -68,44 +71,46 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
 
       var nowUtc = DateTime.UtcNow;
       var batchSize = Math.Max(1, _options.BatchSize);
-      var provider = string.IsNullOrWhiteSpace(_templatesOptions.Provider)
-        ? "OsonSms"
-        : _templatesOptions.Provider.Trim();
 
-      // All client-facing transitions. Each transition fires once per (OrderId, Status, Phone) —
-      // dedup via the unique outbox index — so re-entering a status (e.g. Returned after Delivered)
-      // also gets its own SMS. PaymentConfirmed is enqueued separately by PaymentIntentService.
+      // Same status set as the SMS enqueue worker — Telegram is free, so notifying on every
+      // client-facing transition is the default. PaymentConfirmed has no separate Telegram
+      // entry yet (SMS-only); add later if needed.
       var notifiableStatuses = new[]
       {
-        Yalla.Domain.Enums.Status.UnderReview,
-        Yalla.Domain.Enums.Status.Preparing,
-        Yalla.Domain.Enums.Status.Ready,
-        Yalla.Domain.Enums.Status.OnTheWay,
-        Yalla.Domain.Enums.Status.DriverArrived,
-        Yalla.Domain.Enums.Status.Delivered,
-        Yalla.Domain.Enums.Status.PickedUp,
-        Yalla.Domain.Enums.Status.Cancelled,
-        Yalla.Domain.Enums.Status.Returned
+        Status.UnderReview,
+        Status.Preparing,
+        Status.Ready,
+        Status.OnTheWay,
+        Status.DriverArrived,
+        Status.Delivered,
+        Status.PickedUp,
+        Status.Cancelled,
+        Status.Returned
       };
 
-      var candidates = await dbContext.Orders
-        .AsNoTracking()
-        .Where(x => !string.IsNullOrWhiteSpace(x.ClientPhoneNumber))
-        .Where(x => notifiableStatuses.Contains(x.Status))
-        .Where(x => !dbContext.SmsOutboxMessages.Any(m =>
-          m.OrderId == x.Id
-          && m.StatusSnapshot == x.Status
-          && m.PhoneNumber == x.ClientPhoneNumber))
-        .OrderByDescending(x => x.OrderPlacedAt)
-        .Take(batchSize)
-        .Select(x => new
+      // JOIN Orders → Users (TPH, includes Client subtype) to pick up TelegramId.
+      // Skip orders whose client has no bound TelegramId.
+      var candidates = await (
+        from order in dbContext.Orders.AsNoTracking()
+        join user in dbContext.Users.AsNoTracking() on order.ClientId equals user.Id
+        where order.ClientId.HasValue
+          && user.TelegramId.HasValue
+          && notifiableStatuses.Contains(order.Status)
+          && !dbContext.TelegramOutboxMessages.Any(m =>
+            m.OrderId == order.Id
+            && m.StatusSnapshot == order.Status
+            && m.ChatId == user.TelegramId.Value
+            && m.MessageKey == null)
+        orderby order.OrderPlacedAt descending
+        select new
         {
-          x.Id,
-          x.ClientPhoneNumber,
-          x.Status,
-          x.Cost,
-          x.PaymentCurrency
+          order.Id,
+          ChatId = user.TelegramId!.Value,
+          order.Status,
+          order.Cost,
+          order.PaymentCurrency
         })
+        .Take(batchSize)
         .ToListAsync(cancellationToken);
 
       if (candidates.Count == 0)
@@ -118,15 +123,14 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
         if (string.IsNullOrWhiteSpace(message))
           continue;
 
-        var outboxMessage = SmsOutboxMessage.CreatePending(
+        var outboxMessage = TelegramOutboxMessage.CreatePending(
           orderId: candidate.Id,
-          phoneNumber: candidate.ClientPhoneNumber,
+          chatId: candidate.ChatId,
           statusSnapshot: candidate.Status,
           message: message,
-          provider: provider,
           nowUtc: nowUtc);
 
-        dbContext.SmsOutboxMessages.Add(outboxMessage);
+        dbContext.TelegramOutboxMessages.Add(outboxMessage);
 
         try
         {
@@ -137,17 +141,17 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
         {
           dbContext.Entry(outboxMessage).State = EntityState.Detached;
           _logger.LogDebug(
-            "Skipped duplicate SMS outbox message. OrderId={OrderId}, Status={Status}, Phone={Phone}",
+            "Skipped duplicate Telegram outbox message. OrderId={OrderId}, Status={Status}, ChatId={ChatId}",
             candidate.Id,
             candidate.Status,
-            candidate.ClientPhoneNumber);
+            candidate.ChatId);
         }
       }
 
       if (insertedCount > 0)
       {
         _logger.LogInformation(
-          "Enqueued {Count} order-status SMS outbox messages.",
+          "Enqueued {Count} order-status Telegram outbox messages.",
           insertedCount);
       }
     }
@@ -157,7 +161,7 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
     }
     catch (Exception exception)
     {
-      _logger.LogError(exception, "Order status SMS enqueue worker failed.");
+      _logger.LogError(exception, "Order status Telegram enqueue worker failed.");
     }
   }
 

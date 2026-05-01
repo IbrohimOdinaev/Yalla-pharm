@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Yalla.Infrastructure;
 
 #nullable disable
 
-namespace Yalla.Infrastructure.Migrations
+namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260430111538_AddTelegramOutboxMessages")]
+    partial class AddTelegramOutboxMessages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1113,12 +1116,6 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("status");
 
-                    b.Property<int>("Type")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("type");
-
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("updated_at_utc");
@@ -1139,53 +1136,6 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDatabaseName("ix_refund_requests_status");
 
                     b.ToTable("refund_requests", (string)null);
-                });
-
-            modelBuilder.Entity("Yalla.Domain.Entities.RefundRequestPosition", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("LineTotal")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("line_total");
-
-                    b.Property<Guid>("MedicineId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medicine_id");
-
-                    b.Property<string>("MedicineName")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("medicine_name");
-
-                    b.Property<Guid>("OrderPositionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("order_position_id");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("integer")
-                        .HasColumnName("quantity");
-
-                    b.Property<Guid>("RefundRequestId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("refund_request_id");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("unit_price");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RefundRequestId")
-                        .HasDatabaseName("ix_refund_request_positions_refund_request_id");
-
-                    b.ToTable("refund_request_positions", (string)null);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.SmsOutboxMessage", b =>
@@ -1950,15 +1900,6 @@ namespace Yalla.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Yalla.Domain.Entities.RefundRequestPosition", b =>
-                {
-                    b.HasOne("Yalla.Domain.Entities.RefundRequest", null)
-                        .WithMany("Positions")
-                        .HasForeignKey("RefundRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Yalla.Domain.Entities.PharmacyWorker", b =>
                 {
                     b.HasOne("Yalla.Domain.Entities.Pharmacy", "Pharmacy")
@@ -1999,11 +1940,6 @@ namespace Yalla.Infrastructure.Migrations
             modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
                 {
                     b.Navigation("Orders");
-                });
-
-            modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>
-                {
-                    b.Navigation("Positions");
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Client", b =>

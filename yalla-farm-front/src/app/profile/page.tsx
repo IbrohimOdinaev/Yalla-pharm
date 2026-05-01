@@ -20,6 +20,7 @@ import type { IconName } from "@/shared/ui";
 
 export default function ProfilePage() {
   const token = useAppSelector((state) => state.auth.token);
+  const role = useAppSelector((state) => state.auth.role);
   const dispatch = useAppDispatch();
   const router = useRouter();
 
@@ -111,8 +112,15 @@ export default function ProfilePage() {
   }
 
   function onLogout() {
+    const wasAdminLike = role === "Admin" || role === "SuperAdmin";
     dispatch(clearCredentials());
-    router.push("/login");
+    // Admin/SuperAdmin → home via replace so the back button can't bounce the
+    // user back into the now-unauthorized workspace. Client → login.
+    if (wasAdminLike) {
+      router.replace("/");
+    } else {
+      router.push("/login");
+    }
   }
 
   if (!token) {

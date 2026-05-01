@@ -513,13 +513,10 @@ export default function CheckoutPage() {
           hint={!isPickup && deliveryCost != null ? "Доставим за 30–45 мин" : undefined}
         />
 
-        {/* Spacer for sticky CTA */}
-        <div className="h-24" />
-      </div>
-
-      {/* Sticky CTA */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 px-3 sm:bottom-4">
-        <div className="mx-auto max-w-2xl rounded-full bg-surface-container-lowest p-1.5 shadow-glass">
+        {/* Confirm CTA — anchored at the very bottom of the order card. Sits
+            below the totals so the button is the last thing in the flow.
+            Bottom padding leaves room for the global BottomNav on mobile. */}
+        <div className="pb-4">
           <Button
             size="lg"
             fullWidth

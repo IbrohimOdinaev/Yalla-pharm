@@ -63,6 +63,13 @@ public sealed class RefundRequestConfiguration : IEntityTypeConfiguration<Refund
       .HasDefaultValue(RefundRequestStatus.Created)
       .IsRequired();
 
+    builder.Property(x => x.Type)
+      .HasColumnName("type")
+      .HasColumnType("integer")
+      .HasConversion<int>()
+      .HasDefaultValue(RefundType.WithoutProductReturn)
+      .IsRequired();
+
     builder.Property(x => x.CreatedAtUtc)
       .HasColumnName("created_at_utc")
       .HasColumnType("timestamp without time zone")
@@ -102,5 +109,14 @@ public sealed class RefundRequestConfiguration : IEntityTypeConfiguration<Refund
       .WithMany()
       .HasForeignKey(x => x.OrderId)
       .OnDelete(DeleteBehavior.SetNull);
+
+    builder.HasMany(x => x.Positions)
+      .WithOne()
+      .HasForeignKey(x => x.RefundRequestId)
+      .OnDelete(DeleteBehavior.Cascade);
+
+    builder.Metadata
+      .FindNavigation(nameof(RefundRequest.Positions))!
+      .SetPropertyAccessMode(PropertyAccessMode.Field);
   }
 }

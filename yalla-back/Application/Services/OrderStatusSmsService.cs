@@ -12,7 +12,14 @@ public sealed class OrderStatusSmsService : IOrderStatusSmsService
   private static readonly IReadOnlyDictionary<Status, string> DefaultTemplates = new Dictionary<Status, string>
   {
     [Status.UnderReview] = "Ваш заказ с Id: {orderId} на сумму: {amount} {currency} подтверждён.",
+    [Status.Preparing] = "Заказ с Id: {orderId} на сумму: {amount} {currency} собирается аптекой.",
+    [Status.Ready] = "Заказ с Id: {orderId} на сумму: {amount} {currency} собран и готов к выдаче/доставке.",
     [Status.OnTheWay] = "Заказ с Id: {orderId} на сумму: {amount} {currency} уже едет к вам.",
+    [Status.DriverArrived] = "Курьер прибыл по адресу. Заказ с Id: {orderId} на сумму: {amount} {currency}.",
+    [Status.Delivered] = "Заказ с Id: {orderId} на сумму: {amount} {currency} успешно доставлен.",
+    [Status.PickedUp] = "Заказ с Id: {orderId} на сумму: {amount} {currency} получен в аптеке.",
+    [Status.Cancelled] = "Заказ с Id: {orderId} на сумму: {amount} {currency} отменён.",
+    [Status.Returned] = "Заказ с Id: {orderId} на сумму: {amount} {currency} переведён в статус возврата.",
   };
 
   private readonly SmsTemplatesOptions _options;
