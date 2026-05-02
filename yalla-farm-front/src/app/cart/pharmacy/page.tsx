@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import type { ApiMedicine, ApiBasketPharmacyOption, ApiBasketPharmacyItem } from "@/shared/types/api";
@@ -18,6 +18,7 @@ import { usePharmacyDeliveryCosts } from "@/features/pharmacy/model/usePharmacyD
 import { setGuestCheckoutIntent } from "@/shared/lib/guest-intent";
 
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
+import { ProductModal } from "@/widgets/product/ProductModal";
 import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 import dynamic from "next/dynamic";
 
@@ -26,9 +27,37 @@ type PharmacySort = "cheapest" | "most-positions";
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
 export default function PharmacySelectPage() {
+  // useSearchParams must live under a Suspense boundary for static export
+  // to work. Inner component holds the actual page logic.
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-surface" />}>
+      <PharmacySelectPageInner />
+    </Suspense>
+  );
+}
+
+function PharmacySelectPageInner() {
   const token = useAppSelector((s) => s.auth.token);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const goBack = useGoBack();
+
+  // Push `?product={slug-or-id}` so the global ProductModal opens on top of
+  // the current page — same UX as clicking a card in the catalog. Skip the
+  // call if the same product is already open.
+  const openProductModal = useCallback((med: ApiMedicine | undefined, fallbackId: string) => {
+    const key = med?.slug || med?.id || fallbackId;
+    if (!key) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get("product") === key) return;
+    const wasOpen = params.has("product");
+    params.set("product", key);
+    const url = `${pathname}?${params.toString()}`;
+    if (wasOpen) router.replace(url, { scroll: false });
+    else router.push(url, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const { basket, loadBasket } = useCartStore();
   const guestItems = useGuestCartStore((s) => s.items);
   const setDraft = useCheckoutDraftStore((s) => s.setDraft);
@@ -513,12 +542,17 @@ export default function PharmacySelectPage() {
                           const missing = !item.isFound;
                           const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
                           return (
-                            <div key={item.medicineId} className={`flex items-center gap-2.5 text-xs ${missing ? "opacity-50" : ""}`}>
+                            <button
+                              key={item.medicineId}
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openProductModal(med, item.medicineId); }}
+                              className={`flex w-full items-center gap-2.5 rounded-lg p-1 text-left text-xs transition hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
+                            >
                               {imgUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={imgUrl} alt="" className="w-8 h-8 rounded object-contain bg-surface-container-low flex-shrink-0" />
+                                <img src={imgUrl} alt="" className="w-8 h-8 rounded object-contain bg-surface-container-high mix-blend-multiply flex-shrink-0" />
                               ) : (
-                                <div className="w-8 h-8 rounded bg-surface-container-low flex-shrink-0" />
+                                <div className="w-8 h-8 rounded bg-surface-container-high flex-shrink-0" />
                               )}
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium truncate">{name}</p>
@@ -534,7 +568,7 @@ export default function PharmacySelectPage() {
                               <span className={`font-bold flex-shrink-0 ${missing ? "line-through text-on-surface-variant" : ""}`}>
                                 {formatMoney(item.price ?? 0, "TJS")}
                               </span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -580,6 +614,11 @@ export default function PharmacySelectPage() {
           ) : null}
         </div>
       </div>
+
+      {/* Global product modal — opens when `?product={key}` is in the URL.
+          Mounted here too so position rows on this page can pop the modal
+          without leaving the pharmacy selection flow. */}
+      <ProductModal />
     </div>
   );
 }

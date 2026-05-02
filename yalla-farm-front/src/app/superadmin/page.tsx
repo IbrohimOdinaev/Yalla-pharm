@@ -774,7 +774,7 @@ function MedicinesTab({ token }: { token: string }) {
                 <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-surface-container">
                   {resolveMedicineImageUrl(m) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={resolveMedicineImageUrl(m)} alt="" className="h-full w-full object-cover" />
+                    <img src={resolveMedicineImageUrl(m)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">&mdash;</div>
                   )}
@@ -851,9 +851,9 @@ function MedicinesTab({ token }: { token: string }) {
               <>
                 {/* Image preview */}
                 {imageUrl ? (
-                  <div className="overflow-hidden rounded-xl bg-surface-container-low">
+                  <div className="overflow-hidden rounded-xl bg-surface-container">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={imageUrl} alt={getMedicineDisplayName(detail)} className="mx-auto max-h-48 xs:max-h-56 sm:max-h-64 object-contain" />
+                    <img src={imageUrl} alt={getMedicineDisplayName(detail)} className="mx-auto max-h-48 xs:max-h-56 sm:max-h-64 object-contain mix-blend-multiply" />
                   </div>
                 ) : (
                   <div className="flex h-32 xs:h-36 sm:h-40 items-center justify-center rounded-xl bg-surface-container-low text-sm text-on-surface-variant">

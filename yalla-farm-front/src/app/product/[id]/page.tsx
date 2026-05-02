@@ -78,11 +78,11 @@ export default function ProductDetailsPage() {
       ) : null}
 
       {medicine ? (
-        <div className="mx-auto max-w-3xl space-y-4 pb-24">
+        <div className="mx-auto max-w-3xl space-y-3 pb-6 xs:space-y-4">
           {/* Gallery */}
           <div className="space-y-3">
             <div
-              className="relative aspect-square overflow-hidden rounded-3xl bg-accent-mint shadow-card"
+              className="relative aspect-square overflow-hidden rounded-2xl bg-surface-container shadow-card xs:rounded-3xl"
               onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
               onTouchEnd={(e) => {
                 const startX = (e.currentTarget as HTMLElement).dataset.touchX;
@@ -98,7 +98,7 @@ export default function ProductDetailsPage() {
                 <img
                   src={activeImage}
                   alt={getMedicineDisplayName(medicine)}
-                  className="h-full w-full object-contain p-6"
+                  className="h-full w-full object-contain p-3 mix-blend-multiply xs:p-6"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-primary/40">
@@ -152,22 +152,67 @@ export default function ProductDetailsPage() {
                     key={idx}
                     type="button"
                     onClick={() => setActiveImageIdx(idx)}
-                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-accent-mint transition ${
+                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-surface-container transition ${
                       idx === activeImageIdx
                         ? "ring-2 ring-primary ring-offset-2 ring-offset-surface"
                         : "opacity-70 hover:opacity-100"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" className="h-full w-full object-contain p-1.5" />
+                    <img src={url} alt="" className="h-full w-full object-contain p-1.5 mix-blend-multiply" />
                   </button>
                 ))}
               </div>
             ) : null}
           </div>
 
+          {/* Inline add-to-cart — sits directly under the gallery so the
+              primary action is in the user's eye-line, no sticky bar at the
+              bottom of the viewport. Hidden for admin/superadmin who can't
+              shop from this page. */}
+          {role !== "Admin" && role !== "SuperAdmin" ? (
+            <div className="flex items-center gap-1.5 rounded-full bg-surface-container-lowest p-1.5 shadow-glass xs:gap-2">
+              <div className="flex flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 xs:h-10 xs:w-10"
+                  aria-label="Уменьшить"
+                >
+                  <Icon name="minus" size={16} />
+                </button>
+                <span className="min-w-[1.25rem] text-center text-sm font-extrabold tabular-nums xs:min-w-[1.5rem]">
+                  {quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => q + 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 xs:h-10 xs:w-10"
+                  aria-label="Увеличить"
+                >
+                  <Icon name="plus" size={16} />
+                </button>
+              </div>
+              <Button
+                size="lg"
+                className="min-w-0 flex-1 !px-3 xs:!px-5"
+                leftIcon={added ? "check" : "bag"}
+                onClick={onAddToCart}
+                disabled={!inStock}
+              >
+                <span className="truncate text-[13px] xs:text-base">
+                  {added
+                    ? "Добавлено"
+                    : cheapestPrice
+                      ? `В корзину · ${formatMoney(cheapestPrice * quantity)}`
+                      : "В корзину"}
+                </span>
+              </Button>
+            </div>
+          ) : null}
+
           {/* Info card */}
-          <section className="space-y-3 rounded-3xl bg-surface-container-lowest p-5 shadow-card">
+          <section className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5">
             <div className="flex flex-wrap items-center gap-1.5">
               {medicine.categoryName ? (
                 <Chip tone="primary" asButton={false} size="sm">{medicine.categoryName}</Chip>
@@ -185,21 +230,21 @@ export default function ProductDetailsPage() {
             </div>
 
             <div>
-              <h1 className="font-display text-2xl font-extrabold leading-tight text-on-surface">
+              <h1 className="font-display text-xl font-extrabold leading-tight text-on-surface xs:text-2xl">
                 {getMedicineDisplayName(medicine)}
               </h1>
               {medicine.articul ? (
-                <p className="mt-1 font-mono text-xs text-on-surface-variant">Артикул: {medicine.articul}</p>
+                <p className="mt-1 font-mono text-[11px] text-on-surface-variant xs:text-xs">Артикул: {medicine.articul}</p>
               ) : null}
             </div>
 
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-3xl font-extrabold text-primary tabular-nums">
-                {cheapestPrice ? `${formatMoney(cheapestPrice)} TJS` : "—"}
-              </span>
+            <div className="flex items-baseline gap-1.5 xs:gap-2">
               {offersCount > 1 && cheapestPrice ? (
                 <span className="text-xs font-semibold text-on-surface-variant">от</span>
               ) : null}
+              <span className="font-display text-2xl font-extrabold text-primary tabular-nums xs:text-3xl">
+                {cheapestPrice ? formatMoney(cheapestPrice) : "—"}
+              </span>
             </div>
 
             {medicine.description ? (
@@ -210,24 +255,27 @@ export default function ProductDetailsPage() {
             ) : null}
           </section>
 
-          {/* Attributes */}
+          {/* Attributes — single column at very narrow widths so long attribute
+              values (substance lists) don't get cramped to 2-3 chars per line.
+              Switches to 2 cols at xs (375+). */}
           {(medicine.atributes ?? []).length > 0 ? (
             <section className="space-y-2">
               <h3 className="px-1 font-display text-base font-extrabold">Характеристики</h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 xs:grid-cols-2">
                 {medicine.atributes!.map((attr, i) => (
                   <div key={i} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant break-words">
                       {attr.type || attr.name}
                     </p>
-                    <p className="mt-0.5 text-sm font-bold text-on-surface">{attr.value || attr.option}</p>
+                    <p className="mt-0.5 text-sm font-bold text-on-surface break-words">{attr.value || attr.option}</p>
                   </div>
                 ))}
               </div>
             </section>
           ) : null}
 
-          {/* Pharmacy offers */}
+          {/* Pharmacy offers — gap and avatar shrink at narrow widths so
+              the price column never collides with the pharmacy title. */}
           {(medicine.offers ?? []).length > 0 ? (
             <section className="space-y-2">
               <h3 className="px-1 font-display text-base font-extrabold">Купить в аптеке</h3>
@@ -235,20 +283,20 @@ export default function ProductDetailsPage() {
                 {medicine.offers!.map((offer) => (
                   <div
                     key={offer.pharmacyId}
-                    className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card"
+                    className="flex items-center gap-2 rounded-2xl bg-surface-container-lowest p-2.5 shadow-card xs:gap-3 xs:p-3"
                   >
-                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent-mint text-primary">
-                      <Icon name="pharmacy" size={20} />
+                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent-mint text-primary xs:h-11 xs:w-11">
+                      <Icon name="pharmacy" size={18} />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-on-surface">
+                      <p className="truncate text-[13px] font-bold text-on-surface xs:text-sm">
                         {offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}
                       </p>
-                      <p className="text-xs text-on-surface-variant">
+                      <p className="text-[11px] text-on-surface-variant xs:text-xs">
                         В наличии: {offer.stockQuantity} шт.
                       </p>
                     </div>
-                    <span className="flex-shrink-0 font-display text-lg font-extrabold tabular-nums text-primary">
+                    <span className="flex-shrink-0 font-display text-base font-extrabold tabular-nums text-primary xs:text-lg">
                       {formatMoney(offer.price)}
                     </span>
                   </div>
@@ -279,47 +327,6 @@ export default function ProductDetailsPage() {
         </div>
       ) : null}
 
-      {/* Sticky bottom add-to-cart */}
-      {medicine && role !== "Admin" && role !== "SuperAdmin" ? (
-        <div className="fixed bottom-16 left-0 right-0 z-30 px-3 sm:bottom-4">
-          <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-full bg-surface-container-lowest p-1.5 shadow-glass">
-            <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
-              <button
-                type="button"
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95"
-                aria-label="Уменьшить"
-              >
-                <Icon name="minus" size={16} />
-              </button>
-              <span className="min-w-[1.5rem] text-center text-sm font-extrabold tabular-nums">
-                {quantity}
-              </span>
-              <button
-                type="button"
-                onClick={() => setQuantity((q) => q + 1)}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
-                aria-label="Увеличить"
-              >
-                <Icon name="plus" size={16} />
-              </button>
-            </div>
-            <Button
-              size="lg"
-              className="flex-1"
-              leftIcon={added ? "check" : "bag"}
-              onClick={onAddToCart}
-              disabled={!inStock}
-            >
-              {added
-                ? "Добавлено"
-                : cheapestPrice
-                  ? `В корзину · ${formatMoney(cheapestPrice * quantity)} TJS`
-                  : "В корзину"}
-            </Button>
-          </div>
-        </div>
-      ) : null}
     </AppShell>
   );
 }

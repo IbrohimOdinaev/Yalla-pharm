@@ -142,11 +142,17 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
       <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition hover:border-on-surface/30 hover:shadow-card">
         {/* Image */}
         <div
-          className="relative aspect-square overflow-hidden"
+          className="relative aspect-square overflow-hidden bg-surface-container"
           onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
           onTouchEnd={onSwipe}
         >
           {allImages.length > 0 ? (
+            // `mix-blend-multiply` makes the white bezel that ships baked into
+            // most pharmacy product photos blend with the grey card behind,
+            // leaving the colourful packaging in the centre crisp and the
+            // surrounding "white" pixels reading as the same grey as the
+            // image area. That gives us the inset look without shrinking the
+            // photo itself — the asset still fills the box at p-2.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={allImages[imgIndex] ?? allImages[0]}
@@ -154,7 +160,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
               alt={name}
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-contain p-2 transition group-hover:scale-[1.03]"
+              className="h-full w-full object-contain p-2 mix-blend-multiply transition group-hover:scale-[1.03]"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">

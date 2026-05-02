@@ -186,91 +186,129 @@ export default function CartPage() {
           const name = medicine ? getMedicineDisplayName(medicine) : `Загрузка...`;
           const minPrice = getCheapestPrice(medicine);
 
+          const lineTotal = (minPrice ?? 0) * item.quantity;
           return (
-            <li key={item.id} className="flex items-center gap-2 rounded-2xl bg-surface-container-lowest p-2.5 shadow-card xs:gap-3 xs:p-3">
+            <li
+              key={item.id}
+              className="flex items-center gap-2.5 rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:gap-3 xs:p-3.5 sm:gap-4 sm:p-4 md:gap-6 md:p-5 lg:gap-6"
+            >
+              {/* Delete X — leftmost only at lg+. Below 1024px the X moves
+                  into the qty-stepper cluster (rendered inline below) so the
+                  row stays tight and the X+stepper read as one block. */}
+              <button
+                type="button"
+                onClick={() => onRemove(item.id, item.medicineId)}
+                className="hidden h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 lg:flex"
+                aria-label="Удалить"
+              >
+                <Icon name="close" size={14} />
+              </button>
+
+              {/* Image — shrinks one step at md- so the whole row fits the
+                  smaller font scale. */}
               <Link
                 href={`/product/${item.medicineId}`}
-                className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-accent-mint xs:h-14 xs:w-14 xs:rounded-2xl sm:h-16 sm:w-16"
+                className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container xs:h-12 xs:w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-2xl"
               >
                 {image ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={image} alt={name} className="h-full w-full object-cover" />
+                  <img src={image} alt={name} className="h-full w-full object-contain mix-blend-multiply" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-primary/40">
+                  <div className="flex h-full items-center justify-center text-on-surface-variant/40">
                     <Icon name="bag" size={20} />
                   </div>
                 )}
               </Link>
 
+              {/* Name + "от X TJS" hint underneath. The min-price stays
+                  stacked under the name everywhere except lg+, where it
+                  pops out into its own column inside the right cluster
+                  (matches the desktop reference). */}
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/product/${item.medicineId}`}
-                  className="line-clamp-2 text-[12px] font-bold leading-tight text-on-surface transition hover:text-primary xs:text-[13px] sm:text-sm"
+                  className="line-clamp-2 text-[11px] font-bold leading-tight text-on-surface transition hover:text-primary xs:text-[12px] sm:text-[13px] md:text-sm"
                 >
                   {name}
                 </Link>
-                <p className="mt-0.5 text-[10px] text-on-surface-variant xs:mt-1 xs:text-[11px] sm:text-xs">
+                <p className="mt-0.5 text-[10px] text-on-surface-variant xs:text-[11px] sm:text-xs lg:hidden">
                   от{" "}
                   <span className="font-bold text-primary">
-                    {minPrice ? `${formatMoney(minPrice)}` : "—"}
+                    {minPrice ? formatMoney(minPrice) : "—"}
                   </span>
                 </p>
               </div>
 
-              <div className="flex flex-shrink-0 flex-col items-end gap-0.5 xs:gap-1">
-                <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40 xs:h-8 xs:w-8"
-                    aria-label="Уменьшить"
-                  >
-                    <Icon name="minus" size={14} />
-                  </button>
-                  <span className="min-w-[1.25rem] text-center text-xs font-extrabold tabular-nums xs:min-w-[1.5rem] xs:text-sm">
-                    {item.quantity}
+              {/* Right cluster — the inner gap matches the outer flex gap
+                  below lg so the visible spacing is uniform across name →
+                  stepper → total (3 evenly-spaced blocks the user asked
+                  for). At lg+ the cluster grows its own ~3× gap and a
+                  separate "от X TJS" column slots in front of the stepper
+                  (desktop reference). */}
+              <div className="flex flex-shrink-0 items-center gap-2.5 xs:gap-3 sm:gap-4 md:gap-6 lg:gap-24">
+                {/* Min price column — only visible at lg+; below lg the same
+                    info is rendered as a small line under the product name. */}
+                <p className="hidden text-sm text-on-surface-variant lg:block">
+                  от{" "}
+                  <span className="font-bold text-on-surface tabular-nums">
+                    {minPrice ? formatMoney(minPrice) : "—"}
                   </span>
+                </p>
+
+                {/* Stepper cluster — at <lg the X-button stacks BELOW the
+                    stepper inside this same flex column, vertically centred
+                    so the gap between them sits on the row's mid-line. At
+                    lg+ this collapses to just the stepper (the X lives back
+                    on the left). */}
+                <div className="flex flex-col items-center justify-center gap-2 lg:flex-row lg:gap-0">
+                  <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
+                      aria-label="Уменьшить"
+                    >
+                      <Icon name="minus" size={14} />
+                    </button>
+                    <span className="min-w-[1.25rem] text-center text-xs font-extrabold tabular-nums md:min-w-[1.5rem] md:text-sm">
+                      {item.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
+                      aria-label="Увеличить"
+                    >
+                      <Icon name="plus" size={14} />
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40 xs:h-8 xs:w-8"
-                    aria-label="Увеличить"
+                    onClick={() => onRemove(item.id, item.medicineId)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 lg:hidden"
+                    aria-label="Удалить"
                   >
-                    <Icon name="plus" size={14} />
+                    <Icon name="close" size={14} />
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onRemove(item.id, item.medicineId)}
-                  className="text-[10px] font-semibold text-on-surface-variant/70 transition hover:text-secondary xs:text-[11px]"
-                >
-                  Удалить
-                </button>
+
+                {/* Line total — minPrice × quantity in primary text colour
+                    so it reads as a hard number, not an alert. min-w keeps
+                    the column stable so the value doesn't jiggle while the
+                    user steps the qty. Type bumps a step at md to match the
+                    rest of the row's scaled-up sizing above 745px. */}
+                <span className="min-w-[60px] text-right font-display text-xs font-extrabold tabular-nums text-on-surface xs:min-w-[68px] xs:text-[13px] sm:min-w-[80px] sm:text-sm md:min-w-[96px] md:text-base">
+                  {minPrice ? formatMoney(lineTotal) : "—"}
+                </span>
               </div>
             </li>
           );
         })}
       </ul>
 
-      {/* Recommendations — horizontal rail. Cards stay the same size (compact)
-          so two fit visibly on a 360px screen. */}
-      {recommendations.length > 0 && (
-        <section className="mt-6 space-y-2 xs:mt-8 xs:space-y-3">
-          <h3 className="font-display text-base font-extrabold xs:text-lg">Добавьте к заказу</h3>
-          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-2 scroll-touch scrollbar-hide snap-x xs:-mx-4 xs:px-4">
-            {recommendations.map((med) => (
-              <div key={med.id} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
-                <MedicineCard medicine={med} compact />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Inline CTA — sits below the upsell rail so users see the
-          recommendations first and the button doesn't overlap them.
-          Constrained to max-w-3xl on desktop to align with the cart list. */}
-      <div className="mt-6 mb-4 xs:mt-8">
+      {/* Inline CTA — placed directly under the cart list so the primary
+          action stays in the user's eye-line; the upsell rail follows below. */}
+      <div className="mt-6 xs:mt-8">
         <div className="mx-auto max-w-3xl">
           <Button
             type="button"
@@ -285,6 +323,21 @@ export default function CartPage() {
           </Button>
         </div>
       </div>
+
+      {/* Recommendations — horizontal rail. Cards stay the same size (compact)
+          so two fit visibly on a 360px screen. */}
+      {recommendations.length > 0 && (
+        <section className="mt-6 mb-4 space-y-2 xs:mt-8 xs:space-y-3">
+          <h3 className="font-display text-base font-extrabold xs:text-lg">Добавьте к заказу</h3>
+          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-2 scroll-touch scrollbar-hide snap-x xs:-mx-4 xs:px-4">
+            {recommendations.map((med) => (
+              <div key={med.id} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
+                <MedicineCard medicine={med} compact />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </AppShell>
   );
 }
