@@ -287,6 +287,13 @@ export function TopBar({
     // block's `lg:flex` / `lg:hidden` then gates further; effectively:
     //   • desktop block: visible at lg+
     //   • mobile block:  visible at sm..md
+    //
+    // Both states share an identical pill shell with a fixed footprint
+    // (`w-[132px]` at sm+) so neighbouring buttons / search pill don't shift
+    // when the cart toggles between empty (icon only) and filled (icon +
+    // price). The empty state still reads as a clean cyan capsule with a
+    // centred bag glyph; the filled state slots icon + price into the same
+    // box.
     const CartButton =
       cartCount > 0 ? (
         <Link
@@ -296,19 +303,19 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="relative hidden h-10 flex-shrink-0 items-center gap-1.5 rounded-full bg-[#3FC5C4] px-3 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:gap-2 sm:px-4"
+          className="relative hidden h-10 w-[148px] flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#3FC5C4] px-4 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-[164px] sm:gap-2.5 sm:px-5"
         >
-          <Icon name="bag" size={18} strokeWidth={2.2} />
-          <span className="font-display text-xs font-extrabold tabular-nums sm:text-sm">
+          <Icon name="bag" size={18} strokeWidth={2.2} className="flex-shrink-0" />
+          <span className="font-display text-xs font-extrabold tabular-nums whitespace-nowrap sm:text-sm">
             {bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`}
           </span>
         </Link>
       ) : (
-        // Empty state — keep the same brand-cyan capsule as the populated
-        // state so the cart action stays visually anchored on the bar.
+        // Empty state — same pill footprint as the filled state so adjacent
+        // buttons don't reflow on first add.
         <Link
           href="/cart"
-          className="relative hidden h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-11"
+          className="relative hidden h-10 w-[148px] flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-[164px]"
           aria-label="Корзина"
         >
           <Icon name="bag" size={20} strokeWidth={2.2} />

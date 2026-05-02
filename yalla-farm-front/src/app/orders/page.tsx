@@ -510,7 +510,7 @@ export default function OrdersPage() {
                             <div className="h-9 w-9 xs:h-10 xs:w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded-lg bg-surface-container overflow-hidden">
                               {pos.medicine?.images?.[0] ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={`${env.apiBaseUrl}/api/medicines/images/${(pos.medicine.images[0] as { id: string }).id}/content?w=120`} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                                <img src={`${env.apiBaseUrl}/api/medicines/images/${(pos.medicine.images[0] as { id: string }).id}/content?w=120`} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain mix-blend-multiply" />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-[10px] xs:text-xs sm:text-sm font-bold text-on-surface-variant/40">
                                   {(pos.medicine?.title ?? "?")[0]}

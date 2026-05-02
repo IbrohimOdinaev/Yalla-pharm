@@ -457,10 +457,10 @@ export default function CheckoutPage() {
                     <img
                       src={imgUrl}
                       alt=""
-                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-accent-mint object-cover ${missing ? "grayscale" : ""}`}
+                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-surface-container object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
                     />
                   ) : (
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-accent-mint text-primary/40">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container text-on-surface-variant/40">
                       <Icon name="bag" size={20} />
                     </div>
                   )}

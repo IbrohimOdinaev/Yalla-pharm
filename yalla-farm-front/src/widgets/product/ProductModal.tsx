@@ -171,10 +171,10 @@ function ProductModalInner() {
           <div className="p-5 sm:p-6">
             <div className="flex flex-col sm:flex-row gap-5 sm:gap-6">
               <div className="flex-shrink-0 sm:w-[280px] lg:w-[320px]">
-                <div className="relative rounded-xl overflow-hidden bg-white border border-surface-container-high">
+                <div className="relative rounded-xl overflow-hidden bg-surface-container border border-surface-container-high">
                   {activeImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={activeImage} alt={getMedicineDisplayName(medicine)} className="w-full h-[200px] sm:h-[260px] object-contain" />
+                    <img src={activeImage} alt={getMedicineDisplayName(medicine)} className="w-full h-[200px] sm:h-[260px] object-contain mix-blend-multiply" />
                   ) : (
                     <div className="flex h-[200px] sm:h-[260px] items-center justify-center text-on-surface-variant">Нет изображения</div>
                   )}
@@ -186,10 +186,10 @@ function ProductModalInner() {
                         key={idx}
                         type="button"
                         onClick={() => setActiveImageIdx(idx)}
-                        className={`h-10 w-10 flex-shrink-0 rounded-lg border-2 overflow-hidden transition ${idx === activeImageIdx ? "border-primary" : "border-surface-container-high hover:border-on-surface-variant"}`}
+                        className={`h-10 w-10 flex-shrink-0 rounded-lg border-2 overflow-hidden transition bg-surface-container ${idx === activeImageIdx ? "border-primary" : "border-surface-container-high hover:border-on-surface-variant"}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" className="h-full w-full object-contain bg-white" />
+                        <img src={url} alt="" className="h-full w-full object-contain mix-blend-multiply" />
                       </button>
                     ))}
                   </div>

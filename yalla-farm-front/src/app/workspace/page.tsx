@@ -400,7 +400,7 @@ function OfferCard({ token, medicine }: { token: string; medicine: ApiMedicine }
         <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt={medicine.title || ""} className="h-full w-full object-cover" />
+            <img src={imageUrl} alt={medicine.title || ""} className="h-full w-full object-contain mix-blend-multiply" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">Фото</div>
           )}
