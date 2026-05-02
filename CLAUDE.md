@@ -10,15 +10,13 @@ release process. Treat it as binding, not as suggestion.
 
 Hard rules from that document, summarised:
 
-- **Long-lived branches:** `main` (releases only) and `develop` (integration
-  branch). Direct commits to `main` are forbidden.
-  *Repo note: the default branch is currently named `master`. Treat `master`
-  as `main` per the flow until it is renamed.*
+- **Long-lived branches:** `master` (releases only) and `develop` (integration
+  branch). Direct commits to `master` are forbidden.
 - **Short-lived branches** are always created from `develop`, except
-  `hotfix/*` which is created from `main`/`master`:
+  `hotfix/*` which is created from `master`:
   - `feature/<name>` — new functionality
   - `bugfix/<name>` — non-critical bug fixes (planned for next release)
-  - `hotfix/<name>` — critical production fixes, branched from `main`/`master`
+  - `hotfix/<name>` — critical production fixes, branched from `master`
   - `refactor/<name>` — code-quality / structural changes
   - `release/v<X.Y.Z>` — release stabilisation, branched from `develop`
 - **Lifecycle:** finish work on the short-lived branch → merge back into
@@ -28,15 +26,15 @@ Hard rules from that document, summarised:
   format `type(scope): subject`, English, imperative mood, capitalised
   subject, no trailing period, ≤ 72 chars. Allowed types: `feat`, `fix`,
   `refactor`, `docs`, `style`, `test`, `chore`.
-- **Releases on `main`/`master`:** every commit there is a release and
-  must be tagged (`v1.2.3`). `release/*` branches merge into BOTH
-  `main`/`master` AND `develop`. `hotfix/*` branches likewise merge into
-  BOTH and bump a patch tag.
+- **Releases on `master`:** every commit there is a release and must be
+  tagged (`v1.2.3`). `release/*` branches merge into BOTH `master` AND
+  `develop`. `hotfix/*` branches likewise merge into BOTH and bump a
+  patch tag.
 
 When the user says "merge and push" or "ship this", default to the
 release-branch flow (cut a `release/v…` from `develop`, merge into both
 long-lived branches, tag) — do **not** merge a feature branch directly
-into `main`/`master`.
+into `master`.
 
 If the user requests something that contradicts `docs/git-flow.md`,
 flag the conflict and ask for confirmation before proceeding.
