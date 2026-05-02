@@ -248,14 +248,14 @@ export function TopBar({
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high lg:max-w-[588px]"
+          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[706px]"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high lg:max-w-[588px]"
+          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[706px]"
         >
           {SearchInner}
         </Link>
@@ -267,14 +267,14 @@ export function TopBar({
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high"
+          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container px-5 text-left transition hover:bg-surface-container-high"
+          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest"
         >
           {SearchInner}
         </Link>
@@ -288,12 +288,11 @@ export function TopBar({
     //   • desktop block: visible at lg+
     //   • mobile block:  visible at sm..md
     //
-    // Both states share an identical pill shell with a fixed footprint
-    // (`w-[132px]` at sm+) so neighbouring buttons / search pill don't shift
-    // when the cart toggles between empty (icon only) and filled (icon +
-    // price). The empty state still reads as a clean cyan capsule with a
-    // centred bag glyph; the filled state slots icon + price into the same
-    // box.
+    // Empty state is a simple round capsule with just the bag icon; filled
+    // state expands into a wider pill that fits the price text comfortably.
+    // The two flex-1 elements in the header (search bar + trailing spacer)
+    // absorb the width delta on transition, so address/pharmacy/profile
+    // buttons keep their size.
     const CartButton =
       cartCount > 0 ? (
         <Link
@@ -311,11 +310,10 @@ export function TopBar({
           </span>
         </Link>
       ) : (
-        // Empty state — same pill footprint as the filled state so adjacent
-        // buttons don't reflow on first add.
+        // Empty state — compact round capsule like the original design.
         <Link
           href="/cart"
-          className="relative hidden h-10 w-[148px] flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-[164px]"
+          className="relative hidden h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-11"
           aria-label="Корзина"
         >
           <Icon name="bag" size={20} strokeWidth={2.2} />
