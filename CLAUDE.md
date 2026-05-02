@@ -30,6 +30,17 @@ Hard rules from that document, summarised:
   tagged (`v1.2.3`). `release/*` branches merge into BOTH `master` AND
   `develop`. `hotfix/*` branches likewise merge into BOTH and bump a
   patch tag.
+- **`receptMaster` (parallel long-lived branch):** holds the in-progress
+  prescription-ordering system. Branched once from `master`. Direct
+  commits forbidden. Periodically synced from `master` (`git merge master`
+  into `receptMaster`). When the whole system is ready it merges back
+  into `master` as a release.
+- **`recept/<name>` branches:** every sub-feature of the prescription
+  system goes here. Branched from `receptMaster`, merged back **only**
+  into `receptMaster` (NOT into `develop` or `master`). Examples:
+  `recept/prescription-upload`, `recept/recipe-validation`. Standard
+  `feature/*` / `bugfix/*` / `release/*` flow continues on
+  `develop` → `master` for everything outside the prescription system.
 
 When the user says "merge and push" or "ship this", default to the
 release-branch flow (cut a `release/v…` from `develop`, merge into both
