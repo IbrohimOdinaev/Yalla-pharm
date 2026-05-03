@@ -32,29 +32,44 @@ public sealed class PrescriptionsController : ControllerBase
     /// <summary>
     /// Client uploads 1–2 prescription photos + patient age + optional comment.
     /// Returns the freshly-created prescription record (status=Submitted).
+    ///
+    /// We read the files via <c>Request.Form.Files</c> instead of binding
+    /// them to a controller parameter because the complex-type
+    /// <see cref="CreatePrescriptionRequest"/> binder is greedy and eats
+    /// every multipart field, including the photo files (they end up
+    /// nowhere). Reading the IFormFileCollection directly side-steps that.
     /// </summary>
     [HttpPost]
     [Authorize(Roles = nameof(Role.Client))]
     [RequestSizeLimit(UserInputPolicy.MaxMedicineImageFileSizeBytes * Prescription.MaxImagesPerPrescription)]
     public async Task<IActionResult> Create(
       [FromForm] CreatePrescriptionRequest request,
-      [FromForm(Name = "photos")] List<IFormFile> photos,
       CancellationToken cancellationToken)
     {
-        if (photos is null || photos.Count == 0)
+        var photoFiles = Request.Form.Files
+          .Where(f => string.Equals(f.Name, "photos", StringComparison.OrdinalIgnoreCase))
+          .ToList();
+
+        // Fall back to "every uploaded file" so older clients that didn't
+        // name the field "photos" still work. Saves one round-trip of the
+        // user re-trying after the form encoder ate the field name.
+        if (photoFiles.Count == 0 && Request.Form.Files.Count > 0)
+            photoFiles = Request.Form.Files.ToList();
+
+        if (photoFiles.Count == 0)
             throw new InvalidOperationException("At least one photo is required.");
 
-        if (photos.Count > Prescription.MaxImagesPerPrescription)
+        if (photoFiles.Count > Prescription.MaxImagesPerPrescription)
             throw new InvalidOperationException(
               $"At most {Prescription.MaxImagesPerPrescription} photos are allowed per prescription.");
 
         var clientId = User.GetRequiredUserId();
 
-        var uploads = new List<PrescriptionImageUpload>(photos.Count);
-        var openedStreams = new List<Stream>(photos.Count);
+        var uploads = new List<PrescriptionImageUpload>(photoFiles.Count);
+        var openedStreams = new List<Stream>(photoFiles.Count);
         try
         {
-            foreach (var file in photos)
+            foreach (var file in photoFiles)
             {
                 if (file is null || file.Length <= 0)
                     throw new InvalidOperationException("Photo is empty.");

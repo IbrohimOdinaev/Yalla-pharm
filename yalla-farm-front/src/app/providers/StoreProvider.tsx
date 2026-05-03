@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Provider, useDispatch, useSelector } from "react-redux";
 import { store, type RootState } from "@/app/store";
-import { setCredentials } from "@/features/auth/model/authSlice";
+import { setCredentials, markHydrated } from "@/features/auth/model/authSlice";
 import { decodeJwt } from "@/shared/lib/jwt";
 import { getStoredToken, setStoredToken } from "@/shared/lib/auth-storage";
 import { stopSignalRConnection } from "@/shared/lib/signalr";
@@ -31,6 +31,10 @@ function AuthPersistenceBridge() {
         userId: claims.userId,
         pharmacyId: claims.pharmacyId,
       }));
+    } else {
+      // No token at all — still mark hydrated so auth-gated pages stop
+      // showing their loading state and can render the public version.
+      dispatch(markHydrated());
     }
   }, [dispatch]);
 

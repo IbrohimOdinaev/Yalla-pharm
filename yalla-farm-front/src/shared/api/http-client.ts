@@ -6,7 +6,16 @@ type ApiFetchOptions = Omit<RequestInit, "body"> & {
 };
 
 function isJsonLikeBody(body: unknown): body is Record<string, unknown> | Array<unknown> {
-  return typeof body === "object" && body !== null;
+  if (typeof body !== "object" || body === null) return false;
+  // Native body shapes that fetch can serialise on its own — leave them
+  // alone so the browser sets the proper Content-Type (e.g. the
+  // multipart boundary for FormData).
+  if (typeof FormData !== "undefined" && body instanceof FormData) return false;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return false;
+  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) return false;
+  if (typeof ArrayBuffer !== "undefined" && body instanceof ArrayBuffer) return false;
+  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) return false;
+  return true;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {

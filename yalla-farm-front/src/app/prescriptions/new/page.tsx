@@ -14,6 +14,7 @@ const ACCEPTED = "image/png,image/jpeg,image/jpg,image/webp";
 export default function NewPrescriptionPage() {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
+  const hydrated = useAppSelector((s) => s.auth.hydrated);
   const router = useRouter();
 
   const [photos, setPhotos] = useState<File[]>([]);
@@ -22,11 +23,13 @@ export default function NewPrescriptionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auth gate — same pattern as /prescriptions.
+  // Auth gate — same pattern as /prescriptions. Wait for the auth slice
+  // to hydrate from localStorage so a refresh doesn't kick the user out.
   useEffect(() => {
+    if (!hydrated) return;
     if (!token) { router.replace("/login?next=/prescriptions/new"); return; }
     if (role && role !== "Client") router.replace("/");
-  }, [token, role, router]);
+  }, [hydrated, token, role, router]);
 
   // Object URLs for inline previews; revoke on photos[] change to avoid leaks.
   const previews = useMemo(

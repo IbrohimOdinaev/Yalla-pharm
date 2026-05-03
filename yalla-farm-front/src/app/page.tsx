@@ -704,6 +704,35 @@ function HomeContent() {
       />
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
 
+          {/* Prescription-decoding CTA — sits above the quick categories so
+              the entry point to the new "Мои рецепты" flow is the first
+              thing on the home page. Hidden for admin / superadmin since
+              they don't shop. */}
+          {!isAdminOrSA ? (
+            <Link
+              href="/prescriptions/new"
+              className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition hover:bg-primary/15 sm:p-4"
+            >
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-card sm:h-12 sm:w-12">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="9" y1="14" x2="15" y2="14" />
+                  <line x1="12" y1="11" x2="12" y2="17" />
+                </svg>
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-on-surface sm:text-base">Загрузите рецепт от врача</p>
+                <p className="text-[11px] text-on-surface-variant sm:text-xs">
+                  Фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS
+                </p>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-primary">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </Link>
+          ) : null}
+
           {/* Quick categories — Yandex-style horizontal rail */}
           <section>
             <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">

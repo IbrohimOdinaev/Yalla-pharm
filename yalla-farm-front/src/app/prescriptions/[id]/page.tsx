@@ -23,14 +23,16 @@ export default function PrescriptionDetailPage() {
   const router = useRouter();
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
+  const hydrated = useAppSelector((s) => s.auth.hydrated);
 
   const [all, setAll] = useState<ApiPrescription[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (!token) { router.replace("/login?next=/prescriptions"); return; }
     if (role && role !== "Client") router.replace("/");
-  }, [token, role, router]);
+  }, [hydrated, token, role, router]);
 
   useEffect(() => {
     if (!token) return;

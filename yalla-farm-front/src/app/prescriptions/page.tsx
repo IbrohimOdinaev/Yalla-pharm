@@ -30,6 +30,7 @@ const STATUS_TONE: Record<PrescriptionStatus, "primary" | "warning" | "success" 
 export default function MyPrescriptionsPage() {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
+  const hydrated = useAppSelector((s) => s.auth.hydrated);
   const router = useRouter();
 
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
@@ -37,7 +38,10 @@ export default function MyPrescriptionsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Page is client-only — pharmacist / admin / guest all bounce.
+  // Wait for auth state to hydrate from localStorage before deciding;
+  // otherwise the very first render kicks logged-in users out on refresh.
   useEffect(() => {
+    if (!hydrated) return;
     if (!token) {
       router.replace("/login?next=/prescriptions");
       return;
@@ -45,7 +49,7 @@ export default function MyPrescriptionsPage() {
     if (role && role !== "Client") {
       router.replace("/");
     }
-  }, [token, role, router]);
+  }, [hydrated, token, role, router]);
 
   useEffect(() => {
     if (!token) return;
