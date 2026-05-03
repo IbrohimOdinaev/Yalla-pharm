@@ -188,7 +188,11 @@ public sealed class PrescriptionService : IPrescriptionService
           .Include(x => x.Items)
           .ToListAsync(cancellationToken);
 
-        return prescriptions.Select(MapToResponse).ToList();
+        var clients = await LoadClientsByIdsAsync(
+          prescriptions.Select(x => x.ClientId).Distinct().ToList(),
+          cancellationToken);
+
+        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
     }
 
     public async Task<IReadOnlyList<PrescriptionResponse>> GetAwaitingConfirmationAsync(
@@ -201,7 +205,11 @@ public sealed class PrescriptionService : IPrescriptionService
           .Include(x => x.Images)
           .ToListAsync(cancellationToken);
 
-        return prescriptions.Select(MapToResponse).ToList();
+        var clients = await LoadClientsByIdsAsync(
+          prescriptions.Select(x => x.ClientId).Distinct().ToList(),
+          cancellationToken);
+
+        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
     }
 
     public async Task<PrescriptionResponse> ConfirmPaymentAsync(
@@ -226,7 +234,41 @@ public sealed class PrescriptionService : IPrescriptionService
           .Include(x => x.Images)
           .ToListAsync(cancellationToken);
 
-        return prescriptions.Select(MapToResponse).ToList();
+        var clients = await LoadClientsByIdsAsync(
+          prescriptions.Select(x => x.ClientId).Distinct().ToList(),
+          cancellationToken);
+
+        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
+    }
+
+    /// <summary>
+    /// Pharmacist's full visible workspace: every InQueue request (anyone
+    /// can grab) plus their own InReview / Decoded ones. Powers the
+    /// "switch active prescription" picker and the status-tabs view.
+    /// </summary>
+    public async Task<IReadOnlyList<PrescriptionResponse>> GetPharmacistAllAsync(
+      Guid pharmacistId,
+      CancellationToken cancellationToken = default)
+    {
+        if (pharmacistId == Guid.Empty)
+            throw new InvalidOperationException("PharmacistId can't be empty.");
+
+        var prescriptions = await _dbContext.Prescriptions
+          .AsNoTracking()
+          .Where(x =>
+            x.Status == PrescriptionStatus.InQueue
+            || ((x.Status == PrescriptionStatus.InReview || x.Status == PrescriptionStatus.Decoded)
+                && x.AssignedPharmacistId == pharmacistId))
+          .OrderByDescending(x => x.CreatedAtUtc)
+          .Include(x => x.Images)
+          .Include(x => x.Items)
+          .ToListAsync(cancellationToken);
+
+        var clients = await LoadClientsByIdsAsync(
+          prescriptions.Select(x => x.ClientId).Distinct().ToList(),
+          cancellationToken);
+
+        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
     }
 
     public async Task<PrescriptionResponse> GetForPharmacistAsync(
@@ -262,7 +304,11 @@ public sealed class PrescriptionService : IPrescriptionService
         if (!allowed)
             throw new UnauthorizedAccessException("Prescription is not available for this pharmacist.");
 
-        return MapToResponse(prescription);
+        var client = await _dbContext.Users
+          .AsNoTracking()
+          .FirstOrDefaultAsync(u => u.Id == prescription.ClientId, cancellationToken);
+
+        return MapToResponse(prescription, client);
     }
 
     public async Task<PrescriptionResponse> TakeIntoReviewAsync(
@@ -365,15 +411,25 @@ public sealed class PrescriptionService : IPrescriptionService
           .Include(x => x.Items)
           .FirstOrDefaultAsync(cancellationToken);
 
-        return prescription is null ? null : MapToResponse(prescription);
+        if (prescription is null) return null;
+
+        var client = await _dbContext.Users
+          .AsNoTracking()
+          .FirstOrDefaultAsync(u => u.Id == prescription.ClientId, cancellationToken);
+
+        return MapToResponse(prescription, client);
     }
 
-    private static PrescriptionResponse MapToResponse(Prescription prescription)
+    private static PrescriptionResponse MapToResponse(Prescription prescription, User? client = null)
     {
         return new PrescriptionResponse
         {
             PrescriptionId = prescription.Id,
             ClientId = prescription.ClientId,
+            ClientName = client?.Name,
+            ClientPhoneNumber = client?.PhoneNumber,
+            ClientTelegramId = client?.TelegramId,
+            ClientTelegramUsername = client?.TelegramUsername,
             Status = prescription.Status.ToString(),
             PatientAge = prescription.PatientAge,
             ClientComment = prescription.ClientComment,
@@ -404,6 +460,17 @@ public sealed class PrescriptionService : IPrescriptionService
               })
               .ToList()
         };
+    }
+
+    private async Task<Dictionary<Guid, User>> LoadClientsByIdsAsync(
+      IReadOnlyCollection<Guid> clientIds,
+      CancellationToken cancellationToken)
+    {
+        if (clientIds.Count == 0) return new();
+        return await _dbContext.Users
+          .AsNoTracking()
+          .Where(u => clientIds.Contains(u.Id))
+          .ToDictionaryAsync(u => u.Id, cancellationToken);
     }
 
     private static string ValidateAndResolveContentType(string fileName, string contentType)

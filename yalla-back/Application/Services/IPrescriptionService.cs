@@ -38,6 +38,11 @@ public interface IPrescriptionService
     Task<IReadOnlyList<PrescriptionResponse>> GetPharmacistQueueAsync(
       CancellationToken cancellationToken = default);
 
+    /// <summary>InQueue + my InReview + my Decoded — fuels the active-prescription picker.</summary>
+    Task<IReadOnlyList<PrescriptionResponse>> GetPharmacistAllAsync(
+      Guid pharmacistId,
+      CancellationToken cancellationToken = default);
+
     /// <summary>Detail for the pharmacist — must be InQueue, or InReview/Decoded already assigned to them.</summary>
     Task<PrescriptionResponse> GetForPharmacistAsync(
       Guid pharmacistId,

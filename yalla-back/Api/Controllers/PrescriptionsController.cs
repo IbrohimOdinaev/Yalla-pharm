@@ -165,6 +165,19 @@ public sealed class PrescriptionsController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>
+    /// Wider pharmacist view — InQueue (anyone) + the caller's own InReview
+    /// and Decoded prescriptions. Powers the picker and status-tabs UI.
+    /// </summary>
+    [HttpGet("pharmacist/all")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> GetPharmacistAll(CancellationToken cancellationToken)
+    {
+        var pharmacistId = User.GetRequiredUserId();
+        var response = await _prescriptionService.GetPharmacistAllAsync(pharmacistId, cancellationToken);
+        return Ok(response);
+    }
+
     /// <summary>Single prescription detail from the pharmacist viewpoint.</summary>
     [HttpGet("pharmacist/{prescriptionId:guid}")]
     [Authorize(Roles = nameof(Role.Pharmacist))]
@@ -239,6 +252,10 @@ public sealed class PrescriptionsController : ControllerBase
               PrescriptionAssignedPharmacistId = _dbContext.Prescriptions
                 .Where(p => p.Id == x.PrescriptionId)
                 .Select(p => p.AssignedPharmacistId)
+                .FirstOrDefault(),
+              PrescriptionStatus = _dbContext.Prescriptions
+                .Where(p => p.Id == x.PrescriptionId)
+                .Select(p => (PrescriptionStatus?)p.Status)
                 .FirstOrDefault()
           })
           .FirstOrDefaultAsync(cancellationToken);
@@ -246,13 +263,16 @@ public sealed class PrescriptionsController : ControllerBase
         if (image is null)
             return NotFound();
 
-        // Owner client always allowed; SuperAdmin always allowed; assigned
-        // pharmacist allowed for the duration of the review.
+        // Owner client always allowed; SuperAdmin always allowed; pharmacist
+        // can view any prescription that's still in the open queue (so they
+        // can decide whether to take it) plus the ones they've taken into
+        // review or already decoded.
         var allowed = role switch
         {
             Role.SuperAdmin => true,
             Role.Client => image.PrescriptionClientId == userId,
-            Role.Pharmacist => image.PrescriptionAssignedPharmacistId == userId,
+            Role.Pharmacist => image.PrescriptionStatus == PrescriptionStatus.InQueue
+                            || image.PrescriptionAssignedPharmacistId == userId,
             _ => false
         };
 

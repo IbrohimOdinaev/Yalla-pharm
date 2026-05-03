@@ -33,6 +33,11 @@ export async function getPharmacistQueue(token: string): Promise<ApiPrescription
   return apiFetch<ApiPrescription[]>("/api/prescriptions/pharmacist/queue", { token });
 }
 
+/** InQueue + my InReview + my Decoded — fuels the active-prescription picker. */
+export async function getPharmacistAll(token: string): Promise<ApiPrescription[]> {
+  return apiFetch<ApiPrescription[]>("/api/prescriptions/pharmacist/all", { token });
+}
+
 export async function getPharmacistPrescription(
   token: string,
   prescriptionId: string,

@@ -27,6 +27,11 @@ export type ApiPrescriptionChecklistItem = {
 
 export type ApiPrescription = {
   prescriptionId: string;
+  clientId?: string;
+  clientName?: string | null;
+  clientPhoneNumber?: string | null;
+  clientTelegramId?: number | null;
+  clientTelegramUsername?: string | null;
   status: PrescriptionStatus;
   patientAge: number;
   clientComment?: string | null;

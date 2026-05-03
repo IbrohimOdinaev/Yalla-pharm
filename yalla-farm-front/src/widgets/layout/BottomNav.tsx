@@ -21,6 +21,8 @@ const SUPERADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
 
 const PHARMACIST_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/pharmacist", label: "Очередь", icon: "orders" },
+  { href: "/pharmacist/cart", label: "Корзина", icon: "bag" },
+  { href: "/pharmacist/catalog", label: "Каталог", icon: "pharmacy" },
 ];
 
 export function BottomNav() {
@@ -63,7 +65,11 @@ export function BottomNav() {
               }
               return pathname.startsWith(itemPath) && hash === itemHash;
             }
-            return item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            if (item.href === "/") return pathname === "/";
+            // Exact match only — multiple sibling routes (e.g. "/pharmacist"
+            // vs "/pharmacist/cart") would otherwise both light up because
+            // of the longest-prefix overlap.
+            return pathname === item.href;
           })();
 
           const cls = `flex flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold truncate transition ${

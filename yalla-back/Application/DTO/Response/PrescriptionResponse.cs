@@ -4,6 +4,12 @@ public sealed class PrescriptionResponse
 {
     public Guid PrescriptionId { get; set; }
     public Guid ClientId { get; set; }
+    /// <summary>Client display name (may be empty for OTP/Telegram-only clients without a saved name).</summary>
+    public string? ClientName { get; set; }
+    /// <summary>Client phone in normalised 9-digit form, or empty for Telegram-only accounts.</summary>
+    public string? ClientPhoneNumber { get; set; }
+    public long? ClientTelegramId { get; set; }
+    public string? ClientTelegramUsername { get; set; }
     public string Status { get; set; } = string.Empty;
     public int PatientAge { get; set; }
     public string? ClientComment { get; set; }

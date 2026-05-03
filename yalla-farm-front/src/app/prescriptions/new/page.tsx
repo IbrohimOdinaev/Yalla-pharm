@@ -73,9 +73,13 @@ export default function NewPrescriptionPage() {
         photos
       });
       // Если бэк выдал DC payment URL — отправляем клиента на оплату 3 TJS.
+      // Перед редиректом подменяем текущий URL на /prescriptions, чтобы
+      // браузерный «Назад» с DC-страницы привёл клиента сразу в список
+      // «Мои рецепты», а не обратно на пустую форму загрузки.
       // После возврата клиент нажмёт «Я оплатил» на странице деталей,
       // что переведёт заявку в AwaitingConfirmation для SuperAdmin'а.
       if (created.paymentUrl) {
+        window.history.replaceState({}, "", "/prescriptions");
         window.location.href = created.paymentUrl;
         return;
       }

@@ -1,55 +1,84 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
-import { getPharmacistQueue } from "@/entities/pharmacist/api";
-import { type ApiPrescription } from "@/entities/prescription/api";
-import { AppShell } from "@/widgets/layout/AppShell";
-import { TopBar } from "@/widgets/layout/TopBar";
-import { AuthedImage } from "@/shared/ui";
+import { getPharmacistAll, takePrescriptionIntoReview } from "@/entities/pharmacist/api";
+import {
+  PRESCRIPTION_STATUS_LABEL_RU,
+  type ApiPrescription,
+  type PrescriptionStatus,
+} from "@/entities/prescription/api";
+import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
+import { AuthedImage, Button, Icon } from "@/shared/ui";
+
+const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview", "Decoded"];
 
 export default function PharmacistQueuePage() {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const hydrated = useAppSelector((s) => s.auth.hydrated);
   const router = useRouter();
+  const setActiveId = useActivePrescriptionStore((s) => s.setActiveId);
 
   const [items, setItems] = useState<ApiPrescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!token) { router.replace("/login?next=/pharmacist"); return; }
+    if (!token) { router.replace("/login/admin?redirect=/pharmacist"); return; }
     if (role && role !== "Pharmacist") router.replace("/");
   }, [hydrated, token, role, router]);
 
-  useEffect(() => {
-    if (!token || role !== "Pharmacist") return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getPharmacistQueue(token)
-      .then((data) => { if (!cancelled) { setItems(data); setLoading(false); } })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Не удалось загрузить очередь.");
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [token, role]);
+  function load() {
+    if (!token || role !== "Pharmacist") return Promise.resolve();
+    setLoading(true); setError(null);
+    return getPharmacistAll(token)
+      .then(setItems)
+      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить очередь."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [token, role]);
+
+  async function onSelectAndTake(p: ApiPrescription) {
+    setActiveId(p.prescriptionId);
+    if (p.status === "InQueue" && token) {
+      setBusyId(p.prescriptionId);
+      try {
+        await takePrescriptionIntoReview(token, p.prescriptionId);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Не удалось взять в работу.");
+      } finally {
+        setBusyId(null);
+      }
+    }
+    router.push("/pharmacist/cart");
+  }
+
+  function onJustSelect(p: ApiPrescription) {
+    setActiveId(p.prescriptionId);
+    router.push("/pharmacist/cart");
+  }
+
+  const byStatus: Record<PrescriptionStatus, ApiPrescription[]> = {
+    Submitted: [], AwaitingConfirmation: [], InQueue: [], InReview: [],
+    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [],
+  };
+  for (const p of items) byStatus[p.status]?.push(p);
 
   return (
-    <AppShell hideGlobalNav top={<TopBar title="Кабинет фармацевта" showLogout />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+    <PharmacistShell>
+      <div className="mx-auto max-w-3xl space-y-5">
         <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-container p-5 text-white">
           <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Pharmacist</p>
-          <h1 className="text-xl font-extrabold">Очередь рецептов на расшифровку</h1>
+          <h1 className="text-xl font-extrabold">Очередь рецептов</h1>
           <p className="mt-1 text-sm opacity-80">
-            Возьмите любую заявку в работу — у вас откроется &laquo;активная корзина&raquo; для составления чек-листа.
+            Выберите заявку, чтобы открыть её корзину и собрать чек-лист.
           </p>
         </div>
 
@@ -59,48 +88,85 @@ export default function PharmacistQueuePage() {
 
         {loading ? (
           <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
-            Загружаем очередь…
+            Загружаем…
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
-            Очередь пуста. Новые заявки появятся, как только SuperAdmin подтвердит оплату.
+            Очередь пуста. Заявки появятся, когда SuperAdmin подтвердит оплату.
           </div>
         ) : (
-          <ul className="space-y-2">
-            {items.map((p) => {
-              const created = new Date(p.createdAtUtc).toLocaleString("ru-RU");
+          <div className="space-y-6">
+            {STATUS_ORDER.map((status) => {
+              const list = byStatus[status];
+              if (!list || list.length === 0) return null;
               return (
-                <li key={p.prescriptionId}>
-                  <Link
-                    href={`/pharmacist/${p.prescriptionId}`}
-                    className="flex items-start gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card transition hover:bg-surface-container xs:p-4"
-                  >
-                    <div className="flex flex-shrink-0 gap-2">
-                      {p.images.slice(0, 2).map((img) => (
-                        <AuthedImage
-                          key={img.id}
-                          src={img.url}
-                          alt=""
-                          className="h-20 w-16 rounded-lg object-cover bg-surface-container"
-                        />
-                      ))}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold">Возраст: {p.patientAge}</p>
-                      {p.clientComment ? (
-                        <p className="mt-1 line-clamp-2 text-xs text-on-surface-variant">
-                          {p.clientComment}
-                        </p>
-                      ) : null}
-                      <p className="mt-1 text-[11px] text-on-surface-variant">{created}</p>
-                    </div>
-                  </Link>
-                </li>
+                <section key={status} className="space-y-3">
+                  <h2 className="font-display text-base font-extrabold">
+                    {PRESCRIPTION_STATUS_LABEL_RU[status]} · {list.length}
+                  </h2>
+                  <ul className="space-y-2">
+                    {list.map((p) => {
+                      const cover = p.images[0];
+                      const phone = formatPhone(p.clientPhoneNumber);
+                      const tg = p.clientTelegramUsername ? `@${p.clientTelegramUsername}` : null;
+                      const created = new Date(p.createdAtUtc).toLocaleString("ru-RU");
+                      return (
+                        <li key={p.prescriptionId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                              {cover ? (
+                                <AuthedImage src={cover.url} alt="" className="h-full w-full object-cover" />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold">
+                                {p.clientName?.trim() || phone || tg || "Без имени"}
+                              </p>
+                              <p className="truncate text-xs text-on-surface-variant">
+                                {[phone, tg, `Возраст: ${p.patientAge}`].filter(Boolean).join(" · ")}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-on-surface-variant/70">{created}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center gap-2">
+                            {status === "InQueue" ? (
+                              <Button
+                                size="sm"
+                                loading={busyId === p.prescriptionId}
+                                onClick={() => onSelectAndTake(p)}
+                              >
+                                Взять в работу
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="secondary" onClick={() => onJustSelect(p)}>
+                                Открыть корзину
+                              </Button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => { setActiveId(p.prescriptionId); }}
+                              className="ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-on-surface-variant transition hover:bg-surface-container"
+                            >
+                              <Icon name="orders" size={14} />
+                              Сделать активным
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
               );
             })}
-          </ul>
+          </div>
         )}
       </div>
-    </AppShell>
+    </PharmacistShell>
   );
+}
+
+function formatPhone(phone?: string | null): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  return digits ? `+992${digits}` : null;
 }
