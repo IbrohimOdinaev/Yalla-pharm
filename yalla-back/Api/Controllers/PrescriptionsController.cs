@@ -113,6 +113,86 @@ public sealed class PrescriptionsController : ControllerBase
         return Ok(response);
     }
 
+    // ── SuperAdmin ────────────────────────────────────────────────────────
+
+    /// <summary>SuperAdmin queue of prescriptions waiting for the 3 TJS sign-off.</summary>
+    [HttpGet("superadmin/awaiting-confirmation")]
+    [Authorize(Roles = nameof(Role.SuperAdmin))]
+    public async Task<IActionResult> GetAwaitingConfirmation(CancellationToken cancellationToken)
+    {
+        var response = await _prescriptionService.GetAwaitingConfirmationAsync(cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>SuperAdmin marks the 3 TJS as paid → prescription enters the pharmacist queue.</summary>
+    [HttpPost("superadmin/{prescriptionId:guid}/confirm")]
+    [Authorize(Roles = nameof(Role.SuperAdmin))]
+    public async Task<IActionResult> ConfirmPayment(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var response = await _prescriptionService.ConfirmPaymentAsync(prescriptionId, cancellationToken);
+        return Ok(response);
+    }
+
+    // ── Pharmacist ────────────────────────────────────────────────────────
+
+    /// <summary>The shared in-queue pool every pharmacist sees.</summary>
+    [HttpGet("pharmacist/queue")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> GetPharmacistQueue(CancellationToken cancellationToken)
+    {
+        var response = await _prescriptionService.GetPharmacistQueueAsync(cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Single prescription detail from the pharmacist viewpoint.</summary>
+    [HttpGet("pharmacist/{prescriptionId:guid}")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> GetForPharmacist(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var pharmacistId = User.GetRequiredUserId();
+        var response = await _prescriptionService.GetForPharmacistAsync(
+          pharmacistId,
+          prescriptionId,
+          cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Pharmacist takes a prescription into review → InReview, assigned to them.</summary>
+    [HttpPost("pharmacist/{prescriptionId:guid}/take")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> TakeIntoReview(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var pharmacistId = User.GetRequiredUserId();
+        var response = await _prescriptionService.TakeIntoReviewAsync(
+          pharmacistId,
+          prescriptionId,
+          cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>Pharmacist submits the decoded checklist (catalog refs + manual entries).</summary>
+    [HttpPost("pharmacist/{prescriptionId:guid}/decode")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> SubmitChecklist(
+      Guid prescriptionId,
+      [FromBody] DecodePrescriptionRequest request,
+      CancellationToken cancellationToken)
+    {
+        var pharmacistId = User.GetRequiredUserId();
+        var response = await _prescriptionService.SubmitChecklistAsync(
+          pharmacistId,
+          prescriptionId,
+          request,
+          cancellationToken);
+        return Ok(response);
+    }
+
     /// <summary>
     /// Anonymous content endpoint mirrors <c>GET /api/medicines/images/{id}/content</c>.
     /// Auth-gated to the client who owns the prescription so other people can't

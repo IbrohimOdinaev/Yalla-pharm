@@ -51,6 +51,16 @@ public sealed class AuthController : ControllerBase
     return Ok(response);
   }
 
+  [HttpPost("pharmacist/login")]
+  [AllowAnonymous]
+  public async Task<IActionResult> PharmacistLogin(
+    [FromBody] LoginRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.PharmacistLoginAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
   [HttpPost("telegram/start")]
   [AllowAnonymous]
   [EnableRateLimiting("sms-register-request")]

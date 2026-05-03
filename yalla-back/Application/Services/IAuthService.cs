@@ -17,6 +17,10 @@ public interface IAuthService
     LoginRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<LoginResponse> PharmacistLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<ChangePasswordResponse> ChangePasswordAsync(
     Guid userId,
     ChangePasswordRequest request,

@@ -16,6 +16,11 @@ const SUPERADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/superadmin#pharmacies", label: "Аптеки", icon: "pharmacy" },
   { href: "/superadmin#medicines", label: "Лекарства", icon: "bag" },
   { href: "/superadmin#orders", label: "Заказы", icon: "orders" },
+  { href: "/superadmin#prescriptions", label: "Рецепты", icon: "orders" },
+];
+
+const PHARMACIST_ITEMS: { href: string; label: string; icon: IconName }[] = [
+  { href: "/pharmacist", label: "Очередь", icon: "orders" },
 ];
 
 export function BottomNav() {
@@ -31,14 +36,16 @@ export function BottomNav() {
   }, []);
 
   const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
+  const isPharmacist = role === "Pharmacist";
 
   const items = useMemo(() => {
     if (role === "Admin") return ADMIN_ITEMS;
     if (role === "SuperAdmin") return SUPERADMIN_ITEMS;
+    if (role === "Pharmacist") return PHARMACIST_ITEMS;
     return [];
   }, [role]);
 
-  if (!isAdminOrSA) return null;
+  if (!isAdminOrSA && !isPharmacist) return null;
 
   const gridCols = items.length === 3 ? "grid-cols-3" : "grid-cols-4";
 

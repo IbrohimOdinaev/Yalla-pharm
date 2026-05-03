@@ -14,6 +14,38 @@ public interface IPrescriptionService
     Task<IReadOnlyList<PrescriptionResponse>> GetMyPrescriptionsAsync(
       Guid clientId,
       CancellationToken cancellationToken = default);
+
+    /// <summary>SuperAdmin queue: prescriptions waiting for the 3 TJS payment confirm.</summary>
+    Task<IReadOnlyList<PrescriptionResponse>> GetAwaitingConfirmationAsync(
+      CancellationToken cancellationToken = default);
+
+    /// <summary>SuperAdmin sign-off: AwaitingConfirmation → InQueue.</summary>
+    Task<PrescriptionResponse> ConfirmPaymentAsync(
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>Pharmacist queue: every prescription in InQueue.</summary>
+    Task<IReadOnlyList<PrescriptionResponse>> GetPharmacistQueueAsync(
+      CancellationToken cancellationToken = default);
+
+    /// <summary>Detail for the pharmacist — must be InQueue, or InReview/Decoded already assigned to them.</summary>
+    Task<PrescriptionResponse> GetForPharmacistAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>Pharmacist takes a request into review: InQueue → InReview, assigns themselves.</summary>
+    Task<PrescriptionResponse> TakeIntoReviewAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>Pharmacist submits the decoded checklist: InReview → Decoded.</summary>
+    Task<PrescriptionResponse> SubmitChecklistAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      DecodePrescriptionRequest request,
+      CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -3,6 +3,7 @@ namespace Yalla.Application.DTO.Response;
 public sealed class PrescriptionResponse
 {
     public Guid PrescriptionId { get; set; }
+    public Guid ClientId { get; set; }
     public string Status { get; set; } = string.Empty;
     public int PatientAge { get; set; }
     public string? ClientComment { get; set; }

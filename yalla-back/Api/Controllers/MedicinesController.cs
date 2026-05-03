@@ -53,11 +53,14 @@ public sealed class MedicinesController : ControllerBase
   }
 
   [HttpGet("all")]
-  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.Pharmacist)}")]
   public async Task<IActionResult> GetAll(
     [FromQuery] GetAllMedicinesRequest request,
     CancellationToken cancellationToken)
   {
+    // Pharmacists need access to the entire catalog (including medicines
+    // without active offers) so they can compose checklists for clients
+    // — offers may appear later when the client picks a pharmacy.
     var response = await _medicineService.GetAllMedicinesAsync(request, cancellationToken);
     return Ok(response);
   }

@@ -122,6 +122,7 @@ function HomeContent() {
   useEffect(() => {
     if (role === "Admin") navRouter.replace("/workspace");
     else if (role === "SuperAdmin") navRouter.replace("/superadmin");
+    else if (role === "Pharmacist") navRouter.replace("/pharmacist");
   }, [role, navRouter]);
 
   // Restore view & query from URL params on mount

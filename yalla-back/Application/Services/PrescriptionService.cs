@@ -4,6 +4,8 @@ using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
+using Yalla.Domain.Exceptions;
 
 namespace Yalla.Application.Services;
 
@@ -52,8 +54,6 @@ public sealed class PrescriptionService : IPrescriptionService
             throw new InvalidOperationException(
               $"At most {Prescription.MaxImagesPerPrescription} photos are allowed per prescription.");
 
-        // Upload every photo first; if any of them fails we don't want a
-        // half-attached Prescription row in the DB.
         var uploadedKeys = new List<string>(images.Count);
         try
         {
@@ -99,6 +99,14 @@ public sealed class PrescriptionService : IPrescriptionService
               request.ClientComment,
               prescriptionImages);
 
+            // Money handling for the 3 TJS service is intentionally manual
+            // for now: the prescription jumps straight to AwaitingConfirmation
+            // so SuperAdmin can sign it off in their queue. Real online
+            // payment (DushanbeCity) plugs in later — at that point we'll
+            // create a PaymentIntent here, attach it via
+            // prescription.AttachPaymentIntent and listen to its state.
+            prescription.MoveToAwaitingConfirmation();
+
             _dbContext.Prescriptions.Add(prescription);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -137,6 +145,169 @@ public sealed class PrescriptionService : IPrescriptionService
         return prescriptions.Select(MapToResponse).ToList();
     }
 
+    public async Task<IReadOnlyList<PrescriptionResponse>> GetAwaitingConfirmationAsync(
+      CancellationToken cancellationToken = default)
+    {
+        var prescriptions = await _dbContext.Prescriptions
+          .AsNoTracking()
+          .Where(x => x.Status == PrescriptionStatus.AwaitingConfirmation)
+          .OrderBy(x => x.CreatedAtUtc)
+          .Include(x => x.Images)
+          .ToListAsync(cancellationToken);
+
+        return prescriptions.Select(MapToResponse).ToList();
+    }
+
+    public async Task<PrescriptionResponse> ConfirmPaymentAsync(
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        prescription.MoveToQueue();
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await BuildResponseAsync(prescriptionId, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load updated prescription.");
+    }
+
+    public async Task<IReadOnlyList<PrescriptionResponse>> GetPharmacistQueueAsync(
+      CancellationToken cancellationToken = default)
+    {
+        var prescriptions = await _dbContext.Prescriptions
+          .AsNoTracking()
+          .Where(x => x.Status == PrescriptionStatus.InQueue)
+          .OrderBy(x => x.CreatedAtUtc)
+          .Include(x => x.Images)
+          .ToListAsync(cancellationToken);
+
+        return prescriptions.Select(MapToResponse).ToList();
+    }
+
+    public async Task<PrescriptionResponse> GetForPharmacistAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        if (pharmacistId == Guid.Empty)
+            throw new InvalidOperationException("PharmacistId can't be empty.");
+        if (prescriptionId == Guid.Empty)
+            throw new InvalidOperationException("PrescriptionId can't be empty.");
+
+        var prescription = await _dbContext.Prescriptions
+          .AsNoTracking()
+          .Where(x => x.Id == prescriptionId)
+          .Include(x => x.Images)
+          .Include(x => x.Items)
+          .FirstOrDefaultAsync(cancellationToken)
+          ?? throw new InvalidOperationException("Prescription not found.");
+
+        // Pharmacists can read anything in the open queue; once a
+        // prescription is taken into review only the assignee can keep
+        // working on it. Decoded prescriptions stay readable so the
+        // pharmacist can review their past work.
+        var allowed = prescription.Status switch
+        {
+            PrescriptionStatus.InQueue => true,
+            PrescriptionStatus.InReview => prescription.AssignedPharmacistId == pharmacistId,
+            PrescriptionStatus.Decoded => prescription.AssignedPharmacistId == pharmacistId,
+            _ => false
+        };
+
+        if (!allowed)
+            throw new UnauthorizedAccessException("Prescription is not available for this pharmacist.");
+
+        return MapToResponse(prescription);
+    }
+
+    public async Task<PrescriptionResponse> TakeIntoReviewAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        prescription.TakeIntoReview(pharmacistId);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await BuildResponseAsync(prescriptionId, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load updated prescription.");
+    }
+
+    public async Task<PrescriptionResponse> SubmitChecklistAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      DecodePrescriptionRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (pharmacistId == Guid.Empty)
+            throw new InvalidOperationException("PharmacistId can't be empty.");
+
+        if (request.Items is null || request.Items.Count == 0)
+            throw new InvalidOperationException("Чек-лист должен содержать хотя бы одну позицию.");
+
+        var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        if (prescription.AssignedPharmacistId != pharmacistId)
+            throw new UnauthorizedAccessException("Only the assigned pharmacist can submit this checklist.");
+
+        // Only allow MedicineIds that actually exist + are active, so we
+        // don't end up with checklists pointing to nothing later.
+        var refIds = request.Items
+          .Where(i => i.MedicineId.HasValue)
+          .Select(i => i.MedicineId!.Value)
+          .Distinct()
+          .ToList();
+
+        if (refIds.Count > 0)
+        {
+            var foundIds = await _dbContext.Medicines
+              .AsNoTracking()
+              .Where(m => refIds.Contains(m.Id))
+              .Select(m => m.Id)
+              .ToListAsync(cancellationToken);
+
+            var missing = refIds.Except(foundIds).ToList();
+            if (missing.Count > 0)
+                throw new InvalidOperationException(
+                  $"Medicine(s) not found in catalog: {string.Join(", ", missing)}");
+        }
+
+        var items = new List<PrescriptionChecklistItem>(request.Items.Count);
+        foreach (var i in request.Items)
+        {
+            items.Add(i.MedicineId.HasValue
+              ? PrescriptionChecklistItem.FromCatalog(
+                  i.MedicineId.Value,
+                  i.Quantity,
+                  i.PharmacistComment)
+              : PrescriptionChecklistItem.Manual(
+                  i.ManualMedicineName ?? string.Empty,
+                  i.Quantity,
+                  i.PharmacistComment));
+        }
+
+        prescription.SubmitChecklist(request.OverallComment, items);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await BuildResponseAsync(prescriptionId, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load updated prescription.");
+    }
+
+    private async Task<Prescription> LoadTrackedAsync(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        if (prescriptionId == Guid.Empty)
+            throw new InvalidOperationException("PrescriptionId can't be empty.");
+
+        return await _dbContext.Prescriptions
+          .Where(x => x.Id == prescriptionId)
+          .Include(x => x.Items)
+          .Include(x => x.Images)
+          .FirstOrDefaultAsync(cancellationToken)
+          ?? throw new InvalidOperationException("Prescription not found.");
+    }
+
     private async Task<PrescriptionResponse?> BuildResponseAsync(
       Guid prescriptionId,
       CancellationToken cancellationToken)
@@ -156,6 +327,7 @@ public sealed class PrescriptionService : IPrescriptionService
         return new PrescriptionResponse
         {
             PrescriptionId = prescription.Id,
+            ClientId = prescription.ClientId,
             Status = prescription.Status.ToString(),
             PatientAge = prescription.PatientAge,
             ClientComment = prescription.ClientComment,
@@ -172,9 +344,6 @@ public sealed class PrescriptionService : IPrescriptionService
               {
                   Id = x.Id,
                   OrderIndex = x.OrderIndex,
-                  // Resolved later by the controller layer (which knows the
-                  // public host); kept as the storage key here so the
-                  // response is host-agnostic.
                   Url = $"/api/prescriptions/images/{x.Id}/content"
               })
               .ToList(),

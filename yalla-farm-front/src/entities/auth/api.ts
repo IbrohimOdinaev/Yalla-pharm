@@ -57,6 +57,13 @@ export async function superAdminLogin(phoneNumber: string, password: string): Pr
   });
 }
 
+export async function pharmacistLogin(phoneNumber: string, password: string): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("/api/auth/pharmacist/login", {
+    method: "POST",
+    body: { phoneNumber, password },
+  });
+}
+
 // ───────────── Telegram bot deeplink auth ─────────────
 
 export type StartTelegramAuthResponse = {
