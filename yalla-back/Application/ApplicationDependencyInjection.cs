@@ -24,6 +24,7 @@ public static class DependencyInjection
     services.AddScoped<ISmsService, SmsService>();
     services.AddScoped<IOrderStatusSmsService, OrderStatusSmsService>();
     services.AddScoped<IPharmacyWorkerService, PharmacyWorkerService>();
+    services.AddScoped<IPrescriptionService, PrescriptionService>();
     services.AddScoped<IUserReadService, UserReadService>();
     services.AddTransient(typeof(IValidator<>), typeof(RequestDtoFluentValidator<>));
 

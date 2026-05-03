@@ -371,6 +371,14 @@ export function TopBar({
                       <Icon name="orders" size={16} />
                       Мои заказы
                     </Link>
+                    <Link
+                      href="/prescriptions"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                    >
+                      <Icon name="orders" size={16} />
+                      Мои рецепты
+                    </Link>
                   </>
                 ) : null}
                 {role === "Admin" ? (
