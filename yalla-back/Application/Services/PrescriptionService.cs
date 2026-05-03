@@ -1,4 +1,6 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
@@ -11,6 +13,10 @@ namespace Yalla.Application.Services;
 
 public sealed class PrescriptionService : IPrescriptionService
 {
+    /// <summary>Flat 3 TJS service fee for prescription decoding.</summary>
+    public const decimal DecodingFeeAmount = 3m;
+    public const string DecodingFeeCurrency = "TJS";
+
     private const string OctetStreamContentType = "application/octet-stream";
 
     /// <summary>Allowed image extensions → canonical MIME mapping.</summary>
@@ -25,13 +31,19 @@ public sealed class PrescriptionService : IPrescriptionService
 
     private readonly IAppDbContext _dbContext;
     private readonly IPrescriptionImageStorage _imageStorage;
+    private readonly IPaymentSettingsService _paymentSettingsService;
+    private readonly DushanbeCityPaymentOptions _paymentOptions;
 
     public PrescriptionService(
       IAppDbContext dbContext,
-      IPrescriptionImageStorage imageStorage)
+      IPrescriptionImageStorage imageStorage,
+      IPaymentSettingsService paymentSettingsService,
+      IOptions<DushanbeCityPaymentOptions> paymentOptions)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
+        _paymentSettingsService = paymentSettingsService;
+        _paymentOptions = paymentOptions.Value;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -99,19 +111,35 @@ public sealed class PrescriptionService : IPrescriptionService
               request.ClientComment,
               prescriptionImages);
 
-            // Money handling for the 3 TJS service is intentionally manual
-            // for now: the prescription jumps straight to AwaitingConfirmation
-            // so SuperAdmin can sign it off in their queue. Real online
-            // payment (DushanbeCity) plugs in later — at that point we'll
-            // create a PaymentIntent here, attach it via
-            // prescription.AttachPaymentIntent and listen to its state.
-            prescription.MoveToAwaitingConfirmation();
-
+            // Stay in Submitted until the client confirms they paid the
+            // 3 TJS DC fee. After payment they hit POST /i-paid which
+            // moves the prescription to AwaitingConfirmation; SuperAdmin
+            // then verifies the bank receipt and pushes it to InQueue.
             _dbContext.Prescriptions.Add(prescription);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            return await BuildResponseAsync(prescription.Id, cancellationToken)
+            // Build a one-shot DC payment URL so the client can be
+            // redirected to pay the 3 TJS fee right after upload. The URL
+            // is not stored — caller is expected to redirect immediately.
+            var clientPhone = await _dbContext.Clients
+              .AsNoTracking()
+              .Where(c => c.Id == clientId)
+              .Select(c => c.PhoneNumber)
+              .FirstOrDefaultAsync(cancellationToken)
+              ?? string.Empty;
+
+            var paymentUrl = await BuildPaymentUrlAsync(
+              clientPhone,
+              prescription.Id,
+              cancellationToken);
+
+            var response = await BuildResponseAsync(prescription.Id, cancellationToken)
               ?? throw new InvalidOperationException("Failed to load created prescription.");
+
+            response.PaymentUrl = paymentUrl;
+            response.PaymentAmount = DecodingFeeAmount;
+            response.PaymentCurrency = DecodingFeeCurrency;
+            return response;
         }
         catch
         {
@@ -125,6 +153,24 @@ public sealed class PrescriptionService : IPrescriptionService
             }
             throw;
         }
+    }
+
+    public async Task<PrescriptionResponse> MarkPaidByClientAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty) throw new InvalidOperationException("ClientId can't be empty.");
+
+        var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        if (prescription.ClientId != clientId)
+            throw new UnauthorizedAccessException("Prescription belongs to a different client.");
+
+        prescription.MoveToAwaitingConfirmation();
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await BuildResponseAsync(prescriptionId, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load updated prescription.");
     }
 
     public async Task<IReadOnlyList<PrescriptionResponse>> GetMyPrescriptionsAsync(
@@ -416,6 +462,77 @@ public sealed class PrescriptionService : IPrescriptionService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Builds a DushanbeCity payment URL for the 3 TJS service fee. Mirrors
+    /// the URL-builder StubPaymentService uses for orders, but with a
+    /// prescription-id comment so the bank receipt can be matched back to
+    /// the right request. Returns an empty string if no DC base URL is
+    /// configured (e.g. dev without seed) — caller falls back to manual
+    /// confirmation flow.
+    /// </summary>
+    private async Task<string> BuildPaymentUrlAsync(
+      string clientPhone,
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var overrideUrl = await _paymentSettingsService.GetDcBaseUrlAsync(cancellationToken);
+        var baseUrl = !string.IsNullOrWhiteSpace(overrideUrl) ? overrideUrl : _paymentOptions.BaseUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return string.Empty;
+
+        var amount = DecodingFeeAmount.ToString("0.00", CultureInfo.InvariantCulture);
+        var phone = NormalizePhoneForPaymentComment(clientPhone);
+        var comment = $"ClientNumber: {phone} & PrescriptionId: {prescriptionId}";
+        var url = WithQueryParameter(baseUrl, "s", amount);
+        url = WithQueryParameter(url, "c", comment);
+        return url;
+    }
+
+    private static string NormalizePhoneForPaymentComment(string? phoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber)) return "unknown";
+        var digits = new string(phoneNumber.Where(char.IsDigit).ToArray());
+        if (digits.StartsWith("992", StringComparison.Ordinal) && digits.Length == 12)
+            return digits[3..];
+        return digits.Length > 0 ? digits : phoneNumber.Trim();
+    }
+
+    private static string WithQueryParameter(string url, string key, string value)
+    {
+        var source = url ?? string.Empty;
+        var fragmentIndex = source.IndexOf('#');
+        var fragment = fragmentIndex >= 0 ? source[fragmentIndex..] : string.Empty;
+        var withoutFragment = fragmentIndex >= 0 ? source[..fragmentIndex] : source;
+        var queryIndex = withoutFragment.IndexOf('?');
+        var path = queryIndex >= 0 ? withoutFragment[..queryIndex] : withoutFragment;
+        var query = queryIndex >= 0 ? withoutFragment[(queryIndex + 1)..] : string.Empty;
+
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            foreach (var segment in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var eqIdx = segment.IndexOf('=');
+                if (eqIdx < 0)
+                {
+                    var k = Uri.UnescapeDataString(segment);
+                    if (!string.IsNullOrWhiteSpace(k)) parameters[k] = string.Empty;
+                    continue;
+                }
+                var pk = Uri.UnescapeDataString(segment[..eqIdx]);
+                if (string.IsNullOrWhiteSpace(pk)) continue;
+                parameters[pk] = Uri.UnescapeDataString(segment[(eqIdx + 1)..]);
+            }
+        }
+        parameters[key] = value;
+
+        var rebuilt = string.Join(
+          "&",
+          parameters.Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
+
+        return rebuilt.Length == 0 ? $"{path}{fragment}" : $"{path}?{rebuilt}{fragment}";
     }
 
     private static async Task<(MemoryStream Stream, string ContentType)> PrepareValidatedImageForUploadAsync(

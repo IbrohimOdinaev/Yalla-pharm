@@ -14,6 +14,15 @@ public sealed class PrescriptionResponse
     public Guid? AssignedPharmacistId { get; set; }
     public Guid? OrderId { get; set; }
     public Guid? PaymentIntentId { get; set; }
+    /// <summary>
+    /// External DushanbeCity payment URL the client should follow to pay
+    /// the 3 TJS service fee. Filled only by CreatePrescription right
+    /// after a fresh submit; subsequent reads (`GET me`, etc.) leave it
+    /// null since the URL is meant to be one-shot.
+    /// </summary>
+    public string? PaymentUrl { get; set; }
+    public decimal? PaymentAmount { get; set; }
+    public string? PaymentCurrency { get; set; }
     public List<PrescriptionImageResponse> Images { get; set; } = new();
     public List<PrescriptionChecklistItemResponse> Items { get; set; } = new();
 }

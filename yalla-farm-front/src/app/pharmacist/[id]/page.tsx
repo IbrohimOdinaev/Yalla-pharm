@@ -9,16 +9,13 @@ import {
   submitChecklist,
   type DecodePrescriptionItemInput,
 } from "@/entities/pharmacist/api";
-import {
-  resolvePrescriptionImageUrl,
-  type ApiPrescription,
-} from "@/entities/prescription/api";
+import { type ApiPrescription } from "@/entities/prescription/api";
 import { getAllMedicines } from "@/entities/medicine/admin-api";
 import { getMedicineDisplayName } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { Button, Icon } from "@/shared/ui";
+import { AuthedImage, Button, Icon } from "@/shared/ui";
 
 type DraftItem = DecodePrescriptionItemInput & {
   /** Local id used only on the client for stable React keys / removal. */
@@ -225,12 +222,7 @@ export default function PharmacistDecodePage() {
               <div className="grid grid-cols-2 gap-3">
                 {photos.map((img) => (
                   <div key={img.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-surface-container">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={resolvePrescriptionImageUrl(img.url)}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
+                    <AuthedImage src={img.url} alt="" className="h-full w-full object-cover" />
                   </div>
                 ))}
               </div>

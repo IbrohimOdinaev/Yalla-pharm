@@ -15,6 +15,16 @@ public interface IPrescriptionService
       Guid clientId,
       CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Client clicks "Я оплатил" after returning from the DC payment page.
+    /// Transitions Submitted → AwaitingConfirmation so SuperAdmin can verify
+    /// the 3 TJS landed in the bank.
+    /// </summary>
+    Task<PrescriptionResponse> MarkPaidByClientAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
+
     /// <summary>SuperAdmin queue: prescriptions waiting for the 3 TJS payment confirm.</summary>
     Task<IReadOnlyList<PrescriptionResponse>> GetAwaitingConfirmationAsync(
       CancellationToken cancellationToken = default);

@@ -37,6 +37,10 @@ export type ApiPrescription = {
   assignedPharmacistId?: string | null;
   orderId?: string | null;
   paymentIntentId?: string | null;
+  /** One-shot DushanbeCity payment URL — only filled by createPrescription. */
+  paymentUrl?: string | null;
+  paymentAmount?: number | null;
+  paymentCurrency?: string | null;
   images: ApiPrescriptionImage[];
   items: ApiPrescriptionChecklistItem[];
 };
@@ -54,6 +58,16 @@ export function resolvePrescriptionImageUrl(url: string): string {
 
 export async function getMyPrescriptions(token: string): Promise<ApiPrescription[]> {
   return apiFetch<ApiPrescription[]>("/api/prescriptions/me", { token });
+}
+
+export async function markPrescriptionPaid(
+  token: string,
+  prescriptionId: string,
+): Promise<ApiPrescription> {
+  return apiFetch<ApiPrescription>(`/api/prescriptions/${prescriptionId}/i-paid`, {
+    method: "POST",
+    token,
+  });
 }
 
 export async function createPrescription(

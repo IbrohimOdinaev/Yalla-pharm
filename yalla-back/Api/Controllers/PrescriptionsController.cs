@@ -113,6 +113,25 @@ public sealed class PrescriptionsController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>
+    /// Client returns from the DC payment page and clicks "Я оплатил" — moves
+    /// the prescription Submitted → AwaitingConfirmation so SuperAdmin can
+    /// verify the bank receipt and push it into the pharmacist queue.
+    /// </summary>
+    [HttpPost("{prescriptionId:guid}/i-paid")]
+    [Authorize(Roles = nameof(Role.Client))]
+    public async Task<IActionResult> MarkPaid(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var clientId = User.GetRequiredUserId();
+        var response = await _prescriptionService.MarkPaidByClientAsync(
+          clientId,
+          prescriptionId,
+          cancellationToken);
+        return Ok(response);
+    }
+
     // ── SuperAdmin ────────────────────────────────────────────────────────
 
     /// <summary>SuperAdmin queue of prescriptions waiting for the 3 TJS sign-off.</summary>

@@ -22,8 +22,9 @@ import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminRe
 import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
 import { getAwaitingConfirmation as getAwaitingPrescriptions, confirmPrescriptionPayment } from "@/entities/prescription/admin-api";
-import { resolvePrescriptionImageUrl, PRESCRIPTION_STATUS_LABEL_RU, type ApiPrescription } from "@/entities/prescription/api";
+import { type ApiPrescription } from "@/entities/prescription/api";
 import { getPharmacists, registerPharmacist, deletePharmacist, type ApiPharmacist } from "@/entities/pharmacist/api";
+import { AuthedImage } from "@/shared/ui";
 import { getRefundRequests, completeRefund } from "@/entities/refund/api";
 import { getPaymentSettings, updateDcBaseUrl, type PaymentSettingsSnapshot } from "@/entities/payment-settings/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
@@ -1850,10 +1851,9 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                 <div className="flex items-start gap-3">
                   <div className="flex flex-shrink-0 gap-2">
                     {p.images.slice(0, 2).map((img) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <AuthedImage
                         key={img.id}
-                        src={resolvePrescriptionImageUrl(img.url)}
+                        src={img.url}
                         alt=""
                         className="h-20 w-16 rounded-lg object-cover bg-surface-container"
                       />

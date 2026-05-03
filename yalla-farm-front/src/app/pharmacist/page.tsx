@@ -5,12 +5,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { getPharmacistQueue } from "@/entities/pharmacist/api";
-import {
-  resolvePrescriptionImageUrl,
-  type ApiPrescription,
-} from "@/entities/prescription/api";
+import { type ApiPrescription } from "@/entities/prescription/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { AuthedImage } from "@/shared/ui";
 
 export default function PharmacistQueuePage() {
   const token = useAppSelector((s) => s.auth.token);
@@ -79,10 +77,9 @@ export default function PharmacistQueuePage() {
                   >
                     <div className="flex flex-shrink-0 gap-2">
                       {p.images.slice(0, 2).map((img) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <AuthedImage
                           key={img.id}
-                          src={resolvePrescriptionImageUrl(img.url)}
+                          src={img.url}
                           alt=""
                           className="h-20 w-16 rounded-lg object-cover bg-surface-container"
                         />

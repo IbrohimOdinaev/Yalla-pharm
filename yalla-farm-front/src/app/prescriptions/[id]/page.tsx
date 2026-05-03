@@ -5,13 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
   getMyPrescriptions,
-  resolvePrescriptionImageUrl,
+  markPrescriptionPaid,
   PRESCRIPTION_STATUS_LABEL_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { Chip } from "@/shared/ui";
+import { AuthedImage, Button, Chip } from "@/shared/ui";
 
 // Slice-1 detail page — read-only view of what the client submitted plus
 // (eventually) the pharmacist's checklist. For now items are usually empty
@@ -27,6 +27,7 @@ export default function PrescriptionDetailPage() {
 
   const [all, setAll] = useState<ApiPrescription[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [marking, setMarking] = useState(false);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -78,6 +79,39 @@ export default function PrescriptionDetailPage() {
               </span>
             </div>
 
+            {/* Submitted = client uploaded but hasn't confirmed payment yet.
+                We surface a brief "I paid" CTA so they can flip the
+                status to AwaitingConfirmation after returning from DC. */}
+            {prescription.status === "Submitted" ? (
+              <section className="space-y-3 rounded-2xl bg-accent-soft p-4">
+                <p className="text-sm font-bold text-on-surface">Ожидаем подтверждения оплаты</p>
+                <p className="text-xs text-on-surface-variant">
+                  Если вы уже оплатили 3 TJS на странице DushanbeCity — нажмите кнопку ниже.
+                  После этого SuperAdmin сверит платёж и заявка уйдёт фармацевту.
+                </p>
+                <Button
+                  size="md"
+                  loading={marking}
+                  onClick={async () => {
+                    if (!token) return;
+                    setMarking(true);
+                    setError(null);
+                    try {
+                      await markPrescriptionPaid(token, id);
+                      const reloaded = await getMyPrescriptions(token);
+                      setAll(reloaded);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Не удалось отметить оплату.");
+                    } finally {
+                      setMarking(false);
+                    }
+                  }}
+                >
+                  Я оплатил
+                </Button>
+              </section>
+            ) : null}
+
             <section className="space-y-2">
               <h2 className="font-display text-base font-extrabold">Фото</h2>
               <div className="grid grid-cols-2 gap-3">
@@ -86,12 +120,7 @@ export default function PrescriptionDetailPage() {
                     key={img.id}
                     className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-surface-container shadow-card"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={resolvePrescriptionImageUrl(img.url)}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
+                    <AuthedImage src={img.url} alt="" className="h-full w-full object-cover" />
                   </div>
                 ))}
               </div>

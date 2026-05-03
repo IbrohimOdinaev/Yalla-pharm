@@ -72,6 +72,13 @@ export default function NewPrescriptionPage() {
         clientComment: comment.trim() || null,
         photos
       });
+      // Если бэк выдал DC payment URL — отправляем клиента на оплату 3 TJS.
+      // После возврата клиент нажмёт «Я оплатил» на странице деталей,
+      // что переведёт заявку в AwaitingConfirmation для SuperAdmin'а.
+      if (created.paymentUrl) {
+        window.location.href = created.paymentUrl;
+        return;
+      }
       router.push(`/prescriptions/${created.prescriptionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить рецепт.");

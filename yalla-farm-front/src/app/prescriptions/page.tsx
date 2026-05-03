@@ -6,14 +6,13 @@ import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
   getMyPrescriptions,
-  resolvePrescriptionImageUrl,
   PRESCRIPTION_STATUS_LABEL_RU,
   type ApiPrescription,
   type PrescriptionStatus,
 } from "@/entities/prescription/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { Button, Chip, EmptyState, Icon } from "@/shared/ui";
+import { AuthedImage, Button, Chip, EmptyState, Icon } from "@/shared/ui";
 
 // Visual style per status — keeps the list scannable.
 const STATUS_TONE: Record<PrescriptionStatus, "primary" | "warning" | "success" | "danger" | "tertiary"> = {
@@ -113,18 +112,16 @@ export default function MyPrescriptionsPage() {
                     className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card transition hover:bg-surface-container xs:gap-4 xs:p-4"
                   >
                     <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container xs:h-16 xs:w-16 xs:rounded-2xl">
-                      {cover ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={resolvePrescriptionImageUrl(cover.url)}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
-                          <Icon name="orders" size={20} />
-                        </div>
-                      )}
+                      <AuthedImage
+                        src={cover?.url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        fallback={
+                          <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
+                            <Icon name="orders" size={20} />
+                          </div>
+                        }
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
