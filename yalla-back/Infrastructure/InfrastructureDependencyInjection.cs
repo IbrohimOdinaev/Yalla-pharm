@@ -63,6 +63,7 @@ public static class DependencyInjection
     });
 
     services.AddSingleton<IMedicineImageStorage, MinIoMedicineImageStorage>();
+    services.AddSingleton<IPrescriptionImageStorage, MinIoPrescriptionImageStorage>();
     services.AddSingleton<IImageResizer, SkiaImageResizer>();
     services.Configure<SmsVerificationOptions>(options =>
     {

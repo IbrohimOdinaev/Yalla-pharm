@@ -9,6 +9,10 @@ public interface IAppDbContext
     DatabaseFacade Database { get; }
     DbSet<Client> Clients { get; }
     DbSet<PharmacyWorker> PharmacyWorkers { get; }
+    DbSet<Pharmacist> Pharmacists { get; }
+    DbSet<Prescription> Prescriptions { get; }
+    DbSet<PrescriptionImage> PrescriptionImages { get; }
+    DbSet<PrescriptionChecklistItem> PrescriptionChecklistItems { get; }
     DbSet<Pharmacy> Pharmacies { get; }
     DbSet<Medicine> Medicines { get; }
     DbSet<MedicineImage> MedicineImages { get; }

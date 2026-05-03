@@ -4,5 +4,6 @@ public enum Role
 {
     Client,
     Admin,
-    SuperAdmin
+    SuperAdmin,
+    Pharmacist
 }

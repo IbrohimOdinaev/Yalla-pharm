@@ -18,6 +18,10 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<Order> Orders => Set<Order>();
   public DbSet<Pharmacy> Pharmacies => Set<Pharmacy>();
   public DbSet<PharmacyWorker> PharmacyWorkers => Set<PharmacyWorker>();
+  public DbSet<Pharmacist> Pharmacists => Set<Pharmacist>();
+  public DbSet<Prescription> Prescriptions => Set<Prescription>();
+  public DbSet<PrescriptionImage> PrescriptionImages => Set<PrescriptionImage>();
+  public DbSet<PrescriptionChecklistItem> PrescriptionChecklistItems => Set<PrescriptionChecklistItem>();
   public DbSet<BasketPosition> BasketPositions => Set<BasketPosition>();
   public DbSet<OrderPosition> OrderPositions => Set<OrderPosition>();
   public DbSet<PaymentHistory> PaymentHistories => Set<PaymentHistory>();
