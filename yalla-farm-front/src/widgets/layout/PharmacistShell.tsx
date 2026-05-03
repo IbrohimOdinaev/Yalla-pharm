@@ -9,6 +9,7 @@ import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescript
 import { CurrentPrescriptionPill } from "@/widgets/pharmacist/CurrentPrescriptionPill";
 import { PrescriptionPickerModal } from "@/widgets/pharmacist/PrescriptionPickerModal";
 import { BottomNav } from "@/widgets/layout/BottomNav";
+import { ProductModal } from "@/widgets/product/ProductModal";
 import { Icon } from "@/shared/ui";
 
 /**
@@ -68,6 +69,11 @@ export function PharmacistShell({ children }: { children: ReactNode }) {
 
       <BottomNav />
       <PrescriptionPickerModal />
+      {/* ProductModal opens via `?product={key}` (set by MedicineCard click)
+          so the pharmacist's catalog tab can pop the same product modal as
+          the client side. The modal itself detects role=Pharmacist and
+          adds to the active prescription draft instead of the buyer cart. */}
+      <ProductModal />
     </div>
   );
 }

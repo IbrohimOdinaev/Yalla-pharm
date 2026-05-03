@@ -5,6 +5,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
+import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
@@ -19,6 +21,7 @@ type MedicineCardProps = {
 // Yandex-Apteka style: flat white card, thin border, red cart button.
 export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps) {
   const token = useAppSelector((state) => state.auth.token);
+  const role = useAppSelector((state) => state.auth.role);
   const addItem = useCartStore((state) => state.addItem);
   const serverPositions = useCartStore((state) => state.basket.positions);
   const addGuestItem = useGuestCartStore((state) => state.addItem);
@@ -27,6 +30,17 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const removeGuestItem = useGuestCartStore((state) => state.removeItem);
   const setServerQty = useCartStore((state) => state.setQuantity);
   const removeServerItem = useCartStore((state) => state.removeItem);
+
+  // Pharmacist context — clicking + on a card adds to the active
+  // prescription's draft instead of the regular shopping cart.
+  const isPharmacist = role === "Pharmacist";
+  const activePrescriptionId = useActivePrescriptionStore((s) => s.activeId);
+  const openPicker = useActivePrescriptionStore((s) => s.openPicker);
+  const draftItems = usePrescriptionDraftStore((s) =>
+    activePrescriptionId ? (s.drafts[activePrescriptionId]?.items ?? []) : []);
+  const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
+  const updateDraftItem = usePrescriptionDraftStore((s) => s.updateItem);
+  const removeDraftItem = usePrescriptionDraftStore((s) => s.removeItem);
 
   // Hold onto the image refs (not pre-built URLs) so we can emit a srcSet
   // alongside src — the browser then picks 480w for normal screens and 800w
@@ -57,13 +71,20 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   }, [imgIndex, allImages.length]);
 
   const cartState = useMemo(() => {
+    // Pharmacist: count multiplicity of this medicine in the active draft.
+    if (isPharmacist) {
+      const matched = draftItems.find((i) => i.medicineId === medicine.id);
+      return matched
+        ? { inCart: true, quantity: matched.quantity, positionId: matched.draftId }
+        : { inCart: false, quantity: 0, positionId: "" };
+    }
     if (token) {
       const pos = (serverPositions ?? []).find((p) => p.medicineId === medicine.id);
       return pos ? { inCart: true, quantity: pos.quantity, positionId: pos.id } : { inCart: false, quantity: 0, positionId: "" };
     }
     const item = guestItems.find((i) => i.medicineId === medicine.id);
     return item ? { inCart: true, quantity: item.quantity, positionId: "" } : { inCart: false, quantity: 0, positionId: "" };
-  }, [token, serverPositions, guestItems, medicine.id]);
+  }, [isPharmacist, draftItems, token, serverPositions, guestItems, medicine.id]);
 
   function stop(e: React.MouseEvent) {
     e.preventDefault();
@@ -72,18 +93,41 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
 
   function onAdd(e: React.MouseEvent) {
     stop(e);
+    if (isPharmacist) {
+      if (!activePrescriptionId) { openPicker(); return; }
+      addToDraft(activePrescriptionId, {
+        draftId: `cat-${medicine.id}-${Date.now()}`,
+        medicineId: medicine.id,
+        manualMedicineName: null,
+        quantity: 1,
+        pharmacistComment: null,
+        displayTitle: getMedicineDisplayName(medicine),
+        minPrice: medicine.minPrice ?? null,
+      });
+      return;
+    }
     if (token) addItem(token, medicine.id).catch(() => undefined);
     else addGuestItem(medicine.id);
   }
 
   function onIncrement(e: React.MouseEvent) {
     stop(e);
+    if (isPharmacist && activePrescriptionId) {
+      updateDraftItem(activePrescriptionId, cartState.positionId, { quantity: cartState.quantity + 1 });
+      return;
+    }
     if (token) addItem(token, medicine.id).catch(() => undefined);
     else addGuestItem(medicine.id);
   }
 
   function onDecrement(e: React.MouseEvent) {
     stop(e);
+    if (isPharmacist && activePrescriptionId) {
+      const newQty = cartState.quantity - 1;
+      if (newQty <= 0) removeDraftItem(activePrescriptionId, cartState.positionId);
+      else updateDraftItem(activePrescriptionId, cartState.positionId, { quantity: newQty });
+      return;
+    }
     const newQty = cartState.quantity - 1;
     if (newQty <= 0) {
       if (token) removeServerItem(token, cartState.positionId).catch(() => undefined);

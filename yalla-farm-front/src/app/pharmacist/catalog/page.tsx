@@ -1,39 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { getAllMedicines } from "@/entities/medicine/admin-api";
-import { getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
-import { getCategories, flattenCategories } from "@/entities/category/api";
-import type { ApiMedicine, ApiCategory } from "@/shared/types/api";
+import { getCategories } from "@/entities/category/api";
+import type { ApiCategory } from "@/shared/types/api";
+import type { ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
-import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
-import { Button, Icon } from "@/shared/ui";
+import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
+import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
+import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { Button } from "@/shared/ui";
 
-const PAGE_SIZE = 30;
+// Same data the client home uses — keeps the pharmacist catalog visually
+// identical to what clients see. Only the data source changes (we hit
+// /api/medicines/all so out-of-stock items are visible).
+type QuickCategory = {
+  icon: CategoryIconKey;
+  palette: CategoryTilePalette;
+  label: string;
+  keywords?: string[];
+  image?: string;
+};
+
+const QUICK_CATEGORIES: QuickCategory[] = [
+  { icon: "grid", palette: "mint", label: "Все категории" },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.jpg", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.jpg", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.jpg", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.jpg", keywords: ["антибиотик", "противомикроб"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.jpg", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.jpg", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.jpg", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.jpg", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.jpg", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
+  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.jpg", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.jpg", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+];
+
+const PAGE_SIZE = 24;
 
 export default function PharmacistCatalogPage() {
   const router = useRouter();
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const hydrated = useAppSelector((s) => s.auth.hydrated);
-
   const activeId = useActivePrescriptionStore((s) => s.activeId);
-  const openPicker = useActivePrescriptionStore((s) => s.openPicker);
-  const drafts = usePrescriptionDraftStore((s) => s.drafts);
-  const addItem = usePrescriptionDraftStore((s) => s.addItem);
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
-  const [categoryId, setCategoryId] = useState<string>("");
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [activeCategoryLabel, setActiveCategoryLabel] = useState<string | null>(null);
+
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<ApiMedicine[]>([]);
-  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -45,13 +74,33 @@ export default function PharmacistCatalogPage() {
     getCategories().then(setCategories).catch(() => undefined);
   }, []);
 
+  // Resolve a quick-category tile click → real categoryId by matching
+  // its keywords against the loaded categories (mirrors the home logic).
+  function onQuickCategoryClick(tile: QuickCategory) {
+    if (tile.label === "Все категории") {
+      setActiveCategoryId(null);
+      setActiveCategoryLabel(null);
+      setPage(1);
+      return;
+    }
+    const allCats = [...categories, ...categories.flatMap((c) => c.children ?? [])];
+    const keywords = tile.keywords ?? [tile.label.toLowerCase()];
+    const match = allCats.find((c) => {
+      const name = c.name.toLowerCase();
+      return keywords.some((kw) => name.includes(kw));
+    });
+    setActiveCategoryId(match?.id ?? null);
+    setActiveCategoryLabel(match ? tile.label : tile.label);
+    setPage(1);
+  }
+
   useEffect(() => {
     if (!token || role !== "Pharmacist") return;
     let cancelled = false;
     setLoading(true); setError(null);
     const handle = setTimeout(async () => {
       try {
-        const data = await getAllMedicines(token, query, page, PAGE_SIZE, undefined, categoryId || undefined);
+        const data = await getAllMedicines(token, query, page, PAGE_SIZE, undefined, activeCategoryId || undefined);
         if (cancelled) return;
         setItems(data.medicines);
         setTotalCount(data.totalCount);
@@ -62,65 +111,59 @@ export default function PharmacistCatalogPage() {
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(handle); };
-  }, [token, role, query, page, categoryId]);
+  }, [token, role, query, page, activeCategoryId]);
 
-  const flatCats = flattenCategories(categories);
-
-  const draftItemsByMedicine = (() => {
-    if (!activeId) return new Set<string>();
-    const cur = drafts[activeId];
-    if (!cur) return new Set<string>();
-    return new Set(cur.items.map((i) => i.medicineId).filter(Boolean) as string[]);
-  })();
-
-  function add(med: ApiMedicine) {
-    if (!activeId) {
-      openPicker();
-      return;
-    }
-    addItem(activeId, {
-      draftId: `cat-${med.id}-${Date.now()}`,
-      medicineId: med.id,
-      manualMedicineName: null,
-      quantity: 1,
-      pharmacistComment: null,
-      displayTitle: getMedicineDisplayName(med),
-      minPrice: med.minPrice ?? null,
-    });
-    setRecentlyAddedId(med.id);
-    setTimeout(() => setRecentlyAddedId((v) => (v === med.id ? null : v)), 800);
-  }
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
+    [totalCount]
+  );
 
   return (
     <PharmacistShell>
-      <div className="mx-auto max-w-5xl space-y-4">
+      <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
         {!activeId ? (
-          <div className="rounded-2xl bg-warning-soft p-4 text-sm text-on-surface">
-            Активный рецепт не выбран — нажмите «Выбрать рецепт» в шапке, прежде чем добавлять лекарства.
+          <div className="rounded-2xl bg-warning-soft p-3 text-xs text-on-surface">
+            Активный рецепт не выбран — нажмите «Выбрать рецепт» в шапке, чтобы класть препараты в корзину.
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          <input
-            type="search"
-            placeholder="Найти лекарство по названию или артикулу"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-            className="stitch-input w-full"
-          />
-          <select
-            value={categoryId}
-            onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}
-            className="stitch-input w-full"
-          >
-            <option value="">Все категории</option>
-            {flatCats.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+        {/* Search — mirrors the client home's search pill but renders inline
+            because the pharmacist header has its own pill (current rx). */}
+        <input
+          type="search"
+          placeholder="Найти лекарство по названию или артикулу"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+          className="stitch-input w-full"
+        />
+
+        {/* Quick categories — same horizontal rail as the client home. */}
+        <section>
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
+            {QUICK_CATEGORIES.map((cat) => (
+              <div key={cat.label} className="flex-shrink-0">
+                <CategoryTile
+                  icon={cat.icon}
+                  palette={cat.palette}
+                  label={cat.label}
+                  image={cat.image}
+                  onClick={() => onQuickCategoryClick(cat)}
+                />
+              </div>
             ))}
-          </select>
-        </div>
+          </div>
+        </section>
+
+        {activeCategoryLabel ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-on-surface-variant">
+              Категория: <span className="font-bold text-on-surface">{activeCategoryLabel}</span>
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => { setActiveCategoryId(null); setActiveCategoryLabel(null); setPage(1); }}>
+              Сбросить
+            </Button>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
@@ -134,43 +177,10 @@ export default function PharmacistCatalogPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {items.map((m) => {
-                const url = resolveMedicineImageUrl(m, 240);
-                const offers = m.offers?.length ?? 0;
-                const inDraft = draftItemsByMedicine.has(m.id);
-                const justAdded = recentlyAddedId === m.id;
-                return (
-                  <div
-                    key={m.id}
-                    className="flex flex-col rounded-2xl bg-surface-container-lowest p-3 shadow-card"
-                  >
-                    <div className="aspect-square overflow-hidden rounded-xl bg-surface-container">
-                      {url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={url} alt="" className="h-full w-full object-contain mix-blend-multiply" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
-                          <Icon name="pharmacy" size={28} />
-                        </div>
-                      )}
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-xs font-bold leading-tight">{getMedicineDisplayName(m)}</p>
-                    <p className="mt-0.5 text-[10px] text-on-surface-variant">
-                      Офферов: {offers}
-                      {m.minPrice ? ` · от ${m.minPrice.toFixed(2)} TJS` : ""}
-                    </p>
-                    <Button
-                      size="sm"
-                      variant={inDraft && !justAdded ? "secondary" : "primary"}
-                      className="mt-2"
-                      onClick={() => add(m)}
-                    >
-                      {justAdded ? "Добавлено ✓" : inDraft ? "+ ещё одна" : "Добавить"}
-                    </Button>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {items.map((m) => (
+                <MedicineCard key={m.id} medicine={m} />
+              ))}
             </div>
 
             {totalPages > 1 ? (

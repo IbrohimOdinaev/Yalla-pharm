@@ -11,9 +11,12 @@ import {
   PRESCRIPTION_STATUS_LABEL_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
+import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import type { ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
+import { ManualEntryModal } from "@/widgets/pharmacist/ManualEntryModal";
 import { AuthedImage, Button, Icon } from "@/shared/ui";
 
 export default function PharmacistCartPage() {
@@ -37,9 +40,9 @@ export default function PharmacistCartPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [manualName, setManualName] = useState("");
-  const [manualQty, setManualQty] = useState("1");
-  const [manualComment, setManualComment] = useState("");
+  const [medicineCache, setMedicineCache] = useState<Record<string, ApiMedicine>>({});
+  const [showManual, setShowManual] = useState(false);
+  const [editingCommentFor, setEditingCommentFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -60,16 +63,14 @@ export default function PharmacistCartPage() {
 
   const draft = activeId ? (drafts[activeId] ?? { overallComment: "", items: [] }) : { overallComment: "", items: [] };
 
-  // If the prescription has a server-side checklist (already Decoded) and the
-  // local draft is empty, seed the draft from server so the pharmacist can
-  // continue editing past work. Runs once when prescription / activeId
-  // changes.
+  // Hydrate the local draft from a previously-decoded server checklist on
+  // first open so the pharmacist can review/continue past work without
+  // re-entering everything.
   useEffect(() => {
     if (!activeId || !prescription) return;
     const cur = drafts[activeId];
     if (cur && cur.items.length > 0) return;
     if (prescription.items.length === 0 && !prescription.pharmacistOverallComment) return;
-    // Hydrate draft.
     if (prescription.pharmacistOverallComment) {
       setOverallComment(activeId, prescription.pharmacistOverallComment);
     }
@@ -86,26 +87,43 @@ export default function PharmacistCartPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prescription?.prescriptionId]);
 
+  // Fetch medicine objects for catalog-bound draft items so the cart row
+  // can show the photo + canonical title. Skipped for manual items.
+  useEffect(() => {
+    const missing = draft.items
+      .map((i) => i.medicineId)
+      .filter((id): id is string => !!id && !medicineCache[id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(missing.map((id) =>
+      getMedicineById(id).then((m) => [id, m] as const).catch(() => [id, null] as const)
+    )).then((entries) => {
+      if (cancelled) return;
+      setMedicineCache((prev) => {
+        const next = { ...prev };
+        for (const [id, m] of entries) if (m) next[id] = m;
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.items.length, draft.items.map((i) => i.medicineId).join(",")]);
+
   const phone = useMemo(() => {
     const p = prescription?.clientPhoneNumber?.replace(/\D/g, "");
     return p ? `+992${p}` : null;
   }, [prescription]);
 
-  function onAddManual() {
+  function onAddManual(input: { name: string; quantity: number; comment: string | null }) {
     if (!activeId) return;
-    const name = manualName.trim();
-    const qty = Number(manualQty);
-    if (!name) return;
-    if (!Number.isFinite(qty) || qty <= 0) return;
     addItem(activeId, {
       draftId: `man-${Date.now()}`,
       medicineId: null,
-      manualMedicineName: name,
-      quantity: qty,
-      pharmacistComment: manualComment.trim() || null,
-      displayTitle: name,
+      manualMedicineName: input.name,
+      quantity: input.quantity,
+      pharmacistComment: input.comment,
+      displayTitle: input.name,
     });
-    setManualName(""); setManualQty("1"); setManualComment("");
   }
 
   async function onSubmit() {
@@ -194,101 +212,112 @@ export default function PharmacistCartPage() {
 
             {/* Cart items */}
             <section className="space-y-3">
-              <h2 className="font-display text-base font-extrabold">Корзина рецепта</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-display text-base font-extrabold">Корзина рецепта</h2>
+                <Button size="sm" variant="secondary" onClick={() => setShowManual(true)}>
+                  + Препарат вручную
+                </Button>
+              </div>
               {draft.items.length === 0 ? (
                 <div className="rounded-2xl bg-surface-container-low p-4 text-xs text-on-surface-variant">
-                  Корзина пуста. Откройте «Каталог», чтобы добавить лекарства, или
-                  введите препарат вручную ниже.
+                  Корзина пуста. Откройте «Каталог», чтобы добавить лекарства, или нажмите
+                  «+ Препарат вручную» для препарата вне нашего каталога.
                 </div>
               ) : (
                 <ul className="space-y-2">
-                  {draft.items.map((it) => (
-                    <li key={it.draftId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
-                      <div className="flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold">
-                            {it.displayTitle}
-                            {!it.medicineId ? (
-                              <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
-                                Нет в каталоге
-                              </span>
+                  {draft.items.map((it) => {
+                    const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
+                    const imgUrl = med ? resolveMedicineImageUrl(med, 120) : "";
+                    const title = med ? getMedicineDisplayName(med) : it.displayTitle;
+                    const isCommentOpen = editingCommentFor === it.draftId;
+                    return (
+                      <li key={it.draftId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+                        <div className="flex items-center gap-3">
+                          <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container xs:h-14 xs:w-14">
+                            {imgUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
+                                <Icon name="pharmacy" size={18} />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-bold leading-tight">
+                              {title}
+                              {!it.medicineId ? (
+                                <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
+                                  Нет в каталоге
+                                </span>
+                              ) : null}
+                            </p>
+                            {it.pharmacistComment ? (
+                              <p className="mt-0.5 line-clamp-2 text-[11px] text-on-surface-variant">{it.pharmacistComment}</p>
                             ) : null}
-                          </p>
+                          </div>
+
+                          {/* Qty stepper */}
+                          <div className="flex flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => updateItem(activeId, it.draftId, { quantity: Math.max(1, it.quantity - 1) })}
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95"
+                              aria-label="Меньше"
+                            >
+                              <Icon name="minus" size={14} />
+                            </button>
+                            <span className="min-w-[1.5rem] text-center text-xs font-extrabold tabular-nums">
+                              {it.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateItem(activeId, it.draftId, { quantity: it.quantity + 1 })}
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+                              aria-label="Больше"
+                            >
+                              <Icon name="plus" size={14} />
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setEditingCommentFor(isCommentOpen ? null : it.draftId)}
+                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container"
+                            aria-label="Комментарий"
+                            title="Комментарий по позиции"
+                          >
+                            <Icon name="orders" size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => removeItem(activeId, it.draftId)}
+                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary"
+                            aria-label="Удалить"
+                          >
+                            <Icon name="close" size={14} />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(activeId, it.draftId)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary"
-                          aria-label="Удалить"
-                        >
-                          <Icon name="close" size={14} />
-                        </button>
-                      </div>
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        <label className="block text-xs">
-                          <span className="text-on-surface-variant">Количество</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={it.quantity}
-                            onChange={(e) => updateItem(activeId, it.draftId, { quantity: Math.max(1, Number(e.target.value) || 1) })}
-                            className="stitch-input mt-1 w-full"
-                          />
-                        </label>
-                        <label className="block text-xs">
-                          <span className="text-on-surface-variant">Комментарий</span>
+
+                        {isCommentOpen ? (
                           <input
                             type="text"
+                            placeholder="Как принимать, замены и т.п."
                             value={it.pharmacistComment ?? ""}
                             onChange={(e) => updateItem(activeId, it.draftId, { pharmacistComment: e.target.value })}
-                            className="stitch-input mt-1 w-full"
+                            className="stitch-input mt-2 w-full text-xs"
                           />
-                        </label>
-                      </div>
-                    </li>
-                  ))}
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
 
-            {/* Manual entry */}
-            <section className="space-y-3 rounded-2xl bg-surface-container-low p-4">
-              <h3 className="font-display text-sm font-extrabold">Препарат не из нашего каталога</h3>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <input
-                  type="text"
-                  placeholder="Название"
-                  value={manualName}
-                  onChange={(e) => setManualName(e.target.value)}
-                  className="stitch-input sm:col-span-2"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="Кол-во"
-                  value={manualQty}
-                  onChange={(e) => setManualQty(e.target.value)}
-                  className="stitch-input"
-                />
-              </div>
-              <input
-                type="text"
-                placeholder="Комментарий (необязательно)"
-                value={manualComment}
-                onChange={(e) => setManualComment(e.target.value)}
-                className="stitch-input w-full"
-              />
-              <button
-                type="button"
-                onClick={onAddManual}
-                disabled={!manualName.trim()}
-                className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-white transition hover:bg-primary-container disabled:opacity-40"
-              >
-                Добавить вручную
-              </button>
-            </section>
-
-            {/* Overall comment + submit */}
+            {/* Overall comment */}
             <section className="space-y-2">
               <label className="block text-sm font-bold">Общий комментарий клиенту</label>
               <textarea
@@ -315,6 +344,12 @@ export default function PharmacistCartPage() {
             )}
           </>
         ) : null}
+
+        <ManualEntryModal
+          open={showManual}
+          onClose={() => setShowManual(false)}
+          onSubmit={onAddManual}
+        />
       </div>
     </PharmacistShell>
   );
