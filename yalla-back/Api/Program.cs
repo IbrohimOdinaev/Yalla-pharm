@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Api.Hubs;
 using Api.Middleware;
+using Api.Startup;
 using Api.Telegram;
 using Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -19,6 +20,15 @@ using Yalla.Infrastructure.Telegram;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Fail-fast on broken environment config — better a clear startup error
+// than mysterious 500s once the first request hits a missing setting.
+using (var bootstrapLoggerFactory = LoggerFactory.Create(b => b.AddConsole()))
+{
+    EnvironmentValidator.Validate(
+      builder.Configuration,
+      bootstrapLoggerFactory.CreateLogger("EnvironmentValidator"));
+}
 
 builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 {
