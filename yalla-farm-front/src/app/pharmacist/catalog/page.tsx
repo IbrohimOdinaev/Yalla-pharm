@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { getAllMedicines } from "@/entities/medicine/admin-api";
 import { getCategories } from "@/entities/category/api";
-import type { ApiCategory } from "@/shared/types/api";
-import type { ApiMedicine } from "@/shared/types/api";
+import type { ApiCategory, ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
@@ -54,9 +53,6 @@ export default function PharmacistCatalogPage() {
   const activeId = useActivePrescriptionStore((s) => s.activeId);
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
-  const [activeCategoryLabel, setActiveCategoryLabel] = useState<string | null>(null);
-
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<ApiMedicine[]>([]);
   const [page, setPage] = useState(1);
@@ -74,13 +70,12 @@ export default function PharmacistCatalogPage() {
     getCategories().then(setCategories).catch(() => undefined);
   }, []);
 
-  // Resolve a quick-category tile click → real categoryId by matching
-  // its keywords against the loaded categories (mirrors the home logic).
+  // Tile click → navigate to the dedicated category route. The home keeps
+  // the search + recommended grid; per-category browsing happens on the
+  // /pharmacist/catalog/[slug] page that mirrors the client view.
   function onQuickCategoryClick(tile: QuickCategory) {
     if (tile.label === "Все категории") {
-      setActiveCategoryId(null);
-      setActiveCategoryLabel(null);
-      setPage(1);
+      router.push("/pharmacist/catalog/all");
       return;
     }
     const allCats = [...categories, ...categories.flatMap((c) => c.children ?? [])];
@@ -89,9 +84,8 @@ export default function PharmacistCatalogPage() {
       const name = c.name.toLowerCase();
       return keywords.some((kw) => name.includes(kw));
     });
-    setActiveCategoryId(match?.id ?? null);
-    setActiveCategoryLabel(match ? tile.label : tile.label);
-    setPage(1);
+    if (match?.slug) router.push(`/pharmacist/catalog/${match.slug}`);
+    else router.push("/pharmacist/catalog/all");
   }
 
   useEffect(() => {
@@ -100,7 +94,7 @@ export default function PharmacistCatalogPage() {
     setLoading(true); setError(null);
     const handle = setTimeout(async () => {
       try {
-        const data = await getAllMedicines(token, query, page, PAGE_SIZE, undefined, activeCategoryId || undefined);
+        const data = await getAllMedicines(token, query, page, PAGE_SIZE);
         if (cancelled) return;
         setItems(data.medicines);
         setTotalCount(data.totalCount);
@@ -111,7 +105,7 @@ export default function PharmacistCatalogPage() {
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(handle); };
-  }, [token, role, query, page, activeCategoryId]);
+  }, [token, role, query, page]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
@@ -127,8 +121,6 @@ export default function PharmacistCatalogPage() {
           </div>
         ) : null}
 
-        {/* Search — mirrors the client home's search pill but renders inline
-            because the pharmacist header has its own pill (current rx). */}
         <input
           type="search"
           placeholder="Найти лекарство по названию или артикулу"
@@ -137,7 +129,9 @@ export default function PharmacistCatalogPage() {
           className="stitch-input w-full"
         />
 
-        {/* Quick categories — same horizontal rail as the client home. */}
+        {/* Quick categories — same horizontal rail as the client home, but
+            tapping a tile now opens the dedicated category page (mirrors
+            /catalog/[slug]) instead of filtering the grid in place. */}
         <section>
           <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
             {QUICK_CATEGORIES.map((cat) => (
@@ -153,17 +147,6 @@ export default function PharmacistCatalogPage() {
             ))}
           </div>
         </section>
-
-        {activeCategoryLabel ? (
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-on-surface-variant">
-              Категория: <span className="font-bold text-on-surface">{activeCategoryLabel}</span>
-            </p>
-            <Button size="sm" variant="secondary" onClick={() => { setActiveCategoryId(null); setActiveCategoryLabel(null); setPage(1); }}>
-              Сбросить
-            </Button>
-          </div>
-        ) : null}
 
         {error ? (
           <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>

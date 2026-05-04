@@ -33,17 +33,20 @@ public sealed class PrescriptionService : IPrescriptionService
     private readonly IPrescriptionImageStorage _imageStorage;
     private readonly IPaymentSettingsService _paymentSettingsService;
     private readonly DushanbeCityPaymentOptions _paymentOptions;
+    private readonly IRealtimeUpdatesPublisher _realtimePublisher;
 
     public PrescriptionService(
       IAppDbContext dbContext,
       IPrescriptionImageStorage imageStorage,
       IPaymentSettingsService paymentSettingsService,
-      IOptions<DushanbeCityPaymentOptions> paymentOptions)
+      IOptions<DushanbeCityPaymentOptions> paymentOptions,
+      IRealtimeUpdatesPublisher realtimePublisher)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
         _paymentSettingsService = paymentSettingsService;
         _paymentOptions = paymentOptions.Value;
+        _realtimePublisher = realtimePublisher;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -118,6 +121,10 @@ public sealed class PrescriptionService : IPrescriptionService
             _dbContext.Prescriptions.Add(prescription);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+              prescription.Id, prescription.ClientId, prescription.Status,
+              prescription.AssignedPharmacistId, cancellationToken);
+
             // Build a one-shot DC payment URL so the client can be
             // redirected to pay the 3 TJS fee right after upload. The URL
             // is not stored — caller is expected to redirect immediately.
@@ -169,6 +176,10 @@ public sealed class PrescriptionService : IPrescriptionService
         prescription.MoveToAwaitingConfirmation();
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          prescription.Id, prescription.ClientId, prescription.Status,
+          prescription.AssignedPharmacistId, cancellationToken);
+
         return await BuildResponseAsync(prescriptionId, cancellationToken)
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
     }
@@ -219,6 +230,10 @@ public sealed class PrescriptionService : IPrescriptionService
         var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
         prescription.MoveToQueue();
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          prescription.Id, prescription.ClientId, prescription.Status,
+          prescription.AssignedPharmacistId, cancellationToken);
 
         return await BuildResponseAsync(prescriptionId, cancellationToken)
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
@@ -320,6 +335,10 @@ public sealed class PrescriptionService : IPrescriptionService
         prescription.TakeIntoReview(pharmacistId);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          prescription.Id, prescription.ClientId, prescription.Status,
+          prescription.AssignedPharmacistId, cancellationToken);
+
         return await BuildResponseAsync(prescriptionId, cancellationToken)
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
     }
@@ -396,6 +415,10 @@ public sealed class PrescriptionService : IPrescriptionService
         prescription.MarkMovedToCart();
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          prescription.Id, prescription.ClientId, prescription.Status,
+          prescription.AssignedPharmacistId, cancellationToken);
+
         var prescriptionResponse = await BuildResponseAsync(prescriptionId, cancellationToken)
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
 
@@ -463,6 +486,10 @@ public sealed class PrescriptionService : IPrescriptionService
 
         prescription.SubmitChecklist(request.OverallComment, items);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          prescription.Id, prescription.ClientId, prescription.Status,
+          prescription.AssignedPharmacistId, cancellationToken);
 
         return await BuildResponseAsync(prescriptionId, cancellationToken)
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
