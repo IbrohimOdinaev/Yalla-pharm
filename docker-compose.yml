@@ -14,11 +14,15 @@ services:
       args:
         - INTERNAL_API_URL=${INTERNAL_API_URL:-http://api:8080}
         - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-    image: yalla/front:prod
+    image: yalla/front:latest
     container_name: yalla-front
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # No host port mapping in prod — the front is reached through the
+    # reverse proxy (Traefik / nginx / Render router) sitting in front of
+    # the docker network. `expose` documents the container port for the
+    # proxy without binding it to the host's external interface.
+    expose:
+      - "3000"
     depends_on:
       api:
         condition: service_healthy
@@ -27,11 +31,14 @@ services:
 
   api:
     build: ./yalla-back
-    image: yalla/api:prod
+    image: yalla/api:latest
     container_name: yalla-api
     restart: unless-stopped
-    ports:
-      - "5000:8080"
+    # Same — no external host port. Other services on `yalla-net` reach
+    # the API by hostname `api:8080`; the public reverse proxy forwards
+    # `https://api.<domain>` to the same internal port.
+    expose:
+      - "8080"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/categories || exit 1"]
       interval: 10s
