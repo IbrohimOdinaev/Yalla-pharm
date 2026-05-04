@@ -5,23 +5,42 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getCatalogMedicinesPaginated } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
-import type { ApiMedicine, ApiCategory } from "@/shared/types/api";
+import type { ApiMedicine, ApiCategory, ApiPaginated } from "@/shared/types/api";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 
+export type CatalogFetcher = (
+  page: number,
+  pageSize: number,
+  categoryId?: string,
+  pharmacyId?: string,
+) => Promise<ApiPaginated<ApiMedicine>>;
+
 type Props = {
   /** Slug of the category to filter by; empty string / undefined → all products. */
   categorySlug?: string;
+  /** URL prefix for category links + the back-to-home arrow. Defaults to the
+   *  client `/catalog` namespace; pharmacist passes `/pharmacist/catalog`. */
+  basePath?: string;
+  /** Page fetcher. Defaults to the public client endpoint (only in-stock
+   *  items, no auth). Pharmacist passes a token-bound `getAllMedicines`
+   *  wrapper so out-of-stock items remain visible. */
+  fetcher?: CatalogFetcher;
 };
 
 const PAGE_SIZE = 24;
 
 // Catalog body — sidebar tree + infinite-scroll grid. Used by /catalog and
-// /catalog/[slug] routes. Navigates between categories via router.push so
-// every category view has its own SEO-friendly URL.
-export function CatalogView({ categorySlug }: Props) {
+// /catalog/[slug] routes (and the pharmacist mirror under /pharmacist/catalog).
+// Navigates between categories via router.push so every category view has its
+// own SEO-friendly URL.
+export function CatalogView({
+  categorySlug,
+  basePath = "/catalog",
+  fetcher = getCatalogMedicinesPaginated,
+}: Props) {
   const router = useRouter();
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
 
@@ -74,7 +93,7 @@ export function CatalogView({ categorySlug }: Props) {
       else setIsLoadingMore(true);
       setError(null);
 
-      getCatalogMedicinesPaginated(p, PAGE_SIZE, catId || undefined, pharmId || undefined)
+      fetcher(p, PAGE_SIZE, catId || undefined, pharmId || undefined)
         .then((data) => {
           if (myId !== requestIdRef.current) return;
           const newItems = Array.isArray(data?.medicines) ? data.medicines : [];
@@ -94,7 +113,7 @@ export function CatalogView({ categorySlug }: Props) {
           setIsLoadingMore(false);
         });
     },
-    []
+    [fetcher]
   );
 
   // First page on filter change.
@@ -143,7 +162,7 @@ export function CatalogView({ categorySlug }: Props) {
           <h2 className="text-lg font-bold mb-3">Каталог</h2>
           <nav className="space-y-0.5 max-h-[70vh] overflow-y-auto pr-1">
             <Link
-              href="/catalog"
+              href={basePath}
               prefetch={false}
               className={`block w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition ${
                 !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"
@@ -172,7 +191,7 @@ export function CatalogView({ categorySlug }: Props) {
                             setExpandedCategoryId(isExpanded ? "" : cat.id);
                             return;
                           }
-                          router.push(`/catalog/${cat.slug}`);
+                          router.push(`${basePath}/${cat.slug}`);
                         }}
                         className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition flex items-center justify-between ${
                           isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"
@@ -199,7 +218,7 @@ export function CatalogView({ categorySlug }: Props) {
                           {cat.children.map((sub) => (
                             <Link
                               key={sub.id}
-                              href={`/catalog/${sub.slug}`}
+                              href={`${basePath}/${sub.slug}`}
                               prefetch={false}
                               className={`block w-full text-left rounded-lg px-3 py-1.5 text-sm transition ${
                                 selectedCategoryId === sub.id
@@ -254,7 +273,7 @@ export function CatalogView({ categorySlug }: Props) {
           {showMobileCategories ? (
             <div className="mt-2 stitch-card p-2 max-h-[60vh] overflow-y-auto space-y-0.5">
               <Link
-                href="/catalog"
+                href={basePath}
                 prefetch={false}
                 onClick={() => setShowMobileCategories(false)}
                 className={`block w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition ${
@@ -284,7 +303,7 @@ export function CatalogView({ categorySlug }: Props) {
                         }
                         // Leaf category → apply filter and dismiss the
                         // accordion so the grid is fully visible.
-                        router.push(`/catalog/${cat.slug}`);
+                        router.push(`${basePath}/${cat.slug}`);
                         setShowMobileCategories(false);
                       }}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold transition ${
@@ -312,7 +331,7 @@ export function CatalogView({ categorySlug }: Props) {
                         {cat.children.map((sub) => (
                           <Link
                             key={sub.id}
-                            href={`/catalog/${sub.slug}`}
+                            href={`${basePath}/${sub.slug}`}
                             prefetch={false}
                             onClick={() => setShowMobileCategories(false)}
                             className={`block w-full text-left rounded-lg px-3 py-2 text-sm transition ${
@@ -336,9 +355,9 @@ export function CatalogView({ categorySlug }: Props) {
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           <Link
-            href="/"
+            href={basePath}
             className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-container-low text-primary hover:bg-surface-container-high transition"
-            aria-label="На главную"
+            aria-label="К каталогу"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
@@ -353,7 +372,7 @@ export function CatalogView({ categorySlug }: Props) {
             {selected.children.map((sub) => (
               <Link
                 key={sub.id}
-                href={`/catalog/${sub.slug}`}
+                href={`${basePath}/${sub.slug}`}
                 prefetch={false}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                   selectedCategoryId === sub.id

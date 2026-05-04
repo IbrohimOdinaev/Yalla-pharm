@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { getPharmacistAll } from "@/entities/pharmacist/api";
@@ -9,6 +9,7 @@ import {
   type ApiPrescription,
   type PrescriptionStatus,
 } from "@/entities/prescription/api";
+import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { AuthedImage, Icon } from "@/shared/ui";
 
 const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview", "Decoded"];
@@ -31,20 +32,24 @@ export function PrescriptionPickerModal() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isOpen || !token || role !== "Pharmacist") return;
-    let cancelled = false;
+  const load = useCallback(() => {
+    if (!token || role !== "Pharmacist") return Promise.resolve();
     setLoading(true); setError(null);
-    getPharmacistAll(token)
-      .then((data) => { if (!cancelled) { setItems(data); setLoading(false); } })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Ошибка загрузки.");
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [isOpen, token, role]);
+    return getPharmacistAll(token)
+      .then(setItems)
+      .catch((err) => setError(err instanceof Error ? err.message : "Ошибка загрузки."))
+      .finally(() => setLoading(false));
+  }, [token, role]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    load();
+  }, [isOpen, load]);
+
+  // Refresh the picker live so the moment another pharmacist grabs an
+  // InQueue request (or SuperAdmin confirms a new one) the open modal
+  // reflects it without requiring a re-open.
+  useSignalREvent("PrescriptionUpdated", load, isOpen ? token : null);
 
   if (!isOpen) return null;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { getPharmacistAll, takePrescriptionIntoReview } from "@/entities/pharmacist/api";
@@ -10,6 +10,7 @@ import {
   type PrescriptionStatus,
 } from "@/entities/prescription/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { AuthedImage, Button, Icon } from "@/shared/ui";
 
@@ -23,7 +24,9 @@ export default function PharmacistQueuePage() {
   const setActiveId = useActivePrescriptionStore((s) => s.setActiveId);
 
   const [items, setItems] = useState<ApiPrescription[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Initial false → empty state shows immediately if the API resolves to an
+  // empty list. Only flips to true while a fetch is genuinely in flight.
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -33,16 +36,22 @@ export default function PharmacistQueuePage() {
     if (role && role !== "Pharmacist") router.replace("/");
   }, [hydrated, token, role, router]);
 
-  function load() {
+  const load = useCallback(() => {
     if (!token || role !== "Pharmacist") return Promise.resolve();
     setLoading(true); setError(null);
     return getPharmacistAll(token)
       .then(setItems)
       .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить очередь."))
       .finally(() => setLoading(false));
-  }
+  }, [token, role]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [token, role]);
+  useEffect(() => { load(); }, [load]);
+
+  // Live updates — every PrescriptionUpdated event triggers a refetch so the
+  // queue/review/decoded sections stay in sync without manual reload. The
+  // hub broadcasts to every connected pharmacist so a refetch is the only
+  // safe response (we don't know which prescription shifted lists).
+  useSignalREvent("PrescriptionUpdated", load, token);
 
   async function onSelectAndTake(p: ApiPrescription) {
     setActiveId(p.prescriptionId);
