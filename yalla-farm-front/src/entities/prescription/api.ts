@@ -75,6 +75,22 @@ export async function markPrescriptionPaid(
   });
 }
 
+export type MoveChecklistToCartResponse = {
+  prescription: ApiPrescription;
+  movedItemsCount: number;
+  skippedItemsCount: number;
+};
+
+export async function moveChecklistToCart(
+  token: string,
+  prescriptionId: string,
+): Promise<MoveChecklistToCartResponse> {
+  return apiFetch<MoveChecklistToCartResponse>(
+    `/api/prescriptions/${prescriptionId}/move-to-cart`,
+    { method: "POST", token },
+  );
+}
+
 export async function createPrescription(
   token: string,
   input: { patientAge: number; clientComment: string | null; photos: File[] }

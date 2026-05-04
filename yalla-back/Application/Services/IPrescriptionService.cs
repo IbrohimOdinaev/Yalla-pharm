@@ -61,6 +61,23 @@ public interface IPrescriptionService
       Guid prescriptionId,
       DecodePrescriptionRequest request,
       CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Client pushes the in-catalog checklist items into their regular
+    /// basket and moves the prescription into MovedToCart. Out-of-catalog
+    /// (manual) items and inactive medicines are skipped.
+    /// </summary>
+    Task<MoveChecklistToCartResponse> MoveChecklistToCartAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
+}
+
+public sealed class MoveChecklistToCartResponse
+{
+    public PrescriptionResponse Prescription { get; set; } = new();
+    public int MovedItemsCount { get; set; }
+    public int SkippedItemsCount { get; set; }
 }
 
 /// <summary>

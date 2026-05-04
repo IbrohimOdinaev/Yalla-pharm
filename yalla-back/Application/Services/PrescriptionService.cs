@@ -324,6 +324,89 @@ public sealed class PrescriptionService : IPrescriptionService
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
     }
 
+    public async Task<MoveChecklistToCartResponse> MoveChecklistToCartAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId can't be empty.");
+
+        var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        if (prescription.ClientId != clientId)
+            throw new UnauthorizedAccessException("Prescription belongs to a different client.");
+
+        if (prescription.Status != PrescriptionStatus.Decoded)
+            throw new InvalidOperationException(
+              $"Prescription must be in Decoded status to move to cart; current is {prescription.Status}.");
+
+        // Pre-load the medicines so we can validate they exist + are active
+        // before actually mutating the basket. Out-of-catalog (manual)
+        // entries are skipped silently — clients see them as informational
+        // only on the checklist page.
+        var medicineIds = prescription.Items
+          .Where(i => i.MedicineId.HasValue)
+          .Select(i => i.MedicineId!.Value)
+          .Distinct()
+          .ToList();
+
+        var activeMedicines = medicineIds.Count == 0
+          ? new Dictionary<Guid, Medicine>()
+          : await _dbContext.Medicines
+              .AsTracking()
+              .Where(m => medicineIds.Contains(m.Id) && m.IsActive)
+              .ToDictionaryAsync(m => m.Id, cancellationToken);
+
+        var existingPositions = await _dbContext.BasketPositions
+          .AsTracking()
+          .Where(b => b.ClientId == clientId
+                   && medicineIds.Contains(b.MedicineId))
+          .ToDictionaryAsync(b => b.MedicineId, cancellationToken);
+
+        var moved = 0;
+        var skipped = 0;
+
+        foreach (var item in prescription.Items)
+        {
+            if (!item.MedicineId.HasValue)
+            {
+                skipped++;
+                continue;
+            }
+
+            if (!activeMedicines.TryGetValue(item.MedicineId.Value, out var medicine))
+            {
+                skipped++;
+                continue;
+            }
+
+            if (existingPositions.TryGetValue(item.MedicineId.Value, out var existing))
+            {
+                existing.SetQuantity(existing.Quantity + item.Quantity);
+            }
+            else
+            {
+                var newPosition = new BasketPosition(clientId, medicine.Id, medicine, item.Quantity);
+                _dbContext.BasketPositions.Add(newPosition);
+                existingPositions[medicine.Id] = newPosition;
+            }
+            moved++;
+        }
+
+        prescription.MarkMovedToCart();
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var prescriptionResponse = await BuildResponseAsync(prescriptionId, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load updated prescription.");
+
+        return new MoveChecklistToCartResponse
+        {
+            Prescription = prescriptionResponse,
+            MovedItemsCount = moved,
+            SkippedItemsCount = skipped,
+        };
+    }
+
     public async Task<PrescriptionResponse> SubmitChecklistAsync(
       Guid pharmacistId,
       Guid prescriptionId,

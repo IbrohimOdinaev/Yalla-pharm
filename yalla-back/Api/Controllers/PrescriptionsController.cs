@@ -132,6 +132,26 @@ public sealed class PrescriptionsController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>
+    /// Client moves the in-catalog checklist items into the regular
+    /// shopping basket. Used both for "Перевести в корзину" (frontend
+    /// stays on the cart) and "Оформить" (frontend redirects to
+    /// /cart/pharmacy after the move). Status flips Decoded → MovedToCart.
+    /// </summary>
+    [HttpPost("{prescriptionId:guid}/move-to-cart")]
+    [Authorize(Roles = nameof(Role.Client))]
+    public async Task<IActionResult> MoveToCart(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var clientId = User.GetRequiredUserId();
+        var response = await _prescriptionService.MoveChecklistToCartAsync(
+          clientId,
+          prescriptionId,
+          cancellationToken);
+        return Ok(response);
+    }
+
     // ── SuperAdmin ────────────────────────────────────────────────────────
 
     /// <summary>SuperAdmin queue of prescriptions waiting for the 3 TJS sign-off.</summary>

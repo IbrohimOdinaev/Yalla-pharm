@@ -6,8 +6,13 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
-import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
+import { usePrescriptionDraftStore, type DraftItem } from "@/features/pharmacist/model/prescriptionDraftStore";
 import type { ApiMedicine } from "@/shared/types/api";
+
+// Stable empty fallback so the zustand selector doesn't return a fresh
+// `[]` on every render — that would re-trigger the subscription on each
+// render and burn a "Maximum update depth exceeded" loop.
+const EMPTY_DRAFT_ITEMS: DraftItem[] = [];
 import { formatMoney } from "@/shared/lib/format";
 import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
 import { Icon } from "@/shared/ui";
@@ -37,7 +42,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const activePrescriptionId = useActivePrescriptionStore((s) => s.activeId);
   const openPicker = useActivePrescriptionStore((s) => s.openPicker);
   const draftItems = usePrescriptionDraftStore((s) =>
-    activePrescriptionId ? (s.drafts[activePrescriptionId]?.items ?? []) : []);
+    activePrescriptionId ? (s.drafts[activePrescriptionId]?.items ?? EMPTY_DRAFT_ITEMS) : EMPTY_DRAFT_ITEMS);
   const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
   const updateDraftItem = usePrescriptionDraftStore((s) => s.updateItem);
   const removeDraftItem = usePrescriptionDraftStore((s) => s.removeItem);
