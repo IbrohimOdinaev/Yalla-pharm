@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Yalla.Infrastructure;
 
 #nullable disable
 
-namespace Yalla.Infrastructure.Migrations
+namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(AppDbContext))]
     [Migration("20260411150000_AddPharmacyBannerUrl")]
     public partial class AddPharmacyBannerUrl : Migration
     {

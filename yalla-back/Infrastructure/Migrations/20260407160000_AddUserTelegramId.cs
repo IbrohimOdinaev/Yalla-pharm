@@ -1,10 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Yalla.Infrastructure;
 
 #nullable disable
 
-namespace Yalla.Infrastructure.Migrations
+namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(AppDbContext))]
     [Migration("20260407160000_AddUserTelegramId")]
     public partial class AddUserTelegramId : Migration
     {
