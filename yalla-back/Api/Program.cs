@@ -214,8 +214,11 @@ builder.Services.AddHostedService<TelegramAuthSessionCleanupHostedService>();
 
 var app = builder.Build();
 
-var applyMigrationsOnStartup = app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup");
-if (applyMigrationsOnStartup)
+// Default true when the key is missing — `GetValue<bool>` would silently
+// return false on an unset env, which is exactly how fresh deploys end up
+// running workers against a half-empty schema (the classic
+// "column users.telegram_id does not exist" footgun on first boot).
+var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup") ?? true;
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -224,8 +227,40 @@ if (applyMigrationsOnStartup)
     var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
     logger.LogInformation("EF migrations: {AppliedCount} applied, {PendingCount} pending. Pending: {Pending}",
         applied.Length, pending.Length, pending.Length == 0 ? "(none)" : string.Join(", ", pending));
-    await db.Database.MigrateAsync();
-    logger.LogInformation("EF migrations applied successfully.");
+
+    if (!applyMigrationsOnStartup && pending.Length > 0)
+    {
+        // Refuse to start when auto-apply is disabled but the schema is
+        // behind. Hosted services would otherwise begin polling tables
+        // that don't have the columns the EF model expects, surfacing
+        // confusing PostgresException 42703 errors instead of a clear
+        // configuration problem at the top of the log.
+        throw new InvalidOperationException(
+            $"Database has {pending.Length} pending migrations and " +
+            "Database:ApplyMigrationsOnStartup is false. Pending: " +
+            string.Join(", ", pending) +
+            ". Either set DB_APPLY_MIGRATIONS=true (compose) / " +
+            "Database__ApplyMigrationsOnStartup=true (env) and restart, " +
+            "or apply migrations manually before deploying.");
+    }
+
+    if (applyMigrationsOnStartup)
+    {
+        await db.Database.MigrateAsync();
+        var stillPending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
+        if (stillPending.Length > 0)
+        {
+            // MigrateAsync swallows nothing — if we still see pending
+            // migrations the EF model must reference history rows the
+            // runner couldn't materialise. Crash loud so the operator
+            // sees the broken migration instead of a downstream 42703.
+            throw new InvalidOperationException(
+                "MigrateAsync completed but pending migrations remain: " +
+                string.Join(", ", stillPending) +
+                ". Refusing to start workers against a partial schema.");
+        }
+        logger.LogInformation("EF migrations applied successfully.");
+    }
 
     // One-shot WooCommerce slug backfill: when the AddMedicineSlug migration
     // first runs, the slug column is NULL for every existing medicine. Detect
