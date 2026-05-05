@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Yalla.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260407160000_AddUserTelegramId")]
     public partial class AddUserTelegramId : Migration
     {
         /// <inheritdoc />

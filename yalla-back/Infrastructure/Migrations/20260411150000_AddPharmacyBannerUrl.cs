@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Yalla.Infrastructure.Migrations
 {
+    [Migration("20260411150000_AddPharmacyBannerUrl")]
     public partial class AddPharmacyBannerUrl : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
