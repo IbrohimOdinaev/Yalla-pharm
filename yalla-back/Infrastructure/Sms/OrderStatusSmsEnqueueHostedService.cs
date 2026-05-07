@@ -88,10 +88,24 @@ public sealed class OrderStatusSmsEnqueueHostedService : BackgroundService
         Yalla.Domain.Enums.Status.Returned
       };
 
+      // Hard age cutoff — orders older than this are treated as "too late
+      // to notify". Without this guard the very first poll after a deploy /
+      // migration scans the entire history and enqueues an SMS for every
+      // order that's ever been in a notifiable status. That has shipped
+      // 17 SMS in one batch to a single client (Ibo, +992 911189878) on
+      // 2026-05-07 — Ready/OnTheWay/etc. for orders going back to March.
+      // OrderPlacedAt is stored in local time (UTC+5) per Order entity, so
+      // we compute the cutoff in the same wall-clock space.
+      var maxAgeHours = Math.Max(1, _options.CatchUpMaxOrderAgeHours);
+      var cutoffPlacedAt = DateTime.SpecifyKind(
+        DateTime.UtcNow.AddHours(5).AddHours(-maxAgeHours),
+        DateTimeKind.Unspecified);
+
       var candidates = await dbContext.Orders
         .AsNoTracking()
         .Where(x => !string.IsNullOrWhiteSpace(x.ClientPhoneNumber))
         .Where(x => notifiableStatuses.Contains(x.Status))
+        .Where(x => x.OrderPlacedAt >= cutoffPlacedAt)
         .Where(x => !dbContext.SmsOutboxMessages.Any(m =>
           m.OrderId == x.Id
           && m.StatusSnapshot == x.Status

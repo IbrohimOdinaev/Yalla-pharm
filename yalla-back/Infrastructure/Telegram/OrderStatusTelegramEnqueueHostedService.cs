@@ -88,6 +88,15 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
         Status.Returned
       };
 
+      // Hard age cutoff — same reasoning as the SMS enqueue worker: without
+      // it, the very first poll after a client links their Telegram (or
+      // after a deploy / migration) blasts every historical order in a
+      // notifiable status. OrderPlacedAt is local time (UTC+5).
+      var maxAgeHours = Math.Max(1, _options.CatchUpMaxOrderAgeHours);
+      var cutoffPlacedAt = DateTime.SpecifyKind(
+        DateTime.UtcNow.AddHours(5).AddHours(-maxAgeHours),
+        DateTimeKind.Unspecified);
+
       // JOIN Orders → Users (TPH, includes Client subtype) to pick up TelegramId.
       // Skip orders whose client has no bound TelegramId.
       var candidates = await (
@@ -96,6 +105,7 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
         where order.ClientId.HasValue
           && user.TelegramId.HasValue
           && notifiableStatuses.Contains(order.Status)
+          && order.OrderPlacedAt >= cutoffPlacedAt
           && !dbContext.TelegramOutboxMessages.Any(m =>
             m.OrderId == order.Id
             && m.StatusSnapshot == order.Status
