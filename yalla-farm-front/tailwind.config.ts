@@ -68,6 +68,12 @@ const config: Config = {
         "surface-container-high": "#E9ECE9",
         "surface-container-highest": "#DDE1DE",
         "surface-container-lowest": "#FFFFFF",
+        // Neutral warm-gray for the backdrop *inside* product / category /
+        // prescription image cards — picked to match Yandex-Аптеки's category
+        // tile colour (a calm cream-grey with a faint warm tint, NOT the
+        // greenish `surface-container`). Works with `mix-blend-multiply` so
+        // white-background catalog photos blend cleanly into the card.
+        "image-backdrop": "#F0EEEA",
 
         // ── Text & strokes ────────────────────────────────────────────────
         "on-surface": "#1A1C1B",

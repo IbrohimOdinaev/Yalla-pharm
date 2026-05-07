@@ -3,10 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
-import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
+import { useAppSelector } from "@/shared/lib/redux";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
-import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 
 // Wraps the inner component — `useSearchParams` requires a Suspense boundary
 // when rendered inside pages that are otherwise statically generated.
@@ -23,12 +22,10 @@ function GlobalTopBarFallback() {
   // generation stays happy. The Suspense swap is invisible in practice.
   return (
     <TopBar
-      title="Yalla Farm"
+      title="Yalla Pharm"
       homeMode
       addressText=""
       addressTitle=""
-      pharmacyName=""
-      pharmacyIconUrl={null}
     />
   );
 }
@@ -36,22 +33,22 @@ function GlobalTopBarFallback() {
 function GlobalTopBarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const role = useAppSelector((s) => s.auth.role);
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
   const deliveryAddressTitle = useDeliveryAddressStore((s) => s.title);
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
-  const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
-  const loadPharmacy = usePharmacyStore((s) => s.load);
-  const isPharmacyPickerOpen = usePharmacyStore((s) => s.isPickerOpen);
-  const openPharmacyPicker = usePharmacyStore((s) => s.openPicker);
-  const closePharmacyPicker = usePharmacyStore((s) => s.closePicker);
   const [showAddressModal, setShowAddressModal] = useState(false);
 
-  useEffect(() => { loadPharmacy(); }, [loadPharmacy]);
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
   // The page's own on-page search UI is active while `?search=…` is in the URL.
   // Hide the top-bar search pill so only one search input is visible at a time.
   const hideSearch = searchParams.has("search");
+
+  // Hide the prescription CTA for staff — they don't shop. Same condition the
+  // home-page banner uses, so the in-header pill and the page banner share
+  // visibility rules and never both vanish for a real client.
+  const showPrescriptionCta = role !== "Admin" && role !== "SuperAdmin";
 
   return (
     <>
@@ -59,23 +56,16 @@ function GlobalTopBarInner() {
         title="Аптека Душанбе"
         homeMode
         hideSearch={hideSearch}
+        showPrescriptionCta={showPrescriptionCta}
         onLogoClick={() => { window.location.href = "/"; }}
         onSearchClick={() => router.push("/?search=")}
         addressText={deliveryAddress}
         addressTitle={deliveryAddressTitle ?? ""}
         onAddressClick={() => setShowAddressModal(true)}
-        pharmacyName={selectedPharmacy?.title}
-        pharmacyIconUrl={selectedPharmacy?.iconUrl}
-        pharmacyId={selectedPharmacy?.id}
-        onPharmacyClick={openPharmacyPicker}
       />
       <AddressPickerModal
         open={showAddressModal}
         onClose={() => setShowAddressModal(false)}
-      />
-      <PharmacyPickerModal
-        open={isPharmacyPickerOpen}
-        onClose={closePharmacyPicker}
       />
     </>
   );

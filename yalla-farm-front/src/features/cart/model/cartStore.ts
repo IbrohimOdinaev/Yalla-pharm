@@ -12,6 +12,10 @@ type CartState = {
   addItem: (token: string, medicineId: string, quantity?: number) => Promise<void>;
   removeItem: (token: string, positionId: string) => Promise<void>;
   setQuantity: (token: string, positionId: string, quantity: number) => Promise<void>;
+  /** Atomic "clear all" — wipes positions optimistically (so the UI empties in
+   *  one frame, not row-by-row), then asks the API to clear server-side.
+   *  Rolls back if the server call fails. */
+  clearAll: (token: string) => Promise<void>;
   reset: () => void;
 };
 
@@ -139,6 +143,25 @@ export const useCartStore = create<CartState>((set, get) => ({
           set({ basket: normalizeBasket(basket) });
         } catch { /* best effort */ }
       }
+    }
+  },
+
+  clearAll: async (token) => {
+    const prev = get().basket;
+    if ((prev.positions ?? []).length === 0) return;
+    // Optimistic: empty basket immediately so the UI updates in one frame
+    // instead of fading positions row-by-row (the previous "loop and remove
+    // each" approach made an empty cart visibly unfold over several seconds).
+    set({ basket: EMPTY_BASKET, error: null });
+    try {
+      await clearBasket(token);
+    } catch (error) {
+      // Rollback on failure so the user doesn't lose state silently.
+      set({
+        basket: prev,
+        error: error instanceof Error ? error.message : "Не удалось очистить корзину.",
+      });
+      throw error;
     }
   },
 

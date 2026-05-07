@@ -395,7 +395,7 @@ export default function ProfilePage() {
         </div>
 
         <p className="pb-4 text-center text-[11px] text-on-surface-variant/60">
-          © Yalla Farm · Душанбе
+          © Yalla Pharm · Душанбе
         </p>
       </div>
 

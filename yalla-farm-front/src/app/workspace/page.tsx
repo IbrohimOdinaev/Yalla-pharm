@@ -397,7 +397,7 @@ function OfferCard({ token, medicine }: { token: string; medicine: ApiMedicine }
   return (
     <form className="stitch-card overflow-hidden" onSubmit={onSave}>
       <div className="flex gap-4 p-4">
-        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop">
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={imageUrl} alt={medicine.title || ""} className="h-full w-full object-contain mix-blend-multiply" />
@@ -482,8 +482,17 @@ function OrdersTab({ token }: { token: string }) {
     ? orders.filter((o) => o.createdAtUtc && new Date(o.createdAtUtc).toISOString().slice(0, 10) === dateFilter)
     : orders;
 
+  // Active columns run FIFO (longest-waiting first); history columns are
+  // newest-first so the most recent finalised order is at the top.
+  const HISTORY_STATUSES = new Set(["Delivered", "PickedUp", "Cancelled", "Returned"]);
+  const orderTime = (o: ApiOrder) => o.createdAtUtc ? new Date(o.createdAtUtc).getTime() : 0;
   const grouped = ALL_STATUSES.reduce<Record<string, ApiOrder[]>>((acc, status) => {
-    acc[status] = filteredOrders.filter((o) => o.status === status);
+    const list = filteredOrders.filter((o) => o.status === status);
+    list.sort((a, b) => HISTORY_STATUSES.has(status)
+      ? orderTime(b) - orderTime(a)
+      : orderTime(a) - orderTime(b)
+    );
+    acc[status] = list;
     return acc;
   }, {});
 
@@ -619,8 +628,11 @@ function OrderCard({
       {telegramHandle ? <p className="text-xs font-mono text-tertiary">{telegramHandle}</p> : null}
 
       {order.createdAtUtc ? (
-        <p className="text-xs text-on-surface-variant">
-          {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+        <p className="text-xs text-on-surface-variant tabular-nums">
+          {new Date(order.createdAtUtc).toLocaleString("ru-RU", {
+            day: "2-digit", month: "short", year: "numeric",
+            hour: "2-digit", minute: "2-digit",
+          })}
         </p>
       ) : null}
 

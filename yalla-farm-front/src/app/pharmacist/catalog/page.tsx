@@ -7,6 +7,7 @@ import { getAllMedicines } from "@/entities/medicine/admin-api";
 import { getCategories } from "@/entities/category/api";
 import type { ApiCategory, ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
 import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
@@ -25,22 +26,22 @@ type QuickCategory = {
 };
 
 const QUICK_CATEGORIES: QuickCategory[] = [
-  { icon: "grid", palette: "mint", label: "Все категории" },
-  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.jpg", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
-  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.jpg", keywords: ["аллерг", "антигистамин"] },
-  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.jpg", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
-  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.jpg", keywords: ["антибиотик", "противомикроб"] },
-  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.jpg", keywords: ["витамин", "бад", "биодобав", "минерал"] },
-  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.jpg", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.jpg", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
-  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.jpg", keywords: ["глаз", "зрени", "офтальм", "капли"] },
-  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.jpg", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
-  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.jpg", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
-  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.jpg", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
-  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
-  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
-  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
-  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/all.png" },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.png", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.png", keywords: ["антибиотик", "противомикроб"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.png", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.png", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
+  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.png", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.png", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.png", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.png", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
 ];
 
 const PAGE_SIZE = 24;
@@ -112,10 +113,46 @@ export default function PharmacistCatalogPage() {
     [totalCount]
   );
 
+  const analogTarget = useAnalogTargetStore((s) => s.target);
+  const clearAnalogTarget = useAnalogTargetStore((s) => s.clear);
+
   return (
     <PharmacistShell>
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
-        {!activeId ? (
+        {/* Analog-pick mode — banner at the top tells the pharmacist what
+            they're picking an analog for. Clicking the "+" on any catalog
+            card will write the chosen medicine into the source line as the
+            analog and bounce back to /pharmacist/cart. */}
+        {analogTarget ? (
+          <div className="sticky top-0 z-20 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary-soft p-3 shadow-card">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                Привязка аналога
+              </p>
+              <p className="truncate text-sm font-bold text-on-surface">
+                Ищем аналог для: {analogTarget.sourceTitle}
+              </p>
+              <p className="text-[11px] text-on-surface-variant">
+                Следующий выбранный препарат станет аналогом этой позиции.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { clearAnalogTarget(); router.push("/pharmacist/cart"); }}
+              className="flex-shrink-0 rounded-full bg-surface-container-lowest px-3 py-1.5 text-xs font-bold text-on-surface transition hover:bg-surface-container"
+            >
+              Отменить
+            </button>
+          </div>
+        ) : null}
+
+        {!activeId && !analogTarget ? (
           <div className="rounded-2xl bg-warning-soft p-3 text-xs text-on-surface">
             Активный рецепт не выбран — нажмите «Выбрать рецепт» в шапке, чтобы класть препараты в корзину.
           </div>

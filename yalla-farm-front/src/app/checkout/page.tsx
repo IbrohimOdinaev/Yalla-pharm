@@ -32,6 +32,7 @@ export default function CheckoutPage() {
   const {
     pharmacyId, selectedPharmacyTitle, selectedPharmacyItems,
     isPickup, deliveryCost, deliveryDistance,
+    prescriptionId,
     setDeliveryAddressData, setDeliveryCost,
   } = useCheckoutDraftStore();
 
@@ -184,17 +185,25 @@ export default function CheckoutPage() {
 
     // Positions the user unchecked on this screen — they chose to skip them for
     // this order, so clean them out of the basket too (mirrors the prior UX).
+    // Skipped entirely in prescription mode: that flow is supposed to leave
+    // the user's basket strictly alone.
     const positionsByMedId: Record<string, string> = {};
     for (const p of basket.positions ?? []) positionsByMedId[p.medicineId] = p.id;
-    const uncheckedBasketPositionIds = checkoutItems
-      .filter((i) => !selectedMedIds.has(i.medicineId))
-      .map((i) => positionsByMedId[i.medicineId])
-      .filter((id): id is string => Boolean(id));
+    const uncheckedBasketPositionIds = prescriptionId
+      ? []
+      : checkoutItems
+          .filter((i) => !selectedMedIds.has(i.medicineId))
+          .map((i) => positionsByMedId[i.medicineId])
+          .filter((id): id is string => Boolean(id));
 
     try {
       const idempotencyKey = buildCheckoutIdempotencyKey();
       const effectiveAddress = localAddress || savedAddress;
       const effectiveTitle = localAddressTitle ?? savedAddressTitle;
+      // Prescription-checkout flow: don't consume basket positions and tag
+      // the source with prescriptionId so the backend transitions the
+      // prescription Decoded → OrderPlaced atomically with the order.
+      const isPrescriptionFlow = !!prescriptionId;
       const payload = {
         pharmacyId,
         isPickup,
@@ -214,7 +223,10 @@ export default function CheckoutPage() {
         source: {
           kind: 2, // CheckoutSourceKind.Explicit
           positions: explicitPositions,
-          consumeFromBasket: true,
+          // Regular cart-flow: clear matching basket rows after the order
+          // commits. Prescription-flow: leave the basket strictly alone.
+          consumeFromBasket: !isPrescriptionFlow,
+          prescriptionId: isPrescriptionFlow ? prescriptionId : null,
         },
       };
 
@@ -423,7 +435,7 @@ export default function CheckoutPage() {
             {checkoutItems.map((item) => {
               const med = medicineMap[item.medicineId];
               const name = med ? getMedicineDisplayName(med) : item.medicineId;
-              const imgUrl = med ? resolveMedicineImageUrl(med, 120) : "";
+              const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
               const enough = item.hasEnoughQuantity;
               const partial = item.isFound && !enough && item.foundQuantity > 0;
               const missing = !item.isFound || item.foundQuantity <= 0;
@@ -457,10 +469,10 @@ export default function CheckoutPage() {
                     <img
                       src={imgUrl}
                       alt=""
-                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-surface-container object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
+                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-image-backdrop object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
                     />
                   ) : (
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container text-on-surface-variant/40">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-image-backdrop text-on-surface-variant/40">
                       <Icon name="bag" size={20} />
                     </div>
                   )}

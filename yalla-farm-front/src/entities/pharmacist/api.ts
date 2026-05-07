@@ -60,6 +60,10 @@ export type DecodePrescriptionItemInput = {
   manualMedicineName?: string | null;
   quantity: number;
   pharmacistComment?: string | null;
+  /** 0 = Original (default), 1 = Undecoded. */
+  kind?: number;
+  /** Optional cheaper substitute id from the catalog. */
+  analogMedicineId?: string | null;
 };
 
 export async function submitChecklist(

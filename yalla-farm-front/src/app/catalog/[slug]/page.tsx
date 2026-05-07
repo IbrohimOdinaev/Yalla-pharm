@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     .map((s) => s[0].toUpperCase() + s.slice(1))
     .join(" ");
   return {
-    title: `${pretty} | Каталог | Yalla Farm`,
+    title: `${pretty} | Каталог | Yalla Pharm`,
     description: `Каталог категории «${pretty}» — лекарства и товары для здоровья.`,
   };
 }

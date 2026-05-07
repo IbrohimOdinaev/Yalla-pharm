@@ -50,7 +50,7 @@ export function CurrentPrescriptionPill() {
       onClick={openPicker}
       className="flex items-center gap-2.5 rounded-full bg-surface-container-low px-2 py-1.5 text-left transition hover:bg-surface-container max-w-full"
     >
-      <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-surface-container">
+      <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-image-backdrop">
         {cover ? (
           <AuthedImage src={cover.url} alt="" className="h-full w-full object-cover" />
         ) : (
