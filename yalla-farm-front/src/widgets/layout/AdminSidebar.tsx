@@ -54,7 +54,7 @@ export function AdminSidebar() {
           Y
         </span>
         <div className="min-w-0">
-          <p className="truncate font-display text-sm font-extrabold text-on-surface">Yalla Farm</p>
+          <p className="truncate font-display text-sm font-extrabold text-on-surface">Yalla Pharm</p>
           <p className="truncate text-[11px] font-semibold text-primary">
             {role === "SuperAdmin" ? "Панель супер-админа" : "Кабинет администратора"}
           </p>

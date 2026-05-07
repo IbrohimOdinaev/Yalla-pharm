@@ -30,7 +30,13 @@ export function AuthedImage({ src, fallback = null, alt = "", ...rest }: AuthedI
 
   useEffect(() => {
     setFailed(false);
-    if (!src || !token) { setBlobUrl(null); return; }
+    // Clear the previous blob URL up front so a src change (e.g. user navigating
+    // /prescriptions/A → /prescriptions/B) immediately renders the fallback
+    // instead of leaving the OLD image on screen while the new bytes download.
+    // Without this the UI looks "stuck" on the previous prescription's photos
+    // until the new fetch resolves.
+    setBlobUrl(null);
+    if (!src || !token) return;
 
     let cancelled = false;
     let createdUrl: string | null = null;

@@ -16,6 +16,22 @@ export async function getMedicineById(id: string): Promise<ApiMedicine> {
   return response.medicine;
 }
 
+/**
+ * Batch counterpart to {@link getMedicineById}. Resolves N medicines in a
+ * single round-trip — used by pages that build their UI from a list of
+ * known medicine ids (pharmacist cart, prescription detail) so they don't
+ * pay N HTTP roundtrips of latency before the rows hydrate.
+ */
+export async function getMedicinesByIds(ids: string[]): Promise<ApiMedicine[]> {
+  const filtered = Array.from(new Set(ids.filter((id) => !!id)));
+  if (filtered.length === 0) return [];
+  const response = await apiFetch<{ medicines?: ApiMedicine[] }>(
+    "/api/medicines/by-ids",
+    { method: "POST", body: { ids: filtered } },
+  );
+  return Array.isArray(response?.medicines) ? response.medicines : [];
+}
+
 export async function getMedicineBySlug(slug: string): Promise<ApiMedicine> {
   const response = await apiFetch<{ medicine?: ApiMedicine }>(`/api/medicines/by-slug/${encodeURIComponent(slug)}`);
   if (!response?.medicine) {

@@ -60,23 +60,19 @@ const HOME_RAILS: RailSpec[] = [
 const QUICK_CATEGORIES: QuickCategory[] = [
   // "Все категории" first — anchors the rail with the catch-all so users
   // who don't see their target among the quick tiles immediately know
-  // where to look. No `image` — falls back to the grid SVG icon.
-  { icon: "grid", palette: "mint", label: "Все категории" },
-  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.jpg", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
-  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.jpg", keywords: ["аллерг", "антигистамин"] },
-  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.jpg", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
-  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.jpg", keywords: ["антибиотик", "противомикроб"] },
-  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.jpg", keywords: ["витамин", "бад", "биодобав", "минерал"] },
-  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.jpg", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.jpg", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
-  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.jpg", keywords: ["глаз", "зрени", "офтальм", "капли"] },
-  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.jpg", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
-  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.jpg", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
-  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.jpg", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
-  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
-  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
-  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
-  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  // where to look.
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/all.png" },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.png", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.png", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.png", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.png", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
 ];
 
 export default function HomePage() {
@@ -94,8 +90,7 @@ function HomeFallback() {
         <div className="flex gap-3 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex flex-col items-center gap-2">
-              <div className="h-[80px] w-[80px] animate-pulse rounded-2xl bg-surface-container-high sm:h-[92px] sm:w-[92px] lg:h-[104px] lg:w-[104px]" />
-              <div className="h-3 w-16 animate-pulse rounded-md bg-surface-container-high" />
+              <div className="h-[129px] w-[110px] animate-pulse rounded-2xl bg-surface-container-high sm:h-[152px] sm:w-[124px] lg:h-[175px] lg:w-[143px]" />
             </div>
           ))}
         </div>
@@ -112,7 +107,9 @@ function HomeFallback() {
 
 function HomeContent() {
   const role = useAppSelector((s) => s.auth.role);
+  const hydrated = useAppSelector((s) => s.auth.hydrated);
   const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
+  const isStaff = role === "Admin" || role === "SuperAdmin" || role === "Pharmacist";
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const searchParams = useSearchParams();
@@ -410,6 +407,14 @@ function HomeContent() {
     else navRouter.push("/catalog");
   }
 
+  // Staff guard — renders nothing while the auth-redirect effect above hops
+  // them to /workspace / /superadmin / /pharmacist. Without this the client
+  // home page (catalog + categories + popular rails) flashes for one frame
+  // before the navigator runs, which looks like a broken redirect.
+  if (hydrated && isStaff) {
+    return null;
+  }
+
   // ── SEARCH VIEW ──
   if (view === "search") {
     return (
@@ -705,14 +710,32 @@ function HomeContent() {
       />
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
 
-          {/* Prescription-decoding CTA — sits above the quick categories so
-              the entry point to the new "Мои рецепты" flow is the first
-              thing on the home page. Hidden for admin / superadmin since
-              they don't shop. */}
+          {/* Quick categories — Yandex-style horizontal rail */}
+          <section>
+            <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
+              {QUICK_CATEGORIES.map((cat) => (
+                <div key={cat.label} className="flex-shrink-0">
+                  <CategoryTile
+                    icon={cat.icon}
+                    palette={cat.palette}
+                    label={cat.label}
+                    image={cat.image}
+                    onClick={() => onQuickCategoryClick(cat.label)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Prescription-decoding CTA — sits below the quick categories so
+              the rail stays the first visual hit on the home page. Hidden for
+              admin / superadmin since they don't shop. At xl+ the same CTA
+              lives inline in the header next to the pharmacy pill — hide the
+              banner there to avoid showing the entry point twice. */}
           {!isAdminOrSA ? (
             <Link
               href="/prescriptions/new"
-              className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition hover:bg-primary/15 sm:p-4"
+              className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition hover:bg-primary/15 sm:p-4 xl:hidden"
             >
               <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-card sm:h-12 sm:w-12">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -733,23 +756,6 @@ function HomeContent() {
               </svg>
             </Link>
           ) : null}
-
-          {/* Quick categories — Yandex-style horizontal rail */}
-          <section>
-            <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
-              {QUICK_CATEGORIES.map((cat) => (
-                <div key={cat.label} className="flex-shrink-0">
-                  <CategoryTile
-                    icon={cat.icon}
-                    palette={cat.palette}
-                    label={cat.label}
-                    image={cat.image}
-                    onClick={() => onQuickCategoryClick(cat.label)}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
 
           <HeroCarousel />
 

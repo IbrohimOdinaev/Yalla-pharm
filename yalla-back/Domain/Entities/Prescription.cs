@@ -31,6 +31,11 @@ public class Prescription
 
     public PrescriptionStatus Status { get; private set; }
 
+    /// <summary>Client's tier choice — defaults to <c>AsPrescribed</c> for
+    /// historical rows that pre-date the field.</summary>
+    public PrescriptionPreferenceTier PreferenceTier { get; private set; }
+      = PrescriptionPreferenceTier.AsPrescribed;
+
     /// <summary>Set when a pharmacist takes the prescription into review.</summary>
     public Guid? AssignedPharmacistId { get; private set; }
 
@@ -60,7 +65,8 @@ public class Prescription
       Guid clientId,
       int patientAge,
       string? clientComment,
-      IReadOnlyList<PrescriptionImage> images)
+      IReadOnlyList<PrescriptionImage> images,
+      PrescriptionPreferenceTier preferenceTier = PrescriptionPreferenceTier.AsPrescribed)
     {
         if (clientId == Guid.Empty)
             throw new DomainArgumentException("Prescription.ClientId can't be empty.");
@@ -86,6 +92,7 @@ public class Prescription
         PatientAge = patientAge;
         ClientComment = string.IsNullOrWhiteSpace(clientComment) ? null : clientComment.Trim();
         Status = PrescriptionStatus.Submitted;
+        PreferenceTier = preferenceTier;
         CreatedAtUtc = DateTime.UtcNow;
         _images.AddRange(images);
     }

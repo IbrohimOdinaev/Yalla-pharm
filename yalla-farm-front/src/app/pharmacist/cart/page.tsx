@@ -9,14 +9,18 @@ import {
 } from "@/entities/pharmacist/api";
 import {
   PRESCRIPTION_STATUS_LABEL_RU,
+  PRESCRIPTION_TIER_LABEL_RU,
+  PRESCRIPTION_TIER_DESCRIPTION_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { getMedicinesByIds, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { ManualEntryModal } from "@/widgets/pharmacist/ManualEntryModal";
+import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
+import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
 import { AuthedImage, Button, Icon } from "@/shared/ui";
 
 export default function PharmacistCartPage() {
@@ -26,6 +30,7 @@ export default function PharmacistCartPage() {
   const hydrated = useAppSelector((s) => s.auth.hydrated);
 
   const activeId = useActivePrescriptionStore((s) => s.activeId);
+  const setActiveId = useActivePrescriptionStore((s) => s.setActiveId);
   const openPicker = useActivePrescriptionStore((s) => s.openPicker);
 
   const drafts = usePrescriptionDraftStore((s) => s.drafts);
@@ -42,7 +47,25 @@ export default function PharmacistCartPage() {
 
   const [medicineCache, setMedicineCache] = useState<Record<string, ApiMedicine>>({});
   const [showManual, setShowManual] = useState(false);
+
+  // "Привязать аналог" → stash the target item in sessionStorage and hop
+  // to /pharmacist/catalog. The next medicine the pharmacist taps the "+"
+  // on becomes the analog for this line; both MedicineCard and the
+  // product modal read the same store, attach the analog, and bounce
+  // back here.
+  const setAnalogTarget = useAnalogTargetStore((s) => s.setTarget);
+  function startAnalogPick(draftId: string, sourceTitle: string, sourceMedicineId: string | null | undefined) {
+    if (!activeId) return;
+    setAnalogTarget({
+      prescriptionId: activeId,
+      draftId,
+      sourceMedicineId: sourceMedicineId ?? "",
+      sourceTitle,
+    });
+    router.push("/pharmacist/catalog");
+  }
   const [editingCommentFor, setEditingCommentFor] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -55,9 +78,23 @@ export default function PharmacistCartPage() {
     setLoading(true); setError(null);
     return getPharmacistPrescription(token, activeId)
       .then(setPrescription)
-      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить рецепт."))
+      .catch((err) => {
+        // A stale activeId in localStorage (prescription removed / reassigned /
+        // no longer accessible to this pharmacist) used to surface the raw
+        // backend "Требуется авторизация" wall. Detect that case and silently
+        // drop the stale id so the page falls back to the empty-state with
+        // the picker, matching what a pharmacist who just logged in sees.
+        const message = err instanceof Error ? err.message : "";
+        const isStale = /авторизация|forbidden|not found|denied|401|403|404/i.test(message);
+        if (isStale) {
+          setActiveId(null);
+          setPrescription(null);
+        } else {
+          setError(message || "Не удалось загрузить рецепт.");
+        }
+      })
       .finally(() => setLoading(false));
-  }, [token, role, activeId]);
+  }, [token, role, activeId, setActiveId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -87,24 +124,27 @@ export default function PharmacistCartPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prescription?.prescriptionId]);
 
-  // Fetch medicine objects for catalog-bound draft items so the cart row
-  // can show the photo + canonical title. Skipped for manual items.
+  // Fetch medicine objects for catalog-bound draft items so the cart row can
+  // show the photo + canonical title. Skipped for manual items. Single batch
+  // round-trip via /by-ids — the previous N parallel GETs added up to a
+  // visible delay even with parallelism (each request still pays its own
+  // TCP/TLS overhead).
   useEffect(() => {
     const missing = draft.items
       .map((i) => i.medicineId)
       .filter((id): id is string => !!id && !medicineCache[id]);
     if (missing.length === 0) return;
     let cancelled = false;
-    Promise.all(missing.map((id) =>
-      getMedicineById(id).then((m) => [id, m] as const).catch(() => [id, null] as const)
-    )).then((entries) => {
-      if (cancelled) return;
-      setMedicineCache((prev) => {
-        const next = { ...prev };
-        for (const [id, m] of entries) if (m) next[id] = m;
-        return next;
-      });
-    });
+    getMedicinesByIds(missing)
+      .then((meds) => {
+        if (cancelled) return;
+        setMedicineCache((prev) => {
+          const next = { ...prev };
+          for (const m of meds) next[m.id] = m;
+          return next;
+        });
+      })
+      .catch(() => undefined);
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.items.length, draft.items.map((i) => i.medicineId).join(",")]);
@@ -141,9 +181,17 @@ export default function PharmacistCartPage() {
           manualMedicineName: i.manualMedicineName ?? null,
           quantity: i.quantity,
           pharmacistComment: i.pharmacistComment ?? null,
+          kind: i.kind === "Undecoded" ? 1 : 0,
+          analogMedicineId: i.kind === "Undecoded" ? null : (i.analogMedicineId ?? null),
         })),
       });
+      // Drop active id + draft + cached prescription so the next visit to this
+      // page renders an empty "Рецепт ещё не выбран" state instead of the
+      // prescription we just decoded (the bug that showed the old client's
+      // photos and items lingering after submit).
       clearDraft(activeId);
+      setActiveId(null);
+      setPrescription(null);
       router.replace("/pharmacist");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить чек-лист.");
@@ -157,7 +205,7 @@ export default function PharmacistCartPage() {
       <div className="mx-auto max-w-3xl space-y-4">
         {!activeId ? (
           <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
-            Активный рецепт не выбран. Откройте очередь или нажмите на «Выбрать рецепт» в шапке.
+            Рецепт ещё не выбран. Откройте «Очередь», чтобы взять заявку в работу, либо нажмите «Выбрать рецепт» в шапке.
             <div className="mt-3 flex gap-2">
               <Button size="sm" variant="secondary" onClick={openPicker}>Выбрать рецепт</Button>
             </div>
@@ -180,6 +228,14 @@ export default function PharmacistCartPage() {
                 <span className="rounded-full bg-primary-soft px-2 py-1 font-bold text-primary">
                   {PRESCRIPTION_STATUS_LABEL_RU[prescription.status] ?? prescription.status}
                 </span>
+                {prescription.preferenceTier ? (
+                  <span
+                    className="rounded-full bg-accent-sun px-2 py-1 font-bold text-accent-sun-ink"
+                    title={PRESCRIPTION_TIER_DESCRIPTION_RU[prescription.preferenceTier]}
+                  >
+                    {PRESCRIPTION_TIER_LABEL_RU[prescription.preferenceTier]}
+                  </span>
+                ) : null}
                 <span className="text-on-surface-variant">
                   Возраст: <span className="font-bold text-on-surface">{prescription.patientAge}</span>
                 </span>
@@ -203,9 +259,24 @@ export default function PharmacistCartPage() {
               ) : null}
               <div className="grid grid-cols-2 gap-3">
                 {prescription.images.map((img) => (
-                  <div key={img.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-surface-container">
-                    <AuthedImage src={img.url} alt="" className="h-full w-full object-cover" />
-                  </div>
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setLightboxSrc(img.url)}
+                    className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-image-backdrop transition hover:opacity-90 active:scale-[0.99]"
+                    aria-label="Открыть фото на весь экран"
+                  >
+                    <AuthedImage
+                      src={img.url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      fallback={
+                        <div className="flex h-full w-full items-center justify-center">
+                          <div className="h-7 w-7 animate-spin rounded-full border-2 border-on-surface-variant/20 border-t-on-surface-variant/70" />
+                        </div>
+                      }
+                    />
+                  </button>
                 ))}
               </div>
             </section>
@@ -227,13 +298,13 @@ export default function PharmacistCartPage() {
                 <ul className="space-y-2">
                   {draft.items.map((it) => {
                     const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
-                    const imgUrl = med ? resolveMedicineImageUrl(med, 120) : "";
+                    const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
                     const title = med ? getMedicineDisplayName(med) : it.displayTitle;
                     const isCommentOpen = editingCommentFor === it.draftId;
                     return (
                       <li key={it.draftId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
                         <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container xs:h-14 xs:w-14">
+                          <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
                             {imgUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
@@ -284,7 +355,7 @@ export default function PharmacistCartPage() {
                           <button
                             type="button"
                             onClick={() => setEditingCommentFor(isCommentOpen ? null : it.draftId)}
-                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container"
+                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-image-backdrop"
                             aria-label="Комментарий"
                             title="Комментарий по позиции"
                           >
@@ -299,6 +370,75 @@ export default function PharmacistCartPage() {
                           >
                             <Icon name="close" size={14} />
                           </button>
+                        </div>
+
+                        {/* Kind toggle — pharmacist marks each line either as
+                            an identified original medicine or as a row they
+                            couldn't read. Required by the workflow: every
+                            position MUST be one of the two. Default is
+                            Original; the toggle makes Undecoded explicit. */}
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-0.5 text-[11px] font-semibold">
+                            <button
+                              type="button"
+                              onClick={() => updateItem(activeId, it.draftId, { kind: "Original" })}
+                              className={`rounded-full px-2.5 py-1 transition ${
+                                (it.kind ?? "Original") === "Original"
+                                  ? "bg-primary text-white shadow-card"
+                                  : "text-on-surface-variant hover:text-on-surface"
+                              }`}
+                            >
+                              Оригинал
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateItem(activeId, it.draftId, { kind: "Undecoded", analogMedicineId: null, analogTitle: null })}
+                              className={`rounded-full px-2.5 py-1 transition ${
+                                it.kind === "Undecoded"
+                                  ? "bg-secondary text-white shadow-card"
+                                  : "text-on-surface-variant hover:text-on-surface"
+                              }`}
+                            >
+                              Не смог расшифровать
+                            </button>
+                          </div>
+                          {/* Analog status — every Original-kind position can
+                              carry a cheaper substitute. Shown for both
+                              catalog and manual items: even if the original
+                              isn't in our catalog the pharmacist can offer a
+                              catalog analog the client can actually buy.
+                              Click "Привязать аналог" → catalog search modal;
+                              click the chip body to swap, X to clear. */}
+                          {(it.kind ?? "Original") === "Original" ? (
+                            it.analogMedicineId ? (
+                              <span className="flex items-center gap-1 rounded-full bg-accent-mint px-2.5 py-1 text-[11px] font-bold text-accent-mint-ink">
+                                <button
+                                  type="button"
+                                  onClick={() => startAnalogPick(it.draftId, title, it.medicineId)}
+                                  className="hover:underline"
+                                  title="Сменить аналог"
+                                >
+                                  Аналог: {it.analogTitle ?? "выбран"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(activeId, it.draftId, { analogMedicineId: null, analogTitle: null })}
+                                  className="-mr-1 flex h-4 w-4 items-center justify-center rounded-full hover:bg-on-surface/10"
+                                  aria-label="Убрать аналог"
+                                >
+                                  <Icon name="close" size={10} />
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => startAnalogPick(it.draftId, title, it.medicineId)}
+                                className="rounded-full border border-dashed border-outline px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary"
+                              >
+                                + Привязать аналог
+                              </button>
+                            )
+                          ) : null}
                         </div>
 
                         {isCommentOpen ? (
@@ -350,6 +490,8 @@ export default function PharmacistCartPage() {
           onClose={() => setShowManual(false)}
           onSubmit={onAddManual}
         />
+
+        <AuthedImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       </div>
     </PharmacistShell>
   );

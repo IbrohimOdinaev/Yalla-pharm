@@ -102,7 +102,7 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
                 >
                   {/* Banner */}
                   {pharmacy.bannerUrl ? (
-                    <div className="h-24 w-full overflow-hidden bg-surface-container">
+                    <div className="h-24 w-full overflow-hidden bg-image-backdrop">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={pharmacy.bannerUrl.startsWith("http") ? pharmacy.bannerUrl : `/api/pharmacies/banner/${pharmacy.id}/content?w=480`}

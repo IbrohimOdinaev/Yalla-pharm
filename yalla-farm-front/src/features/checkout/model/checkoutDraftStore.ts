@@ -23,7 +23,12 @@ type CheckoutDraftState = {
   deliveryAddressData: DeliveryAddressData | null;
   deliveryCost: number | null;
   deliveryDistance: number | null;
-  setDraft: (payload: Partial<Pick<CheckoutDraftState, "pharmacyId" | "selectedPharmacyTitle" | "selectedPharmacyItems" | "selectedPharmacyTotalCost" | "ignoredPositionIds" | "deliveryAddress" | "isPickup">>) => void;
+  /** When set, the checkout submits with `Source.Kind = Explicit` carrying
+   *  the prescription items (so the basket isn't read or mutated) and
+   *  `Source.PrescriptionId` so the backend transitions the prescription to
+   *  OrderPlaced atomically with the order. Cleared on reset. */
+  prescriptionId: string | null;
+  setDraft: (payload: Partial<Pick<CheckoutDraftState, "pharmacyId" | "selectedPharmacyTitle" | "selectedPharmacyItems" | "selectedPharmacyTotalCost" | "ignoredPositionIds" | "deliveryAddress" | "isPickup" | "prescriptionId">>) => void;
   setDeliveryAddressData: (data: DeliveryAddressData | null) => void;
   setDeliveryCost: (cost: number | null, distance: number | null) => void;
   reset: () => void;
@@ -40,6 +45,7 @@ const initialState = {
   deliveryAddressData: null as DeliveryAddressData | null,
   deliveryCost: null as number | null,
   deliveryDistance: null as number | null,
+  prescriptionId: null as string | null,
 };
 
 export const useCheckoutDraftStore = create<CheckoutDraftState>()(
@@ -63,6 +69,7 @@ export const useCheckoutDraftStore = create<CheckoutDraftState>()(
         selectedPharmacyTotalCost: state.selectedPharmacyTotalCost,
         ignoredPositionIds: state.ignoredPositionIds,
         isPickup: state.isPickup,
+        prescriptionId: state.prescriptionId,
       }),
     }
   )

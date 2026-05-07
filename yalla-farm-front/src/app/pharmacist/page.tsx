@@ -12,9 +12,13 @@ import {
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
-import { AuthedImage, Button, Icon } from "@/shared/ui";
+import { AuthedImage, Button } from "@/shared/ui";
 
-const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview", "Decoded"];
+// Decoded prescriptions deliberately drop off the queue once the pharmacist
+// submits the checklist — they're "done" from this person's perspective and
+// just create noise on the work list. They remain accessible via the active-
+// prescription picker in the header if the pharmacist needs to revisit one.
+const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview"];
 
 export default function PharmacistQueuePage() {
   const token = useAppSelector((s) => s.auth.token);
@@ -24,9 +28,11 @@ export default function PharmacistQueuePage() {
   const setActiveId = useActivePrescriptionStore((s) => s.setActiveId);
 
   const [items, setItems] = useState<ApiPrescription[]>([]);
-  // Initial false → empty state shows immediately if the API resolves to an
-  // empty list. Only flips to true while a fetch is genuinely in flight.
-  const [loading, setLoading] = useState(false);
+  // Initial true so we don't flash an empty list while the first fetch is
+  // still in flight (the user could click "Взять в работу" on a list that's
+  // not yet hydrated). Flips to false after the first response — success or
+  // error — and stays false on subsequent silent refetches.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -53,7 +59,13 @@ export default function PharmacistQueuePage() {
   // safe response (we don't know which prescription shifted lists).
   useSignalREvent("PrescriptionUpdated", load, token);
 
-  async function onSelectAndTake(p: ApiPrescription) {
+  // Single entry point — clicking the row's primary button always (a) marks
+  // this prescription active in the picker store, (b) takes it into review if
+  // it's still in the queue, and (c) opens the cart. The previous flow had a
+  // separate "Сделать активным" button that confused pharmacists into a
+  // half-assigned state; auto-take here means SuperAdmin's payment confirm
+  // → pharmacist click is a single hop straight into decoding.
+  async function onOpenCart(p: ApiPrescription) {
     setActiveId(p.prescriptionId);
     if (p.status === "InQueue" && token) {
       setBusyId(p.prescriptionId);
@@ -69,16 +81,18 @@ export default function PharmacistQueuePage() {
     router.push("/pharmacist/cart");
   }
 
-  function onJustSelect(p: ApiPrescription) {
-    setActiveId(p.prescriptionId);
-    router.push("/pharmacist/cart");
-  }
-
   const byStatus: Record<PrescriptionStatus, ApiPrescription[]> = {
     Submitted: [], AwaitingConfirmation: [], InQueue: [], InReview: [],
     Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [],
   };
   for (const p of items) byStatus[p.status]?.push(p);
+  // Pending work — sort oldest first so the queue is FIFO; the longest-waiting
+  // client gets attention before brand-new requests.
+  for (const status of ["InQueue", "InReview"] as PrescriptionStatus[]) {
+    byStatus[status].sort((a, b) =>
+      new Date(a.createdAtUtc).getTime() - new Date(b.createdAtUtc).getTime()
+    );
+  }
 
   return (
     <PharmacistShell>
@@ -122,7 +136,7 @@ export default function PharmacistQueuePage() {
                       return (
                         <li key={p.prescriptionId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:p-4">
                           <div className="flex items-start gap-3">
-                            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop">
                               {cover ? (
                                 <AuthedImage src={cover.url} alt="" className="h-full w-full object-cover" />
                               ) : null}
@@ -138,27 +152,14 @@ export default function PharmacistQueuePage() {
                             </div>
                           </div>
                           <div className="mt-3 flex items-center gap-2">
-                            {status === "InQueue" ? (
-                              <Button
-                                size="sm"
-                                loading={busyId === p.prescriptionId}
-                                onClick={() => onSelectAndTake(p)}
-                              >
-                                Взять в работу
-                              </Button>
-                            ) : (
-                              <Button size="sm" variant="secondary" onClick={() => onJustSelect(p)}>
-                                Открыть корзину
-                              </Button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => { setActiveId(p.prescriptionId); }}
-                              className="ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-on-surface-variant transition hover:bg-surface-container"
+                            <Button
+                              size="sm"
+                              variant={status === "InQueue" ? "primary" : "secondary"}
+                              loading={busyId === p.prescriptionId}
+                              onClick={() => onOpenCart(p)}
                             >
-                              <Icon name="orders" size={14} />
-                              Сделать активным
-                            </button>
+                              {status === "InQueue" ? "Взять в работу" : "Открыть корзину"}
+                            </Button>
                           </div>
                         </li>
                       );

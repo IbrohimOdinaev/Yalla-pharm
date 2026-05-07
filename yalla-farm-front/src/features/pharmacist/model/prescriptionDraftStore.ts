@@ -14,6 +14,15 @@ export type DraftItem = {
   displayTitle: string;
   /** Cached price snapshot to show in the cart UI. Optional. */
   minPrice?: number | null;
+  /** "Original" (default) — pharmacist identified the medicine. "Undecoded"
+   *  — pharmacist couldn't read the line of the prescription; the row is
+   *  informational only and won't be orderable on the client side. */
+  kind?: "Original" | "Undecoded";
+  /** Optional cheaper substitute id from our catalog. Only meaningful for
+   *  Original-kind items. Display title is cached separately so the cart
+   *  UI doesn't have to refetch the analog medicine. */
+  analogMedicineId?: string | null;
+  analogTitle?: string | null;
 };
 
 export type DraftState = {

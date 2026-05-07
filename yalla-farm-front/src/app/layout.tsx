@@ -3,7 +3,7 @@ import "./globals.css";
 import { StoreProvider } from "@/app/providers/StoreProvider";
 
 export const metadata: Metadata = {
-  title: "Yalla Farm | Pharmacy Dushanbe",
+  title: "Yalla Pharm | Pharmacy Dushanbe",
   description: "Онлайн-аптека Душанбе: доставка лекарств",
   icons: {
     icon: "/favicon.ico",

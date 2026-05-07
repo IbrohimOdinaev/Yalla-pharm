@@ -9,4 +9,6 @@ public sealed class CreatePrescriptionRequest
 {
     public int PatientAge { get; set; }
     public string? ClientComment { get; set; }
+    /// <summary>0 = AsPrescribed (default), 1 = GoldenMiddle, 2 = MaxSavings.</summary>
+    public int PreferenceTier { get; set; }
 }
