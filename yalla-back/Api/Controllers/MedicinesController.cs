@@ -53,11 +53,14 @@ public sealed class MedicinesController : ControllerBase
   }
 
   [HttpGet("all")]
-  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.Pharmacist)}")]
   public async Task<IActionResult> GetAll(
     [FromQuery] GetAllMedicinesRequest request,
     CancellationToken cancellationToken)
   {
+    // Pharmacists need access to the entire catalog (including medicines
+    // without active offers) so they can compose checklists for clients
+    // — offers may appear later when the client picks a pharmacy.
     var response = await _medicineService.GetAllMedicinesAsync(request, cancellationToken);
     return Ok(response);
   }
@@ -88,6 +91,21 @@ public sealed class MedicinesController : ControllerBase
   /// Mirrors the GUID lookup — same response shape — so the front-end product
   /// page can fetch with whichever identifier the route gives it.
   /// </summary>
+  /// <summary>
+  /// Batch lookup — POST a list of medicine ids, get an array of medicines
+  /// (with offers) back in one round-trip. Eliminates the N+1 fan-out the
+  /// pharmacist cart and prescription detail pages used to do.
+  /// </summary>
+  [HttpPost("by-ids")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GetByIds(
+    [FromBody] GetMedicinesByIdsRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _medicineService.GetMedicinesByIdsAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
   [HttpGet("by-slug/{slug}")]
   [AllowAnonymous]
   public async Task<IActionResult> GetBySlug(

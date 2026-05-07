@@ -368,7 +368,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
                         className="h-4 w-4 rounded"
                       />
                     )}
-                    <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-surface-container flex items-center justify-center text-xs text-on-surface-variant font-bold">
+                    <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-image-backdrop flex items-center justify-center text-xs text-on-surface-variant font-bold">
                       {medicineName[0]}
                     </div>
                     <div className="flex-1 min-w-0">

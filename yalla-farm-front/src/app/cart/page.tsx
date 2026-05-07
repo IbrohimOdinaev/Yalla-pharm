@@ -22,7 +22,9 @@ import { Button, IconButton, Icon, EmptyState } from "@/shared/ui";
 export default function CartPage() {
   const token = useAppSelector((state) => state.auth.token);
   const router = useRouter();
-  const { basket, loadBasket, removeItem, setQuantity, isLoading, error } = useCartStore((state) => state);
+  const { basket, loadBasket, removeItem, setQuantity, clearAll, isLoading, error } = useCartStore((state) => state);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
   const [recommendations, setRecommendations] = useState<ApiMedicine[]>([]);
@@ -126,15 +128,21 @@ export default function CartPage() {
     else if (token) removeItem(token, itemId).catch(() => undefined);
   }, [isGuest, token, removeGuestItem, removeItem]);
 
-  const clearAll = useCallback(async () => {
-    if (isGuest) {
-      for (const item of guestItems) removeGuestItem(item.medicineId);
-    } else if (token) {
-      for (const p of basket.positions ?? []) {
-        await removeItem(token, p.id).catch(() => undefined);
-      }
+  // Atomic clear — used by the trash-bin button after the user confirms.
+  // Both the guest store's `clear()` and `clearAll(token)` empty all
+  // positions in a single state update, so the row-by-row fade-out the user
+  // saw before is gone — the cart goes from N items → empty in one frame.
+  const clearGuest = useGuestCartStore((s) => s.clear);
+  const performClear = useCallback(async () => {
+    setClearing(true);
+    try {
+      if (isGuest) clearGuest();
+      else if (token) await clearAll(token);
+    } finally {
+      setClearing(false);
+      setShowClearConfirm(false);
     }
-  }, [isGuest, token, guestItems, removeGuestItem, basket.positions, removeItem]);
+  }, [isGuest, token, clearGuest, clearAll]);
 
   if (cartItems.length === 0 && !isLoading) {
     return (
@@ -169,10 +177,45 @@ export default function CartPage() {
           icon="trash"
           variant="danger"
           size="md"
-          onClick={clearAll}
+          onClick={() => setShowClearConfirm(true)}
           aria-label="Очистить корзину"
         />
       </div>
+
+      {showClearConfirm ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => !clearing && setShowClearConfirm(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm rounded-2xl bg-surface-container-lowest p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-lg font-extrabold">Очистить корзину?</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              Все товары в корзине будут удалены. Действие нельзя отменить.
+            </p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                size="md"
+                variant="secondary"
+                onClick={() => setShowClearConfirm(false)}
+                disabled={clearing}
+              >
+                Отмена
+              </Button>
+              <Button
+                size="md"
+                variant="danger"
+                loading={clearing}
+                onClick={performClear}
+              >
+                Да, очистить
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-3 rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
@@ -182,11 +225,10 @@ export default function CartPage() {
       <ul className="space-y-2">
         {cartItems.map((item) => {
           const medicine = medicineMap[item.medicineId];
-          const image = resolveMedicineImageUrl(medicine, 120);
+          const image = resolveMedicineImageUrl(medicine, 240);
           const name = medicine ? getMedicineDisplayName(medicine) : `Загрузка...`;
           const minPrice = getCheapestPrice(medicine);
 
-          const lineTotal = (minPrice ?? 0) * item.quantity;
           return (
             <li
               key={item.id}
@@ -208,7 +250,7 @@ export default function CartPage() {
                   smaller font scale. */}
               <Link
                 href={`/product/${item.medicineId}`}
-                className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container xs:h-12 xs:w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-2xl"
+                className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-12 xs:w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-2xl"
               >
                 {image ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -220,10 +262,10 @@ export default function CartPage() {
                 )}
               </Link>
 
-              {/* Name + "от X TJS" hint underneath. The min-price stays
-                  stacked under the name everywhere except lg+, where it
-                  pops out into its own column inside the right cluster
-                  (matches the desktop reference). */}
+              {/* Name + per-unit "от X TJS" right under it. The small inline
+                  hint hides at lg+ — that breakpoint promotes the price into
+                  its own bigger column inside the right cluster, sitting at
+                  the same vertical level as the title and the stepper. */}
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/product/${item.medicineId}`}
@@ -233,28 +275,25 @@ export default function CartPage() {
                 </Link>
                 <p className="mt-0.5 text-[10px] text-on-surface-variant xs:text-[11px] sm:text-xs lg:hidden">
                   от{" "}
-                  <span className="font-bold text-primary">
+                  <span className="font-bold text-primary tabular-nums">
                     {minPrice ? formatMoney(minPrice) : "—"}
                   </span>
                 </p>
               </div>
 
-              {/* Right cluster — the inner gap matches the outer flex gap
-                  below lg so the visible spacing is uniform across name →
-                  stepper → total (3 evenly-spaced blocks the user asked
-                  for). At lg+ the cluster grows its own ~3× gap and a
-                  separate "от X TJS" column slots in front of the stepper
-                  (desktop reference). */}
-              <div className="flex flex-shrink-0 items-center gap-2.5 xs:gap-3 sm:gap-4 md:gap-6 lg:gap-24">
-                {/* Min price column — only visible at lg+; below lg the same
-                    info is rendered as a small line under the product name. */}
-                <p className="hidden text-sm text-on-surface-variant lg:block">
+              {/* Right cluster — at lg+ now houses a prominent per-unit price
+                  column to the LEFT of the stepper so all three (name,
+                  price, stepper) align on the same horizontal line. */}
+              <div className="flex flex-shrink-0 items-center gap-2.5 xs:gap-3 sm:gap-4 md:gap-6 lg:gap-12">
+                {/* Big per-unit price — desktop only. Bumped to a heavier
+                    weight + bigger size than the inline mobile hint so it
+                    reads as the row's primary number alongside the stepper. */}
+                <p className="hidden whitespace-nowrap text-base font-bold text-on-surface-variant tabular-nums lg:block">
                   от{" "}
-                  <span className="font-bold text-on-surface tabular-nums">
+                  <span className="font-extrabold text-primary">
                     {minPrice ? formatMoney(minPrice) : "—"}
                   </span>
                 </p>
-
                 {/* Stepper cluster — at <lg the X-button stacks BELOW the
                     stepper inside this same flex column, vertically centred
                     so the gap between them sits on the row's mid-line. At
@@ -291,15 +330,6 @@ export default function CartPage() {
                     <Icon name="close" size={14} />
                   </button>
                 </div>
-
-                {/* Line total — minPrice × quantity in primary text colour
-                    so it reads as a hard number, not an alert. min-w keeps
-                    the column stable so the value doesn't jiggle while the
-                    user steps the qty. Type bumps a step at md to match the
-                    rest of the row's scaled-up sizing above 745px. */}
-                <span className="min-w-[60px] text-right font-display text-xs font-extrabold tabular-nums text-on-surface xs:min-w-[68px] xs:text-[13px] sm:min-w-[80px] sm:text-sm md:min-w-[96px] md:text-base">
-                  {minPrice ? formatMoney(lineTotal) : "—"}
-                </span>
               </div>
             </li>
           );
@@ -329,7 +359,12 @@ export default function CartPage() {
       {recommendations.length > 0 && (
         <section className="mt-6 mb-4 space-y-2 xs:mt-8 xs:space-y-3">
           <h3 className="font-display text-base font-extrabold xs:text-lg">Добавьте к заказу</h3>
-          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-2 scroll-touch scrollbar-hide snap-x xs:-mx-4 xs:px-4">
+          {/* No -mx-* bleed — keep the rail flush with the parent column so
+              the first card aligns with the items above it (the bleed pattern
+              made the leftmost card look 12 px out of line on narrow phones).
+              Trailing card on the right is allowed to clip via overflow as
+              the visual hint that more is scrollable. */}
+          <div className="flex gap-2 overflow-x-auto pb-2 scroll-touch scrollbar-hide snap-x">
             {recommendations.map((med) => (
               <div key={med.id} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
                 <MedicineCard medicine={med} compact />

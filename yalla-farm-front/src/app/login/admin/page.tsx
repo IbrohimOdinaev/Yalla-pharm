@@ -3,17 +3,47 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
-import { adminLogin, superAdminLogin } from "@/entities/auth/api";
+import { adminLogin, superAdminLogin, pharmacistLogin } from "@/entities/auth/api";
 import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { decodeJwt } from "@/shared/lib/jwt";
+import { ApiError } from "@/shared/api/http-client";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { Button, Icon, IconButton } from "@/shared/ui";
 
-const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
-type StaffRole = "Admin" | "SuperAdmin";
+// Translates auth/login errors into actionable user-facing strings. The raw
+// backend message ("Request Failed. Операция не может быть выполнена…")
+// is technically correct but useless to a person trying to log in.
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    // Wrong credentials: backend returns 400 invalid_operation or 401.
+    if (err.status === 401 || err.status === 400) {
+      return "Неправильный номер или пароль.";
+    }
+    if (err.status === 429) {
+      return "Слишком много попыток входа. Попробуйте через несколько минут.";
+    }
+    if (err.status === 404) {
+      return "Аккаунт не найден. Проверьте номер телефона.";
+    }
+    if (err.status >= 500) {
+      return "Сервер временно недоступен. Попробуйте позже.";
+    }
+    // Fall through to backend message for any other 4xx.
+    return err.message || "Не удалось войти. Попробуйте ещё раз.";
+  }
+  // Network errors thrown by fetch don't have a status — surface a clear hint.
+  if (err instanceof TypeError && /fetch/i.test(err.message)) {
+    return "Не удалось связаться с сервером. Проверьте интернет-соединение.";
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return "Не удалось войти. Попробуйте ещё раз.";
+}
+
+const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist" };
+type StaffRole = "Admin" | "SuperAdmin" | "Pharmacist";
 
 export default function AdminLoginPage() {
   return (
@@ -43,9 +73,10 @@ function AdminLoginContent() {
 
     try {
       const normalizedPhone = formatPhone(phoneNumber);
-      const response = staffRole === "Admin"
-        ? await adminLogin(normalizedPhone, password)
-        : await superAdminLogin(normalizedPhone, password);
+      const response =
+        staffRole === "Admin" ? await adminLogin(normalizedPhone, password)
+        : staffRole === "SuperAdmin" ? await superAdminLogin(normalizedPhone, password)
+        : await pharmacistLogin(normalizedPhone, password);
 
       const role = typeof response.role === "number"
         ? (ROLE_MAP[response.role] ?? staffRole)
@@ -63,9 +94,10 @@ function AdminLoginContent() {
       if (redirectTo) router.push(redirectTo);
       else if (role === "Admin") router.push("/workspace");
       else if (role === "SuperAdmin") router.push("/superadmin");
+      else if (role === "Pharmacist") router.push("/pharmacist");
       else router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось войти.");
+      setError(loginErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -97,24 +129,35 @@ function AdminLoginContent() {
             <button
               type="button"
               onClick={() => { setStaffRole("Admin"); setError(null); }}
-              className={`flex-1 rounded-full px-4 py-2 text-xs font-bold transition ${
+              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-bold transition xs:text-xs ${
                 staffRole === "Admin"
                   ? "bg-primary text-white shadow-card"
                   : "text-on-surface-variant"
               }`}
             >
-              Администратор
+              Админ
             </button>
             <button
               type="button"
               onClick={() => { setStaffRole("SuperAdmin"); setError(null); }}
-              className={`flex-1 rounded-full px-4 py-2 text-xs font-bold transition ${
+              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-bold transition xs:text-xs ${
                 staffRole === "SuperAdmin"
                   ? "bg-primary text-white shadow-card"
                   : "text-on-surface-variant"
               }`}
             >
               Суперадмин
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStaffRole("Pharmacist"); setError(null); }}
+              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-bold transition xs:text-xs ${
+                staffRole === "Pharmacist"
+                  ? "bg-primary text-white shadow-card"
+                  : "text-on-surface-variant"
+              }`}
+            >
+              Фармацевт
             </button>
           </div>
 
@@ -169,7 +212,11 @@ function AdminLoginContent() {
           ) : null}
 
           <Button type="submit" size="lg" fullWidth rightIcon="arrow-right" loading={isSubmitting}>
-            {staffRole === "Admin" ? "Войти как администратор" : "Войти как суперадмин"}
+            {staffRole === "Admin"
+              ? "Войти как администратор"
+              : staffRole === "SuperAdmin"
+                ? "Войти как суперадмин"
+                : "Войти как фармацевт"}
           </Button>
         </form>
       </div>

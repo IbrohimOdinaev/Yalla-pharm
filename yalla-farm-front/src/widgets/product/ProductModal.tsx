@@ -13,6 +13,9 @@ import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
+import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
+import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
 import { useAppSelector } from "@/shared/lib/redux";
 import { Skeleton } from "@/shared/ui";
 
@@ -47,8 +50,15 @@ function ProductModalInner() {
   const productIdOrSlug = searchParams.get("product");
 
   const token = useAppSelector((s) => s.auth.token);
+  const role = useAppSelector((s) => s.auth.role);
   const addItem = useCartStore((s) => s.addItem);
   const addGuestItem = useGuestCartStore((s) => s.addItem);
+  const activePrescriptionId = useActivePrescriptionStore((s) => s.activeId);
+  const openPicker = useActivePrescriptionStore((s) => s.openPicker);
+  const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
+  const updateDraftItem = usePrescriptionDraftStore((s) => s.updateItem);
+  const analogTarget = useAnalogTargetStore((s) => s.target);
+  const clearAnalogTarget = useAnalogTargetStore((s) => s.clear);
 
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -110,16 +120,48 @@ function ProductModalInner() {
     return () => { document.body.style.overflow = ""; };
   }, [productIdOrSlug]);
 
-  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
-  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
+  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 1200), [medicine]);
+  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 1200);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
 
   const handleAdd = useCallback(() => {
     if (!medicine) return;
+    // Analog-pick mode wins — write the chosen medicine into the source
+    // draft item as the analog and bounce back to /pharmacist/cart.
+    if (role === "Pharmacist" && analogTarget) {
+      if (analogTarget.sourceMedicineId && analogTarget.sourceMedicineId === medicine.id) {
+        return;
+      }
+      updateDraftItem(analogTarget.prescriptionId, analogTarget.draftId, {
+        analogMedicineId: medicine.id,
+        analogTitle: getMedicineDisplayName(medicine),
+      });
+      clearAnalogTarget();
+      close();
+      router.push("/pharmacist/cart");
+      return;
+    }
+    // Pharmacist mode — append to the active prescription draft instead
+    // of the buyer cart. If no prescription is selected, surface the
+    // picker so the pharmacist can pick one without losing the click.
+    if (role === "Pharmacist") {
+      if (!activePrescriptionId) { openPicker(); return; }
+      addToDraft(activePrescriptionId, {
+        draftId: `cat-${medicine.id}-${Date.now()}`,
+        medicineId: medicine.id,
+        manualMedicineName: null,
+        quantity,
+        pharmacistComment: null,
+        displayTitle: getMedicineDisplayName(medicine),
+        minPrice: medicine.minPrice ?? null,
+      });
+      close();
+      return;
+    }
     if (token) addItem(token, medicine.id, quantity).catch(() => undefined);
     else addGuestItem(medicine.id, quantity);
     close();
-  }, [token, medicine, quantity, addItem, addGuestItem, close]);
+  }, [role, activePrescriptionId, openPicker, addToDraft, updateDraftItem, analogTarget, clearAnalogTarget, router, token, medicine, quantity, addItem, addGuestItem, close]);
 
   if (!productIdOrSlug) return null;
 
@@ -216,7 +258,7 @@ function ProductModalInner() {
                     </button>
                   </div>
                   <button type="button" onClick={handleAdd} className="stitch-button px-6 py-2.5 text-sm">
-                    Добавить
+                    {role === "Pharmacist" ? "В корзину рецепта" : "Добавить"}
                   </button>
                 </div>
 

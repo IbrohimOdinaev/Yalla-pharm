@@ -97,4 +97,34 @@ public sealed class SignalRRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
       _logger.LogWarning(ex, "Failed to publish BasketUpdated for user {UserId}", userId);
     }
   }
+
+  public async Task PublishPrescriptionUpdatedAsync(
+    Guid prescriptionId,
+    Guid clientId,
+    PrescriptionStatus status,
+    Guid? assignedPharmacistId,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      var payload = new
+      {
+        prescriptionId,
+        clientId,
+        status = status.ToString(),
+        assignedPharmacistId,
+      };
+      var tasks = new List<Task>
+      {
+        _hubContext.Clients.Group(UpdatesHub.PharmacistGroup).SendAsync("PrescriptionUpdated", payload, cancellationToken),
+        _hubContext.Clients.Group(UpdatesHub.SuperAdminGroup).SendAsync("PrescriptionUpdated", payload, cancellationToken),
+        _hubContext.Clients.User(clientId.ToString()).SendAsync("PrescriptionUpdated", payload, cancellationToken),
+      };
+      await Task.WhenAll(tasks);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish PrescriptionUpdated for {PrescriptionId}", prescriptionId);
+    }
+  }
 }

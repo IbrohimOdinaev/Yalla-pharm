@@ -1,0 +1,222 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAppSelector } from "@/shared/lib/redux";
+import { getAllMedicines } from "@/entities/medicine/admin-api";
+import { getCategories } from "@/entities/category/api";
+import type { ApiCategory, ApiMedicine } from "@/shared/types/api";
+import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
+import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
+import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
+import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
+import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { Button } from "@/shared/ui";
+
+// Same data the client home uses — keeps the pharmacist catalog visually
+// identical to what clients see. Only the data source changes (we hit
+// /api/medicines/all so out-of-stock items are visible).
+type QuickCategory = {
+  icon: CategoryIconKey;
+  palette: CategoryTilePalette;
+  label: string;
+  keywords?: string[];
+  image?: string;
+};
+
+const QUICK_CATEGORIES: QuickCategory[] = [
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/all.png" },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.png", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.png", keywords: ["антибиотик", "противомикроб"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.png", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.png", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
+  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.png", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.png", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.png", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.png", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+];
+
+const PAGE_SIZE = 24;
+
+export default function PharmacistCatalogPage() {
+  const router = useRouter();
+  const token = useAppSelector((s) => s.auth.token);
+  const role = useAppSelector((s) => s.auth.role);
+  const hydrated = useAppSelector((s) => s.auth.hydrated);
+  const activeId = useActivePrescriptionStore((s) => s.activeId);
+
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<ApiMedicine[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!token) { router.replace("/login/admin?redirect=/pharmacist"); return; }
+    if (role && role !== "Pharmacist") router.replace("/");
+  }, [hydrated, token, role, router]);
+
+  useEffect(() => {
+    getCategories().then(setCategories).catch(() => undefined);
+  }, []);
+
+  // Tile click → navigate to the dedicated category route. The home keeps
+  // the search + recommended grid; per-category browsing happens on the
+  // /pharmacist/catalog/[slug] page that mirrors the client view.
+  function onQuickCategoryClick(tile: QuickCategory) {
+    if (tile.label === "Все категории") {
+      router.push("/pharmacist/catalog/all");
+      return;
+    }
+    const allCats = [...categories, ...categories.flatMap((c) => c.children ?? [])];
+    const keywords = tile.keywords ?? [tile.label.toLowerCase()];
+    const match = allCats.find((c) => {
+      const name = c.name.toLowerCase();
+      return keywords.some((kw) => name.includes(kw));
+    });
+    if (match?.slug) router.push(`/pharmacist/catalog/${match.slug}`);
+    else router.push("/pharmacist/catalog/all");
+  }
+
+  useEffect(() => {
+    if (!token || role !== "Pharmacist") return;
+    let cancelled = false;
+    setLoading(true); setError(null);
+    const handle = setTimeout(async () => {
+      try {
+        const data = await getAllMedicines(token, query, page, PAGE_SIZE);
+        if (cancelled) return;
+        setItems(data.medicines);
+        setTotalCount(data.totalCount);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Не удалось загрузить каталог.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [token, role, query, page]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
+    [totalCount]
+  );
+
+  const analogTarget = useAnalogTargetStore((s) => s.target);
+  const clearAnalogTarget = useAnalogTargetStore((s) => s.clear);
+
+  return (
+    <PharmacistShell>
+      <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
+        {/* Analog-pick mode — banner at the top tells the pharmacist what
+            they're picking an analog for. Clicking the "+" on any catalog
+            card will write the chosen medicine into the source line as the
+            analog and bounce back to /pharmacist/cart. */}
+        {analogTarget ? (
+          <div className="sticky top-0 z-20 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary-soft p-3 shadow-card">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                Привязка аналога
+              </p>
+              <p className="truncate text-sm font-bold text-on-surface">
+                Ищем аналог для: {analogTarget.sourceTitle}
+              </p>
+              <p className="text-[11px] text-on-surface-variant">
+                Следующий выбранный препарат станет аналогом этой позиции.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { clearAnalogTarget(); router.push("/pharmacist/cart"); }}
+              className="flex-shrink-0 rounded-full bg-surface-container-lowest px-3 py-1.5 text-xs font-bold text-on-surface transition hover:bg-surface-container"
+            >
+              Отменить
+            </button>
+          </div>
+        ) : null}
+
+        {!activeId && !analogTarget ? (
+          <div className="rounded-2xl bg-warning-soft p-3 text-xs text-on-surface">
+            Активный рецепт не выбран — нажмите «Выбрать рецепт» в шапке, чтобы класть препараты в корзину.
+          </div>
+        ) : null}
+
+        <input
+          type="search"
+          placeholder="Найти лекарство по названию или артикулу"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+          className="stitch-input w-full"
+        />
+
+        {/* Quick categories — same horizontal rail as the client home, but
+            tapping a tile now opens the dedicated category page (mirrors
+            /catalog/[slug]) instead of filtering the grid in place. */}
+        <section>
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
+            {QUICK_CATEGORIES.map((cat) => (
+              <div key={cat.label} className="flex-shrink-0">
+                <CategoryTile
+                  icon={cat.icon}
+                  palette={cat.palette}
+                  label={cat.label}
+                  image={cat.image}
+                  onClick={() => onQuickCategoryClick(cat)}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {error ? (
+          <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+        ) : null}
+
+        {loading ? (
+          <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">Загружаем…</div>
+        ) : items.length === 0 ? (
+          <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
+            Ничего не найдено.
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {items.map((m) => (
+                <MedicineCard key={m.id} medicine={m} />
+              ))}
+            </div>
+
+            {totalPages > 1 ? (
+              <div className="flex items-center justify-center gap-2">
+                <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                  ← Назад
+                </Button>
+                <span className="text-xs font-semibold text-on-surface-variant">{page} / {totalPages}</span>
+                <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                  Вперёд →
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </PharmacistShell>
+  );
+}

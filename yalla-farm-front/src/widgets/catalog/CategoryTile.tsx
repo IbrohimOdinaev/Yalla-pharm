@@ -34,36 +34,46 @@ type Props = {
   onClick?: () => void;
 };
 
-// Yandex-style: coloured square tile + caption below. Sized big enough to
-// let the multi-colour illustrations breathe — details on thermometer, flower,
-// lungs etc. are lost below ~56px icon size. When `image` is provided, the
-// tile renders a real photo instead of the vector icon.
+// Yandex-Аптеки proportions: image dominates the upper portion of the
+// tile, label sits inside the card at the bottom. Single rounded box
+// (no external caption) so the whole thing reads as one card. The neutral
+// `image-backdrop` warm-gray matches Yandex's tile colour.
 export function CategoryTile({ icon, palette, label, image, onClick }: Props) {
   const p = palettes[palette];
+  const tileSurface = image
+    ? "bg-image-backdrop"
+    : `${p.bg} ${p.fg}`;
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col items-center gap-2 transition active:scale-95"
+      className="group transition active:scale-95"
     >
       <span
-        className={`flex h-[80px] w-[80px] items-center justify-center overflow-hidden rounded-2xl ${image ? "" : "p-3"} ${p.bg} ${p.fg} transition group-hover:scale-105 sm:h-[92px] sm:w-[92px] ${image ? "" : "sm:p-3.5"} lg:h-[104px] lg:w-[104px]`}
+        className={`flex h-[129px] w-[110px] flex-col overflow-hidden rounded-2xl ${tileSurface} transition group-hover:scale-105 sm:h-[152px] sm:w-[124px] lg:h-[175px] lg:w-[143px]`}
       >
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={image}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <CategoryIcon name={icon} className="h-full w-full" />
-        )}
-      </span>
-      <span className="max-w-[104px] text-center text-[11px] font-semibold leading-tight text-on-surface sm:text-xs">
-        {label}
+        {/* Image area — takes the upper ~70% of the tile, centered with
+            generous padding so the artwork has room to breathe (Yandex
+            keeps the actual product photo small relative to the card). */}
+        <span className={`flex flex-1 items-center justify-center ${image ? "p-3 sm:p-4" : "p-2 sm:p-3"}`}>
+          {image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-contain mix-blend-multiply"
+            />
+          ) : (
+            <CategoryIcon name={icon} className="h-full w-full" />
+          )}
+        </span>
+        {/* Label sits flush to the bottom edge inside the card — separate
+            from the image area but still part of the same rounded box. */}
+        <span className="block px-2.5 pb-2.5 text-left text-[11px] font-bold leading-tight text-on-surface sm:px-3 sm:pb-3 sm:text-xs lg:text-[13px]">
+          {label}
+        </span>
       </span>
     </button>
   );

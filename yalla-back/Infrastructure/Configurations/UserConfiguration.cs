@@ -83,7 +83,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     builder.HasDiscriminator<string>("user_type")
       .HasValue<User>("User")
       .HasValue<Client>("client")
-      .HasValue<PharmacyWorker>("pharmacy_worker");
+      .HasValue<PharmacyWorker>("pharmacy_worker")
+      .HasValue<Pharmacist>("pharmacist");
 
     builder.Property("user_type")
       .HasColumnName("user_type")

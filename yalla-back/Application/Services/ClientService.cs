@@ -916,6 +916,17 @@ public sealed class ClientService : IClientService
                 _dbContext.DeliveryData.Add(deliveryData);
             }
 
+            // Link the prescription to this order (and advance its status) when
+            // the checkout came from a prescription. Done inside the same
+            // transaction as the order so a failure here rolls the order back —
+            // we never want a prescription that points at an order that doesn't
+            // exist, and vice-versa.
+            await TryLinkPrescriptionToOrderAsync(
+              request.Source?.PrescriptionId,
+              request.ClientId,
+              orderId,
+              cancellationToken);
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -930,6 +941,37 @@ public sealed class ClientService : IClientService
             order!.Id, order!.Status.ToString(), order!.ClientId, order!.PharmacyId, cancellationToken);
 
         return order!.ToResponse(paymentResponse.PaymentUrl);
+    }
+
+    /// <summary>
+    /// If the checkout source carries a prescription id, advance that
+    /// prescription from <c>Decoded</c> to <c>OrderPlaced</c> linked to the new
+    /// order. Silently no-ops when prescription doesn't exist / belongs to a
+    /// different client / isn't in Decoded status — the order still goes
+    /// through, but we don't want to crash a checkout because of a stale id.
+    /// Domain throws are swallowed inside try/catch only for status mismatches;
+    /// genuine DB exceptions still bubble up to roll back the transaction.
+    /// </summary>
+    private async Task TryLinkPrescriptionToOrderAsync(
+      Guid? prescriptionId,
+      Guid clientId,
+      Guid orderId,
+      CancellationToken cancellationToken)
+    {
+        if (!prescriptionId.HasValue || prescriptionId.Value == Guid.Empty)
+            return;
+
+        var prescription = await _dbContext.Prescriptions
+          .AsTracking()
+          .FirstOrDefaultAsync(p => p.Id == prescriptionId.Value && p.ClientId == clientId, cancellationToken);
+
+        if (prescription is null)
+            return;
+
+        if (prescription.Status != Yalla.Domain.Enums.PrescriptionStatus.Decoded)
+            return;
+
+        prescription.MarkOrderPlaced(orderId);
     }
 
     private async Task<CheckoutBasketResponse> CheckoutWithPaymentIntentAsync(
@@ -1087,6 +1129,12 @@ public sealed class ClientService : IClientService
 
                 _dbContext.DeliveryData.Add(deliveryData);
             }
+
+            await TryLinkPrescriptionToOrderAsync(
+              request.Source?.PrescriptionId,
+              request.ClientId,
+              reservedOrderId,
+              cancellationToken);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

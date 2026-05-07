@@ -54,8 +54,8 @@ export default function ProductDetailsPage() {
       });
   }, [id]);
 
-  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
-  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
+  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 1200), [medicine]);
+  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 1200);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
   const offersCount = medicine?.offers?.length ?? 0;
   const inStock = (medicine?.offers ?? []).some((o) => (o.stockQuantity ?? 0) > 0);
@@ -82,7 +82,7 @@ export default function ProductDetailsPage() {
           {/* Gallery */}
           <div className="space-y-3">
             <div
-              className="relative aspect-square overflow-hidden rounded-2xl bg-surface-container shadow-card xs:rounded-3xl"
+              className="relative aspect-square overflow-hidden rounded-2xl bg-image-backdrop shadow-card xs:rounded-3xl"
               onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
               onTouchEnd={(e) => {
                 const startX = (e.currentTarget as HTMLElement).dataset.touchX;
@@ -152,7 +152,7 @@ export default function ProductDetailsPage() {
                     key={idx}
                     type="button"
                     onClick={() => setActiveImageIdx(idx)}
-                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-surface-container transition ${
+                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-image-backdrop transition ${
                       idx === activeImageIdx
                         ? "ring-2 ring-primary ring-offset-2 ring-offset-surface"
                         : "opacity-70 hover:opacity-100"

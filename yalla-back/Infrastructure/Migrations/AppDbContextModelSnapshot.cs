@@ -1062,6 +1062,153 @@ namespace Yalla.Infrastructure.Migrations
                     b.ToTable("pharmacies", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.Prescription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AssignedPharmacistId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_pharmacist_id");
+
+                    b.Property<string>("ClientComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("client_comment");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime?>("DecodedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("decoded_at_utc");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<int>("PatientAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("patient_age");
+
+                    b.Property<Guid?>("PaymentIntentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_intent_id");
+
+                    b.Property<string>("PharmacistOverallComment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("pharmacist_overall_comment");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedPharmacistId")
+                        .HasDatabaseName("ix_prescriptions_assigned_pharmacist_id")
+                        .HasFilter("assigned_pharmacist_id IS NOT NULL");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_prescriptions_client_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_prescriptions_status");
+
+                    b.ToTable("prescriptions", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.PrescriptionChecklistItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("ManualMedicineName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("manual_medicine_name");
+
+                    b.Property<Guid?>("MedicineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medicine_id");
+
+                    b.Property<string>("PharmacistComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("pharmacist_comment");
+
+                    b.Property<Guid>("PrescriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prescription_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MedicineId")
+                        .HasDatabaseName("ix_prescription_checklist_items_medicine_id")
+                        .HasFilter("medicine_id IS NOT NULL");
+
+                    b.HasIndex("PrescriptionId")
+                        .HasDatabaseName("ix_prescription_checklist_items_prescription_id");
+
+                    b.ToTable("prescription_checklist_items", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.PrescriptionImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("key");
+
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("order_index");
+
+                    b.Property<Guid>("PrescriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prescription_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrescriptionId")
+                        .HasDatabaseName("ix_prescription_images_prescription_id");
+
+                    b.HasIndex("PrescriptionId", "OrderIndex")
+                        .IsUnique()
+                        .HasDatabaseName("ux_prescription_images_prescription_id_order_index");
+
+                    b.ToTable("prescription_images", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1661,6 +1808,13 @@ namespace Yalla.Infrastructure.Migrations
                     b.HasDiscriminator().HasValue("client");
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.Pharmacist", b =>
+                {
+                    b.HasBaseType("Yalla.Domain.Entities.User");
+
+                    b.HasDiscriminator().HasValue("pharmacist");
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.PharmacyWorker", b =>
                 {
                     b.HasBaseType("Yalla.Domain.Entities.User");
@@ -1930,6 +2084,24 @@ namespace Yalla.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.PrescriptionChecklistItem", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Prescription", null)
+                        .WithMany("Items")
+                        .HasForeignKey("PrescriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.PrescriptionImage", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Prescription", null)
+                        .WithMany("Images")
+                        .HasForeignKey("PrescriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>
                 {
                     b.HasOne("Yalla.Domain.Entities.Client", null)
@@ -1999,6 +2171,13 @@ namespace Yalla.Infrastructure.Migrations
             modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
                 {
                     b.Navigation("Orders");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.Prescription", b =>
+                {
+                    b.Navigation("Images");
+
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.RefundRequest", b =>
