@@ -40,6 +40,13 @@ public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
           .HasConversion<int>()
           .IsRequired();
 
+        builder.Property(x => x.PreferenceTier)
+          .HasColumnName("preference_tier")
+          .HasColumnType("integer")
+          .HasConversion<int>()
+          .HasDefaultValue(Yalla.Domain.Enums.PrescriptionPreferenceTier.AsPrescribed)
+          .IsRequired();
+
         builder.Property(x => x.AssignedPharmacistId)
           .HasColumnName("assigned_pharmacist_id")
           .HasColumnType("uuid")

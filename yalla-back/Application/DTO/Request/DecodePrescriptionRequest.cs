@@ -22,4 +22,12 @@ public sealed class DecodePrescriptionItem
     public int Quantity { get; set; }
 
     public string? PharmacistComment { get; set; }
+
+    /// <summary>0 = Original (default), 1 = Undecoded.</summary>
+    public int Kind { get; set; }
+
+    /// <summary>Optional cheaper substitute the pharmacist recommends —
+    /// must reference an existing catalog medicine and differ from
+    /// <see cref="MedicineId"/>. Ignored for Undecoded items.</summary>
+    public Guid? AnalogMedicineId { get; set; }
 }

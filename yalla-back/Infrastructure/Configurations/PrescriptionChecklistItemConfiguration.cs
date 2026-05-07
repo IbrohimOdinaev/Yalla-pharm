@@ -46,6 +46,18 @@ public class PrescriptionChecklistItemConfiguration
           .HasMaxLength(PrescriptionChecklistItem.MaxPharmacistCommentLength)
           .IsRequired(false);
 
+        builder.Property(x => x.Kind)
+          .HasColumnName("kind")
+          .HasColumnType("integer")
+          .HasConversion<int>()
+          .HasDefaultValue(Yalla.Domain.Enums.PrescriptionChecklistItemKind.Original)
+          .IsRequired();
+
+        builder.Property(x => x.AnalogMedicineId)
+          .HasColumnName("analog_medicine_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
         builder.Property(x => x.CreatedAtUtc)
           .HasColumnName("created_at_utc")
           .HasColumnType("timestamp")
@@ -57,5 +69,9 @@ public class PrescriptionChecklistItemConfiguration
         builder.HasIndex(x => x.MedicineId)
           .HasFilter("medicine_id IS NOT NULL")
           .HasDatabaseName("ix_prescription_checklist_items_medicine_id");
+
+        builder.HasIndex(x => x.AnalogMedicineId)
+          .HasFilter("analog_medicine_id IS NOT NULL")
+          .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id");
     }
 }

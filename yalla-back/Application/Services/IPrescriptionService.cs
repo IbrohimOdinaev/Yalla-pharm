@@ -70,6 +70,17 @@ public interface IPrescriptionService
     Task<MoveChecklistToCartResponse> MoveChecklistToCartAsync(
       Guid clientId,
       Guid prescriptionId,
+      IReadOnlyDictionary<Guid, int>? quantityOverrides,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clones a Cancelled prescription as a fresh Submitted one with the same
+    /// photos, age and comment. Issues a new payment URL so the client can pay
+    /// again — the original cancelled record is left intact for history.
+    /// </summary>
+    Task<PrescriptionResponse> ResubmitPrescriptionAsync(
+      Guid clientId,
+      Guid prescriptionId,
       CancellationToken cancellationToken = default);
 }
 

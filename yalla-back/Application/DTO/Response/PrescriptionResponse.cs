@@ -11,6 +11,9 @@ public sealed class PrescriptionResponse
     public long? ClientTelegramId { get; set; }
     public string? ClientTelegramUsername { get; set; }
     public string Status { get; set; } = string.Empty;
+    /// <summary>"AsPrescribed", "GoldenMiddle" or "MaxSavings" — the
+    /// checklist tier the client picked at submit time.</summary>
+    public string PreferenceTier { get; set; } = "AsPrescribed";
     public int PatientAge { get; set; }
     public string? ClientComment { get; set; }
     public DateTime CreatedAtUtc { get; set; }
@@ -48,4 +51,8 @@ public sealed class PrescriptionChecklistItemResponse
     public string? ManualMedicineName { get; set; }
     public int Quantity { get; set; }
     public string? PharmacistComment { get; set; }
+    /// <summary>"Original" or "Undecoded".</summary>
+    public string Kind { get; set; } = "Original";
+    /// <summary>Optional cheaper substitute id from the catalog.</summary>
+    public Guid? AnalogMedicineId { get; set; }
 }

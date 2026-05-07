@@ -1,3 +1,4 @@
+using Yalla.Domain.Enums;
 using Yalla.Domain.Exceptions;
 
 namespace Yalla.Domain.Entities;
@@ -28,6 +29,16 @@ public class PrescriptionChecklistItem
 
     public string? PharmacistComment { get; private set; }
 
+    /// <summary>Pharmacist's verdict — defaults to <c>Original</c> for
+    /// rows that pre-date the field (legacy behaviour).</summary>
+    public PrescriptionChecklistItemKind Kind { get; private set; }
+      = PrescriptionChecklistItemKind.Original;
+
+    /// <summary>Optional cheaper substitute the pharmacist recommends for
+    /// this position. Only meaningful when <see cref="Kind"/> is
+    /// <see cref="PrescriptionChecklistItemKind.Original"/>.</summary>
+    public Guid? AnalogMedicineId { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
 
     private PrescriptionChecklistItem() { }
@@ -36,19 +47,26 @@ public class PrescriptionChecklistItem
       Guid? medicineId,
       string? manualMedicineName,
       int quantity,
-      string? pharmacistComment)
+      string? pharmacistComment,
+      PrescriptionChecklistItemKind kind,
+      Guid? analogMedicineId)
     {
         if (quantity <= 0)
             throw new DomainArgumentException(
               "PrescriptionChecklistItem.Quantity must be greater than zero.");
 
-        if (medicineId is null && string.IsNullOrWhiteSpace(manualMedicineName))
-            throw new DomainArgumentException(
-              "Either MedicineId or ManualMedicineName must be provided.");
+        // Undecoded rows can have neither medicine id nor manual name — they
+        // exist purely to flag "couldn't read this line of the prescription".
+        if (kind != PrescriptionChecklistItemKind.Undecoded)
+        {
+            if (medicineId is null && string.IsNullOrWhiteSpace(manualMedicineName))
+                throw new DomainArgumentException(
+                  "Either MedicineId or ManualMedicineName must be provided.");
 
-        if (medicineId is not null && !string.IsNullOrWhiteSpace(manualMedicineName))
-            throw new DomainArgumentException(
-              "MedicineId and ManualMedicineName are mutually exclusive.");
+            if (medicineId is not null && !string.IsNullOrWhiteSpace(manualMedicineName))
+                throw new DomainArgumentException(
+                  "MedicineId and ManualMedicineName are mutually exclusive.");
+        }
 
         if (manualMedicineName is { Length: > MaxManualNameLength })
             throw new DomainArgumentException(
@@ -57,6 +75,19 @@ public class PrescriptionChecklistItem
         if (pharmacistComment is { Length: > MaxPharmacistCommentLength })
             throw new DomainArgumentException(
               $"PharmacistComment can't exceed {MaxPharmacistCommentLength} characters.");
+
+        if (analogMedicineId == Guid.Empty)
+            throw new DomainArgumentException("AnalogMedicineId can't be empty.");
+
+        if (analogMedicineId is not null
+          && kind == PrescriptionChecklistItemKind.Undecoded)
+            throw new DomainArgumentException(
+              "Undecoded items cannot carry an analog medicine.");
+
+        if (analogMedicineId is not null
+          && analogMedicineId == medicineId)
+            throw new DomainArgumentException(
+              "AnalogMedicineId must differ from MedicineId.");
 
         Id = Guid.NewGuid();
         MedicineId = medicineId;
@@ -67,20 +98,25 @@ public class PrescriptionChecklistItem
         PharmacistComment = string.IsNullOrWhiteSpace(pharmacistComment)
           ? null
           : pharmacistComment.Trim();
+        Kind = kind;
+        AnalogMedicineId = analogMedicineId;
         CreatedAtUtc = DateTime.UtcNow;
     }
 
     public static PrescriptionChecklistItem FromCatalog(
       Guid medicineId,
       int quantity,
-      string? pharmacistComment) =>
+      string? pharmacistComment,
+      Guid? analogMedicineId = null) =>
         new(
           medicineId == Guid.Empty
             ? throw new DomainArgumentException("MedicineId can't be empty.")
             : medicineId,
           manualMedicineName: null,
           quantity,
-          pharmacistComment);
+          pharmacistComment,
+          PrescriptionChecklistItemKind.Original,
+          analogMedicineId);
 
     public static PrescriptionChecklistItem Manual(
       string manualMedicineName,
@@ -90,9 +126,25 @@ public class PrescriptionChecklistItem
           medicineId: null,
           manualMedicineName,
           quantity,
-          pharmacistComment);
+          pharmacistComment,
+          PrescriptionChecklistItemKind.Original,
+          analogMedicineId: null);
 
-    public bool IsOutOfCatalog => MedicineId is null;
+    /// <summary>Pharmacist couldn't read this line of the doctor's note.
+    /// Records the position as informational; not orderable.</summary>
+    public static PrescriptionChecklistItem Undecoded(
+      int quantity,
+      string? pharmacistComment) =>
+        new(
+          medicineId: null,
+          manualMedicineName: null,
+          quantity,
+          pharmacistComment,
+          PrescriptionChecklistItemKind.Undecoded,
+          analogMedicineId: null);
+
+    public bool IsOutOfCatalog => MedicineId is null
+      && Kind != PrescriptionChecklistItemKind.Undecoded;
 
     public void SetQuantity(int quantity)
     {

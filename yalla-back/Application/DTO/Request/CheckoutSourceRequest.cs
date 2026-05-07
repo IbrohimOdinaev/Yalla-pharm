@@ -29,6 +29,16 @@ public sealed class CheckoutSourceRequest
   /// the caller explicitly selects a subset of basket items for a pharmacy. Ignored for other kinds.
   /// </summary>
   public bool ConsumeFromBasket { get; init; }
+
+  /// <summary>
+  /// When set, the order is treated as the fulfilment of the given prescription:
+  /// after the order is created the prescription is advanced from <c>Decoded</c>
+  /// to <c>OrderPlaced</c> with its <c>OrderId</c> linked to the new order. The
+  /// prescription must belong to the same client and be in <c>Decoded</c> status,
+  /// otherwise the linking step is skipped (the order itself still goes through
+  /// — the basket isn't polluted because the source remains <c>Explicit</c>).
+  /// </summary>
+  public Guid? PrescriptionId { get; init; }
 }
 
 public sealed class CheckoutPositionDraftRequest

@@ -108,11 +108,18 @@ public sealed class PrescriptionService : IPrescriptionService
               .Select((key, idx) => new PrescriptionImage(key, idx))
               .ToList();
 
+            // Map raw int → enum, defaulting to AsPrescribed for any value
+            // outside the known range (defensive against API misuse).
+            var tier = Enum.IsDefined(typeof(PrescriptionPreferenceTier), request.PreferenceTier)
+              ? (PrescriptionPreferenceTier)request.PreferenceTier
+              : PrescriptionPreferenceTier.AsPrescribed;
+
             var prescription = new Prescription(
               clientId,
               request.PatientAge,
               request.ClientComment,
-              prescriptionImages);
+              prescriptionImages,
+              tier);
 
             // Stay in Submitted until the client confirms they paid the
             // 3 TJS DC fee. After payment they hit POST /i-paid which
@@ -203,15 +210,51 @@ public sealed class PrescriptionService : IPrescriptionService
           prescriptions.Select(x => x.ClientId).Distinct().ToList(),
           cancellationToken);
 
-        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
+        var responses = new List<PrescriptionResponse>(prescriptions.Count);
+        foreach (var p in prescriptions)
+        {
+            var client = clients.GetValueOrDefault(p.ClientId);
+            var resp = MapToResponse(p, client);
+
+            // Re-issue a fresh DC payment URL while the prescription is still
+            // Submitted (waiting for the user to pay). The detail page renders
+            // it as a clickable "Оплатить 3 TJS" link; once the manual-payment
+            // confirm or the 24h timeout job advances the status, the URL is
+            // no longer attached.
+            if (p.Status == PrescriptionStatus.Submitted && client is not null)
+            {
+                try
+                {
+                    resp.PaymentUrl = await BuildPaymentUrlAsync(
+                      client.PhoneNumber ?? string.Empty,
+                      p.Id,
+                      cancellationToken);
+                    resp.PaymentAmount = DecodingFeeAmount;
+                    resp.PaymentCurrency = DecodingFeeCurrency;
+                }
+                catch
+                {
+                    // Settings outage shouldn't break the list — surface a null
+                    // URL and let the client retry on next load.
+                }
+            }
+            responses.Add(resp);
+        }
+        return responses;
     }
 
     public async Task<IReadOnlyList<PrescriptionResponse>> GetAwaitingConfirmationAsync(
       CancellationToken cancellationToken = default)
     {
+        // Includes BOTH Submitted (uploaded but not yet paid — SuperAdmin can
+        // see the request and confirm once the bank receipt lands) AND the
+        // legacy AwaitingConfirmation status (older flow where the client
+        // self-clicked "Я оплатил"). The frontend renders both with the same
+        // "Подтвердить оплату" CTA — confirmPaymentAsync below handles either.
         var prescriptions = await _dbContext.Prescriptions
           .AsNoTracking()
-          .Where(x => x.Status == PrescriptionStatus.AwaitingConfirmation)
+          .Where(x => x.Status == PrescriptionStatus.Submitted
+                   || x.Status == PrescriptionStatus.AwaitingConfirmation)
           .OrderBy(x => x.CreatedAtUtc)
           .Include(x => x.Images)
           .ToListAsync(cancellationToken);
@@ -228,7 +271,15 @@ public sealed class PrescriptionService : IPrescriptionService
       CancellationToken cancellationToken = default)
     {
         var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+
+        // SuperAdmin's confirm now bridges Submitted directly to InQueue. The
+        // domain still enforces the two-step transition, so we walk
+        // Submitted → AwaitingConfirmation → InQueue here. Already-pending
+        // ones (legacy "Я оплатил" flow) just take the second step.
+        if (prescription.Status == PrescriptionStatus.Submitted)
+            prescription.MoveToAwaitingConfirmation();
         prescription.MoveToQueue();
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         await _realtimePublisher.PublishPrescriptionUpdatedAsync(
@@ -346,6 +397,7 @@ public sealed class PrescriptionService : IPrescriptionService
     public async Task<MoveChecklistToCartResponse> MoveChecklistToCartAsync(
       Guid clientId,
       Guid prescriptionId,
+      IReadOnlyDictionary<Guid, int>? quantityOverrides,
       CancellationToken cancellationToken = default)
     {
         if (clientId == Guid.Empty)
@@ -399,13 +451,30 @@ public sealed class PrescriptionService : IPrescriptionService
                 continue;
             }
 
+            // Client may have edited the quantity on the prescription detail
+            // page before pushing it to the cart. Override semantics:
+            //   • key absent  → fall back to pharmacist-recommended count
+            //   • value  > 0  → use the client's chosen quantity
+            //   • value == 0  → client explicitly removed this item, skip it
+            var quantity = item.Quantity;
+            if (quantityOverrides is not null
+              && quantityOverrides.TryGetValue(item.Id, out var overrideQty))
+            {
+                if (overrideQty <= 0)
+                {
+                    skipped++;
+                    continue;
+                }
+                quantity = overrideQty;
+            }
+
             if (existingPositions.TryGetValue(item.MedicineId.Value, out var existing))
             {
-                existing.SetQuantity(existing.Quantity + item.Quantity);
+                existing.SetQuantity(existing.Quantity + quantity);
             }
             else
             {
-                var newPosition = new BasketPosition(clientId, medicine.Id, medicine, item.Quantity);
+                var newPosition = new BasketPosition(clientId, medicine.Id, medicine, quantity);
                 _dbContext.BasketPositions.Add(newPosition);
                 existingPositions[medicine.Id] = newPosition;
             }
@@ -430,6 +499,70 @@ public sealed class PrescriptionService : IPrescriptionService
         };
     }
 
+    public async Task<PrescriptionResponse> ResubmitPrescriptionAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId can't be empty.");
+
+        var original = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        if (original.ClientId != clientId)
+            throw new UnauthorizedAccessException("Prescription belongs to a different client.");
+
+        if (original.Status != PrescriptionStatus.Cancelled)
+            throw new InvalidOperationException(
+              $"Only a cancelled prescription can be resubmitted; current status is {original.Status}.");
+
+        if (original.Images.Count == 0)
+            throw new InvalidOperationException("Prescription has no images to resubmit.");
+
+        // Reuse the original MinIO object keys instead of re-uploading bytes —
+        // the storage objects are immutable and shared across prescriptions
+        // is safe (each PrescriptionImage row has its own id, the URL endpoint
+        // resolves id → key → bytes). The original prescription stays as
+        // Cancelled in history, the new one starts fresh in Submitted.
+        var clonedImages = original.Images
+          .OrderBy(i => i.OrderIndex)
+          .Select(i => new PrescriptionImage(i.Key, i.OrderIndex))
+          .ToList();
+
+        var resubmitted = new Prescription(
+          clientId,
+          original.PatientAge,
+          original.ClientComment,
+          clonedImages,
+          original.PreferenceTier);
+
+        _dbContext.Prescriptions.Add(resubmitted);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          resubmitted.Id, resubmitted.ClientId, resubmitted.Status,
+          resubmitted.AssignedPharmacistId, cancellationToken);
+
+        var clientPhone = await _dbContext.Clients
+          .AsNoTracking()
+          .Where(c => c.Id == clientId)
+          .Select(c => c.PhoneNumber)
+          .FirstOrDefaultAsync(cancellationToken)
+          ?? string.Empty;
+
+        var paymentUrl = await BuildPaymentUrlAsync(
+          clientPhone,
+          resubmitted.Id,
+          cancellationToken);
+
+        var response = await BuildResponseAsync(resubmitted.Id, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load resubmitted prescription.");
+
+        response.PaymentUrl = paymentUrl;
+        response.PaymentAmount = DecodingFeeAmount;
+        response.PaymentCurrency = DecodingFeeCurrency;
+        return response;
+    }
+
     public async Task<PrescriptionResponse> SubmitChecklistAsync(
       Guid pharmacistId,
       Guid prescriptionId,
@@ -448,11 +581,15 @@ public sealed class PrescriptionService : IPrescriptionService
         if (prescription.AssignedPharmacistId != pharmacistId)
             throw new UnauthorizedAccessException("Only the assigned pharmacist can submit this checklist.");
 
-        // Only allow MedicineIds that actually exist + are active, so we
-        // don't end up with checklists pointing to nothing later.
+        // Only allow MedicineIds (originals + analogs) that actually exist
+        // + are active, so we don't end up with checklists pointing to
+        // nothing later.
         var refIds = request.Items
           .Where(i => i.MedicineId.HasValue)
           .Select(i => i.MedicineId!.Value)
+          .Concat(request.Items
+            .Where(i => i.AnalogMedicineId.HasValue)
+            .Select(i => i.AnalogMedicineId!.Value))
           .Distinct()
           .ToList();
 
@@ -473,11 +610,24 @@ public sealed class PrescriptionService : IPrescriptionService
         var items = new List<PrescriptionChecklistItem>(request.Items.Count);
         foreach (var i in request.Items)
         {
+            // Map raw int → enum, defaulting to Original for any value
+            // outside the known range.
+            var kind = Enum.IsDefined(typeof(PrescriptionChecklistItemKind), i.Kind)
+              ? (PrescriptionChecklistItemKind)i.Kind
+              : PrescriptionChecklistItemKind.Original;
+
+            if (kind == PrescriptionChecklistItemKind.Undecoded)
+            {
+                items.Add(PrescriptionChecklistItem.Undecoded(i.Quantity, i.PharmacistComment));
+                continue;
+            }
+
             items.Add(i.MedicineId.HasValue
               ? PrescriptionChecklistItem.FromCatalog(
                   i.MedicineId.Value,
                   i.Quantity,
-                  i.PharmacistComment)
+                  i.PharmacistComment,
+                  i.AnalogMedicineId)
               : PrescriptionChecklistItem.Manual(
                   i.ManualMedicineName ?? string.Empty,
                   i.Quantity,
@@ -527,7 +677,32 @@ public sealed class PrescriptionService : IPrescriptionService
           .AsNoTracking()
           .FirstOrDefaultAsync(u => u.Id == prescription.ClientId, cancellationToken);
 
-        return MapToResponse(prescription, client);
+        var response = MapToResponse(prescription, client);
+
+        // Re-issue a fresh DC payment URL on every read while the prescription
+        // is still waiting for payment. The frontend shows it as a clickable
+        // "Оплатить" link instead of the old "Я оплатил" button — once the
+        // 24h payment-timeout job fires, the prescription flips to Cancelled
+        // and we stop attaching the URL (no point paying for a dead request).
+        if (prescription.Status == PrescriptionStatus.Submitted && client is not null)
+        {
+            try
+            {
+                response.PaymentUrl = await BuildPaymentUrlAsync(
+                  client.PhoneNumber ?? string.Empty,
+                  prescription.Id,
+                  cancellationToken);
+                response.PaymentAmount = DecodingFeeAmount;
+                response.PaymentCurrency = DecodingFeeCurrency;
+            }
+            catch
+            {
+                // Payment-settings outages shouldn't break the prescription
+                // load — surface a null URL and let the client retry later.
+            }
+        }
+
+        return response;
     }
 
     private static PrescriptionResponse MapToResponse(Prescription prescription, User? client = null)
@@ -541,6 +716,7 @@ public sealed class PrescriptionService : IPrescriptionService
             ClientTelegramId = client?.TelegramId,
             ClientTelegramUsername = client?.TelegramUsername,
             Status = prescription.Status.ToString(),
+            PreferenceTier = prescription.PreferenceTier.ToString(),
             PatientAge = prescription.PatientAge,
             ClientComment = prescription.ClientComment,
             CreatedAtUtc = prescription.CreatedAtUtc,
@@ -566,7 +742,9 @@ public sealed class PrescriptionService : IPrescriptionService
                   MedicineId = x.MedicineId,
                   ManualMedicineName = x.ManualMedicineName,
                   Quantity = x.Quantity,
-                  PharmacistComment = x.PharmacistComment
+                  PharmacistComment = x.PharmacistComment,
+                  Kind = x.Kind.ToString(),
+                  AnalogMedicineId = x.AnalogMedicineId
               })
               .ToList()
         };
