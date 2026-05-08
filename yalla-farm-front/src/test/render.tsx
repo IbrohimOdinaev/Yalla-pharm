@@ -9,6 +9,7 @@ type AuthState = {
   role: string | null;
   userId: string | null;
   pharmacyId: string | null;
+  hydrated: boolean;
 };
 
 type RenderWithProvidersOptions = RenderOptions & {
@@ -27,6 +28,9 @@ export function renderWithProviders(
         role: preloadedAuth?.role ?? null,
         userId: preloadedAuth?.userId ?? null,
         pharmacyId: preloadedAuth?.pharmacyId ?? null,
+        // Tests render synchronously — assume the store is hydrated so
+        // auth gates don't bounce in unit tests.
+        hydrated: preloadedAuth?.hydrated ?? true,
       },
     },
   });

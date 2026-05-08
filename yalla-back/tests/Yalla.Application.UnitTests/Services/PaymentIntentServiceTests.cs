@@ -238,5 +238,6 @@ public sealed class PaymentIntentServiceTests
     public Task PublishOfferUpdatedAsync(Guid medicineId, Guid pharmacyId, decimal price, int stockQuantity, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PublishOrderStatusChangedAsync(Guid orderId, string status, Guid? clientId, Guid pharmacyId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PublishBasketUpdatedAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task PublishPrescriptionUpdatedAsync(Guid prescriptionId, Guid clientId, Yalla.Domain.Enums.PrescriptionStatus status, Guid? assignedPharmacistId, CancellationToken cancellationToken = default) => Task.CompletedTask;
   }
 }

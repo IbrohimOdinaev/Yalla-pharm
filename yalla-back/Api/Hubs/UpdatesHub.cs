@@ -8,6 +8,7 @@ namespace Api.Hubs;
 public sealed class UpdatesHub : Hub
 {
   public const string SuperAdminGroup = "role:SuperAdmin";
+  public const string PharmacistGroup = "role:Pharmacist";
 
   public override async Task OnConnectedAsync()
   {
@@ -15,6 +16,13 @@ public sealed class UpdatesHub : Hub
     if (string.Equals(role, "SuperAdmin", StringComparison.Ordinal))
     {
       await Groups.AddToGroupAsync(Context.ConnectionId, SuperAdminGroup);
+    }
+    else if (string.Equals(role, "Pharmacist", StringComparison.Ordinal))
+    {
+      // Single broadcast group for every connected pharmacist so the
+      // prescription queue can refetch on any state change without
+      // the publisher needing per-user routing.
+      await Groups.AddToGroupAsync(Context.ConnectionId, PharmacistGroup);
     }
 
     // Add admin to pharmacy group

@@ -16,3 +16,4 @@ export { OrderTimeline, type OrderTimelineStep } from "./OrderTimeline";
 export { Skeleton } from "./Skeleton";
 export { InfoBanner } from "./InfoBanner";
 export { PharmacyLogo } from "./PharmacyLogo";
+export { AuthedImage } from "./AuthedImage";

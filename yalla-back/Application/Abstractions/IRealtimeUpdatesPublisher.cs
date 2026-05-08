@@ -22,4 +22,16 @@ public interface IRealtimeUpdatesPublisher
   Task PublishBasketUpdatedAsync(
     Guid userId,
     CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Pushed after every prescription status change. Receivers:
+  /// every connected pharmacist (queue/review/decoded views refetch) and
+  /// the prescription's owner client (for their "Мои рецепты" page).
+  /// </summary>
+  Task PublishPrescriptionUpdatedAsync(
+    Guid prescriptionId,
+    Guid clientId,
+    PrescriptionStatus status,
+    Guid? assignedPharmacistId,
+    CancellationToken cancellationToken = default);
 }

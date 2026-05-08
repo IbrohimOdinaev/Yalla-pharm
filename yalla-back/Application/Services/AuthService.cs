@@ -56,6 +56,11 @@ public sealed class AuthService : IAuthService
     CancellationToken cancellationToken = default)
     => LoginInternalAsync(request, expectedRole: Role.SuperAdmin, cancellationToken);
 
+  public Task<LoginResponse> PharmacistLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default)
+    => LoginInternalAsync(request, expectedRole: Role.Pharmacist, cancellationToken);
+
   private async Task<LoginResponse> LoginInternalAsync(
     LoginRequest request,
     Role? expectedRole,

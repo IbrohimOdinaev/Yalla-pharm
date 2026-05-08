@@ -21,6 +21,11 @@ import type { ApiClient } from "@/shared/types/api";
 import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
 import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
+import { getAwaitingConfirmation as getAwaitingPrescriptions, confirmPrescriptionPayment } from "@/entities/prescription/admin-api";
+import { type ApiPrescription } from "@/entities/prescription/api";
+import { getPharmacists, registerPharmacist, deletePharmacist, type ApiPharmacist } from "@/entities/pharmacist/api";
+import { AuthedImage } from "@/shared/ui";
+import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
 import { getRefundRequests, completeRefund } from "@/entities/refund/api";
 import { getPaymentSettings, updateDcBaseUrl, type PaymentSettingsSnapshot } from "@/entities/payment-settings/api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
@@ -31,7 +36,7 @@ import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
-type Tab = "pharmacies" | "medicines" | "orders";
+type Tab = "pharmacies" | "medicines" | "orders" | "prescriptions";
 
 export default function SuperAdminPage() {
   const token = useAppSelector((state) => state.auth.token);
@@ -52,7 +57,7 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "medicines" || h === "orders") setActiveTab(h);
+      if (h === "medicines" || h === "orders" || h === "prescriptions") setActiveTab(h);
       else setActiveTab("pharmacies");
     }
     syncHash();
@@ -86,6 +91,7 @@ export default function SuperAdminPage() {
         {activeTab === "pharmacies" ? <PharmaciesTab token={token} /> : null}
         {activeTab === "medicines" ? <MedicinesTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
+        {activeTab === "prescriptions" ? <PrescriptionsTab token={token} /> : null}
       </div>
     </AppShell>
   );
@@ -96,15 +102,15 @@ export default function SuperAdminPage() {
 function StatsDashboard({ token }: { token: string }) {
   const [stats, setStats] = useState({ admins: 0, pharmacies: 0, medicines: 0, clients: 0 });
 
+  // Independent fetches — each tile fills in as soon as its endpoint replies,
+  // instead of all four waiting on the slowest. The original Promise.all was
+  // a "all or nothing" wait that made the dashboard feel frozen for several
+  // seconds while a single slow endpoint dragged the rest down.
   useEffect(() => {
-    Promise.all([
-      getAdmins(token).then((a) => a.length),
-      getAllPharmacies(token).then((p) => p.length),
-      getAllMedicines(token, "", 1, 1).then((r) => r.totalCount),
-      getClients(token).then((c) => c.length)
-    ])
-      .then(([admins, pharmacies, medicines, clients]) => setStats({ admins, pharmacies, medicines, clients }))
-      .catch(() => undefined);
+    getAdmins(token).then((a) => setStats((s) => ({ ...s, admins: a.length }))).catch(() => undefined);
+    getAllPharmacies(token).then((p) => setStats((s) => ({ ...s, pharmacies: p.length }))).catch(() => undefined);
+    getAllMedicines(token, "", 1, 1).then((r) => setStats((s) => ({ ...s, medicines: r.totalCount }))).catch(() => undefined);
+    getClients(token).then((c) => setStats((s) => ({ ...s, clients: c.length }))).catch(() => undefined);
   }, [token]);
 
   const items = [
@@ -771,7 +777,7 @@ function MedicinesTab({ token }: { token: string }) {
               onClick={() => setSelected(m)}
             >
               <div className="flex gap-3 p-3">
-                <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-surface-container">
+                <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop">
                   {resolveMedicineImageUrl(m) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={resolveMedicineImageUrl(m)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
@@ -851,7 +857,7 @@ function MedicinesTab({ token }: { token: string }) {
               <>
                 {/* Image preview */}
                 {imageUrl ? (
-                  <div className="overflow-hidden rounded-xl bg-surface-container">
+                  <div className="overflow-hidden rounded-xl bg-image-backdrop">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={imageUrl} alt={getMedicineDisplayName(detail)} className="mx-auto max-h-48 xs:max-h-56 sm:max-h-64 object-contain mix-blend-multiply" />
                   </div>
@@ -1084,8 +1090,18 @@ function OrdersTab({ token }: { token: string }) {
   }, [token]);
 
   const load = useCallback(() => {
-    Promise.all([getAllOrders(token, ""), getPendingPaymentIntents(token), getRefundRequests(token)])
-      .then(([o, i, r]) => { setOrders(o); setIntents(i); setRefunds(r); })
+    // Each list resolves independently — the kanban columns fill in as their
+    // own data arrives, so the user can already act on (e.g.) loaded orders
+    // even if refunds are still in flight. The previous Promise.all gated
+    // every column behind the slowest of the three endpoints.
+    getAllOrders(token, "")
+      .then(setOrders)
+      .catch((err) => setError(err instanceof Error ? err.message : "Ошибка."));
+    getPendingPaymentIntents(token)
+      .then(setIntents)
+      .catch((err) => setError(err instanceof Error ? err.message : "Ошибка."));
+    getRefundRequests(token)
+      .then(setRefunds)
       .catch((err) => setError(err instanceof Error ? err.message : "Ошибка."));
   }, [token]);
 
@@ -1148,13 +1164,24 @@ function OrdersTab({ token }: { token: string }) {
   // Order IDs that have pending payment intents — avoid showing them as regular order cards
   const intentOrderIds = new Set(intents.map((i) => i.reservedOrderId).filter(Boolean));
 
+  // Sort within each kanban column: in-progress columns (New through OnTheWay)
+  // run FIFO so the longest-waiting order surfaces first; final-state columns
+  // (Delivered/PickedUp/Cancelled/Returned) flip to newest-first so the most
+  // recent history is at the top of the column.
+  const HISTORY_STATUSES = new Set(["Delivered", "PickedUp", "Cancelled", "Returned"]);
+  const orderTime = (o: ApiOrder) => o.createdAtUtc ? new Date(o.createdAtUtc).getTime() : 0;
   const grouped = ALL_STATUSES.reduce<Record<string, ApiOrder[]>>((acc, status) => {
-    acc[status] = filteredOrders.filter((o) => {
+    const list = filteredOrders.filter((o) => {
       if (o.status !== status) return false;
       // In "New" column, hide orders that already appear as payment intent cards
       if (status === "New" && intentOrderIds.has(o.orderId)) return false;
       return true;
     });
+    list.sort((a, b) => HISTORY_STATUSES.has(status)
+      ? orderTime(b) - orderTime(a)  // newest first for history
+      : orderTime(a) - orderTime(b)  // oldest first (FIFO) for active
+    );
+    acc[status] = list;
     return acc;
   }, {});
 
@@ -1231,7 +1258,14 @@ function OrdersTab({ token }: { token: string }) {
                           <p className="mt-0.5 text-[11px] font-semibold truncate">{order.clientName}</p>
                         ) : null}
                         <div className="flex items-center justify-between mt-0.5 gap-1">
-                          {order.createdAtUtc ? <p className="text-[10px] text-on-surface-variant">{new Date(order.createdAtUtc).toLocaleDateString("ru-RU")}</p> : <span/>}
+                          {order.createdAtUtc ? (
+                            <p className="text-[10px] text-on-surface-variant tabular-nums">
+                              {new Date(order.createdAtUtc).toLocaleString("ru-RU", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </p>
+                          ) : <span/>}
                           {phone ? <span className="text-[10px] font-mono text-on-surface-variant">{phone}</span> : null}
                         </div>
                         {tgHandle ? (
@@ -1410,7 +1444,7 @@ function OrdersTab({ token }: { token: string }) {
                     href={pos.medicineId ? `/product/${pos.medicineId}` : "#"}
                     className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3 transition hover:bg-surface-container-high"
                   >
-                    <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-surface-container flex items-center justify-center text-xs text-on-surface-variant font-bold">
+                    <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-image-backdrop flex items-center justify-center text-xs text-on-surface-variant font-bold">
                       {(pos.medicine?.title ?? "?")[0]}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1778,3 +1812,277 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
   );
 }
 
+
+/* ── Prescriptions Tab ──────────────────────────────────────────────── */
+
+function PrescriptionsTab({ token }: { token: string }) {
+  return (
+    <div className="space-y-6">
+      <PendingPrescriptionsSection token={token} />
+      <PharmacistsSection token={token} />
+    </div>
+  );
+}
+
+function PendingPrescriptionsSection({ token }: { token: string }) {
+  const [items, setItems] = useState<ApiPrescription[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return getAwaitingPrescriptions(token)
+      .then((data) => {
+        // FIFO — oldest waiting first so SuperAdmin clears the longest-pending
+        // request before brand-new ones. Same rule we apply to the pharmacist
+        // queue and other "new work" lists.
+        const sorted = [...data].sort((a, b) =>
+          new Date(a.createdAtUtc).getTime() - new Date(b.createdAtUtc).getTime()
+        );
+        setItems(sorted);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Ошибка загрузки"))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Live updates — every PrescriptionUpdated SignalR event refreshes the list,
+  // so a brand-new submission appears here without SuperAdmin reloading.
+  useSignalREvent("PrescriptionUpdated", load, token);
+
+  async function onConfirm(id: string) {
+    if (!confirm("Подтвердить оплату 3 TJS? Заявка уйдёт в очередь к фармацевтам.")) return;
+    setBusyId(id);
+    try {
+      await confirmPrescriptionPayment(token, id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось подтвердить");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-extrabold">Запросы на расшифровку рецептов</h2>
+        <button type="button" onClick={load} className="stitch-button-secondary text-xs">Обновить</button>
+      </div>
+
+      {error ? (
+        <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+      ) : null}
+
+      {loading ? (
+        <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">Загружаем…</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
+          Нет заявок, ждущих подтверждения оплаты.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((p) => {
+            const created = new Date(p.createdAtUtc).toLocaleString("ru-RU");
+            return (
+              <li key={p.prescriptionId} className="rounded-2xl bg-surface-container-lowest p-4 shadow-card">
+                <div className="flex items-start gap-3">
+                  <div className="flex flex-shrink-0 gap-2">
+                    {p.images.slice(0, 2).map((img) => (
+                      <button
+                        key={img.id}
+                        type="button"
+                        onClick={() => setLightboxSrc(img.url)}
+                        className="block transition hover:opacity-90 active:scale-[0.97]"
+                        aria-label="Открыть фото на весь экран"
+                      >
+                        <AuthedImage
+                          src={img.url}
+                          alt=""
+                          className="h-20 w-16 rounded-lg object-cover bg-image-backdrop"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-sm">
+                      <span className="font-semibold text-on-surface-variant">Возраст: </span>
+                      <span className="font-bold">{p.patientAge}</span>
+                    </p>
+                    {p.clientComment ? (
+                      <p className="text-xs text-on-surface-variant">
+                        <span className="font-semibold">Коммент: </span>
+                        {p.clientComment}
+                      </p>
+                    ) : null}
+                    <p className="text-[11px] text-on-surface-variant">{created}</p>
+                    <p className="text-[11px] font-mono text-on-surface-variant/70">{p.prescriptionId}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busyId === p.prescriptionId}
+                    onClick={() => onConfirm(p.prescriptionId)}
+                    className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-white transition hover:bg-primary-container disabled:opacity-50"
+                  >
+                    {busyId === p.prescriptionId ? "..." : "Подтвердить оплату"}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <AuthedImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+    </section>
+  );
+}
+
+function PharmacistsSection({ token }: { token: string }) {
+  const [items, setItems] = useState<ApiPharmacist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return getPharmacists(token)
+      .then(setItems)
+      .catch((err) => setError(err instanceof Error ? err.message : "Ошибка загрузки"))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function onDelete(id: string) {
+    if (!confirm("Удалить фармацевта? Действие не отменить.")) return;
+    try {
+      await deletePharmacist(token, id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить");
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-extrabold">Фармацевты</h2>
+        <button type="button" onClick={() => setShowForm((s) => !s)} className="stitch-button-secondary text-xs">
+          {showForm ? "Отмена" : "Добавить фармацевта"}
+        </button>
+      </div>
+
+      {error ? (
+        <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+      ) : null}
+
+      {showForm ? (
+        <RegisterPharmacistForm
+          token={token}
+          onDone={async () => { setShowForm(false); await load(); }}
+        />
+      ) : null}
+
+      {loading ? (
+        <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">Загружаем…</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
+          Пока нет фармацевтов. Добавьте первого, чтобы они смогли расшифровывать рецепты.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((ph) => (
+            <li key={ph.id} className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary font-bold">
+                {ph.name.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">{ph.name}</p>
+                <p className="text-xs text-on-surface-variant">+{ph.phoneNumber}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onDelete(ph.id)}
+                className="rounded-full px-3 py-1.5 text-xs font-bold text-secondary transition hover:bg-secondary-soft"
+              >
+                Удалить
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function RegisterPharmacistForm({
+  token,
+  onDone,
+}: {
+  token: string;
+  onDone: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setSubmitting(true);
+    try {
+      await registerPharmacist(token, { name: name.trim(), phoneNumber: phone.trim(), password });
+      setName(""); setPhone(""); setPassword("");
+      await onDone();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Ошибка регистрации");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3 rounded-2xl bg-surface-container-low p-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <input
+          className="stitch-input"
+          placeholder="Имя"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <input
+          className="stitch-input"
+          placeholder="Телефон (9 цифр)"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          required
+        />
+        <input
+          className="stitch-input"
+          type="password"
+          placeholder="Пароль (8+ символов)"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+      {err ? <p className="text-xs font-semibold text-secondary">{err}</p> : null}
+      <button
+        type="submit"
+        disabled={submitting}
+        className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-white transition hover:bg-primary-container disabled:opacity-50"
+      >
+        {submitting ? "..." : "Зарегистрировать"}
+      </button>
+    </form>
+  );
+}

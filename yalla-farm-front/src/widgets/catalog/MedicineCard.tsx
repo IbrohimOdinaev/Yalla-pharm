@@ -5,7 +5,15 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
+import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
+import { usePrescriptionDraftStore, type DraftItem } from "@/features/pharmacist/model/prescriptionDraftStore";
+import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
 import type { ApiMedicine } from "@/shared/types/api";
+
+// Stable empty fallback so the zustand selector doesn't return a fresh
+// `[]` on every render — that would re-trigger the subscription on each
+// render and burn a "Maximum update depth exceeded" loop.
+const EMPTY_DRAFT_ITEMS: DraftItem[] = [];
 import { formatMoney } from "@/shared/lib/format";
 import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
 import { Icon } from "@/shared/ui";
@@ -19,6 +27,7 @@ type MedicineCardProps = {
 // Yandex-Apteka style: flat white card, thin border, red cart button.
 export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps) {
   const token = useAppSelector((state) => state.auth.token);
+  const role = useAppSelector((state) => state.auth.role);
   const addItem = useCartStore((state) => state.addItem);
   const serverPositions = useCartStore((state) => state.basket.positions);
   const addGuestItem = useGuestCartStore((state) => state.addItem);
@@ -27,6 +36,24 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const removeGuestItem = useGuestCartStore((state) => state.removeItem);
   const setServerQty = useCartStore((state) => state.setQuantity);
   const removeServerItem = useCartStore((state) => state.removeItem);
+
+  // Pharmacist context — clicking + on a card adds to the active
+  // prescription's draft instead of the regular shopping cart.
+  const isPharmacist = role === "Pharmacist";
+  const activePrescriptionId = useActivePrescriptionStore((s) => s.activeId);
+  const openPicker = useActivePrescriptionStore((s) => s.openPicker);
+  const draftItems = usePrescriptionDraftStore((s) =>
+    activePrescriptionId ? (s.drafts[activePrescriptionId]?.items ?? EMPTY_DRAFT_ITEMS) : EMPTY_DRAFT_ITEMS);
+  const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
+  const updateDraftItem = usePrescriptionDraftStore((s) => s.updateItem);
+  const removeDraftItem = usePrescriptionDraftStore((s) => s.removeItem);
+
+  // Analog-pick mode — when the pharmacist clicked "Привязать аналог" on a
+  // draft line and is now scanning the catalog for a substitute. While
+  // active, "+" attaches the chosen medicine as the analog instead of
+  // adding it as a new draft item.
+  const analogTarget = useAnalogTargetStore((s) => s.target);
+  const clearAnalogTarget = useAnalogTargetStore((s) => s.clear);
 
   // Hold onto the image refs (not pre-built URLs) so we can emit a srcSet
   // alongside src — the browser then picks 480w for normal screens and 800w
@@ -41,7 +68,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
     if (main) return [main];
     return imgs[0] ? [imgs[0]] : [];
   }, [medicine.images]);
-  const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 480)).filter(Boolean), [imageRefs]);
+  // 800 px for 1× and 1600 px for retina so even on 3× DPR phones the
+  // browser still has more pixels than it needs to draw a crisp image
+  // when downscaled into the ~150–220 px card cell. Older 600/1200 was
+  // visibly soft on Retina iPads because the asset only covered ~2.7×
+  // density once `mix-blend-multiply` filter ran.
+  const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 800)).filter(Boolean), [imageRefs]);
   const price = getCheapestPrice(medicine);
   const offersCount = medicine.offers?.length ?? 0;
   const [imgIndex, setImgIndex] = useState(0);
@@ -57,13 +89,20 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   }, [imgIndex, allImages.length]);
 
   const cartState = useMemo(() => {
+    // Pharmacist: count multiplicity of this medicine in the active draft.
+    if (isPharmacist) {
+      const matched = draftItems.find((i) => i.medicineId === medicine.id);
+      return matched
+        ? { inCart: true, quantity: matched.quantity, positionId: matched.draftId }
+        : { inCart: false, quantity: 0, positionId: "" };
+    }
     if (token) {
       const pos = (serverPositions ?? []).find((p) => p.medicineId === medicine.id);
       return pos ? { inCart: true, quantity: pos.quantity, positionId: pos.id } : { inCart: false, quantity: 0, positionId: "" };
     }
     const item = guestItems.find((i) => i.medicineId === medicine.id);
     return item ? { inCart: true, quantity: item.quantity, positionId: "" } : { inCart: false, quantity: 0, positionId: "" };
-  }, [token, serverPositions, guestItems, medicine.id]);
+  }, [isPharmacist, draftItems, token, serverPositions, guestItems, medicine.id]);
 
   function stop(e: React.MouseEvent) {
     e.preventDefault();
@@ -72,18 +111,57 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
 
   function onAdd(e: React.MouseEvent) {
     stop(e);
+    // Analog-pick mode wins over both regular cart-add and pharmacist-draft-
+    // add: write the chosen medicine into the source draft item as the
+    // analog and bounce back to /pharmacist/cart.
+    if (isPharmacist && analogTarget) {
+      // Don't pin to the original itself — domain rejects analog == original.
+      if (analogTarget.sourceMedicineId && analogTarget.sourceMedicineId === medicine.id) {
+        return;
+      }
+      updateDraftItem(analogTarget.prescriptionId, analogTarget.draftId, {
+        analogMedicineId: medicine.id,
+        analogTitle: getMedicineDisplayName(medicine),
+      });
+      clearAnalogTarget();
+      router.push("/pharmacist/cart");
+      return;
+    }
+    if (isPharmacist) {
+      if (!activePrescriptionId) { openPicker(); return; }
+      addToDraft(activePrescriptionId, {
+        draftId: `cat-${medicine.id}-${Date.now()}`,
+        medicineId: medicine.id,
+        manualMedicineName: null,
+        quantity: 1,
+        pharmacistComment: null,
+        displayTitle: getMedicineDisplayName(medicine),
+        minPrice: medicine.minPrice ?? null,
+      });
+      return;
+    }
     if (token) addItem(token, medicine.id).catch(() => undefined);
     else addGuestItem(medicine.id);
   }
 
   function onIncrement(e: React.MouseEvent) {
     stop(e);
+    if (isPharmacist && activePrescriptionId) {
+      updateDraftItem(activePrescriptionId, cartState.positionId, { quantity: cartState.quantity + 1 });
+      return;
+    }
     if (token) addItem(token, medicine.id).catch(() => undefined);
     else addGuestItem(medicine.id);
   }
 
   function onDecrement(e: React.MouseEvent) {
     stop(e);
+    if (isPharmacist && activePrescriptionId) {
+      const newQty = cartState.quantity - 1;
+      if (newQty <= 0) removeDraftItem(activePrescriptionId, cartState.positionId);
+      else updateDraftItem(activePrescriptionId, cartState.positionId, { quantity: newQty });
+      return;
+    }
     const newQty = cartState.quantity - 1;
     if (newQty <= 0) {
       if (token) removeServerItem(token, cartState.positionId).catch(() => undefined);
@@ -142,7 +220,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
       <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition hover:border-on-surface/30 hover:shadow-card">
         {/* Image */}
         <div
-          className="relative aspect-square overflow-hidden bg-surface-container"
+          className="relative aspect-square overflow-hidden bg-image-backdrop"
           onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
           onTouchEnd={onSwipe}
         >
@@ -156,10 +234,15 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={allImages[imgIndex] ?? allImages[0]}
-              srcSet={imageSrcSet(imageRefs[imgIndex] ?? imageRefs[0], 480, 800) || undefined}
+              srcSet={imageSrcSet(imageRefs[imgIndex] ?? imageRefs[0], 800, 1600) || undefined}
               alt={name}
               loading="lazy"
               decoding="async"
+              // image-rendering hint nudges Chrome/Edge into a sharper
+              // bicubic scaling profile, so the small product packaging stays
+              // legible after the browser downscales the 600/1200 px source
+              // into the ~150–220 px card cell.
+              style={{ imageRendering: "-webkit-optimize-contrast" }}
               className="h-full w-full object-contain p-2 mix-blend-multiply transition group-hover:scale-[1.03]"
             />
           ) : (

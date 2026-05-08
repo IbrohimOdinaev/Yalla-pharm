@@ -31,6 +31,15 @@ public interface IMedicineService
     CancellationToken cancellationToken = default);
 
   /// <summary>
+  /// Batch counterpart to <see cref="GetMedicineByIdAsync"/>. Resolves N
+  /// medicine ids in a single round-trip — eliminates the N+1 fan-out the
+  /// pharmacist cart and prescription detail pages used to do over HTTP.
+  /// </summary>
+  Task<GetMedicinesByIdsResponse> GetMedicinesByIdsAsync(
+    GetMedicinesByIdsRequest request,
+    CancellationToken cancellationToken = default);
+
+  /// <summary>
   /// Lookup by URL-friendly slug (sourced from WooCommerce). Returns the
   /// same shape as GetMedicineByIdAsync — a unified response keeps the
   /// front-end product page agnostic about whether it received an id or

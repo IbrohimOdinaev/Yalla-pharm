@@ -5,8 +5,34 @@ type ApiFetchOptions = Omit<RequestInit, "body"> & {
   token?: string | null;
 };
 
+/**
+ * Thrown by `apiFetch` for any non-2xx response. Carries the HTTP status code
+ * so callers can branch on it without parsing the message string. Existing
+ * callers that just read `.message` keep working — `ApiError extends Error`.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 function isJsonLikeBody(body: unknown): body is Record<string, unknown> | Array<unknown> {
-  return typeof body === "object" && body !== null;
+  if (typeof body !== "object" || body === null) return false;
+  // Native body shapes that fetch can serialise on its own — leave them
+  // alone so the browser sets the proper Content-Type (e.g. the
+  // multipart boundary for FormData).
+  if (typeof FormData !== "undefined" && body instanceof FormData) return false;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return false;
+  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) return false;
+  if (typeof ArrayBuffer !== "undefined" && body instanceof ArrayBuffer) return false;
+  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) return false;
+  return true;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
@@ -33,10 +59,19 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
   if (!response.ok) {
     const message = extractApiErrorMessage(data) ?? `Request failed: ${response.status}`;
-    throw new Error(message);
+    const code = extractApiErrorCode(data);
+    throw new ApiError(message, response.status, code);
   }
 
   return data as T;
+}
+
+function extractApiErrorCode(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const c = data as Record<string, unknown>;
+  if (typeof c.errorCode === "string") return c.errorCode;
+  if (typeof c.code === "string") return c.code;
+  return undefined;
 }
 
 function safeJsonParse(raw: string): unknown {

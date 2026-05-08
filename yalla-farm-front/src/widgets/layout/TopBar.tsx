@@ -11,7 +11,7 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useGuestPharmacyOptions } from "@/features/cart/model/useGuestPharmacyOptions";
 import { computeBestPriceFromPharmacyOptions } from "@/features/cart/model/bestPharmacyPrice";
 import { formatMoney } from "@/shared/lib/format";
-import { Icon, PharmacyLogo } from "@/shared/ui";
+import { Icon } from "@/shared/ui";
 
 type TopBarProps = {
   title: string;
@@ -26,13 +26,13 @@ type TopBarProps = {
   addressTitle?: string;
   onAddressClick?: () => void;
   onLogoClick?: () => void;
-  pharmacyName?: string;
-  pharmacyIconUrl?: string | null;
-  pharmacyId?: string | null;
-  onPharmacyClick?: () => void;
   showLogout?: boolean;
   /** Hide the search pill in homeMode (used when page itself shows a search UI). */
   hideSearch?: boolean;
+  /** Show the "Загрузите рецепт от врача" CTA in the desktop header next to
+   *  the pharmacy pill. Hidden below xl (1280px) so the home page falls back
+   *  to its own banner under the quick-categories rail at narrower widths. */
+  showPrescriptionCta?: boolean;
 };
 
 export function TopBar({
@@ -44,12 +44,9 @@ export function TopBar({
   addressTitle,
   onAddressClick,
   onLogoClick,
-  pharmacyName,
-  pharmacyIconUrl,
-  pharmacyId,
-  onPharmacyClick,
   showLogout,
   hideSearch,
+  showPrescriptionCta,
 }: TopBarProps) {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
@@ -139,8 +136,8 @@ export function TopBar({
       <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-icon.png" alt="Yalla" className="h-9 w-9 flex-shrink-0 sm:h-10 sm:w-10" />
-        <span className="hidden font-display text-base font-extrabold text-on-surface xl:block whitespace-nowrap">
-          Yalla Farm
+        <span className="hidden font-display text-base font-extrabold text-on-surface lg:block whitespace-nowrap">
+          Yalla Pharm
         </span>
       </>
     );
@@ -170,29 +167,28 @@ export function TopBar({
       </button>
     );
 
-    const PharmacyPill = (
-      <button
-        type="button"
-        onClick={onPharmacyClick}
-        className="flex flex-shrink items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container sm:text-sm sm:px-3.5"
+    const PrescriptionPill = showPrescriptionCta ? (
+      <Link
+        href="/prescriptions/new"
+        title="Загрузите рецепт от врача · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
+        className="hidden lg:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition hover:bg-primary/15"
       >
-        <PharmacyLogo
-          pharmacyId={pharmacyId ?? undefined}
-          iconUrl={pharmacyIconUrl}
-          size={18}
-          className="flex-shrink-0"
-        />
-        <span className="truncate max-w-[110px] sm:max-w-[140px] lg:max-w-[120px] xl:max-w-[180px]">
-          {pharmacyName || "Все аптеки"}
+        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="9" y1="14" x2="15" y2="14" />
+            <line x1="12" y1="11" x2="12" y2="17" />
+          </svg>
         </span>
-        <Icon name="chevron-down" size={12} className="flex-shrink-0 text-on-surface-variant" />
-      </button>
-    );
+        <span className="whitespace-nowrap">Загрузите рецепт</span>
+      </Link>
+    ) : null;
 
     // Mobile header column next to the logo — two stacked, INDEPENDENTLY
     // clickable rows so the brand label opens "/" while the address row opens
     // the address picker. Previously a single button wrapped both, which made
-    // tapping "Yalla Farm" trigger the address modal.
+    // tapping "Yalla Pharm" trigger the address modal.
     const MobileBrandAndAddress = (
       <div className="-mx-1 flex min-w-0 flex-1 flex-col items-start px-1 py-0.5">
         {onLogoClick ? (
@@ -201,14 +197,14 @@ export function TopBar({
             onClick={onLogoClick}
             className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl rounded transition active:bg-surface-container-low/70"
           >
-            Yalla Farm
+            Yalla Pharm
           </button>
         ) : (
           <Link
             href="/"
             className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl rounded transition active:bg-surface-container-low/70"
           >
-            Yalla Farm
+            Yalla Pharm
           </Link>
         )}
         <button
@@ -243,19 +239,25 @@ export function TopBar({
       </>
     );
 
+    // Search bar — width capped at 893 px (+15% over 776 px, which itself was
+    // +10% over the original 706 px). Cap keeps it from sprawling on ultra-
+    // wide displays while still letting it dominate the row. Address sits to
+    // the right; cart / prescription / profile cluster lives at the far right
+    // (separated by an explicit flex-1 spacer below). The `ml-4 lg:ml-6`
+    // gives a clearly-visible gap between the logo and the search bar.
     const DesktopSearch = !hideSearch ? (
       onSearchClick ? (
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[706px]"
+          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1072px]"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[706px]"
+          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1072px]"
         >
           {SearchInner}
         </Link>
@@ -302,10 +304,10 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="relative hidden h-10 w-[148px] flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#3FC5C4] px-4 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-[164px] sm:gap-2.5 sm:px-5"
+          className="relative hidden h-11 w-[164px] flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#3FC5C4] px-5 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-12 sm:w-[180px] sm:gap-2.5 sm:px-6"
         >
-          <Icon name="bag" size={18} strokeWidth={2.2} className="flex-shrink-0" />
-          <span className="font-display text-xs font-extrabold tabular-nums whitespace-nowrap sm:text-sm">
+          <Icon name="bag" size={20} strokeWidth={2.4} className="flex-shrink-0" />
+          <span className="font-display text-sm font-black tabular-nums whitespace-nowrap sm:text-[15px]">
             {bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`}
           </span>
         </Link>
@@ -370,6 +372,14 @@ export function TopBar({
                     >
                       <Icon name="orders" size={16} />
                       Мои заказы
+                    </Link>
+                    <Link
+                      href="/prescriptions"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                    >
+                      <Icon name="orders" size={16} />
+                      Мои рецепты
                     </Link>
                   </>
                 ) : null}
@@ -436,14 +446,21 @@ export function TopBar({
     return (
       <>
       <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-[1440px]">
-          {/* DESKTOP (lg+): single row with inline pills. */}
-          <div className="hidden h-[60px] items-center gap-3 px-5 lg:flex lg:px-8">
+        {/* No max-width cap — the header spans the full viewport on ultra-wide
+            displays per the user's request. Inner padding (px-6 / lg:px-10)
+            still keeps content from kissing the screen edge. */}
+        <div className="w-full">
+          {/* DESKTOP (lg+): single row. Order requested:
+              logo / search / address + prescription / … / cart / profile.
+              Prescription pill is now part of the left/centre cluster
+              (flush against the address pill); cart + profile sit at the
+              right edge separated by a flex-1 spacer. */}
+          <div className="hidden h-[66px] items-center gap-3 px-6 lg:flex lg:px-10">
             {LogoLink}
             {DesktopSearch}
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {DesktopAddressPill}
-              {PharmacyPill}
+              {PrescriptionPill}
             </div>
             <span className="flex-1" />
             {!onCartRoute ? CartButton : null}
@@ -484,13 +501,13 @@ export function TopBar({
           }
           className="fixed bottom-6 right-4 z-40 flex h-16 w-[200px] items-center justify-center gap-2 rounded-full bg-[#3FC5C4] px-4 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] safe-bottom sm:hidden"
         >
-          <Icon name="bag" size={26} strokeWidth={2.2} className="flex-shrink-0" />
+          <Icon name="bag" size={28} strokeWidth={2.4} className="flex-shrink-0" />
           {/* Fixed-width text container so different price strings (3 vs 6
               digits) don't shift the icon left/right and the pill itself
               never resizes. whitespace-nowrap keeps the price on a single
               line; tabular-nums gives every digit the same advance so the
               text-content footprint stays stable as the price changes. */}
-          <span className="block w-[120px] whitespace-nowrap text-center font-display text-sm font-extrabold tabular-nums">
+          <span className="block w-[120px] whitespace-nowrap text-center font-display text-base font-black tabular-nums">
             {bestPrice
               ? `от ${formatMoney(bestPrice.price)}`
               : `${cartCount}`}
@@ -504,7 +521,7 @@ export function TopBar({
   // ── DEFAULT MODE: back + title ───────────────────────────────────
   return (
     <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
+      <div className="flex h-14 w-full items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           {backHref ? (
             backHref === "back" ? (
