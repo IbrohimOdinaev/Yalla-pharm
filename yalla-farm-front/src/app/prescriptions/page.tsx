@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
@@ -25,6 +25,17 @@ const STATUS_TONE: Record<PrescriptionStatus, "primary" | "warning" | "success" 
   MovedToCart: "primary",
   Cancelled: "danger",
 };
+
+// Anything past the pharmacist's hand-off (a finished checklist) is moved
+// to the "История" section. Statuses still in the active pipeline (uploaded,
+// awaiting payment / decoding) stay at the top so the client always sees
+// the in-flight requests first.
+const HISTORY_STATUSES: ReadonlySet<PrescriptionStatus> = new Set<PrescriptionStatus>([
+  "Decoded",
+  "OrderPlaced",
+  "MovedToCart",
+  "Cancelled",
+]);
 
 export default function MyPrescriptionsPage() {
   const token = useAppSelector((s) => s.auth.token);
@@ -98,55 +109,100 @@ export default function MyPrescriptionsPage() {
             }
           />
         ) : (
-          <ul className="space-y-3">
-            {prescriptions.map((p) => {
-              const cover = p.images[0];
-              const created = new Date(p.createdAtUtc).toLocaleString("ru-RU", {
-                day: "2-digit", month: "2-digit", year: "numeric",
-                hour: "2-digit", minute: "2-digit"
-              });
-              return (
-                <li key={p.prescriptionId}>
-                  <Link
-                    href={`/prescriptions/${p.prescriptionId}`}
-                    className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card transition hover:bg-image-backdrop xs:gap-4 xs:p-4"
-                  >
-                    <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-16 xs:w-16 xs:rounded-2xl">
-                      <AuthedImage
-                        src={cover?.url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        fallback={
-                          <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
-                            <Icon name="orders" size={20} />
-                          </div>
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Chip tone={STATUS_TONE[p.status] ?? "tertiary"} asButton={false} size="sm">
-                          {PRESCRIPTION_STATUS_LABEL_RU[p.status] ?? p.status}
-                        </Chip>
-                        <span className="text-[11px] text-on-surface-variant">{created}</span>
-                      </div>
-                      <p className="mt-1 text-sm font-bold text-on-surface">
-                        Возраст пациента: {p.patientAge}
-                      </p>
-                      {p.clientComment ? (
-                        <p className="mt-0.5 line-clamp-1 text-xs text-on-surface-variant">
-                          {p.clientComment}
-                        </p>
-                      ) : null}
-                    </div>
-                    <Icon name="chevron-right" size={16} className="flex-shrink-0 text-on-surface-variant/60" />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <Sections prescriptions={prescriptions} />
         )}
       </div>
     </AppShell>
+  );
+}
+
+function Sections({ prescriptions }: { prescriptions: ApiPrescription[] }) {
+  const { active, history } = useMemo(() => {
+    const a: ApiPrescription[] = [];
+    const h: ApiPrescription[] = [];
+    for (const p of prescriptions) {
+      if (HISTORY_STATUSES.has(p.status)) h.push(p);
+      else a.push(p);
+    }
+    return { active: a, history: h };
+  }, [prescriptions]);
+
+  return (
+    <div className="space-y-6">
+      {active.length > 0 ? (
+        <Section title="Активные" count={active.length}>
+          <ul className="space-y-3">
+            {active.map((p) => <Row key={p.prescriptionId} p={p} />)}
+          </ul>
+        </Section>
+      ) : null}
+      {history.length > 0 ? (
+        <Section title="История" count={history.length} muted>
+          <ul className="space-y-3">
+            {history.map((p) => <Row key={p.prescriptionId} p={p} />)}
+          </ul>
+        </Section>
+      ) : null}
+    </div>
+  );
+}
+
+function Section({ title, count, muted, children }: { title: string; count: number; muted?: boolean; children: React.ReactNode }) {
+  return (
+    <section>
+      <header className="mb-2 flex items-baseline gap-2 px-1">
+        <h2 className={`font-display text-base font-extrabold ${muted ? "text-on-surface-variant" : "text-on-surface"}`}>
+          {title}
+        </h2>
+        <span className="text-xs text-on-surface-variant">· {count}</span>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function Row({ p }: { p: ApiPrescription }) {
+  const cover = p.images[0];
+  const created = new Date(p.createdAtUtc).toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit"
+  });
+  return (
+    <li>
+      <Link
+        href={`/prescriptions/${p.prescriptionId}`}
+        className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card transition hover:bg-image-backdrop xs:gap-4 xs:p-4"
+      >
+        <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-16 xs:w-16 xs:rounded-2xl">
+          <AuthedImage
+            src={cover?.url}
+            alt=""
+            className="h-full w-full object-cover"
+            fallback={
+              <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
+                <Icon name="orders" size={20} />
+              </div>
+            }
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Chip tone={STATUS_TONE[p.status] ?? "tertiary"} asButton={false} size="sm">
+              {PRESCRIPTION_STATUS_LABEL_RU[p.status] ?? p.status}
+            </Chip>
+            <span className="text-[11px] text-on-surface-variant">{created}</span>
+          </div>
+          <p className="mt-1 text-sm font-bold text-on-surface">
+            Возраст пациента: {p.patientAge}
+          </p>
+          {p.clientComment ? (
+            <p className="mt-0.5 line-clamp-1 text-xs text-on-surface-variant">
+              {p.clientComment}
+            </p>
+          ) : null}
+        </div>
+        <Icon name="chevron-right" size={16} className="flex-shrink-0 text-on-surface-variant/60" />
+      </Link>
+    </li>
   );
 }

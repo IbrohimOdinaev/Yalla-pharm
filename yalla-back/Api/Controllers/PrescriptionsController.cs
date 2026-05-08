@@ -150,6 +150,7 @@ public sealed class PrescriptionsController : ControllerBase
           clientId,
           prescriptionId,
           request?.QuantityOverrides,
+          request?.PairSelections,
           cancellationToken);
         return Ok(response);
     }

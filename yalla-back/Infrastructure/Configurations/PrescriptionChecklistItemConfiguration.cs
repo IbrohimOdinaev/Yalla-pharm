@@ -58,6 +58,11 @@ public class PrescriptionChecklistItemConfiguration
           .HasColumnType("uuid")
           .IsRequired(false);
 
+        builder.Property(x => x.AnalogItemId)
+          .HasColumnName("analog_item_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
         builder.Property(x => x.CreatedAtUtc)
           .HasColumnName("created_at_utc")
           .HasColumnType("timestamp")
@@ -73,5 +78,12 @@ public class PrescriptionChecklistItemConfiguration
         builder.HasIndex(x => x.AnalogMedicineId)
           .HasFilter("analog_medicine_id IS NOT NULL")
           .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id");
+
+        // Filtered index — only paired rows get indexed (most won't). Used
+        // for the rare "find dependents of item X" query the service runs
+        // when an analog item is being deleted to clear stale references.
+        builder.HasIndex(x => x.AnalogItemId)
+          .HasFilter("analog_item_id IS NOT NULL")
+          .HasDatabaseName("ix_prescription_checklist_items_analog_item_id");
     }
 }
