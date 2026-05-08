@@ -1101,6 +1101,12 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("payment_intent_id");
 
+                    b.Property<int>("PreferenceTier")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("preference_tier");
+
                     b.Property<string>("PharmacistOverallComment")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
@@ -1135,9 +1141,19 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AnalogMedicineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("analog_medicine_id");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp")
                         .HasColumnName("created_at_utc");
+
+                    b.Property<int>("Kind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("kind");
 
                     b.Property<string>("ManualMedicineName")
                         .HasMaxLength(200)
@@ -1162,6 +1178,10 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnName("quantity");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AnalogMedicineId")
+                        .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id")
+                        .HasFilter("analog_medicine_id IS NOT NULL");
 
                     b.HasIndex("MedicineId")
                         .HasDatabaseName("ix_prescription_checklist_items_medicine_id")
