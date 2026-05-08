@@ -14,18 +14,18 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<long>(
-                name: "telegram_id",
-                table: "users",
-                type: "bigint",
-                nullable: true);
+            // Idempotent: this migration's [Migration] attribute was wired up
+            // late (hotfix 5a21549), so on environments where the column was
+            // already added by an earlier build but the history row was never
+            // recorded, a plain ALTER would crash with 42701 ("column already
+            // exists"). IF NOT EXISTS lets EF replay the migration — its only
+            // job here is to insert the __EFMigrationsHistory row.
+            migrationBuilder.Sql(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id bigint;");
 
-            migrationBuilder.CreateIndex(
-                name: "ix_users_telegram_id",
-                table: "users",
-                column: "telegram_id",
-                unique: true,
-                filter: "telegram_id IS NOT NULL");
+            migrationBuilder.Sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_telegram_id " +
+                "ON users (telegram_id) WHERE telegram_id IS NOT NULL;");
         }
 
         /// <inheritdoc />
