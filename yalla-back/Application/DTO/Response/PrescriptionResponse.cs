@@ -53,6 +53,14 @@ public sealed class PrescriptionChecklistItemResponse
     public string? PharmacistComment { get; set; }
     /// <summary>"Original" or "Undecoded".</summary>
     public string Kind { get; set; } = "Original";
-    /// <summary>Optional cheaper substitute id from the catalog.</summary>
+    /// <summary>Optional cheaper substitute id from the catalog (legacy
+    /// catalog-pick analog flow). Always null for items decoded by the
+    /// new pair-from-cart flow — use <see cref="AnalogItemId"/> instead.</summary>
     public Guid? AnalogMedicineId { get; set; }
+    /// <summary>Paired-analog reference — points to another item id in
+    /// the same checklist when this row is an "original" with a paired
+    /// analog. The referenced sibling stays in the response under its
+    /// own row; the client renders the pair as one block with the
+    /// analog highlighted on top.</summary>
+    public Guid? AnalogItemId { get; set; }
 }

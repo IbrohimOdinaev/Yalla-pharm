@@ -71,6 +71,7 @@ public interface IPrescriptionService
       Guid clientId,
       Guid prescriptionId,
       IReadOnlyDictionary<Guid, int>? quantityOverrides,
+      IReadOnlyDictionary<Guid, Guid>? pairSelections,
       CancellationToken cancellationToken = default);
 
     /// <summary>

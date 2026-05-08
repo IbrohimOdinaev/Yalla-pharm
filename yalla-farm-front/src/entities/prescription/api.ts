@@ -25,8 +25,15 @@ export type ApiPrescriptionChecklistItem = {
   pharmacistComment?: string | null;
   /** "Original" — pharmacist identified the medicine; "Undecoded" — couldn't read. */
   kind?: "Original" | "Undecoded";
-  /** Optional cheaper substitute id from our catalog. */
+  /** [Deprecated] Catalog-pick analog from the v1 flow. Kept on the
+   *  payload for back-compat but always null in the new pair-from-cart
+   *  flow — use {@link analogItemId} instead. */
   analogMedicineId?: string | null;
+  /** Paired-analog: id of another item in the same checklist that the
+   *  pharmacist selected as substitute for this position. Set on the
+   *  "original" of the pair; the referenced sibling stays in `items`
+   *  under its own row, and the renderer groups them into a block. */
+  analogItemId?: string | null;
 };
 
 export type PrescriptionPreferenceTier = "AsPrescribed" | "GoldenMiddle" | "MaxSavings";
@@ -110,20 +117,27 @@ export type MoveChecklistToCartResponse = {
 export async function moveChecklistToCart(
   token: string,
   prescriptionId: string,
-  /** Per-item quantity overrides the client edited on the prescription detail
-   *  page. Map of `PrescriptionChecklistItem.id` → quantity. Items not in the
-   *  map keep the pharmacist-recommended count. */
-  quantityOverrides?: Record<string, number>,
+  options?: {
+    /** Per-item quantity overrides the client edited on the prescription detail
+     *  page. Map of `PrescriptionChecklistItem.id` → quantity. Items not in the
+     *  map keep the pharmacist-recommended count; value 0 = removed. */
+    quantityOverrides?: Record<string, number>;
+    /** Per-pair selection. Key = original item id (the one with `analogItemId`
+     *  set), value = chosen item id (either the original itself or its analog).
+     *  Default when absent: the analog. */
+    pairSelections?: Record<string, string>;
+  },
 ): Promise<MoveChecklistToCartResponse> {
+  const body: Record<string, unknown> = {};
+  if (options?.quantityOverrides && Object.keys(options.quantityOverrides).length > 0) {
+    body.quantityOverrides = options.quantityOverrides;
+  }
+  if (options?.pairSelections && Object.keys(options.pairSelections).length > 0) {
+    body.pairSelections = options.pairSelections;
+  }
   return apiFetch<MoveChecklistToCartResponse>(
     `/api/prescriptions/${prescriptionId}/move-to-cart`,
-    {
-      method: "POST",
-      token,
-      body: quantityOverrides && Object.keys(quantityOverrides).length > 0
-        ? { quantityOverrides }
-        : {},
-    },
+    { method: "POST", token, body },
   );
 }
 
