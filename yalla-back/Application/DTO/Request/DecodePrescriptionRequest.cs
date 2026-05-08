@@ -26,8 +26,13 @@ public sealed class DecodePrescriptionItem
     /// <summary>0 = Original (default), 1 = Undecoded.</summary>
     public int Kind { get; set; }
 
-    /// <summary>Optional cheaper substitute the pharmacist recommends —
-    /// must reference an existing catalog medicine and differ from
-    /// <see cref="MedicineId"/>. Ignored for Undecoded items.</summary>
-    public Guid? AnalogMedicineId { get; set; }
+    /// <summary>Index of the analog item in the same <c>Items</c> list
+    /// (0-based). When set, this row is the "original" of a pair and
+    /// the referenced sibling row is its analog. The server resolves
+    /// indices to <see cref="PrescriptionChecklistItem.Id"/> values
+    /// after creation — see
+    /// <see cref="Yalla.Application.Services.PrescriptionService.SubmitChecklistAsync"/>
+    /// for the second-pass linker. Self-reference and circular pairs
+    /// are rejected. Ignored for Undecoded items.</summary>
+    public int? AnalogIndex { get; set; }
 }

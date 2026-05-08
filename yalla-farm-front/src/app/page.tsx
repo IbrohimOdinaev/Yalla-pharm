@@ -719,7 +719,13 @@ function HomeContent() {
                     icon={cat.icon}
                     palette={cat.palette}
                     label={cat.label}
-                    image={cat.image}
+                    /* The "Все категории" anchor uses the minimalist
+                       arrow variant — no image, label top-left, round
+                       arrow CTA bottom-right. Reads as "open the full
+                       list" instead of competing with the photographic
+                       category tiles next to it. */
+                    image={cat.label === "Все категории" ? undefined : cat.image}
+                    variant={cat.label === "Все категории" ? "arrow" : "default"}
                     onClick={() => onQuickCategoryClick(cat.label)}
                   />
                 </div>

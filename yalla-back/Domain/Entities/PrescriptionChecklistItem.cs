@@ -34,10 +34,21 @@ public class PrescriptionChecklistItem
     public PrescriptionChecklistItemKind Kind { get; private set; }
       = PrescriptionChecklistItemKind.Original;
 
-    /// <summary>Optional cheaper substitute the pharmacist recommends for
-    /// this position. Only meaningful when <see cref="Kind"/> is
-    /// <see cref="PrescriptionChecklistItemKind.Original"/>.</summary>
+    /// <summary>[Deprecated] Catalog-medicine pointer from the v1 analog
+    /// flow (pick a medicine from the catalog as substitute). Kept on the
+    /// schema for back-compat; new code uses <see cref="AnalogItemId"/>
+    /// which references another checklist item in the same prescription
+    /// instead of an arbitrary medicine. Not populated by the new
+    /// pair-from-cart flow.</summary>
     public Guid? AnalogMedicineId { get; private set; }
+
+    /// <summary>Cheaper paired item the pharmacist recommends as analog.
+    /// Points to another <see cref="PrescriptionChecklistItem"/> in the
+    /// SAME prescription. Set on the "original" item of the pair; the
+    /// referenced item itself stays unaware (one-way link, walked at
+    /// render time). Only meaningful when <see cref="Kind"/> is
+    /// <see cref="PrescriptionChecklistItemKind.Original"/>.</summary>
+    public Guid? AnalogItemId { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
 
@@ -153,5 +164,27 @@ public class PrescriptionChecklistItem
               "PrescriptionChecklistItem.Quantity must be greater than zero.");
 
         Quantity = quantity;
+    }
+
+    /// <summary>Pair this item with another checklist item as its analog.
+    /// Caller must ensure <paramref name="analogItemId"/> belongs to the
+    /// same prescription — that's the responsibility of the application
+    /// service since the entity has no awareness of its sibling rows.
+    /// Re-pairing overwrites; passing <c>null</c> unpairs.</summary>
+    public void SetAnalogItem(Guid? analogItemId)
+    {
+        if (analogItemId == Guid.Empty)
+            throw new DomainArgumentException("AnalogItemId can't be empty.");
+
+        if (analogItemId is not null && analogItemId == Id)
+            throw new DomainArgumentException(
+              "AnalogItemId cannot reference the item itself.");
+
+        if (analogItemId is not null
+          && Kind == PrescriptionChecklistItemKind.Undecoded)
+            throw new DomainArgumentException(
+              "Undecoded items cannot carry an analog reference.");
+
+        AnalogItemId = analogItemId;
     }
 }

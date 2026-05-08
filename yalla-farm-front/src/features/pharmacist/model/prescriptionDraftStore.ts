@@ -18,11 +18,13 @@ export type DraftItem = {
    *  — pharmacist couldn't read the line of the prescription; the row is
    *  informational only and won't be orderable on the client side. */
   kind?: "Original" | "Undecoded";
-  /** Optional cheaper substitute id from our catalog. Only meaningful for
-   *  Original-kind items. Display title is cached separately so the cart
-   *  UI doesn't have to refetch the analog medicine. */
-  analogMedicineId?: string | null;
-  analogTitle?: string | null;
+  /** Pair-from-cart analog: the draftId of another item in this same
+   *  prescription's draft. When set, this item is the "original" of a
+   *  pair — the cart renders it as a single block with the analog
+   *  highlighted on top. The referenced sibling stays in the draft items
+   *  list (lookup happens at render time) but is hidden from the flat
+   *  list to avoid double-display. Only meaningful for Original-kind. */
+  analogDraftId?: string | null;
 };
 
 export type DraftState = {
