@@ -7,7 +7,6 @@ import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore, type DraftItem } from "@/features/pharmacist/model/prescriptionDraftStore";
-import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
 import type { ApiMedicine } from "@/shared/types/api";
 
 // Stable empty fallback so the zustand selector doesn't return a fresh
@@ -47,13 +46,6 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
   const updateDraftItem = usePrescriptionDraftStore((s) => s.updateItem);
   const removeDraftItem = usePrescriptionDraftStore((s) => s.removeItem);
-
-  // Analog-pick mode — when the pharmacist clicked "Привязать аналог" on a
-  // draft line and is now scanning the catalog for a substitute. While
-  // active, "+" attaches the chosen medicine as the analog instead of
-  // adding it as a new draft item.
-  const analogTarget = useAnalogTargetStore((s) => s.target);
-  const clearAnalogTarget = useAnalogTargetStore((s) => s.clear);
 
   // Hold onto the image refs (not pre-built URLs) so we can emit a srcSet
   // alongside src — the browser then picks 480w for normal screens and 800w
@@ -111,22 +103,6 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
 
   function onAdd(e: React.MouseEvent) {
     stop(e);
-    // Analog-pick mode wins over both regular cart-add and pharmacist-draft-
-    // add: write the chosen medicine into the source draft item as the
-    // analog and bounce back to /pharmacist/cart.
-    if (isPharmacist && analogTarget) {
-      // Don't pin to the original itself — domain rejects analog == original.
-      if (analogTarget.sourceMedicineId && analogTarget.sourceMedicineId === medicine.id) {
-        return;
-      }
-      updateDraftItem(analogTarget.prescriptionId, analogTarget.draftId, {
-        analogMedicineId: medicine.id,
-        analogTitle: getMedicineDisplayName(medicine),
-      });
-      clearAnalogTarget();
-      router.push("/pharmacist/cart");
-      return;
-    }
     if (isPharmacist) {
       if (!activePrescriptionId) { openPicker(); return; }
       addToDraft(activePrescriptionId, {

@@ -121,26 +121,54 @@ function PharmacySelectPageInner() {
           setPharmacies(pharms);
           const found = all.find((p) => p.prescriptionId === prescriptionId) ?? null;
           setPrescription(found);
-          // Pull the client-edited quantity overrides the prescription detail
-          // page persisted to sessionStorage. Falls back to the pharmacist's
-          // recommended count for any item the client didn't touch.
+          // Pull client-edited quantity overrides AND pair selections from
+          // the prescription detail page. Both live in localStorage so
+          // edits survive tab close. Reads the legacy sessionStorage qty
+          // row first so users mid-flight from an older build don't lose
+          // their edits.
           let overrides: Record<string, number> = {};
+          let pairSel: Record<string, string> = {};
           try {
-            const raw = sessionStorage.getItem(`yalla.prescription.qty.${prescriptionId}`);
-            if (raw) overrides = JSON.parse(raw);
+            const qtyKey = `yalla.prescription.qty.${prescriptionId}`;
+            const rawQty = localStorage.getItem(qtyKey) ?? sessionStorage.getItem(qtyKey);
+            if (rawQty) overrides = JSON.parse(rawQty);
+            const rawPair = localStorage.getItem(`yalla.prescription.pair.${prescriptionId}`);
+            if (rawPair) pairSel = JSON.parse(rawPair);
           } catch { /* ignore */ }
-          const drafts = (found?.items ?? [])
-            .filter((it) => !!it.medicineId)
-            .map((it) => ({
-              medicineId: it.medicineId as string,
-              // Override of 0 = client deliberately removed; effective qty 0
-              // gets filtered out below so the item never reaches pharmacy
-              // options or checkout. `in` differentiates "no override" from
-              // "override = 0" so we don't accidentally fall back to the
-              // pharmacist recommendation when 0 was explicitly chosen.
-              quantity: it.id in overrides ? overrides[it.id] : it.quantity,
-            }))
-            .filter((d) => d.quantity > 0);
+
+          // Resolve pairs to a single chosen-side entry. Default selection
+          // = analog. The original is hidden when the analog is chosen
+          // (and vice-versa). Mirrors the backend's MoveChecklistToCart
+          // logic so explicit-checkout (this path) and basket-flow agree.
+          const allItems = found?.items ?? [];
+          const itemsById = new Map(allItems.map((i) => [i.id, i]));
+          const analogIds = new Set(allItems.filter((i) => i.analogItemId).map((i) => i.analogItemId as string));
+          const drafts: Array<{ medicineId: string; quantity: number }> = [];
+          for (const it of allItems) {
+            if (analogIds.has(it.id)) continue; // counted via pair-original
+            let chosen = it;
+            if (it.analogItemId) {
+              const analog = itemsById.get(it.analogItemId);
+              if (analog) {
+                const pickedId = pairSel[it.id];
+                const preferAnalog = pickedId !== it.id;
+                const candidate = preferAnalog ? analog : it;
+                const fallback = preferAnalog ? it : analog;
+                const candidateQty = candidate.id in overrides ? overrides[candidate.id] : candidate.quantity;
+                if (candidate.medicineId && candidateQty > 0) {
+                  chosen = candidate;
+                } else {
+                  const fallbackQty = fallback.id in overrides ? overrides[fallback.id] : fallback.quantity;
+                  if (fallback.medicineId && fallbackQty > 0) chosen = fallback;
+                  else continue;
+                }
+              }
+            }
+            if (!chosen.medicineId) continue;
+            const qty = chosen.id in overrides ? overrides[chosen.id] : chosen.quantity;
+            if (qty <= 0) continue;
+            drafts.push({ medicineId: chosen.medicineId, quantity: qty });
+          }
           setPrescriptionItems(drafts);
           // Pharmacy options are computed without touching the basket — same
           // endpoint anonymous guests use.
@@ -437,7 +465,7 @@ function PharmacySelectPageInner() {
             stays interactive without click-stealing. */}
         <aside
           className={`absolute z-30 flex flex-col bg-surface-container-low overflow-hidden shadow-glass transition-transform duration-300 ease-in-out
-            inset-x-0 bottom-0 max-h-[80vh] rounded-t-2xl
+            inset-x-0 bottom-0 max-h-full rounded-t-2xl
             md:inset-y-0 md:left-0 md:right-auto md:bottom-auto md:max-h-none md:w-[420px] md:rounded-t-none lg:w-[460px]
             ${isPanelCollapsed
               ? "translate-y-full md:-translate-x-full md:translate-y-0 pointer-events-none"
@@ -479,22 +507,29 @@ function PharmacySelectPageInner() {
               aria-label="Скрыть список аптек"
               title="Скрыть список"
             >
-              <Icon name="chevron-up" size={16} className="md:hidden" />
+              {/* Chevron points in the direction the panel will move on
+                  click — down on phones (panel slides down to reveal the
+                  map) and left on desktop (panel slides off-screen left).
+                  The previous "up" arrow read as "expand panel" which is
+                  the opposite of what the click does. */}
+              <Icon name="chevron-down" size={16} className="md:hidden" />
               <Icon name="chevron-left" size={16} className="hidden md:block" />
             </button>
           </div>
 
-          {/* Cards list — pb-24 leaves bottom breathing room so when the user
-              expands the LAST pharmacy's items, the new content has room to
-              scroll into view rather than being clipped against the panel
-              edge (or the iOS bottom-safe-area on phones). */}
+          {/* Cards list — bottom padding stacks fixed pb-32 (8rem) on top of
+              env(safe-area-inset-bottom) so the iPhone home indicator and any
+              browser UI overlap (collapsing URL bar) never clip the LAST
+              pharmacy card / its expanded item rows. The earlier pb-24 was
+              just enough on average phones but routinely cut a row off on
+              shorter / split-screen sessions. */}
           <div className="flex-1 overflow-y-auto overscroll-contain">
           {filteredOptions.length === 0 ? (
             <div className="p-6 text-center text-sm text-on-surface-variant">
               Нет доступных аптек для вашей корзины.
             </div>
           ) : (
-            <div className="space-y-2 p-3 pb-24">
+            <div className="space-y-2 p-3 pb-32 [padding-bottom:calc(8rem+env(safe-area-inset-bottom))]">
               {filteredOptions.map((option) => {
                 const geo = pharmacyGeo[option.pharmacyId];
                 const resolvedAddress =
@@ -681,7 +716,10 @@ function PharmacySelectPageInner() {
               className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95
                 right-3 top-3 md:left-3 md:right-auto"
             >
-              <Icon name="chevron-down" size={16} className="md:hidden" />
+              {/* Chevron points in the direction the panel will move on
+                  click — up on phones (panel rises from the bottom) and
+                  right on desktop (panel slides in from the left). */}
+              <Icon name="chevron-up" size={16} className="md:hidden" />
               <Icon name="chevron-right" size={16} className="hidden md:block" />
               <span>Список аптек</span>
             </button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
   getMyPrescriptions,
@@ -23,6 +23,7 @@ export default function PrescriptionDetailPage() {
   const params = useParams<{ id: string }>();
   const id = String(params?.id || "");
   const router = useRouter();
+  const searchParams = useSearchParams();
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const hydrated = useAppSelector((s) => s.auth.hydrated);
@@ -34,26 +35,55 @@ export default function PrescriptionDetailPage() {
   const [medicineCache, setMedicineCache] = useState<Record<string, ApiMedicine>>({});
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   // Client-edited per-item quantities. Keyed by `PrescriptionChecklistItem.id`.
-  // Persisted to sessionStorage so a tab refresh / nav back doesn't lose the
-  // edits. /cart/pharmacy reads the same key when entering prescription mode,
-  // and `moveChecklistToCart` posts the same map as `quantityOverrides` to
-  // the backend so "В корзину" respects the client's edits too.
+  // Persisted to localStorage so the edits survive tab close / browser
+  // restart (sessionStorage was per-tab, which surprised clients who
+  // returned later expecting their checklist cart). /cart/pharmacy reads
+  // the same key when entering prescription mode, and `moveChecklistToCart`
+  // posts the same map as `quantityOverrides` to the backend so "В корзину"
+  // respects the client's edits too.
   const [editedQty, setEditedQty] = useState<Record<string, number>>({});
+  // Pair selections: key = original (pair-anchor) item id, value = chosen
+  // side's item id (either the original itself or its analog). Default
+  // when missing = analog. Persisted alongside qty overrides so the
+  // client's choice survives reload + tab close.
+  const [pairSelections, setPairSelections] = useState<Record<string, string>>({});
   const overridesStorageKey = `yalla.prescription.qty.${id}`;
+  const pairStorageKey = `yalla.prescription.pair.${id}`;
   useEffect(() => {
     if (typeof window === "undefined" || !id) return;
     try {
-      const raw = sessionStorage.getItem(overridesStorageKey);
+      // Migrate legacy sessionStorage rows from older builds — read once,
+      // upgrade to localStorage, then drop the session copy. Idempotent on
+      // subsequent loads.
+      const legacy = sessionStorage.getItem(overridesStorageKey);
+      if (legacy) {
+        localStorage.setItem(overridesStorageKey, legacy);
+        sessionStorage.removeItem(overridesStorageKey);
+      }
+      const raw = localStorage.getItem(overridesStorageKey);
       if (raw) setEditedQty(JSON.parse(raw));
+      const rawPair = localStorage.getItem(pairStorageKey);
+      if (rawPair) setPairSelections(JSON.parse(rawPair));
     } catch { /* ignore */ }
-  }, [id, overridesStorageKey]);
+  }, [id, overridesStorageKey, pairStorageKey]);
   function persistEditedQty(next: Record<string, number>) {
     setEditedQty(next);
     if (typeof window === "undefined") return;
     try {
-      if (Object.keys(next).length === 0) sessionStorage.removeItem(overridesStorageKey);
-      else sessionStorage.setItem(overridesStorageKey, JSON.stringify(next));
+      if (Object.keys(next).length === 0) localStorage.removeItem(overridesStorageKey);
+      else localStorage.setItem(overridesStorageKey, JSON.stringify(next));
     } catch { /* ignore */ }
+  }
+  function persistPairSelections(next: Record<string, string>) {
+    setPairSelections(next);
+    if (typeof window === "undefined") return;
+    try {
+      if (Object.keys(next).length === 0) localStorage.removeItem(pairStorageKey);
+      else localStorage.setItem(pairStorageKey, JSON.stringify(next));
+    } catch { /* ignore */ }
+  }
+  function setPairChoice(originalId: string, chosenId: string) {
+    persistPairSelections({ ...pairSelections, [originalId]: chosenId });
   }
   // Effective quantity = client override (including 0 = "removed") OR the
   // pharmacist's recommendation. Note: 0 is a valid override — the item is
@@ -116,28 +146,88 @@ export default function PrescriptionDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prescription?.prescriptionId, prescription?.items.length]);
 
+  // Pair-aware totals: for every paired original we count only the chosen
+  // side (analog by default). A pair where neither side has offers and no
+  // valid qty contributes nothing. Singletons behave as before.
   const checklistTotals = useMemo(() => {
     if (!prescription) return { available: 0, unavailable: 0, manual: 0, totalCost: 0 };
-    let available = 0, unavailable = 0, manual = 0, totalCost = 0;
-    for (const it of prescription.items) {
-      if (!it.medicineId) { manual++; continue; }
-      const med = medicineCache[it.medicineId];
+
+    const itemsById = new Map(prescription.items.map((i) => [i.id, i]));
+    const analogIds = new Set(
+      prescription.items.filter((i) => i.analogItemId).map((i) => i.analogItemId as string),
+    );
+
+    function eligibility(it: ApiPrescription["items"][number]) {
+      const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
       const offerCount = med?.offers?.length ?? 0;
       const price = getCheapestPrice(med ?? undefined);
-      // Effective qty respects client edits, INCLUDING explicit 0 ("removed").
-      // Removed positions don't count toward the available/total pill — they
-      // also won't be sent to the cart or checkout.
       const effectiveQty = it.id in editedQty ? editedQty[it.id] : it.quantity;
-      if (effectiveQty <= 0) continue;
-      if (offerCount > 0 && price) {
+      const isManual = !it.medicineId;
+      const hasOffers = !isManual && offerCount > 0 && !!price;
+      return {
+        isManual,
+        hasOffers,
+        effectiveQty,
+        price: price ?? 0,
+      };
+    }
+
+    let available = 0, unavailable = 0, manual = 0, totalCost = 0;
+    for (const it of prescription.items) {
+      if (analogIds.has(it.id)) continue; // counted via its pair-original
+
+      // For paired items, walk to the chosen side (or default = analog).
+      let chosen = it;
+      if (it.analogItemId) {
+        const analog = itemsById.get(it.analogItemId);
+        if (analog) {
+          const pickedId = pairSelections[it.id];
+          const preferAnalog = pickedId !== it.id;
+          const chosenCandidate = preferAnalog ? analog : it;
+          const otherCandidate = preferAnalog ? it : analog;
+          const ec = eligibility(chosenCandidate);
+          if (ec.hasOffers && ec.effectiveQty > 0) {
+            chosen = chosenCandidate;
+          } else {
+            const eo = eligibility(otherCandidate);
+            if (eo.hasOffers && eo.effectiveQty > 0) {
+              chosen = otherCandidate;
+            } else {
+              if (ec.isManual && eo.isManual) manual++;
+              else unavailable++;
+              continue;
+            }
+          }
+        }
+      }
+
+      const e = eligibility(chosen);
+      if (e.isManual) { manual++; continue; }
+      if (e.effectiveQty <= 0) continue;
+      if (e.hasOffers) {
         available++;
-        totalCost += price * effectiveQty;
+        totalCost += e.price * e.effectiveQty;
       } else {
         unavailable++;
       }
     }
     return { available, unavailable, manual, totalCost };
-  }, [prescription, medicineCache, editedQty]);
+  }, [prescription, medicineCache, editedQty, pairSelections]);
+
+  // Build a stable "open product modal" callback per item — pushes
+  // ?product=<slug-or-id> which the global ProductModal listens to. We
+  // prefer slug (SEO-friendly URL) and fall back to id when the cached
+  // medicine row has no slug yet (e.g. brand-new product before backfill).
+  function openDetailsFor(it: ApiPrescription["items"][number]): (() => void) | undefined {
+    if (!it.medicineId) return undefined;
+    const med = medicineCache[it.medicineId];
+    const target = med?.slug || it.medicineId;
+    return () => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("product", target);
+      router.push(`?${params.toString()}`, { scroll: false });
+    };
+  }
 
   // "Оформить заказ" — direct prescription-checkout flow. The prescription's
   // items go straight into pharmacy selection without ever touching the
@@ -167,7 +257,7 @@ export default function PrescriptionDetailPage() {
       const result = await moveChecklistToCart(
         token,
         prescription.prescriptionId,
-        editedQty,
+        { quantityOverrides: editedQty, pairSelections },
       );
       if (result.movedItemsCount === 0) {
         setError("Нечего перемещать — у позиций нет офферов.");
@@ -343,129 +433,70 @@ export default function PrescriptionDetailPage() {
                 </div>
 
                 <ul className="space-y-2">
-                  {prescription.items.map((it) => {
-                    const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
-                    const offerCount = med?.offers?.length ?? 0;
-                    const minPrice = getCheapestPrice(med ?? undefined);
-                    const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
-                    const title = it.manualMedicineName
-                      ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
-                    const isManual = !it.medicineId;
-                    const noOffers = !isManual && offerCount === 0;
-                    // qty=0 means the client deliberately removed the item;
-                    // it's kept on the page (with reduced opacity) so they can
-                    // bring it back, but it won't go to cart/checkout.
-                    const effective = !isManual && !noOffers
-                      ? getEffectiveQty(it.id, it.quantity)
-                      : it.quantity;
-                    const removed = effective <= 0;
-
-                    return (
-                      <li
-                        key={it.id}
-                        className={`flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:gap-4 xs:p-4 transition ${
-                          isManual || noOffers ? "ring-1 ring-secondary/30" : ""
-                        } ${removed ? "opacity-50" : ""}`}
-                      >
-                        <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
-                          {imgUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
-                              <Icon name="pharmacy" size={20} />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="line-clamp-2 text-sm font-bold leading-tight">
-                            {title}
-                          </p>
-                          {isManual ? (
-                            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
-                              Нет в каталоге — недоступно для онлайн-заказа
-                            </p>
-                          ) : noOffers ? (
-                            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
-                              Нет в наличии в аптеках сейчас
-                            </p>
-                          ) : (
-                            <p className="mt-0.5 text-[11px] text-on-surface-variant">
-                              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
-                              {offerCount > 0 ? <span> · в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}</span> : null}
-                            </p>
-                          )}
-                          {it.pharmacistComment ? (
-                            <p className="mt-1 line-clamp-2 text-[11px] text-on-surface-variant">
-                              {it.pharmacistComment}
-                            </p>
-                          ) : null}
-                        </div>
-
-                        <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                          {!isManual && !noOffers && prescription.status === "Decoded" ? (
-                            // Editable stepper — only for orderable items
-                            // (catalog-bound + has offers). Going from 1 → 0
-                            // (or pressing the dedicated × button) "removes"
-                            // the item — the row dims and qty=0 is sent to
-                            // backend / cart so it's excluded from the order.
-                            // The "Рек.: N" sub-label always shows the
-                            // pharmacist's original recommendation so the
-                            // client can compare before/after their edits.
-                            (() => {
-                              const recDiff = effective !== it.quantity;
-                              return (
-                                <>
-                                  <div className="flex items-center gap-1">
-                                    <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setItemQty(it.id, it.quantity, effective - 1)}
-                                        disabled={effective <= 0}
-                                        className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40"
-                                        aria-label="Меньше"
-                                      >
-                                        <Icon name="minus" size={14} />
-                                      </button>
-                                      <span className="min-w-[1.5rem] text-center text-xs font-extrabold tabular-nums">
-                                        {effective}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => setItemQty(it.id, it.quantity, effective + 1)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
-                                        aria-label="Больше"
-                                      >
-                                        <Icon name="plus" size={14} />
-                                      </button>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => setItemQty(it.id, it.quantity, 0)}
-                                      disabled={effective === 0}
-                                      title={effective === 0 ? "Позиция удалена — нажмите +, чтобы вернуть" : "Убрать позицию из заказа"}
-                                      className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
-                                      aria-label="Убрать позицию"
-                                    >
-                                      <Icon name="close" size={14} />
-                                    </button>
-                                  </div>
-                                  <span className={`text-[10px] tabular-nums ${recDiff ? "font-bold text-secondary" : "text-on-surface-variant"}`}>
-                                    Рек.: {it.quantity}
-                                  </span>
-                                </>
-                              );
-                            })()
-                          ) : (
-                            <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-xs font-extrabold tabular-nums">
-                              ×{it.quantity}
-                            </span>
-                          )}
-                        </div>
-                      </li>
+                  {(() => {
+                    // Same pair-folding logic as the pharmacist cart: hide
+                    // items that are some other row's analog from the flat
+                    // list — they render INSIDE the pair's combined block.
+                    const itemsById = new Map(prescription.items.map((i) => [i.id, i]));
+                    const analogIds = new Set(
+                      prescription.items.filter((i) => i.analogItemId).map((i) => i.analogItemId as string),
                     );
-                  })}
+                    return prescription.items.map((it) => {
+                      if (analogIds.has(it.id)) return null;
+                      const analog = it.analogItemId ? itemsById.get(it.analogItemId) ?? null : null;
+                      if (analog) {
+                        const editable = prescription.status === "Decoded";
+                        const selectedId = pairSelections[it.id] ?? analog.id;
+                        return (
+                          <li
+                            key={it.id}
+                            className="rounded-2xl border-2 border-primary/40 bg-primary-soft p-2 shadow-card"
+                          >
+                            <p className="mb-1 px-2 pt-1 text-[10px] font-extrabold uppercase tracking-wider text-primary">
+                              Пара (аналог рекомендуется)
+                            </p>
+                            <PairSideRow
+                              role="analog"
+                              item={analog}
+                              isSelected={selectedId === analog.id}
+                              editable={editable}
+                              medicineCache={medicineCache}
+                              getEffectiveQty={getEffectiveQty}
+                              onSelect={editable ? () => setPairChoice(it.id, analog.id) : undefined}
+                              onSetQty={(qty) => setItemQty(analog.id, analog.quantity, qty)}
+                              onOpenDetails={openDetailsFor(analog)}
+                            />
+                            <div className="mx-2 my-1 h-px bg-primary/30" />
+                            <PairSideRow
+                              role="original"
+                              item={it}
+                              isSelected={selectedId === it.id}
+                              editable={editable}
+                              medicineCache={medicineCache}
+                              getEffectiveQty={getEffectiveQty}
+                              onSelect={editable ? () => setPairChoice(it.id, it.id) : undefined}
+                              onSetQty={(qty) => setItemQty(it.id, it.quantity, qty)}
+                              onOpenDetails={openDetailsFor(it)}
+                            />
+                          </li>
+                        );
+                      }
+                      // Singleton — flat row layout with the same comment +
+                      // details affordances as a pair side. Extracted to a
+                      // component so commentOpen state is per-row.
+                      return (
+                        <SingletonRow
+                          key={it.id}
+                          item={it}
+                          editable={prescription.status === "Decoded"}
+                          medicineCache={medicineCache}
+                          getEffectiveQty={getEffectiveQty}
+                          onSetQty={(qty) => setItemQty(it.id, it.quantity, qty)}
+                          onOpenDetails={openDetailsFor(it)}
+                        />
+                      );
+                    });
+                  })()}
                 </ul>
 
                 {prescription.status === "Decoded" ? (
@@ -522,5 +553,370 @@ export default function PrescriptionDetailPage() {
       </div>
       <AuthedImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </AppShell>
+  );
+}
+
+/* ===================================================================
+   PairSideRow — one half of a paired (analog ↔ original) checklist
+   block on the client's prescription detail. The whole row is a button
+   when the prescription is editable so tapping anywhere on a side
+   selects it. The radio dot left of the image mirrors selection state;
+   ineligible sides (manual entry / no offers / qty=0) render greyed
+   out and the "Выбрать" affordance is suppressed — the order falls
+   back to the OTHER side automatically.
+   =================================================================== */
+function PairSideRow({
+  role,
+  item,
+  isSelected,
+  editable,
+  medicineCache,
+  getEffectiveQty,
+  onSelect,
+  onSetQty,
+  onOpenDetails,
+}: {
+  role: "analog" | "original";
+  item: ApiPrescription["items"][number];
+  isSelected: boolean;
+  editable: boolean;
+  medicineCache: Record<string, ApiMedicine>;
+  getEffectiveQty: (itemId: string, recommended: number) => number;
+  onSelect?: () => void;
+  onSetQty: (qty: number) => void;
+  onOpenDetails?: () => void;
+}) {
+  const med = item.medicineId ? medicineCache[item.medicineId] : undefined;
+  const offerCount = med?.offers?.length ?? 0;
+  const minPrice = getCheapestPrice(med ?? undefined);
+  const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+  const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
+  const isManual = !item.medicineId;
+  const noOffers = !isManual && offerCount === 0;
+  const effective = !isManual && !noOffers ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const removed = effective <= 0;
+  const ineligible = isManual || noOffers;
+  const [commentOpen, setCommentOpen] = useState(false);
+
+  return (
+    <div
+      className={`rounded-2xl p-3 transition ${
+        isSelected
+          ? "bg-surface-container-lowest ring-2 ring-primary"
+          : "bg-surface-container-lowest/80"
+      } ${removed ? "opacity-60" : ""}`}
+    >
+      <div className="flex items-center gap-3">
+        {/* Radio (left of image). Disabled visually for ineligible sides. */}
+        <button
+          type="button"
+          onClick={onSelect}
+          disabled={!editable || ineligible}
+          aria-label={isSelected ? "Выбрано" : "Выбрать"}
+          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border-2 transition ${
+            isSelected ? "border-primary bg-primary" : "border-outline bg-surface-container-lowest"
+          } ${!editable || ineligible ? "cursor-not-allowed opacity-30" : "hover:border-primary"}`}
+        >
+          {isSelected ? <Icon name="check" size={12} className="text-white" /> : null}
+        </button>
+
+        <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
+          {imgUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
+              <Icon name="pharmacy" size={18} />
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-[10px] font-extrabold uppercase tracking-wider ${
+                role === "analog" ? "text-primary" : "text-on-surface-variant"
+              }`}
+            >
+              {role === "analog" ? "Аналог" : "Оригинал"}
+            </span>
+            {ineligible ? (
+              <span className="rounded-full bg-secondary-soft px-2 py-0.5 text-[10px] font-bold text-secondary">
+                Недоступно
+              </span>
+            ) : null}
+          </div>
+          {role === "analog" ? (
+            <p className="text-[10px] font-semibold leading-tight text-primary/80">
+              Рекомендация фармацевта по вашим запросам
+            </p>
+          ) : null}
+          <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>
+          {ineligible ? (
+            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+              {isManual ? "Нет в каталоге" : "Нет офферов"}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
+              {offerCount > 0 ? (
+                <span>
+                  {" "}· в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}
+                </span>
+              ) : null}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-shrink-0 flex-col items-end gap-1">
+          {editable && !ineligible ? (
+            <>
+              <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onSetQty(effective - 1)}
+                    disabled={effective <= 0}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40"
+                    aria-label="Меньше"
+                  >
+                    <Icon name="minus" size={14} />
+                  </button>
+                  <span className="min-w-[1.5rem] text-center text-xs font-extrabold tabular-nums">
+                    {effective}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSetQty(effective + 1)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+                    aria-label="Больше"
+                  >
+                    <Icon name="plus" size={14} />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSetQty(0)}
+                  disabled={effective === 0}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
+                  aria-label="Убрать"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+              {effective !== item.quantity ? (
+                <span className="text-[10px] font-bold tabular-nums text-secondary">
+                  Рек.: {item.quantity}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-xs font-extrabold tabular-nums">
+              ×{item.quantity}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <ItemRowFooter
+        item={item}
+        commentOpen={commentOpen}
+        onToggleComment={() => setCommentOpen((v) => !v)}
+        onOpenDetails={onOpenDetails}
+        canOpenDetails={!isManual}
+      />
+    </div>
+  );
+}
+
+/* ===================================================================
+   SingletonRow — one prescription checklist line that has no analog
+   pair. Mirrors PairSideRow's footer affordances (Комментарий + Подробно)
+   so client-side interactions feel consistent regardless of whether the
+   line happens to be paired or not.
+   =================================================================== */
+function SingletonRow({
+  item,
+  editable,
+  medicineCache,
+  getEffectiveQty,
+  onSetQty,
+  onOpenDetails,
+}: {
+  item: ApiPrescription["items"][number];
+  editable: boolean;
+  medicineCache: Record<string, ApiMedicine>;
+  getEffectiveQty: (itemId: string, recommended: number) => number;
+  onSetQty: (qty: number) => void;
+  onOpenDetails?: () => void;
+}) {
+  const med = item.medicineId ? medicineCache[item.medicineId] : undefined;
+  const offerCount = med?.offers?.length ?? 0;
+  const minPrice = getCheapestPrice(med ?? undefined);
+  const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+  const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
+  const isManual = !item.medicineId;
+  const noOffers = !isManual && offerCount === 0;
+  const effective = !isManual && !noOffers ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const removed = effective <= 0;
+  const recDiff = effective !== item.quantity;
+  const [commentOpen, setCommentOpen] = useState(false);
+  return (
+    <li
+      className={`rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:p-4 transition ${
+        isManual || noOffers ? "ring-1 ring-secondary/30" : ""
+      } ${removed ? "opacity-50" : ""}`}
+    >
+      <div className="flex items-center gap-3 xs:gap-4">
+        <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
+          {imgUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
+              <Icon name="pharmacy" size={20} />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>
+          {isManual ? (
+            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+              Нет в каталоге — недоступно для онлайн-заказа
+            </p>
+          ) : noOffers ? (
+            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+              Нет в наличии в аптеках сейчас
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
+              {offerCount > 0 ? (
+                <span>
+                  {" "}· в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}
+                </span>
+              ) : null}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-shrink-0 flex-col items-end gap-1">
+          {!isManual && !noOffers && editable ? (
+            <>
+              <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onSetQty(effective - 1)}
+                    disabled={effective <= 0}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40"
+                    aria-label="Меньше"
+                  >
+                    <Icon name="minus" size={14} />
+                  </button>
+                  <span className="min-w-[1.5rem] text-center text-xs font-extrabold tabular-nums">
+                    {effective}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSetQty(effective + 1)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+                    aria-label="Больше"
+                  >
+                    <Icon name="plus" size={14} />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSetQty(0)}
+                  disabled={effective === 0}
+                  title={effective === 0 ? "Позиция удалена — нажмите +, чтобы вернуть" : "Убрать позицию из заказа"}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
+                  aria-label="Убрать позицию"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+              <span className={`text-[10px] tabular-nums ${recDiff ? "font-bold text-secondary" : "text-on-surface-variant"}`}>
+                Рек.: {item.quantity}
+              </span>
+            </>
+          ) : (
+            <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-xs font-extrabold tabular-nums">
+              ×{item.quantity}
+            </span>
+          )}
+        </div>
+      </div>
+      <ItemRowFooter
+        item={item}
+        commentOpen={commentOpen}
+        onToggleComment={() => setCommentOpen((v) => !v)}
+        onOpenDetails={onOpenDetails}
+        canOpenDetails={!isManual}
+      />
+    </li>
+  );
+}
+
+/* ===================================================================
+   ItemRowFooter — small action row under any prescription checklist
+   item (singleton or pair side). Two affordances: "Комментарий" toggles
+   the pharmacist's per-item note, "Подробно" pushes ?product=<slug>
+   to open the global ProductModal. Comment button is hidden when there
+   is no comment to show. Details button is hidden for manual entries
+   (no catalog entry to open).
+   =================================================================== */
+function ItemRowFooter({
+  item,
+  commentOpen,
+  onToggleComment,
+  onOpenDetails,
+  canOpenDetails,
+}: {
+  item: ApiPrescription["items"][number];
+  commentOpen: boolean;
+  onToggleComment: () => void;
+  onOpenDetails?: () => void;
+  canOpenDetails: boolean;
+}) {
+  const hasComment = !!item.pharmacistComment;
+  if (!hasComment && !canOpenDetails) return null;
+  return (
+    <>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {hasComment ? (
+          <button
+            type="button"
+            onClick={onToggleComment}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+              commentOpen
+                ? "bg-primary text-white"
+                : "bg-surface-container-low text-on-surface hover:bg-image-backdrop"
+            }`}
+          >
+            <Icon name="orders" size={12} />
+            {commentOpen ? "Скрыть комментарий" : "Комментарий"}
+          </button>
+        ) : null}
+        {canOpenDetails && onOpenDetails ? (
+          <button
+            type="button"
+            onClick={onOpenDetails}
+            className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1 text-[11px] font-semibold text-on-surface transition hover:bg-image-backdrop"
+          >
+            <Icon name="search" size={12} />
+            Подробно
+          </button>
+        ) : null}
+      </div>
+      {hasComment && commentOpen ? (
+        <div className="mt-2 rounded-xl bg-primary-soft p-2.5">
+          <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+            Комментарий фармацевта
+          </p>
+          <p className="text-xs leading-relaxed text-on-surface">{item.pharmacistComment}</p>
+        </div>
+      ) : null}
+    </>
   );
 }

@@ -1141,6 +1141,10 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AnalogItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("analog_item_id");
+
                     b.Property<Guid?>("AnalogMedicineId")
                         .HasColumnType("uuid")
                         .HasColumnName("analog_medicine_id");
@@ -1178,6 +1182,10 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnName("quantity");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AnalogItemId")
+                        .HasDatabaseName("ix_prescription_checklist_items_analog_item_id")
+                        .HasFilter("analog_item_id IS NOT NULL");
 
                     b.HasIndex("AnalogMedicineId")
                         .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id")

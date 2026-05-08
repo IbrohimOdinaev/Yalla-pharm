@@ -7,7 +7,6 @@ import { getAllMedicines } from "@/entities/medicine/admin-api";
 import { getCategories } from "@/entities/category/api";
 import type { ApiCategory, ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
-import { useAnalogTargetStore } from "@/features/pharmacist/model/analogTargetStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { CategoryTile, type CategoryTilePalette } from "@/widgets/catalog/CategoryTile";
 import { type CategoryIconKey } from "@/widgets/catalog/CategoryIcon";
@@ -113,46 +112,10 @@ export default function PharmacistCatalogPage() {
     [totalCount]
   );
 
-  const analogTarget = useAnalogTargetStore((s) => s.target);
-  const clearAnalogTarget = useAnalogTargetStore((s) => s.clear);
-
   return (
     <PharmacistShell>
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
-        {/* Analog-pick mode — banner at the top tells the pharmacist what
-            they're picking an analog for. Clicking the "+" on any catalog
-            card will write the chosen medicine into the source line as the
-            analog and bounce back to /pharmacist/cart. */}
-        {analogTarget ? (
-          <div className="sticky top-0 z-20 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary-soft p-3 shadow-card">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                <path d="M9 12l2 2 4-4" />
-              </svg>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                Привязка аналога
-              </p>
-              <p className="truncate text-sm font-bold text-on-surface">
-                Ищем аналог для: {analogTarget.sourceTitle}
-              </p>
-              <p className="text-[11px] text-on-surface-variant">
-                Следующий выбранный препарат станет аналогом этой позиции.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => { clearAnalogTarget(); router.push("/pharmacist/cart"); }}
-              className="flex-shrink-0 rounded-full bg-surface-container-lowest px-3 py-1.5 text-xs font-bold text-on-surface transition hover:bg-surface-container"
-            >
-              Отменить
-            </button>
-          </div>
-        ) : null}
-
-        {!activeId && !analogTarget ? (
+        {!activeId ? (
           <div className="rounded-2xl bg-warning-soft p-3 text-xs text-on-surface">
             Активный рецепт не выбран — нажмите «Выбрать рецепт» в шапке, чтобы класть препараты в корзину.
           </div>

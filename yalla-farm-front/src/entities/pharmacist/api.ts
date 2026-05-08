@@ -62,8 +62,11 @@ export type DecodePrescriptionItemInput = {
   pharmacistComment?: string | null;
   /** 0 = Original (default), 1 = Undecoded. */
   kind?: number;
-  /** Optional cheaper substitute id from the catalog. */
-  analogMedicineId?: string | null;
+  /** Index of the analog item in the same `items` array (0-based). When
+   *  set, this item is the "original" of a pair and the referenced
+   *  sibling becomes the analog. Server resolves indices to GUIDs after
+   *  creating the rows. Self-reference / cycles / out-of-bounds rejected. */
+  analogIndex?: number | null;
 };
 
 export async function submitChecklist(
