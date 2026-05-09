@@ -5,7 +5,12 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import { getGuestBasketPreview } from "@/entities/basket/api";
-import { getMyPrescriptions, type ApiPrescription } from "@/entities/prescription/api";
+import {
+  getMyPrescriptions,
+  getPrescriptionPharmacyOptions,
+  type ApiPrescription,
+  type ApiPrescriptionPharmacyOption,
+} from "@/entities/prescription/api";
 import type { ApiMedicine, ApiBasketPharmacyOption, ApiBasketPharmacyItem } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useAppSelector } from "@/shared/lib/redux";
@@ -27,6 +32,38 @@ import dynamic from "next/dynamic";
 type PharmacySort = "cheapest" | "most-positions";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
+
+/** Map prescription-side pharmacy option to the basket-side shape this
+ *  page already understands. Manual lookup items contribute their
+ *  per-pharmacy shadow medicineId so explicit checkout (Source.Positions)
+ *  can submit them as ordinary entries. Items the pharmacy can't fulfil
+ *  (no resolved medicineId) are dropped — the cart-style row needs an id
+ *  to render and to add to the order. */
+function adaptPrescriptionPharmacyOption(
+  p: ApiPrescriptionPharmacyOption,
+): ApiBasketPharmacyOption {
+  return {
+    pharmacyId: p.pharmacyId,
+    pharmacyTitle: p.pharmacyTitle,
+    pharmacyIsActive: p.pharmacyIsActive,
+    isAvailable: p.isAvailable,
+    totalCost: p.totalCost,
+    foundMedicinesCount: p.foundItemsCount,
+    totalMedicinesCount: p.totalItemsCount,
+    enoughQuantityMedicinesCount: p.enoughQuantityItemsCount,
+    foundMedicinesRatio: `${p.foundItemsCount}/${p.totalItemsCount}`,
+    items: p.items
+      .filter((i) => !!i.medicineId)
+      .map((i) => ({
+        medicineId: i.medicineId!,
+        requestedQuantity: i.requestedQuantity,
+        isFound: i.isFound,
+        foundQuantity: i.foundQuantity,
+        hasEnoughQuantity: i.hasEnoughQuantity,
+        price: i.price ?? null,
+      })),
+  };
+}
 
 export default function PharmacySelectPage() {
   // useSearchParams must live under a Suspense boundary for static export
@@ -170,9 +207,19 @@ function PharmacySelectPageInner() {
             drafts.push({ medicineId: chosen.medicineId, quantity: qty });
           }
           setPrescriptionItems(drafts);
-          // Pharmacy options are computed without touching the basket — same
-          // endpoint anonymous guests use.
-          if (drafts.length > 0) {
+          // Use the prescription-aware pharmacy-options endpoint instead
+          // of the generic basket preview — it resolves manual lookup
+          // items via shadow medicines server-side, so a pharmacy that
+          // only answered the manual lookup still shows up in the
+          // picker with the right coverage and total.
+          const presOpts = await getPrescriptionPharmacyOptions(token, prescriptionId)
+            .catch(() => null);
+          if (presOpts && presOpts.pharmacyOptions.length > 0) {
+            setPrescriptionOptions(presOpts.pharmacyOptions.map(adaptPrescriptionPharmacyOption));
+          } else if (drafts.length > 0) {
+            // Fallback: if the prescription endpoint failed (e.g. no
+            // checklist yet), fall back to the catalog-only preview so
+            // the page still renders something usable.
             const opts = await getGuestBasketPreview(drafts).catch(() => [] as ApiBasketPharmacyOption[]);
             setPrescriptionOptions(opts);
           } else {
