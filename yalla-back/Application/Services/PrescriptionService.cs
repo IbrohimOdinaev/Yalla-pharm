@@ -223,11 +223,13 @@ public sealed class PrescriptionService : IPrescriptionService
           prescriptions.Select(x => x.ClientId).Distinct().ToList(),
           cancellationToken);
 
+        var tempOfferStats = await LoadTempOfferStatsAsync(prescriptions, cancellationToken);
+
         var responses = new List<PrescriptionResponse>(prescriptions.Count);
         foreach (var p in prescriptions)
         {
             var client = clients.GetValueOrDefault(p.ClientId);
-            var resp = MapToResponse(p, client);
+            var resp = MapToResponse(p, client, tempOfferStats);
 
             // Re-issue a fresh DC payment URL while the prescription is still
             // Submitted (waiting for the user to pay). The detail page renders
@@ -1020,7 +1022,9 @@ public sealed class PrescriptionService : IPrescriptionService
           .AsNoTracking()
           .FirstOrDefaultAsync(u => u.Id == prescription.ClientId, cancellationToken);
 
-        var response = MapToResponse(prescription, client);
+        var tempOfferStats = await LoadTempOfferStatsAsync(
+          new[] { prescription }, cancellationToken);
+        var response = MapToResponse(prescription, client, tempOfferStats);
 
         // Re-issue a fresh DC payment URL on every read while the prescription
         // is still waiting for payment. The frontend shows it as a clickable
@@ -1048,7 +1052,10 @@ public sealed class PrescriptionService : IPrescriptionService
         return response;
     }
 
-    private static PrescriptionResponse MapToResponse(Prescription prescription, User? client = null)
+    private static PrescriptionResponse MapToResponse(
+      Prescription prescription,
+      User? client = null,
+      IReadOnlyDictionary<Guid, TempOfferStats>? tempOfferStats = null)
     {
         return new PrescriptionResponse
         {
@@ -1079,20 +1086,95 @@ public sealed class PrescriptionService : IPrescriptionService
               })
               .ToList(),
             Items = prescription.Items
-              .Select(x => new PrescriptionChecklistItemResponse
+              .Select(x =>
               {
-                  Id = x.Id,
-                  MedicineId = x.MedicineId,
-                  ManualMedicineName = x.ManualMedicineName,
-                  Quantity = x.Quantity,
-                  PharmacistComment = x.PharmacistComment,
-                  Kind = x.Kind.ToString(),
-                  AnalogMedicineId = x.AnalogMedicineId,
-                  AnalogItemId = x.AnalogItemId,
-                  LookupRequestId = x.LookupRequestId
+                  TempOfferStats? stats = null;
+                  if (x.LookupRequestId.HasValue
+                    && tempOfferStats is not null
+                    && tempOfferStats.TryGetValue(x.LookupRequestId.Value, out var found))
+                  {
+                      stats = found;
+                  }
+
+                  return new PrescriptionChecklistItemResponse
+                  {
+                      Id = x.Id,
+                      MedicineId = x.MedicineId,
+                      ManualMedicineName = x.ManualMedicineName,
+                      Quantity = x.Quantity,
+                      PharmacistComment = x.PharmacistComment,
+                      Kind = x.Kind.ToString(),
+                      AnalogMedicineId = x.AnalogMedicineId,
+                      AnalogItemId = x.AnalogItemId,
+                      LookupRequestId = x.LookupRequestId,
+                      // Manual lookup items: surface count + min price so the
+                      // client UI can render them as ordinary orderable rows
+                      // ("от X TJS · временное предложение в N аптеках") instead
+                      // of the "Нет в каталоге" red badge. Null when this isn't
+                      // a lookup item.
+                      TemporaryOfferCount = x.LookupRequestId.HasValue
+                        ? (stats?.OfferCount ?? 0)
+                        : (int?)null,
+                      TemporaryOfferMinPrice = stats?.MinPrice
+                  };
               })
               .ToList()
         };
+    }
+
+    /// <summary>
+    /// Bulk-load `(lookupRequestId → temp-offer aggregate)` for every manual
+    /// lookup item in the supplied prescriptions. Single GROUP BY query —
+    /// avoids N+1 over checklist items.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, TempOfferStats>> LoadTempOfferStatsAsync(
+      IEnumerable<Prescription> prescriptions,
+      CancellationToken cancellationToken)
+    {
+        var lookupIds = prescriptions
+          .SelectMany(p => p.Items)
+          .Where(i => i.LookupRequestId.HasValue)
+          .Select(i => i.LookupRequestId!.Value)
+          .Distinct()
+          .ToList();
+
+        if (lookupIds.Count == 0)
+            return new Dictionary<Guid, TempOfferStats>();
+
+        // Shadow medicines carry the lookup-request fk; shadow offers
+        // attach to those medicines. Group by lookup so per-item stats
+        // are a dict lookup away.
+        var rows = await _dbContext.Medicines
+          .AsNoTracking()
+          .Where(m => m.ManualLookupRequestId.HasValue
+                  && lookupIds.Contains(m.ManualLookupRequestId.Value))
+          .Join(
+            _dbContext.Offers.AsNoTracking(),
+            m => m.Id,
+            o => o.MedicineId,
+            (m, o) => new { LookupRequestId = m.ManualLookupRequestId!.Value, o.Price })
+          .GroupBy(x => x.LookupRequestId)
+          .Select(g => new
+          {
+              LookupRequestId = g.Key,
+              OfferCount = g.Count(),
+              MinPrice = g.Min(x => x.Price)
+          })
+          .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(
+          r => r.LookupRequestId,
+          r => new TempOfferStats
+          {
+              OfferCount = r.OfferCount,
+              MinPrice = r.MinPrice
+          });
+    }
+
+    private sealed class TempOfferStats
+    {
+        public required int OfferCount { get; init; }
+        public required decimal MinPrice { get; init; }
     }
 
     private async Task<Dictionary<Guid, User>> LoadClientsByIdsAsync(

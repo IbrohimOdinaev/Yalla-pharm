@@ -38,6 +38,13 @@ export type ApiPrescriptionChecklistItem = {
    *  this manual line (asked other pharmacies). Null for catalog items
    *  and for manual items without a lookup. */
   lookupRequestId?: string | null;
+  /** Number of pharmacy admins who responded with a temp offer for
+   *  this manual lookup. Null for catalog items; 0 when no pharmacy
+   *  has responded yet (the row stays "недоступно"). */
+  temporaryOfferCount?: number | null;
+  /** Cheapest price across the temp offers — equivalent to "min offer
+   *  price" for catalog items. Null when no responses. */
+  temporaryOfferMinPrice?: number | null;
 };
 
 export type PrescriptionPreferenceTier = "AsPrescribed" | "GoldenMiddle" | "MaxSavings";

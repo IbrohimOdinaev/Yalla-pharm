@@ -67,4 +67,15 @@ public sealed class PrescriptionChecklistItemResponse
     /// the pharmacist asked other pharmacies to physically locate it.
     /// Null for catalog items and for manual items without a lookup.</summary>
     public Guid? LookupRequestId { get; set; }
+
+    /// <summary>Number of pharmacy admins who answered this item's
+    /// lookup with a temp offer (= shadow medicines + offers
+    /// materialised on submit). Null for catalog items; 0 when nobody
+    /// has replied yet so the frontend can still render "ждём ответов".</summary>
+    public int? TemporaryOfferCount { get; set; }
+
+    /// <summary>Cheapest price across the temp offers — gives the UI a
+    /// "от X TJS" line for manual lookup items the same way catalog
+    /// items show their min offer price. Null when nobody responded.</summary>
+    public decimal? TemporaryOfferMinPrice { get; set; }
 }

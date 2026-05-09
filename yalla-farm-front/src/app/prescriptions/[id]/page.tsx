@@ -164,12 +164,19 @@ export default function PrescriptionDetailPage() {
       const price = getCheapestPrice(med ?? undefined);
       const effectiveQty = it.id in editedQty ? editedQty[it.id] : it.quantity;
       const isManual = !it.medicineId;
-      const hasOffers = !isManual && offerCount > 0 && !!price;
+      // Manual lines that gathered at least one pharmacy response have
+      // temp shadow offers — treat them as orderable just like catalog
+      // items, using the lookup's min price for the totals row.
+      const tempCount = it.temporaryOfferCount ?? 0;
+      const tempPrice = it.temporaryOfferMinPrice ?? null;
+      const hasTempOffers = isManual && !!it.lookupRequestId && tempCount > 0 && tempPrice != null;
+      const hasOffers = (!isManual && offerCount > 0 && !!price) || hasTempOffers;
+      const effectivePrice = hasTempOffers ? (tempPrice ?? 0) : (price ?? 0);
       return {
         isManual,
         hasOffers,
         effectiveQty,
-        price: price ?? 0,
+        price: effectivePrice,
       };
     }
 
@@ -203,11 +210,15 @@ export default function PrescriptionDetailPage() {
       }
 
       const e = eligibility(chosen);
-      if (e.isManual) { manual++; continue; }
       if (e.effectiveQty <= 0) continue;
+      // hasOffers is true for both catalog items and manual lookup
+      // items with at least one pharmacy response — treat them
+      // identically for the order totals.
       if (e.hasOffers) {
         available++;
         totalCost += e.price * e.effectiveQty;
+      } else if (e.isManual) {
+        manual++;
       } else {
         unavailable++;
       }
@@ -606,10 +617,17 @@ function PairSideRow({
   const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
   const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
   const isManual = !item.medicineId;
+  // Same temp-offer treatment as SingletonRow — manual lookup with at
+  // least one pharmacy response is orderable.
+  const tempCount = item.temporaryOfferCount ?? 0;
+  const tempMinPrice = item.temporaryOfferMinPrice ?? null;
+  const hasTempOffers = isManual && !!item.lookupRequestId && tempCount > 0 && tempMinPrice != null;
   const noOffers = !isManual && offerCount === 0;
-  const effective = !isManual && !noOffers ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const ineligible = !((!isManual && !noOffers) || hasTempOffers);
+  const effective = !ineligible ? getEffectiveQty(item.id, item.quantity) : item.quantity;
   const removed = effective <= 0;
-  const ineligible = isManual || noOffers;
+  const displayMinPrice = hasTempOffers ? tempMinPrice : minPrice ?? null;
+  const displayOfferCount = hasTempOffers ? tempCount : offerCount;
   const [commentOpen, setCommentOpen] = useState(false);
 
   return (
@@ -665,17 +683,24 @@ function PairSideRow({
               Рекомендация фармацевта по вашим запросам
             </p>
           ) : null}
-          <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>
+          <p className="line-clamp-2 text-sm font-bold leading-tight">
+            {title}
+            {hasTempOffers ? (
+              <span className="ml-2 rounded-full bg-tertiary/15 px-2 py-0.5 align-middle text-[10px] font-bold text-tertiary">
+                предложение аптеки
+              </span>
+            ) : null}
+          </p>
           {ineligible ? (
             <p className="mt-0.5 text-[11px] font-semibold text-secondary">
               {isManual ? "Нет в каталоге" : "Нет офферов"}
             </p>
           ) : (
             <p className="mt-0.5 text-[11px] text-on-surface-variant">
-              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
-              {offerCount > 0 ? (
+              от <span className="font-bold text-primary">{displayMinPrice ? formatMoney(displayMinPrice) : "—"}</span>
+              {displayOfferCount > 0 ? (
                 <span>
-                  {" "}· в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}
+                  {" "}· в {displayOfferCount} {displayOfferCount === 1 ? "аптеке" : "аптеках"}
                 </span>
               ) : null}
             </p>
@@ -770,15 +795,29 @@ function SingletonRow({
   const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
   const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
   const isManual = !item.medicineId;
+  // Manual lookup with at least one pharmacy response: render the row
+  // as an ordinary orderable item (price + N pharmacies + qty stepper).
+  // The "Нет в каталоге" red badge is reserved for manual rows that
+  // either have no lookup or no responses yet.
+  const tempCount = item.temporaryOfferCount ?? 0;
+  const tempMinPrice = item.temporaryOfferMinPrice ?? null;
+  const hasTempOffers = isManual && !!item.lookupRequestId && tempCount > 0 && tempMinPrice != null;
   const noOffers = !isManual && offerCount === 0;
-  const effective = !isManual && !noOffers ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const orderable = (!isManual && !noOffers) || hasTempOffers;
+  const effective = orderable ? getEffectiveQty(item.id, item.quantity) : item.quantity;
   const removed = effective <= 0;
   const recDiff = effective !== item.quantity;
   const [commentOpen, setCommentOpen] = useState(false);
+
+  // Effective price/count chosen between catalog offers and manual
+  // temp offers — manual lookup wins when present (it's the only one
+  // available for that line anyway).
+  const displayMinPrice = hasTempOffers ? tempMinPrice : minPrice ?? null;
+  const displayOfferCount = hasTempOffers ? tempCount : offerCount;
   return (
     <li
       className={`rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:p-4 transition ${
-        isManual || noOffers ? "ring-1 ring-secondary/30" : ""
+        !orderable ? "ring-1 ring-secondary/30" : ""
       } ${removed ? "opacity-50" : ""}`}
     >
       <div className="flex items-center gap-3 xs:gap-4">
@@ -793,28 +832,35 @@ function SingletonRow({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>
-          {isManual ? (
+          <p className="line-clamp-2 text-sm font-bold leading-tight">
+            {title}
+            {hasTempOffers ? (
+              <span className="ml-2 rounded-full bg-tertiary/15 px-2 py-0.5 align-middle text-[10px] font-bold text-tertiary">
+                предложение аптеки
+              </span>
+            ) : null}
+          </p>
+          {orderable ? (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              от <span className="font-bold text-primary">{displayMinPrice ? formatMoney(displayMinPrice) : "—"}</span>
+              {displayOfferCount > 0 ? (
+                <span>
+                  {" "}· в {displayOfferCount} {displayOfferCount === 1 ? "аптеке" : "аптеках"}
+                </span>
+              ) : null}
+            </p>
+          ) : isManual ? (
             <p className="mt-0.5 text-[11px] font-semibold text-secondary">
               Нет в каталоге — недоступно для онлайн-заказа
             </p>
-          ) : noOffers ? (
+          ) : (
             <p className="mt-0.5 text-[11px] font-semibold text-secondary">
               Нет в наличии в аптеках сейчас
-            </p>
-          ) : (
-            <p className="mt-0.5 text-[11px] text-on-surface-variant">
-              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
-              {offerCount > 0 ? (
-                <span>
-                  {" "}· в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}
-                </span>
-              ) : null}
             </p>
           )}
         </div>
         <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          {!isManual && !noOffers && editable ? (
+          {orderable && editable ? (
             <>
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
