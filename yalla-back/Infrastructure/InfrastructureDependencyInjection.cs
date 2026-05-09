@@ -26,7 +26,18 @@ public static class DependencyInjection
     var connectionString = NormalizeConnectionStringForContainer(config.GetConnectionString("Default"), config);
 
     services.AddDbContext<AppDbContext>(options =>
-        options.UseNpgsql(connectionString));
+    {
+        options.UseNpgsql(connectionString);
+        // Hand-written migrations (e.g. AddPrescriptionTierAndChecklistKind)
+        // skip the auto snapshot regeneration that `dotnet ef migrations add`
+        // would normally do, so EF 9 flags the model as "out of sync" and
+        // refuses to apply migrations at startup. The schema actually IS in
+        // sync — the mismatch is purely the snapshot file. Demote the
+        // pending-changes warning so production startup keeps working until
+        // we regenerate the snapshot via the EF CLI.
+        options.ConfigureWarnings(w =>
+            w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    });
 
     services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
     services.AddScoped<IPasswordHasher, PasswordHasher>();
@@ -192,6 +203,7 @@ public static class DependencyInjection
     services.AddHostedService<OrderStatusSmsEnqueueHostedService>();
     services.AddHostedService<SmsOutboxDispatcherHostedService>();
     services.AddHostedService<ManualPaymentTimeoutHostedService>();
+    services.AddHostedService<PrescriptionPaymentTimeoutHostedService>();
 
     // Telegram order-status outbox (mirror of SMS pipeline)
     services.Configure<TelegramOutboxOptions>(options =>

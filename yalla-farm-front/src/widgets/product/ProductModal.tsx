@@ -55,7 +55,6 @@ function ProductModalInner() {
   const activePrescriptionId = useActivePrescriptionStore((s) => s.activeId);
   const openPicker = useActivePrescriptionStore((s) => s.openPicker);
   const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
-
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,8 +115,8 @@ function ProductModalInner() {
     return () => { document.body.style.overflow = ""; };
   }, [productIdOrSlug]);
 
-  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 800), [medicine]);
-  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 800);
+  const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 1200), [medicine]);
+  const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 1200);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
 
   const handleAdd = useCallback(() => {

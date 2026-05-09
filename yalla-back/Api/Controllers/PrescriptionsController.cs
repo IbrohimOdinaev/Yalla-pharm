@@ -142,10 +142,33 @@ public sealed class PrescriptionsController : ControllerBase
     [Authorize(Roles = nameof(Role.Client))]
     public async Task<IActionResult> MoveToCart(
       Guid prescriptionId,
+      [FromBody] MoveChecklistToCartRequest? request,
       CancellationToken cancellationToken)
     {
         var clientId = User.GetRequiredUserId();
         var response = await _prescriptionService.MoveChecklistToCartAsync(
+          clientId,
+          prescriptionId,
+          request?.QuantityOverrides,
+          request?.PairSelections,
+          cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Resubmit a cancelled prescription as a fresh request. Reuses the
+    /// existing photos, age and comment but clones them into a new
+    /// <see cref="PrescriptionStatus.Submitted"/> record with a new payment
+    /// URL — the original cancelled record stays in history.
+    /// </summary>
+    [HttpPost("{prescriptionId:guid}/resubmit")]
+    [Authorize(Roles = nameof(Role.Client))]
+    public async Task<IActionResult> Resubmit(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var clientId = User.GetRequiredUserId();
+        var response = await _prescriptionService.ResubmitPrescriptionAsync(
           clientId,
           prescriptionId,
           cancellationToken);

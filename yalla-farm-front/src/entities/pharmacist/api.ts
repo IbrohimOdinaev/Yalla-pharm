@@ -60,6 +60,13 @@ export type DecodePrescriptionItemInput = {
   manualMedicineName?: string | null;
   quantity: number;
   pharmacistComment?: string | null;
+  /** 0 = Original (default), 1 = Undecoded. */
+  kind?: number;
+  /** Index of the analog item in the same `items` array (0-based). When
+   *  set, this item is the "original" of a pair and the referenced
+   *  sibling becomes the analog. Server resolves indices to GUIDs after
+   *  creating the rows. Self-reference / cycles / out-of-bounds rejected. */
+  analogIndex?: number | null;
   /** When set, the server preserves the lookup binding for this manual
    *  line and closes the request once the checklist is submitted. */
   lookupRequestId?: string | null;

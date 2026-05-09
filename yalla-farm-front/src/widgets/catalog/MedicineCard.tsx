@@ -60,7 +60,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
     if (main) return [main];
     return imgs[0] ? [imgs[0]] : [];
   }, [medicine.images]);
-  const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 480)).filter(Boolean), [imageRefs]);
+  // 800 px for 1× and 1600 px for retina so even on 3× DPR phones the
+  // browser still has more pixels than it needs to draw a crisp image
+  // when downscaled into the ~150–220 px card cell. Older 600/1200 was
+  // visibly soft on Retina iPads because the asset only covered ~2.7×
+  // density once `mix-blend-multiply` filter ran.
+  const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 800)).filter(Boolean), [imageRefs]);
   const price = getCheapestPrice(medicine);
   const offersCount = medicine.offers?.length ?? 0;
   const [imgIndex, setImgIndex] = useState(0);
@@ -191,7 +196,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
       <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition hover:border-on-surface/30 hover:shadow-card">
         {/* Image */}
         <div
-          className="relative aspect-square overflow-hidden bg-surface-container"
+          className="relative aspect-square overflow-hidden bg-image-backdrop"
           onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
           onTouchEnd={onSwipe}
         >
@@ -205,10 +210,15 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={allImages[imgIndex] ?? allImages[0]}
-              srcSet={imageSrcSet(imageRefs[imgIndex] ?? imageRefs[0], 480, 800) || undefined}
+              srcSet={imageSrcSet(imageRefs[imgIndex] ?? imageRefs[0], 800, 1600) || undefined}
               alt={name}
               loading="lazy"
               decoding="async"
+              // image-rendering hint nudges Chrome/Edge into a sharper
+              // bicubic scaling profile, so the small product packaging stays
+              // legible after the browser downscales the 600/1200 px source
+              // into the ~150–220 px card cell.
+              style={{ imageRendering: "-webkit-optimize-contrast" }}
               className="h-full w-full object-contain p-2 mix-blend-multiply transition group-hover:scale-[1.03]"
             />
           ) : (

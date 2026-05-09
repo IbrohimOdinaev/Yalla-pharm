@@ -12,7 +12,7 @@ using Yalla.Infrastructure;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260509104823_AddManualItemLookup")]
+    [Migration("20260509121246_AddManualItemLookup")]
     partial class AddManualItemLookup
     {
         /// <inheritdoc />
@@ -1255,6 +1255,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("pharmacist_overall_comment");
 
+                    b.Property<int>("PreferenceTier")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("preference_tier");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -1284,9 +1290,23 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AnalogItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("analog_item_id");
+
+                    b.Property<Guid?>("AnalogMedicineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("analog_medicine_id");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp")
                         .HasColumnName("created_at_utc");
+
+                    b.Property<int>("Kind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("kind");
 
                     b.Property<Guid?>("LookupRequestId")
                         .HasColumnType("uuid")
@@ -1315,6 +1335,14 @@ namespace Infrastructure.Migrations
                         .HasColumnName("quantity");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AnalogItemId")
+                        .HasDatabaseName("ix_prescription_checklist_items_analog_item_id")
+                        .HasFilter("analog_item_id IS NOT NULL");
+
+                    b.HasIndex("AnalogMedicineId")
+                        .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id")
+                        .HasFilter("analog_medicine_id IS NOT NULL");
 
                     b.HasIndex("LookupRequestId")
                         .IsUnique()

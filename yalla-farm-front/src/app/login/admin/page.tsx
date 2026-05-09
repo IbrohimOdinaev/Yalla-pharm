@@ -8,9 +8,39 @@ import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { decodeJwt } from "@/shared/lib/jwt";
+import { ApiError } from "@/shared/api/http-client";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { Button, Icon, IconButton } from "@/shared/ui";
+
+// Translates auth/login errors into actionable user-facing strings. The raw
+// backend message ("Request Failed. Операция не может быть выполнена…")
+// is technically correct but useless to a person trying to log in.
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    // Wrong credentials: backend returns 400 invalid_operation or 401.
+    if (err.status === 401 || err.status === 400) {
+      return "Неправильный номер или пароль.";
+    }
+    if (err.status === 429) {
+      return "Слишком много попыток входа. Попробуйте через несколько минут.";
+    }
+    if (err.status === 404) {
+      return "Аккаунт не найден. Проверьте номер телефона.";
+    }
+    if (err.status >= 500) {
+      return "Сервер временно недоступен. Попробуйте позже.";
+    }
+    // Fall through to backend message for any other 4xx.
+    return err.message || "Не удалось войти. Попробуйте ещё раз.";
+  }
+  // Network errors thrown by fetch don't have a status — surface a clear hint.
+  if (err instanceof TypeError && /fetch/i.test(err.message)) {
+    return "Не удалось связаться с сервером. Проверьте интернет-соединение.";
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return "Не удалось войти. Попробуйте ещё раз.";
+}
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist" };
 type StaffRole = "Admin" | "SuperAdmin" | "Pharmacist";
@@ -67,7 +97,7 @@ function AdminLoginContent() {
       else if (role === "Pharmacist") router.push("/pharmacist");
       else router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось войти.");
+      setError(loginErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

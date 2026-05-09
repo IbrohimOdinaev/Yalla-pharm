@@ -200,6 +200,10 @@ export default function CheckoutPage() {
       const idempotencyKey = buildCheckoutIdempotencyKey();
       const effectiveAddress = localAddress || savedAddress;
       const effectiveTitle = localAddressTitle ?? savedAddressTitle;
+      // Prescription-checkout flow: don't consume basket positions and tag
+      // the source with prescriptionId so the backend transitions the
+      // prescription Decoded → OrderPlaced atomically with the order.
+      const isPrescriptionFlow = !!prescriptionId;
       const payload = {
         pharmacyId,
         isPickup,
@@ -219,11 +223,10 @@ export default function CheckoutPage() {
         source: {
           kind: 2, // CheckoutSourceKind.Explicit
           positions: explicitPositions,
-          // Prescription-flow keeps the regular basket untouched — items
-          // come from the prescription, not the cart. Cart-flow consumes
-          // matching basket rows after the order is created.
-          consumeFromBasket: !prescriptionId,
-          prescriptionId: prescriptionId ?? null,
+          // Regular cart-flow: clear matching basket rows after the order
+          // commits. Prescription-flow: leave the basket strictly alone.
+          consumeFromBasket: !isPrescriptionFlow,
+          prescriptionId: isPrescriptionFlow ? prescriptionId : null,
         },
       };
 
@@ -432,7 +435,7 @@ export default function CheckoutPage() {
             {checkoutItems.map((item) => {
               const med = medicineMap[item.medicineId];
               const name = med ? getMedicineDisplayName(med) : item.medicineId;
-              const imgUrl = med ? resolveMedicineImageUrl(med, 120) : "";
+              const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
               const enough = item.hasEnoughQuantity;
               const partial = item.isFound && !enough && item.foundQuantity > 0;
               const missing = !item.isFound || item.foundQuantity <= 0;
@@ -466,10 +469,10 @@ export default function CheckoutPage() {
                     <img
                       src={imgUrl}
                       alt=""
-                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-surface-container object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
+                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-image-backdrop object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
                     />
                   ) : (
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container text-on-surface-variant/40">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-image-backdrop text-on-surface-variant/40">
                       <Icon name="bag" size={20} />
                     </div>
                   )}

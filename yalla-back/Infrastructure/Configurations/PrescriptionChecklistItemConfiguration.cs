@@ -46,6 +46,23 @@ public class PrescriptionChecklistItemConfiguration
           .HasMaxLength(PrescriptionChecklistItem.MaxPharmacistCommentLength)
           .IsRequired(false);
 
+        builder.Property(x => x.Kind)
+          .HasColumnName("kind")
+          .HasColumnType("integer")
+          .HasConversion<int>()
+          .HasDefaultValue(Yalla.Domain.Enums.PrescriptionChecklistItemKind.Original)
+          .IsRequired();
+
+        builder.Property(x => x.AnalogMedicineId)
+          .HasColumnName("analog_medicine_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
+        builder.Property(x => x.AnalogItemId)
+          .HasColumnName("analog_item_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
         builder.Property(x => x.LookupRequestId)
           .HasColumnName("lookup_request_id")
           .HasColumnType("uuid")
@@ -62,6 +79,17 @@ public class PrescriptionChecklistItemConfiguration
         builder.HasIndex(x => x.MedicineId)
           .HasFilter("medicine_id IS NOT NULL")
           .HasDatabaseName("ix_prescription_checklist_items_medicine_id");
+
+        builder.HasIndex(x => x.AnalogMedicineId)
+          .HasFilter("analog_medicine_id IS NOT NULL")
+          .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id");
+
+        // Filtered index — only paired rows get indexed (most won't). Used
+        // for the rare "find dependents of item X" query the service runs
+        // when an analog item is being deleted to clear stale references.
+        builder.HasIndex(x => x.AnalogItemId)
+          .HasFilter("analog_item_id IS NOT NULL")
+          .HasDatabaseName("ix_prescription_checklist_items_analog_item_id");
 
         // One lookup request per checklist item — enforced at DB level so
         // the pharmacist can't accidentally fork a request via concurrent

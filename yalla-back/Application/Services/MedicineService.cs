@@ -352,6 +352,71 @@ public sealed class MedicineService : IMedicineService
         };
     }
 
+    public async Task<GetMedicinesByIdsResponse> GetMedicinesByIdsAsync(
+      GetMedicinesByIdsRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var ids = request.Ids?
+          .Where(id => id != Guid.Empty)
+          .Distinct()
+          .ToList() ?? new List<Guid>();
+
+        if (ids.Count == 0)
+            return new GetMedicinesByIdsResponse();
+
+        if (ids.Count > GetMedicinesByIdsRequest.MaxIdsPerRequest)
+            throw new InvalidOperationException(
+              $"Batch lookup capped at {GetMedicinesByIdsRequest.MaxIdsPerRequest} ids; received {ids.Count}.");
+
+        // Single query for all medicines + a single query for all offers.
+        // We fan out the offers by medicine id locally rather than running
+        // one offer query per medicine (the loop kept the total at 2 round-
+        // trips regardless of N).
+        var medicines = await _dbContext.Medicines
+          .AsNoTracking()
+          .Include(x => x.Atributes)
+          .Include(x => x.Images)
+          .Include(x => x.Category)
+          .Where(m => ids.Contains(m.Id) && m.IsActive)
+          .ToListAsync(cancellationToken);
+
+        var offerRows = await (
+          from offer in _dbContext.Offers.AsNoTracking()
+          join pharmacy in _dbContext.Pharmacies.AsNoTracking()
+            on offer.PharmacyId equals pharmacy.Id
+          where ids.Contains(offer.MedicineId)
+          orderby pharmacy.Title
+          select new
+          {
+              offer.MedicineId,
+              Response = new MedicineOfferResponse
+              {
+                  OfferId = offer.Id,
+                  PharmacyId = offer.PharmacyId,
+                  PharmacyTitle = pharmacy.Title,
+                  PharmacyIsActive = pharmacy.IsActive,
+                  StockQuantity = offer.StockQuantity,
+                  Price = offer.Price,
+                  IsAvailable = pharmacy.IsActive && offer.StockQuantity > 0
+              }
+          }).ToListAsync(cancellationToken);
+
+        var offersByMedicine = offerRows
+          .GroupBy(x => x.MedicineId)
+          .ToDictionary(
+            g => g.Key,
+            g => (IReadOnlyCollection<MedicineOfferResponse>)g.Select(x => x.Response).ToList());
+
+        var responses = medicines
+          .Select(m => m.ToResponse(
+            offersByMedicine.TryGetValue(m.Id, out var o) ? o : Array.Empty<MedicineOfferResponse>()))
+          .ToList();
+
+        return new GetMedicinesByIdsResponse { Medicines = responses };
+    }
+
     public async Task<GetMedicineByIdResponse> GetMedicineBySlugAsync(
       string slug,
       bool includeInactive,

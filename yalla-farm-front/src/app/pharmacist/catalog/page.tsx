@@ -25,22 +25,22 @@ type QuickCategory = {
 };
 
 const QUICK_CATEGORIES: QuickCategory[] = [
-  { icon: "grid", palette: "mint", label: "Все категории" },
-  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.jpg", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
-  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.jpg", keywords: ["аллерг", "антигистамин"] },
-  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.jpg", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
-  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.jpg", keywords: ["антибиотик", "противомикроб"] },
-  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.jpg", keywords: ["витамин", "бад", "биодобав", "минерал"] },
-  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.jpg", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.jpg", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
-  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.jpg", keywords: ["глаз", "зрени", "офтальм", "капли"] },
-  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.jpg", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
-  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.jpg", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
-  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.jpg", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
-  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.jpg", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
-  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.jpg", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
-  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.jpg", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
-  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.jpg", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/all.png" },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.png", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "pill", palette: "lilac", label: "Антибиотики", image: "/categories/antibiotics.png", keywords: ["антибиотик", "противомикроб"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.png", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "skin", palette: "peach", label: "Кожа и волосы", image: "/categories/skin.png", keywords: ["кож", "дермат", "волос", "шампун", "крем", "мазь"] },
+  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.png", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
+  { icon: "baby", palette: "sun", label: "Мама и малыш", image: "/categories/baby.png", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
+  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.png", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
+  { icon: "lipstick", palette: "rose", label: "Красота", image: "/categories/beauty.png", keywords: ["космет", "парфюм", "ухо", "макияж", "помада"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
 ];
 
 const PAGE_SIZE = 24;

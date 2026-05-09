@@ -4,6 +4,8 @@ import { Suspense, useEffect, useMemo, useState, useCallback, useRef } from "rea
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { getGuestBasketPreview } from "@/entities/basket/api";
+import { getMyPrescriptions, type ApiPrescription } from "@/entities/prescription/api";
 import type { ApiMedicine, ApiBasketPharmacyOption, ApiBasketPharmacyItem } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useAppSelector } from "@/shared/lib/redux";
@@ -63,6 +65,15 @@ function PharmacySelectPageInner() {
   const setDraft = useCheckoutDraftStore((s) => s.setDraft);
   const deliveryCoords = useDeliveryAddressStore((s) => s.coords);
 
+  // Prescription mode — when this URL carries `?prescription={id}` the page
+  // operates on the prescription's items, NOT the basket. Pharmacy options
+  // are computed via the guest-preview endpoint over the explicit positions
+  // (the basket is never read or mutated). On selection we stash
+  // prescriptionId in the checkout draft so /checkout posts with
+  // Source.Kind=Explicit + Source.PrescriptionId.
+  const prescriptionId = searchParams.get("prescription") ?? "";
+  const prescriptionMode = !!prescriptionId;
+
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
   const [expandedId, setExpandedId] = useState<string>("");
@@ -71,37 +82,115 @@ function PharmacySelectPageInner() {
   const [isPickup, setIsPickup] = useState(false);
   const [sortMode, setSortMode] = useState<PharmacySort>("cheapest");
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [prescriptionItems, setPrescriptionItems] = useState<Array<{ medicineId: string; quantity: number }>>([]);
+  const [prescriptionOptions, setPrescriptionOptions] = useState<ApiBasketPharmacyOption[]>([]);
+  const [prescription, setPrescription] = useState<ApiPrescription | null>(null);
 
   const resolvedAddresses = usePharmacyAddresses(pharmacies);
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Cart items — server for auth, guest for unauth
+  // Cart items — server for auth, guest for unauth, OR prescription items
+  // when we're in prescription-checkout mode (basket is intentionally
+  // ignored so the user's regular cart stays untouched).
   const cartItems = useMemo(() => {
+    if (prescriptionMode) return prescriptionItems;
     if (token && (basket.positions ?? []).length > 0) {
       return (basket.positions ?? []).map((p) => ({ medicineId: p.medicineId, quantity: p.quantity }));
     }
     return guestItems;
-  }, [token, basket.positions, guestItems]);
+  }, [prescriptionMode, prescriptionItems, token, basket.positions, guestItems]);
 
-  // Load data
+  // Load data — pharmacies always; basket only in regular mode; prescription
+  // + its computed pharmacy options only in prescription mode.
   useEffect(() => {
     async function load() {
       setIsLoading(true);
       try {
-        // Load pharmacies — always use public endpoint (has coordinates for all users)
         const pharmsPromise = getActivePharmacies();
-        const [pharms] = await Promise.all([
-          pharmsPromise,
-          token ? loadBasket(token) : Promise.resolve(),
-        ]);
-        setPharmacies(pharms);
+        if (prescriptionMode && token) {
+          // Resolve the prescription from the client's own list, then derive
+          // (medicineId, quantity) drafts. Manual checklist entries (no
+          // medicineId) are skipped — they can't be ordered through the
+          // regular catalog flow.
+          const [pharms, all] = await Promise.all([
+            pharmsPromise,
+            getMyPrescriptions(token).catch(() => [] as ApiPrescription[]),
+          ]);
+          setPharmacies(pharms);
+          const found = all.find((p) => p.prescriptionId === prescriptionId) ?? null;
+          setPrescription(found);
+          // Pull client-edited quantity overrides AND pair selections from
+          // the prescription detail page. Both live in localStorage so
+          // edits survive tab close. Reads the legacy sessionStorage qty
+          // row first so users mid-flight from an older build don't lose
+          // their edits.
+          let overrides: Record<string, number> = {};
+          let pairSel: Record<string, string> = {};
+          try {
+            const qtyKey = `yalla.prescription.qty.${prescriptionId}`;
+            const rawQty = localStorage.getItem(qtyKey) ?? sessionStorage.getItem(qtyKey);
+            if (rawQty) overrides = JSON.parse(rawQty);
+            const rawPair = localStorage.getItem(`yalla.prescription.pair.${prescriptionId}`);
+            if (rawPair) pairSel = JSON.parse(rawPair);
+          } catch { /* ignore */ }
+
+          // Resolve pairs to a single chosen-side entry. Default selection
+          // = analog. The original is hidden when the analog is chosen
+          // (and vice-versa). Mirrors the backend's MoveChecklistToCart
+          // logic so explicit-checkout (this path) and basket-flow agree.
+          const allItems = found?.items ?? [];
+          const itemsById = new Map(allItems.map((i) => [i.id, i]));
+          const analogIds = new Set(allItems.filter((i) => i.analogItemId).map((i) => i.analogItemId as string));
+          const drafts: Array<{ medicineId: string; quantity: number }> = [];
+          for (const it of allItems) {
+            if (analogIds.has(it.id)) continue; // counted via pair-original
+            let chosen = it;
+            if (it.analogItemId) {
+              const analog = itemsById.get(it.analogItemId);
+              if (analog) {
+                const pickedId = pairSel[it.id];
+                const preferAnalog = pickedId !== it.id;
+                const candidate = preferAnalog ? analog : it;
+                const fallback = preferAnalog ? it : analog;
+                const candidateQty = candidate.id in overrides ? overrides[candidate.id] : candidate.quantity;
+                if (candidate.medicineId && candidateQty > 0) {
+                  chosen = candidate;
+                } else {
+                  const fallbackQty = fallback.id in overrides ? overrides[fallback.id] : fallback.quantity;
+                  if (fallback.medicineId && fallbackQty > 0) chosen = fallback;
+                  else continue;
+                }
+              }
+            }
+            if (!chosen.medicineId) continue;
+            const qty = chosen.id in overrides ? overrides[chosen.id] : chosen.quantity;
+            if (qty <= 0) continue;
+            drafts.push({ medicineId: chosen.medicineId, quantity: qty });
+          }
+          setPrescriptionItems(drafts);
+          // Pharmacy options are computed without touching the basket — same
+          // endpoint anonymous guests use.
+          if (drafts.length > 0) {
+            const opts = await getGuestBasketPreview(drafts).catch(() => [] as ApiBasketPharmacyOption[]);
+            setPrescriptionOptions(opts);
+          } else {
+            setPrescriptionOptions([]);
+          }
+        } else {
+          const [pharms] = await Promise.all([
+            pharmsPromise,
+            token ? loadBasket(token) : Promise.resolve(),
+          ]);
+          setPharmacies(pharms);
+        }
       } catch { /* ignore */ }
       setIsLoading(false);
     }
     load();
-  }, [token, loadBasket]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, loadBasket, prescriptionMode, prescriptionId]);
 
   // Load medicine details for items in cart
   useEffect(() => {
@@ -150,8 +239,14 @@ function PharmacySelectPageInner() {
     [sortMode],
   );
 
-  // Build pharmacy options — from server for auth, computed from offers for guests
+  // Build pharmacy options — from server for auth, computed from offers for
+  // guests, OR from /api/basket/guest-preview for prescription mode.
   const filteredOptions = useMemo(() => {
+    if (prescriptionMode) {
+      return sortOptions(
+        prescriptionOptions.filter((o) => (o.enoughQuantityMedicinesCount ?? 0) > 0),
+      );
+    }
     const serverOptions = basket.pharmacyOptions ?? [];
     if (serverOptions.length > 0) {
       return sortOptions(
@@ -209,7 +304,7 @@ function PharmacySelectPageInner() {
         } as ApiBasketPharmacyOption;
       });
     return sortOptions(guestOptions);
-  }, [basket.pharmacyOptions, cartItems, medicineMap, pharmacyGeo, sortOptions]);
+  }, [prescriptionMode, prescriptionOptions, basket.pharmacyOptions, cartItems, medicineMap, pharmacyGeo, sortOptions]);
 
   // Delivery cost per pharmacy — only computed in delivery mode when the
   // user has saved a destination with coords. Results stream in async;
@@ -285,13 +380,17 @@ function PharmacySelectPageInner() {
       selectedPharmacyTotalCost: option.totalCost ?? 0,
       ignoredPositionIds: [],
       isPickup,
+      // Carry the prescriptionId through the draft so /checkout knows to
+      // submit with Source.Kind=Explicit and Source.PrescriptionId. Cleared
+      // in regular cart-flow selections (default null in initialState).
+      prescriptionId: prescriptionMode ? prescriptionId : null,
     });
     if (!token) {
       setGuestCheckoutIntent();
-      router.push("/login?redirect=/checkout");
+      router.push(`/login?redirect=${encodeURIComponent(prescriptionMode ? `/checkout?prescription=${prescriptionId}` : "/checkout")}`);
       return;
     }
-    router.push("/checkout");
+    router.push(prescriptionMode ? `/checkout?prescription=${encodeURIComponent(prescriptionId)}` : "/checkout");
   }
 
   if (isLoading) {
@@ -366,7 +465,7 @@ function PharmacySelectPageInner() {
             stays interactive without click-stealing. */}
         <aside
           className={`absolute z-30 flex flex-col bg-surface-container-low overflow-hidden shadow-glass transition-transform duration-300 ease-in-out
-            inset-x-0 bottom-0 max-h-[60vh] rounded-t-2xl
+            inset-x-0 bottom-0 max-h-full rounded-t-2xl
             md:inset-y-0 md:left-0 md:right-auto md:bottom-auto md:max-h-none md:w-[420px] md:rounded-t-none lg:w-[460px]
             ${isPanelCollapsed
               ? "translate-y-full md:-translate-x-full md:translate-y-0 pointer-events-none"
@@ -408,19 +507,29 @@ function PharmacySelectPageInner() {
               aria-label="Скрыть список аптек"
               title="Скрыть список"
             >
-              <Icon name="chevron-up" size={16} className="md:hidden" />
+              {/* Chevron points in the direction the panel will move on
+                  click — down on phones (panel slides down to reveal the
+                  map) and left on desktop (panel slides off-screen left).
+                  The previous "up" arrow read as "expand panel" which is
+                  the opposite of what the click does. */}
+              <Icon name="chevron-down" size={16} className="md:hidden" />
               <Icon name="chevron-left" size={16} className="hidden md:block" />
             </button>
           </div>
 
-          {/* Cards list */}
-          <div className="flex-1 overflow-y-auto">
+          {/* Cards list — bottom padding stacks fixed pb-32 (8rem) on top of
+              env(safe-area-inset-bottom) so the iPhone home indicator and any
+              browser UI overlap (collapsing URL bar) never clip the LAST
+              pharmacy card / its expanded item rows. The earlier pb-24 was
+              just enough on average phones but routinely cut a row off on
+              shorter / split-screen sessions. */}
+          <div className="flex-1 overflow-y-auto overscroll-contain">
           {filteredOptions.length === 0 ? (
             <div className="p-6 text-center text-sm text-on-surface-variant">
               Нет доступных аптек для вашей корзины.
             </div>
           ) : (
-            <div className="space-y-2 p-3">
+            <div className="space-y-2 p-3 pb-32 [padding-bottom:calc(8rem+env(safe-area-inset-bottom))]">
               {filteredOptions.map((option) => {
                 const geo = pharmacyGeo[option.pharmacyId];
                 const resolvedAddress =
@@ -535,7 +644,7 @@ function PharmacySelectPageInner() {
                         {(option.items ?? []).map((item) => {
                           const med = medicineMap[item.medicineId];
                           const name = med ? getMedicineDisplayName(med) : item.medicineId;
-                          const imgUrl = med ? resolveMedicineImageUrl(med, 120) : "";
+                          const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
 
                           const enough = item.hasEnoughQuantity;
                           const partial = item.isFound && !enough;
@@ -607,7 +716,10 @@ function PharmacySelectPageInner() {
               className="absolute z-20 flex items-center gap-1.5 rounded-full bg-surface-container-lowest px-3 py-2 font-display text-xs font-extrabold text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95
                 right-3 top-3 md:left-3 md:right-auto"
             >
-              <Icon name="chevron-down" size={16} className="md:hidden" />
+              {/* Chevron points in the direction the panel will move on
+                  click — up on phones (panel rises from the bottom) and
+                  right on desktop (panel slides in from the left). */}
+              <Icon name="chevron-up" size={16} className="md:hidden" />
               <Icon name="chevron-right" size={16} className="hidden md:block" />
               <span>Список аптек</span>
             </button>

@@ -121,11 +121,18 @@ public sealed class PrescriptionService : IPrescriptionService
               .Select((key, idx) => new PrescriptionImage(key, idx))
               .ToList();
 
+            // Map raw int → enum, defaulting to AsPrescribed for any value
+            // outside the known range (defensive against API misuse).
+            var tier = Enum.IsDefined(typeof(PrescriptionPreferenceTier), request.PreferenceTier)
+              ? (PrescriptionPreferenceTier)request.PreferenceTier
+              : PrescriptionPreferenceTier.AsPrescribed;
+
             var prescription = new Prescription(
               clientId,
               request.PatientAge,
               request.ClientComment,
-              prescriptionImages);
+              prescriptionImages,
+              tier);
 
             // Stay in Submitted until the client confirms they paid the
             // 3 TJS DC fee. After payment they hit POST /i-paid which
@@ -216,15 +223,51 @@ public sealed class PrescriptionService : IPrescriptionService
           prescriptions.Select(x => x.ClientId).Distinct().ToList(),
           cancellationToken);
 
-        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
+        var responses = new List<PrescriptionResponse>(prescriptions.Count);
+        foreach (var p in prescriptions)
+        {
+            var client = clients.GetValueOrDefault(p.ClientId);
+            var resp = MapToResponse(p, client);
+
+            // Re-issue a fresh DC payment URL while the prescription is still
+            // Submitted (waiting for the user to pay). The detail page renders
+            // it as a clickable "Оплатить 3 TJS" link; once the manual-payment
+            // confirm or the 24h timeout job advances the status, the URL is
+            // no longer attached.
+            if (p.Status == PrescriptionStatus.Submitted && client is not null)
+            {
+                try
+                {
+                    resp.PaymentUrl = await BuildPaymentUrlAsync(
+                      client.PhoneNumber ?? string.Empty,
+                      p.Id,
+                      cancellationToken);
+                    resp.PaymentAmount = DecodingFeeAmount;
+                    resp.PaymentCurrency = DecodingFeeCurrency;
+                }
+                catch
+                {
+                    // Settings outage shouldn't break the list — surface a null
+                    // URL and let the client retry on next load.
+                }
+            }
+            responses.Add(resp);
+        }
+        return responses;
     }
 
     public async Task<IReadOnlyList<PrescriptionResponse>> GetAwaitingConfirmationAsync(
       CancellationToken cancellationToken = default)
     {
+        // Includes BOTH Submitted (uploaded but not yet paid — SuperAdmin can
+        // see the request and confirm once the bank receipt lands) AND the
+        // legacy AwaitingConfirmation status (older flow where the client
+        // self-clicked "Я оплатил"). The frontend renders both with the same
+        // "Подтвердить оплату" CTA — confirmPaymentAsync below handles either.
         var prescriptions = await _dbContext.Prescriptions
           .AsNoTracking()
-          .Where(x => x.Status == PrescriptionStatus.AwaitingConfirmation)
+          .Where(x => x.Status == PrescriptionStatus.Submitted
+                   || x.Status == PrescriptionStatus.AwaitingConfirmation)
           .OrderBy(x => x.CreatedAtUtc)
           .Include(x => x.Images)
           .ToListAsync(cancellationToken);
@@ -241,7 +284,15 @@ public sealed class PrescriptionService : IPrescriptionService
       CancellationToken cancellationToken = default)
     {
         var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+
+        // SuperAdmin's confirm now bridges Submitted directly to InQueue. The
+        // domain still enforces the two-step transition, so we walk
+        // Submitted → AwaitingConfirmation → InQueue here. Already-pending
+        // ones (legacy "Я оплатил" flow) just take the second step.
+        if (prescription.Status == PrescriptionStatus.Submitted)
+            prescription.MoveToAwaitingConfirmation();
         prescription.MoveToQueue();
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         await _realtimePublisher.PublishPrescriptionUpdatedAsync(
@@ -359,6 +410,8 @@ public sealed class PrescriptionService : IPrescriptionService
     public async Task<MoveChecklistToCartResponse> MoveChecklistToCartAsync(
       Guid clientId,
       Guid prescriptionId,
+      IReadOnlyDictionary<Guid, int>? quantityOverrides,
+      IReadOnlyDictionary<Guid, Guid>? pairSelections,
       CancellationToken cancellationToken = default)
     {
         if (clientId == Guid.Empty)
@@ -372,10 +425,23 @@ public sealed class PrescriptionService : IPrescriptionService
             throw new InvalidOperationException(
               $"Prescription must be in Decoded status to move to cart; current is {prescription.Status}.");
 
-        // Pre-load the medicines so we can validate they exist + are active
-        // before actually mutating the basket. Out-of-catalog (manual)
-        // entries are skipped silently — clients see them as informational
-        // only on the checklist page.
+        // Build the "logical order line" plan up front so the basket mutation
+        // loop below has a single source of truth. The plan walks pairs and
+        // standalone items uniformly:
+        //   • paired items contribute exactly one row to the order — the side
+        //     the client picked (or analog by default), falling back to the
+        //     other side if the chosen one is ineligible.
+        //   • standalone items contribute themselves directly.
+        // The analog itself is filtered out from the standalone iteration so
+        // it doesn't show up twice.
+        var itemsById = prescription.Items.ToDictionary(i => i.Id);
+        var analogIds = new HashSet<Guid>(prescription.Items
+          .Where(i => i.AnalogItemId.HasValue)
+          .Select(i => i.AnalogItemId!.Value));
+
+        // Pre-load medicines for everything that could end up in the order —
+        // both originals AND analogs — so the eligibility check below has the
+        // catalog row available without a per-item round-trip.
         var medicineIds = prescription.Items
           .Where(i => i.MedicineId.HasValue)
           .Select(i => i.MedicineId!.Value)
@@ -395,32 +461,102 @@ public sealed class PrescriptionService : IPrescriptionService
                    && medicineIds.Contains(b.MedicineId))
           .ToDictionaryAsync(b => b.MedicineId, cancellationToken);
 
+        // Override semantics:
+        //   • key absent  → pharmacist-recommended count
+        //   • value  > 0  → client's chosen quantity
+        //   • value == 0  → client removed this item; the side is ineligible
+        int? EffectiveQty(Domain.Entities.PrescriptionChecklistItem item)
+        {
+            var qty = item.Quantity;
+            if (quantityOverrides is not null
+              && quantityOverrides.TryGetValue(item.Id, out var overrideQty))
+            {
+                if (overrideQty <= 0) return null;
+                qty = overrideQty;
+            }
+            return qty > 0 ? qty : null;
+        }
+
+        // A side is "orderable" iff it's a catalog row pointing at an active
+        // medicine and the effective quantity is positive. Manual rows and
+        // undecoded rows are never orderable on the cart side.
+        bool IsEligible(Domain.Entities.PrescriptionChecklistItem item, out Medicine? medicine, out int qty)
+        {
+            medicine = null;
+            qty = 0;
+            if (!item.MedicineId.HasValue) return false;
+            if (!activeMedicines.TryGetValue(item.MedicineId.Value, out medicine)) return false;
+            var effective = EffectiveQty(item);
+            if (effective is null) return false;
+            qty = effective.Value;
+            return true;
+        }
+
         var moved = 0;
         var skipped = 0;
 
         foreach (var item in prescription.Items)
         {
-            if (!item.MedicineId.HasValue)
-            {
-                skipped++;
-                continue;
-            }
+            // Skip items that are referenced as analogs by other rows — they
+            // contribute through their pair-original, not on their own.
+            if (analogIds.Contains(item.Id)) continue;
 
-            if (!activeMedicines.TryGetValue(item.MedicineId.Value, out var medicine))
-            {
-                skipped++;
-                continue;
-            }
+            Domain.Entities.PrescriptionChecklistItem? chosen = null;
+            Medicine? chosenMedicine = null;
+            int chosenQty = 0;
 
-            if (existingPositions.TryGetValue(item.MedicineId.Value, out var existing))
+            if (item.AnalogItemId.HasValue
+              && itemsById.TryGetValue(item.AnalogItemId.Value, out var analog))
             {
-                existing.SetQuantity(existing.Quantity + item.Quantity);
+                // Default selection = the analog (cheaper substitute). The
+                // client can override per pair via PairSelections; the value
+                // must point to either the original (item.Id) or the analog
+                // itself. Anything else falls back to the default.
+                var preferAnalogFirst = true;
+                if (pairSelections is not null
+                  && pairSelections.TryGetValue(item.Id, out var picked))
+                {
+                    if (picked == item.Id) preferAnalogFirst = false;
+                    else if (picked == analog.Id) preferAnalogFirst = true;
+                    // Unknown id → ignore, fall through to default.
+                }
+
+                if (preferAnalogFirst)
+                {
+                    if (IsEligible(analog, out var medA, out var qtyA))
+                    { chosen = analog; chosenMedicine = medA; chosenQty = qtyA; }
+                    else if (IsEligible(item, out var medO, out var qtyO))
+                    { chosen = item; chosenMedicine = medO; chosenQty = qtyO; }
+                }
+                else
+                {
+                    if (IsEligible(item, out var medO, out var qtyO))
+                    { chosen = item; chosenMedicine = medO; chosenQty = qtyO; }
+                    else if (IsEligible(analog, out var medA, out var qtyA))
+                    { chosen = analog; chosenMedicine = medA; chosenQty = qtyA; }
+                }
             }
             else
             {
-                var newPosition = new BasketPosition(clientId, medicine.Id, medicine, item.Quantity);
+                if (IsEligible(item, out var med, out var qty))
+                { chosen = item; chosenMedicine = med; chosenQty = qty; }
+            }
+
+            if (chosen is null || chosenMedicine is null)
+            {
+                skipped++;
+                continue;
+            }
+
+            if (existingPositions.TryGetValue(chosenMedicine.Id, out var existing))
+            {
+                existing.SetQuantity(existing.Quantity + chosenQty);
+            }
+            else
+            {
+                var newPosition = new BasketPosition(clientId, chosenMedicine.Id, chosenMedicine, chosenQty);
                 _dbContext.BasketPositions.Add(newPosition);
-                existingPositions[medicine.Id] = newPosition;
+                existingPositions[chosenMedicine.Id] = newPosition;
             }
             moved++;
         }
@@ -443,6 +579,70 @@ public sealed class PrescriptionService : IPrescriptionService
         };
     }
 
+    public async Task<PrescriptionResponse> ResubmitPrescriptionAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId can't be empty.");
+
+        var original = await LoadTrackedAsync(prescriptionId, cancellationToken);
+        if (original.ClientId != clientId)
+            throw new UnauthorizedAccessException("Prescription belongs to a different client.");
+
+        if (original.Status != PrescriptionStatus.Cancelled)
+            throw new InvalidOperationException(
+              $"Only a cancelled prescription can be resubmitted; current status is {original.Status}.");
+
+        if (original.Images.Count == 0)
+            throw new InvalidOperationException("Prescription has no images to resubmit.");
+
+        // Reuse the original MinIO object keys instead of re-uploading bytes —
+        // the storage objects are immutable and shared across prescriptions
+        // is safe (each PrescriptionImage row has its own id, the URL endpoint
+        // resolves id → key → bytes). The original prescription stays as
+        // Cancelled in history, the new one starts fresh in Submitted.
+        var clonedImages = original.Images
+          .OrderBy(i => i.OrderIndex)
+          .Select(i => new PrescriptionImage(i.Key, i.OrderIndex))
+          .ToList();
+
+        var resubmitted = new Prescription(
+          clientId,
+          original.PatientAge,
+          original.ClientComment,
+          clonedImages,
+          original.PreferenceTier);
+
+        _dbContext.Prescriptions.Add(resubmitted);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          resubmitted.Id, resubmitted.ClientId, resubmitted.Status,
+          resubmitted.AssignedPharmacistId, cancellationToken);
+
+        var clientPhone = await _dbContext.Clients
+          .AsNoTracking()
+          .Where(c => c.Id == clientId)
+          .Select(c => c.PhoneNumber)
+          .FirstOrDefaultAsync(cancellationToken)
+          ?? string.Empty;
+
+        var paymentUrl = await BuildPaymentUrlAsync(
+          clientPhone,
+          resubmitted.Id,
+          cancellationToken);
+
+        var response = await BuildResponseAsync(resubmitted.Id, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load resubmitted prescription.");
+
+        response.PaymentUrl = paymentUrl;
+        response.PaymentAmount = DecodingFeeAmount;
+        response.PaymentCurrency = DecodingFeeCurrency;
+        return response;
+    }
+
     public async Task<PrescriptionResponse> SubmitChecklistAsync(
       Guid pharmacistId,
       Guid prescriptionId,
@@ -462,7 +662,8 @@ public sealed class PrescriptionService : IPrescriptionService
             throw new UnauthorizedAccessException("Only the assigned pharmacist can submit this checklist.");
 
         // Only allow MedicineIds that actually exist + are active, so we
-        // don't end up with checklists pointing to nothing later.
+        // don't end up with checklists pointing to nothing later. Analog
+        // pairing now points to sibling items by index — validated below.
         var refIds = request.Items
           .Where(i => i.MedicineId.HasValue)
           .Select(i => i.MedicineId!.Value)
@@ -483,14 +684,32 @@ public sealed class PrescriptionService : IPrescriptionService
                   $"Medicine(s) not found in catalog: {string.Join(", ", missing)}");
         }
 
+        // First pass — materialise items in input order so AnalogIndex
+        // (positional reference into request.Items) maps cleanly to a
+        // freshly-generated item id below.
         var items = new List<PrescriptionChecklistItem>(request.Items.Count);
         foreach (var i in request.Items)
         {
+            // Map raw int → enum, defaulting to Original for any value
+            // outside the known range.
+            var kind = Enum.IsDefined(typeof(PrescriptionChecklistItemKind), i.Kind)
+              ? (PrescriptionChecklistItemKind)i.Kind
+              : PrescriptionChecklistItemKind.Original;
+
+            if (kind == PrescriptionChecklistItemKind.Undecoded)
+            {
+                items.Add(PrescriptionChecklistItem.Undecoded(i.Quantity, i.PharmacistComment));
+                continue;
+            }
+
+            // AnalogMedicineId is the legacy v1 field — kept for the entity
+            // factory signature but always passed as null by the new flow.
             var item = i.MedicineId.HasValue
               ? PrescriptionChecklistItem.FromCatalog(
                   i.MedicineId.Value,
                   i.Quantity,
-                  i.PharmacistComment)
+                  i.PharmacistComment,
+                  analogMedicineId: null)
               : PrescriptionChecklistItem.Manual(
                   i.ManualMedicineName ?? string.Empty,
                   i.Quantity,
@@ -504,6 +723,34 @@ public sealed class PrescriptionService : IPrescriptionService
                 item.AttachLookupRequest(i.LookupRequestId.Value);
 
             items.Add(item);
+        }
+
+        // Second pass — link pairs. AnalogIndex must be inside the bounds
+        // of the items list, must not point to itself, and the referenced
+        // sibling can't itself reference back (no cycles). Undecoded rows
+        // can't carry a pair on either side; the entity-level setter
+        // re-checks that — duplicating here keeps the error message
+        // close to the request payload for clearer client-side debugging.
+        for (var idx = 0; idx < request.Items.Count; idx++)
+        {
+            var input = request.Items[idx];
+            if (!input.AnalogIndex.HasValue) continue;
+
+            var pairIdx = input.AnalogIndex.Value;
+            if (pairIdx < 0 || pairIdx >= items.Count)
+                throw new InvalidOperationException(
+                  $"AnalogIndex {pairIdx} on item #{idx} is out of bounds (items count: {items.Count}).");
+
+            if (pairIdx == idx)
+                throw new InvalidOperationException(
+                  $"Item #{idx} cannot reference itself as its analog.");
+
+            var partner = request.Items[pairIdx];
+            if (partner.AnalogIndex.HasValue)
+                throw new InvalidOperationException(
+                  $"Item #{idx} references item #{pairIdx} which is itself an original of another pair (cycles aren't allowed).");
+
+            items[idx].SetAnalogItem(items[pairIdx].Id);
         }
 
         prescription.SubmitChecklist(request.OverallComment, items);
@@ -773,7 +1020,32 @@ public sealed class PrescriptionService : IPrescriptionService
           .AsNoTracking()
           .FirstOrDefaultAsync(u => u.Id == prescription.ClientId, cancellationToken);
 
-        return MapToResponse(prescription, client);
+        var response = MapToResponse(prescription, client);
+
+        // Re-issue a fresh DC payment URL on every read while the prescription
+        // is still waiting for payment. The frontend shows it as a clickable
+        // "Оплатить" link instead of the old "Я оплатил" button — once the
+        // 24h payment-timeout job fires, the prescription flips to Cancelled
+        // and we stop attaching the URL (no point paying for a dead request).
+        if (prescription.Status == PrescriptionStatus.Submitted && client is not null)
+        {
+            try
+            {
+                response.PaymentUrl = await BuildPaymentUrlAsync(
+                  client.PhoneNumber ?? string.Empty,
+                  prescription.Id,
+                  cancellationToken);
+                response.PaymentAmount = DecodingFeeAmount;
+                response.PaymentCurrency = DecodingFeeCurrency;
+            }
+            catch
+            {
+                // Payment-settings outages shouldn't break the prescription
+                // load — surface a null URL and let the client retry later.
+            }
+        }
+
+        return response;
     }
 
     private static PrescriptionResponse MapToResponse(Prescription prescription, User? client = null)
@@ -787,6 +1059,7 @@ public sealed class PrescriptionService : IPrescriptionService
             ClientTelegramId = client?.TelegramId,
             ClientTelegramUsername = client?.TelegramUsername,
             Status = prescription.Status.ToString(),
+            PreferenceTier = prescription.PreferenceTier.ToString(),
             PatientAge = prescription.PatientAge,
             ClientComment = prescription.ClientComment,
             CreatedAtUtc = prescription.CreatedAtUtc,
@@ -813,6 +1086,9 @@ public sealed class PrescriptionService : IPrescriptionService
                   ManualMedicineName = x.ManualMedicineName,
                   Quantity = x.Quantity,
                   PharmacistComment = x.PharmacistComment,
+                  Kind = x.Kind.ToString(),
+                  AnalogMedicineId = x.AnalogMedicineId,
+                  AnalogItemId = x.AnalogItemId,
                   LookupRequestId = x.LookupRequestId
               })
               .ToList()

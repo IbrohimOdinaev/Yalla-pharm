@@ -126,7 +126,7 @@ export function PrescriptionPickerModal() {
                                   : "bg-surface-container-low hover:bg-surface-container"
                               }`}
                             >
-                              <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                              <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop">
                                 {cover ? (
                                   <AuthedImage src={cover.url} alt="" className="h-full w-full object-cover" />
                                 ) : null}
