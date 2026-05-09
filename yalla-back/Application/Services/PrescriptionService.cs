@@ -34,6 +34,7 @@ public sealed class PrescriptionService : IPrescriptionService
     private readonly IPaymentSettingsService _paymentSettingsService;
     private readonly DushanbeCityPaymentOptions _paymentOptions;
     private readonly IRealtimeUpdatesPublisher _realtimePublisher;
+    private readonly IManualItemLookupService? _manualLookupService;
 
     public PrescriptionService(
       IAppDbContext dbContext,
@@ -41,12 +42,24 @@ public sealed class PrescriptionService : IPrescriptionService
       IPaymentSettingsService paymentSettingsService,
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher)
+      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null)
+    {
+    }
+
+    public PrescriptionService(
+      IAppDbContext dbContext,
+      IPrescriptionImageStorage imageStorage,
+      IPaymentSettingsService paymentSettingsService,
+      IOptions<DushanbeCityPaymentOptions> paymentOptions,
+      IRealtimeUpdatesPublisher realtimePublisher,
+      IManualItemLookupService? manualLookupService)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
         _paymentSettingsService = paymentSettingsService;
         _paymentOptions = paymentOptions.Value;
         _realtimePublisher = realtimePublisher;
+        _manualLookupService = manualLookupService;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -473,7 +486,7 @@ public sealed class PrescriptionService : IPrescriptionService
         var items = new List<PrescriptionChecklistItem>(request.Items.Count);
         foreach (var i in request.Items)
         {
-            items.Add(i.MedicineId.HasValue
+            var item = i.MedicineId.HasValue
               ? PrescriptionChecklistItem.FromCatalog(
                   i.MedicineId.Value,
                   i.Quantity,
@@ -481,11 +494,30 @@ public sealed class PrescriptionService : IPrescriptionService
               : PrescriptionChecklistItem.Manual(
                   i.ManualMedicineName ?? string.Empty,
                   i.Quantity,
-                  i.PharmacistComment));
+                  i.PharmacistComment);
+
+            // Carry the lookup-request binding through to the persisted
+            // item so the unique partial index keeps reflecting the
+            // pharmacist's outstanding asks. The lookup itself stays
+            // Open until the close pass below.
+            if (i.LookupRequestId.HasValue && !i.MedicineId.HasValue)
+                item.AttachLookupRequest(i.LookupRequestId.Value);
+
+            items.Add(item);
         }
 
         prescription.SubmitChecklist(request.OverallComment, items);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Auto-close every Open lookup request for this prescription —
+        // submitting the checklist is the contractual signal that the
+        // pharmacist is done collecting answers. Each closed request fan-
+        // outs to admins via SignalR so their "active" tab clears.
+        if (_manualLookupService is not null)
+        {
+            await _manualLookupService.CloseRequestsForPrescriptionAsync(
+              prescription.Id, cancellationToken);
+        }
 
         await _realtimePublisher.PublishPrescriptionUpdatedAsync(
           prescription.Id, prescription.ClientId, prescription.Status,
