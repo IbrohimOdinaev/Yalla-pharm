@@ -378,6 +378,7 @@ public sealed class ManualItemLookupService : IManualItemLookupService
 
         var openRequests = await _dbContext.ManualItemLookupRequests
           .AsTracking()
+          .Include(r => r.Responses)
           .Where(r => r.PrescriptionId == prescriptionId
                   && r.Status == ManualItemLookupRequestStatus.Open)
           .ToListAsync(cancellationToken);
@@ -385,8 +386,39 @@ public sealed class ManualItemLookupService : IManualItemLookupService
         if (openRequests.Count == 0)
             return;
 
+        // Materialise shadow medicines + offers from every response that
+        // belongs to a checklist item the pharmacist actually KEPT in the
+        // final checklist. We only check existence by lookup_request_id —
+        // when the pharmacist drops a manual line during submit, its
+        // lookup goes orphaned (still in this list), no shadow rows are
+        // created for it, and the request just closes. Idempotent: the
+        // unique partial index on medicines.manual_lookup_response_id
+        // guards against double-materialisation if this method ever runs
+        // twice.
+        var lookupIds = openRequests.Select(r => r.Id).ToList();
+        var keptItemLookupIds = await _dbContext.PrescriptionChecklistItems
+          .AsNoTracking()
+          .Where(i => i.PrescriptionId == prescriptionId
+                   && i.LookupRequestId != null
+                   && lookupIds.Contains(i.LookupRequestId.Value))
+          .Select(i => i.LookupRequestId!.Value)
+          .ToListAsync(cancellationToken);
+        var keptLookupIdSet = keptItemLookupIds.ToHashSet();
+
+        var existingShadowResponseIds = await _dbContext.Medicines
+          .AsNoTracking()
+          .Where(m => m.ManualLookupResponseId != null
+                   && lookupIds.Contains(m.ManualLookupRequestId!.Value))
+          .Select(m => m.ManualLookupResponseId!.Value)
+          .ToListAsync(cancellationToken);
+        var existingShadowSet = existingShadowResponseIds.ToHashSet();
+
         foreach (var lookup in openRequests)
+        {
+            if (keptLookupIdSet.Contains(lookup.Id))
+                MaterialiseShadowMedicinesForLookup(lookup, existingShadowSet);
             lookup.Close();
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -399,8 +431,57 @@ public sealed class ManualItemLookupService : IManualItemLookupService
         }
 
         _logger.LogInformation(
-          "Closed {Count} manual lookup requests for prescription {PrescriptionId}",
-          openRequests.Count, prescriptionId);
+          "Closed {Count} manual lookup requests for prescription {PrescriptionId}; materialised shadow rows for {KeptCount} kept items",
+          openRequests.Count, prescriptionId, keptLookupIdSet.Count);
+    }
+
+    /// <summary>
+    /// One shadow Medicine + Offer per response, gated by the per-response
+    /// idempotency set. Cheaper than a SELECT-per-row dance and safe since
+    /// the only writer is this single close pass.
+    /// </summary>
+    private void MaterialiseShadowMedicinesForLookup(
+      ManualItemLookupRequest lookup,
+      HashSet<Guid> alreadyMaterialisedResponseIds)
+    {
+        foreach (var response in lookup.Responses)
+        {
+            if (alreadyMaterialisedResponseIds.Contains(response.Id))
+                continue;
+
+            var articul = $"manual-{response.Id:N}";
+            var shadow = Medicine.ForManualLookup(
+              title: response.FullName,
+              articul: articul,
+              manualLookupRequestId: lookup.Id,
+              manualLookupResponseId: response.Id);
+
+            _dbContext.Medicines.Add(shadow);
+
+            // Attach the response photo (if any) as the medicine's main
+            // image. Reusing the MinIO key directly — the bucket is
+            // shared, only the prefix differs, so the existing
+            // medicine-image content endpoint can stream the same blob
+            // without a copy.
+            if (!string.IsNullOrEmpty(response.ImageKey))
+            {
+                var image = new MedicineImage(
+                  medicineId: shadow.Id,
+                  key: response.ImageKey,
+                  isMain: true,
+                  isMinimal: false);
+                _dbContext.MedicineImages.Add(image);
+            }
+
+            var offer = new Offer(
+              medicineId: shadow.Id,
+              pharmacyId: response.RespondingPharmacyId,
+              stockQuantity: response.Quantity,
+              price: response.Price);
+            _dbContext.Offers.Add(offer);
+
+            alreadyMaterialisedResponseIds.Add(response.Id);
+        }
     }
 
     private async Task<PharmacyWorker> GetAdminOrThrowAsync(

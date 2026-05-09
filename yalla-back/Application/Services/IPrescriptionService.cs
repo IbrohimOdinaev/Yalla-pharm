@@ -71,6 +71,19 @@ public interface IPrescriptionService
       Guid clientId,
       Guid prescriptionId,
       CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pharmacy-coverage breakdown for a decoded prescription. Catalog
+    /// items resolve through normal offers; manual items resolve through
+    /// shadow medicines materialised from each pharmacy's lookup
+    /// response. Each option carries a per-line item with the
+    /// pharmacy-specific shadow medicineId so the client can pass the
+    /// right id into the explicit-source checkout.
+    /// </summary>
+    Task<GetPrescriptionPharmacyOptionsResponse> GetPharmacyOptionsAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
 }
 
 public sealed class MoveChecklistToCartResponse

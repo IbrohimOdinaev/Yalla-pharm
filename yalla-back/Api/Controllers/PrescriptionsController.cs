@@ -152,6 +152,25 @@ public sealed class PrescriptionsController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>
+    /// Client picks a pharmacy: returns each pharmacy with the
+    /// prescription items it covers (catalog offers + manual lookup
+    /// shadow offers). Each item carries the pharmacy-specific
+    /// medicineId the frontend then passes into the explicit-source
+    /// checkout payload.
+    /// </summary>
+    [HttpGet("{prescriptionId:guid}/pharmacy-options")]
+    [Authorize(Roles = nameof(Role.Client))]
+    public async Task<IActionResult> GetPharmacyOptions(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var clientId = User.GetRequiredUserId();
+        var response = await _prescriptionService.GetPharmacyOptionsAsync(
+          clientId, prescriptionId, cancellationToken);
+        return Ok(response);
+    }
+
     // ── SuperAdmin ────────────────────────────────────────────────────────
 
     /// <summary>SuperAdmin queue of prescriptions waiting for the 3 TJS sign-off.</summary>
