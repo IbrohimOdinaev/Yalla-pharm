@@ -25,6 +25,10 @@ export type DraftItem = {
    *  list (lookup happens at render time) but is hidden from the flat
    *  list to avoid double-display. Only meaningful for Original-kind. */
   analogDraftId?: string | null;
+  /** Manual lines may carry a manual-lookup request — the pharmacist
+   *  asks every pharmacy admin to physically locate the medicine. Set
+   *  after createManualLookupRequest succeeds; null until then. */
+  lookupRequestId?: string | null;
 };
 
 export type DraftState = {

@@ -34,6 +34,10 @@ export type ApiPrescriptionChecklistItem = {
    *  "original" of the pair; the referenced sibling stays in `items`
    *  under its own row, and the renderer groups them into a block. */
   analogItemId?: string | null;
+  /** FK to a ManualItemLookupRequest the pharmacist already created for
+   *  this manual line (asked other pharmacies). Null for catalog items
+   *  and for manual items without a lookup. */
+  lookupRequestId?: string | null;
 };
 
 export type PrescriptionPreferenceTier = "AsPrescribed" | "GoldenMiddle" | "MaxSavings";
@@ -154,6 +158,45 @@ export async function resubmitPrescription(
   return apiFetch<ApiPrescription>(
     `/api/prescriptions/${prescriptionId}/resubmit`,
     { method: "POST", token },
+  );
+}
+
+export type ApiPrescriptionPharmacyItem = {
+  checklistItemId: string;
+  medicineId?: string | null;
+  requestedQuantity: number;
+  title: string;
+  isFound: boolean;
+  foundQuantity: number;
+  hasEnoughQuantity: boolean;
+  price?: number | null;
+  isManualLookup: boolean;
+};
+
+export type ApiPrescriptionPharmacyOption = {
+  pharmacyId: string;
+  pharmacyTitle: string;
+  pharmacyIsActive: boolean;
+  foundItemsCount: number;
+  totalItemsCount: number;
+  enoughQuantityItemsCount: number;
+  isAvailable: boolean;
+  totalCost: number;
+  items: ApiPrescriptionPharmacyItem[];
+};
+
+export type ApiPrescriptionPharmacyOptions = {
+  prescriptionId: string;
+  pharmacyOptions: ApiPrescriptionPharmacyOption[];
+};
+
+export async function getPrescriptionPharmacyOptions(
+  token: string,
+  prescriptionId: string,
+): Promise<ApiPrescriptionPharmacyOptions> {
+  return apiFetch<ApiPrescriptionPharmacyOptions>(
+    `/api/prescriptions/${prescriptionId}/pharmacy-options`,
+    { token },
   );
 }
 

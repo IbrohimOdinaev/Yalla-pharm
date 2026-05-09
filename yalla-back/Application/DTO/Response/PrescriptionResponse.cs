@@ -63,4 +63,8 @@ public sealed class PrescriptionChecklistItemResponse
     /// own row; the client renders the pair as one block with the
     /// analog highlighted on top.</summary>
     public Guid? AnalogItemId { get; set; }
+    /// <summary>FK to a manual lookup request created for this item, if
+    /// the pharmacist asked other pharmacies to physically locate it.
+    /// Null for catalog items and for manual items without a lookup.</summary>
+    public Guid? LookupRequestId { get; set; }
 }

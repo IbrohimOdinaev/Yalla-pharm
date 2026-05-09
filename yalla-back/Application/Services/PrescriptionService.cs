@@ -34,6 +34,7 @@ public sealed class PrescriptionService : IPrescriptionService
     private readonly IPaymentSettingsService _paymentSettingsService;
     private readonly DushanbeCityPaymentOptions _paymentOptions;
     private readonly IRealtimeUpdatesPublisher _realtimePublisher;
+    private readonly IManualItemLookupService? _manualLookupService;
 
     public PrescriptionService(
       IAppDbContext dbContext,
@@ -41,12 +42,24 @@ public sealed class PrescriptionService : IPrescriptionService
       IPaymentSettingsService paymentSettingsService,
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher)
+      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null)
+    {
+    }
+
+    public PrescriptionService(
+      IAppDbContext dbContext,
+      IPrescriptionImageStorage imageStorage,
+      IPaymentSettingsService paymentSettingsService,
+      IOptions<DushanbeCityPaymentOptions> paymentOptions,
+      IRealtimeUpdatesPublisher realtimePublisher,
+      IManualItemLookupService? manualLookupService)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
         _paymentSettingsService = paymentSettingsService;
         _paymentOptions = paymentOptions.Value;
         _realtimePublisher = realtimePublisher;
+        _manualLookupService = manualLookupService;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -691,7 +704,7 @@ public sealed class PrescriptionService : IPrescriptionService
 
             // AnalogMedicineId is the legacy v1 field — kept for the entity
             // factory signature but always passed as null by the new flow.
-            items.Add(i.MedicineId.HasValue
+            var item = i.MedicineId.HasValue
               ? PrescriptionChecklistItem.FromCatalog(
                   i.MedicineId.Value,
                   i.Quantity,
@@ -700,7 +713,16 @@ public sealed class PrescriptionService : IPrescriptionService
               : PrescriptionChecklistItem.Manual(
                   i.ManualMedicineName ?? string.Empty,
                   i.Quantity,
-                  i.PharmacistComment));
+                  i.PharmacistComment);
+
+            // Carry the lookup-request binding through to the persisted
+            // item so the unique partial index keeps reflecting the
+            // pharmacist's outstanding asks. The lookup itself stays
+            // Open until the close pass below.
+            if (i.LookupRequestId.HasValue && !i.MedicineId.HasValue)
+                item.AttachLookupRequest(i.LookupRequestId.Value);
+
+            items.Add(item);
         }
 
         // Second pass — link pairs. AnalogIndex must be inside the bounds
@@ -734,6 +756,16 @@ public sealed class PrescriptionService : IPrescriptionService
         prescription.SubmitChecklist(request.OverallComment, items);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        // Auto-close every Open lookup request for this prescription —
+        // submitting the checklist is the contractual signal that the
+        // pharmacist is done collecting answers. Each closed request fan-
+        // outs to admins via SignalR so their "active" tab clears.
+        if (_manualLookupService is not null)
+        {
+            await _manualLookupService.CloseRequestsForPrescriptionAsync(
+              prescription.Id, cancellationToken);
+        }
+
         await _realtimePublisher.PublishPrescriptionUpdatedAsync(
           prescription.Id, prescription.ClientId, prescription.Status,
           prescription.AssignedPharmacistId, cancellationToken);
@@ -741,6 +773,220 @@ public sealed class PrescriptionService : IPrescriptionService
         return await BuildResponseAsync(prescriptionId, cancellationToken)
           ?? throw new InvalidOperationException("Failed to load updated prescription.");
     }
+
+    public async Task<GetPrescriptionPharmacyOptionsResponse> GetPharmacyOptionsAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty)
+            throw new InvalidOperationException("ClientId can't be empty.");
+        if (prescriptionId == Guid.Empty)
+            throw new InvalidOperationException("PrescriptionId can't be empty.");
+
+        var prescription = await _dbContext.Prescriptions
+          .AsNoTracking()
+          .Include(p => p.Items)
+          .FirstOrDefaultAsync(p => p.Id == prescriptionId && p.ClientId == clientId, cancellationToken)
+          ?? throw new InvalidOperationException(
+              $"Prescription '{prescriptionId}' for client '{clientId}' was not found.");
+
+        // Pharmacy options only make sense once the pharmacist has finished
+        // composing the checklist — pre-Decoded prescriptions don't yet
+        // know what to order, post-Cancelled ones are dead.
+        if (prescription.Status is not (PrescriptionStatus.Decoded
+                                     or PrescriptionStatus.OrderPlaced
+                                     or PrescriptionStatus.MovedToCart))
+        {
+            return new GetPrescriptionPharmacyOptionsResponse
+            {
+                PrescriptionId = prescription.Id,
+                PharmacyOptions = []
+            };
+        }
+
+        var orderableItems = prescription.Items
+          .Where(i => i.MedicineId.HasValue || i.LookupRequestId.HasValue)
+          .ToList();
+
+        if (orderableItems.Count == 0)
+        {
+            return new GetPrescriptionPharmacyOptionsResponse
+            {
+                PrescriptionId = prescription.Id,
+                PharmacyOptions = []
+            };
+        }
+
+        // Catalog items contribute their MedicineId directly; manual items
+        // contribute every shadow medicine materialised from their lookup
+        // (one per responding pharmacy). The flat (medicineId, item, isShadow)
+        // tuples below let the pharmacy sweep look up offers uniformly.
+        var lookupRequestIds = orderableItems
+          .Where(i => i.LookupRequestId.HasValue)
+          .Select(i => i.LookupRequestId!.Value)
+          .ToList();
+
+        var shadowRows = lookupRequestIds.Count == 0
+          ? new List<ShadowMedicineRow>()
+          : await _dbContext.Medicines
+              .AsNoTracking()
+              .Where(m => m.ManualLookupRequestId.HasValue
+                       && lookupRequestIds.Contains(m.ManualLookupRequestId.Value))
+              .Select(m => new ShadowMedicineRow(
+                  m.Id,
+                  m.ManualLookupRequestId!.Value,
+                  m.Title))
+              .ToListAsync(cancellationToken);
+
+        var shadowsByLookup = shadowRows
+          .GroupBy(s => s.LookupRequestId)
+          .ToDictionary(g => g.Key, g => g.ToList());
+
+        var catalogMedicineIds = orderableItems
+          .Where(i => i.MedicineId.HasValue)
+          .Select(i => i.MedicineId!.Value)
+          .Distinct()
+          .ToList();
+
+        var catalogTitles = catalogMedicineIds.Count == 0
+          ? new Dictionary<Guid, string>()
+          : await _dbContext.Medicines
+              .AsNoTracking()
+              .Where(m => catalogMedicineIds.Contains(m.Id))
+              .Select(m => new { m.Id, m.Title })
+              .ToDictionaryAsync(m => m.Id, m => m.Title, cancellationToken);
+
+        var allMedicineIds = catalogMedicineIds
+          .Concat(shadowRows.Select(s => s.MedicineId))
+          .Distinct()
+          .ToList();
+
+        var pharmacies = await _dbContext.Pharmacies
+          .AsNoTracking()
+          .Select(p => new { p.Id, p.Title, p.IsActive })
+          .ToListAsync(cancellationToken);
+
+        var offers = await _dbContext.Offers
+          .AsNoTracking()
+          .Where(o => allMedicineIds.Contains(o.MedicineId))
+          .Select(o => new { o.PharmacyId, o.MedicineId, o.Price, o.StockQuantity })
+          .ToListAsync(cancellationToken);
+
+        var offerLookup = offers
+          .ToDictionary(o => (o.PharmacyId, o.MedicineId), o => o);
+
+        var totalItemsCount = orderableItems.Count;
+        var options = new List<PrescriptionPharmacyOptionResponse>(pharmacies.Count);
+
+        foreach (var pharmacy in pharmacies)
+        {
+            var foundCount = 0;
+            var enoughCount = 0;
+            decimal totalCost = 0m;
+            var lineItems = new List<PrescriptionPharmacyItemResponse>(totalItemsCount);
+
+            foreach (var item in orderableItems)
+            {
+                Guid? resolvedMedicineId;
+                string title;
+                bool isManual;
+
+                if (item.MedicineId.HasValue)
+                {
+                    resolvedMedicineId = item.MedicineId.Value;
+                    title = catalogTitles.TryGetValue(item.MedicineId.Value, out var t)
+                      ? t
+                      : "—";
+                    isManual = false;
+                }
+                else
+                {
+                    isManual = true;
+                    if (shadowsByLookup.TryGetValue(item.LookupRequestId!.Value, out var shadows))
+                    {
+                        // Pick the shadow medicine for this pharmacy if it
+                        // exists. Each pharmacy answers at most once per
+                        // lookup, so this is deterministic.
+                        var shadowForPharmacy = shadows.FirstOrDefault(s =>
+                          offerLookup.ContainsKey((pharmacy.Id, s.MedicineId)));
+                        resolvedMedicineId = shadowForPharmacy?.MedicineId;
+                        title = shadowForPharmacy?.Title
+                          ?? item.ManualMedicineName
+                          ?? "—";
+                    }
+                    else
+                    {
+                        resolvedMedicineId = null;
+                        title = item.ManualMedicineName ?? "—";
+                    }
+                }
+
+                if (resolvedMedicineId.HasValue
+                  && offerLookup.TryGetValue((pharmacy.Id, resolvedMedicineId.Value), out var offer))
+                {
+                    var hasEnough = offer.StockQuantity >= item.Quantity;
+                    foundCount++;
+                    if (hasEnough) enoughCount++;
+                    totalCost += offer.Price * Math.Min(item.Quantity, offer.StockQuantity);
+
+                    lineItems.Add(new PrescriptionPharmacyItemResponse
+                    {
+                        ChecklistItemId = item.Id,
+                        MedicineId = resolvedMedicineId,
+                        RequestedQuantity = item.Quantity,
+                        Title = title,
+                        IsFound = true,
+                        FoundQuantity = offer.StockQuantity,
+                        HasEnoughQuantity = hasEnough,
+                        Price = offer.Price,
+                        IsManualLookup = isManual
+                    });
+                }
+                else
+                {
+                    lineItems.Add(new PrescriptionPharmacyItemResponse
+                    {
+                        ChecklistItemId = item.Id,
+                        MedicineId = null,
+                        RequestedQuantity = item.Quantity,
+                        Title = title,
+                        IsFound = false,
+                        FoundQuantity = 0,
+                        HasEnoughQuantity = false,
+                        Price = null,
+                        IsManualLookup = isManual
+                    });
+                }
+            }
+
+            options.Add(new PrescriptionPharmacyOptionResponse
+            {
+                PharmacyId = pharmacy.Id,
+                PharmacyTitle = pharmacy.Title,
+                PharmacyIsActive = pharmacy.IsActive,
+                FoundItemsCount = foundCount,
+                TotalItemsCount = totalItemsCount,
+                EnoughQuantityItemsCount = enoughCount,
+                IsAvailable = pharmacy.IsActive && enoughCount == totalItemsCount,
+                TotalCost = totalCost,
+                Items = lineItems
+            });
+        }
+
+        return new GetPrescriptionPharmacyOptionsResponse
+        {
+            PrescriptionId = prescription.Id,
+            PharmacyOptions = options
+              .OrderByDescending(x => x.FoundItemsCount)
+              .ThenByDescending(x => x.EnoughQuantityItemsCount)
+              .ThenBy(x => x.TotalCost)
+              .ThenBy(x => x.PharmacyTitle)
+              .ToList()
+        };
+    }
+
+    private sealed record ShadowMedicineRow(Guid MedicineId, Guid LookupRequestId, string Title);
 
     private async Task<Prescription> LoadTrackedAsync(
       Guid prescriptionId,
@@ -842,7 +1088,8 @@ public sealed class PrescriptionService : IPrescriptionService
                   PharmacistComment = x.PharmacistComment,
                   Kind = x.Kind.ToString(),
                   AnalogMedicineId = x.AnalogMedicineId,
-                  AnalogItemId = x.AnalogItemId
+                  AnalogItemId = x.AnalogItemId,
+                  LookupRequestId = x.LookupRequestId
               })
               .ToList()
         };

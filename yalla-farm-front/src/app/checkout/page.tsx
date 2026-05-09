@@ -186,7 +186,7 @@ export default function CheckoutPage() {
     // Positions the user unchecked on this screen — they chose to skip them for
     // this order, so clean them out of the basket too (mirrors the prior UX).
     // Skipped entirely in prescription mode: that flow is supposed to leave
-    // the user's basket strictly alone.
+    // the user's basket strictly alone (prescription items aren't there).
     const positionsByMedId: Record<string, string> = {};
     for (const p of basket.positions ?? []) positionsByMedId[p.medicineId] = p.id;
     const uncheckedBasketPositionIds = prescriptionId

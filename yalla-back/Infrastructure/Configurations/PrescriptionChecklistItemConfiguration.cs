@@ -63,6 +63,11 @@ public class PrescriptionChecklistItemConfiguration
           .HasColumnType("uuid")
           .IsRequired(false);
 
+        builder.Property(x => x.LookupRequestId)
+          .HasColumnName("lookup_request_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
         builder.Property(x => x.CreatedAtUtc)
           .HasColumnName("created_at_utc")
           .HasColumnType("timestamp")
@@ -85,5 +90,14 @@ public class PrescriptionChecklistItemConfiguration
         builder.HasIndex(x => x.AnalogItemId)
           .HasFilter("analog_item_id IS NOT NULL")
           .HasDatabaseName("ix_prescription_checklist_items_analog_item_id");
+
+        // One lookup request per checklist item — enforced at DB level so
+        // the pharmacist can't accidentally fork a request via concurrent
+        // submits. Filtered partial index keeps the constraint cheap on
+        // catalog rows (where lookup_request_id is null).
+        builder.HasIndex(x => x.LookupRequestId)
+          .IsUnique()
+          .HasFilter("lookup_request_id IS NOT NULL")
+          .HasDatabaseName("ix_prescription_checklist_items_lookup_request_id");
     }
 }

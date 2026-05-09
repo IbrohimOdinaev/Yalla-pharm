@@ -67,6 +67,9 @@ export type DecodePrescriptionItemInput = {
    *  sibling becomes the analog. Server resolves indices to GUIDs after
    *  creating the rows. Self-reference / cycles / out-of-bounds rejected. */
   analogIndex?: number | null;
+  /** When set, the server preserves the lookup binding for this manual
+   *  line and closes the request once the checklist is submitted. */
+  lookupRequestId?: string | null;
 };
 
 export async function submitChecklist(

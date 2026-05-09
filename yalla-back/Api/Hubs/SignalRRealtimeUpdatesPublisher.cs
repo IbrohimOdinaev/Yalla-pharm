@@ -127,4 +127,76 @@ public sealed class SignalRRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
       _logger.LogWarning(ex, "Failed to publish PrescriptionUpdated for {PrescriptionId}", prescriptionId);
     }
   }
+
+  public async Task PublishManualLookupRequestCreatedAsync(
+    Guid requestId,
+    Guid prescriptionId,
+    Guid requestedByPharmacistId,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      var payload = new { requestId, prescriptionId, requestedByPharmacistId };
+      await _hubContext.Clients
+        .Group(UpdatesHub.AdminGroup)
+        .SendAsync("ManualLookupRequestCreated", payload, cancellationToken);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish ManualLookupRequestCreated for {RequestId}", requestId);
+    }
+  }
+
+  public async Task PublishManualLookupResponseAddedAsync(
+    Guid requestId,
+    Guid responseId,
+    Guid respondingPharmacyId,
+    Guid requestedByPharmacistId,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      var payload = new { requestId, responseId, respondingPharmacyId };
+      // Send to the initiating pharmacist (User-routed) and broadcast to
+      // the pharmacist group so the lookup detail panel can refresh
+      // regardless of who's looking. Admin group also sees it so an admin
+      // re-editing their answer sees the row update.
+      var tasks = new List<Task>
+      {
+        _hubContext.Clients.User(requestedByPharmacistId.ToString())
+          .SendAsync("ManualLookupResponseAdded", payload, cancellationToken),
+        _hubContext.Clients.Group(UpdatesHub.PharmacistGroup)
+          .SendAsync("ManualLookupResponseAdded", payload, cancellationToken),
+        _hubContext.Clients.Group(UpdatesHub.AdminGroup)
+          .SendAsync("ManualLookupResponseAdded", payload, cancellationToken),
+      };
+      await Task.WhenAll(tasks);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish ManualLookupResponseAdded for {RequestId}", requestId);
+    }
+  }
+
+  public async Task PublishManualLookupRequestClosedAsync(
+    Guid requestId,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      var payload = new { requestId };
+      var tasks = new List<Task>
+      {
+        _hubContext.Clients.Group(UpdatesHub.AdminGroup)
+          .SendAsync("ManualLookupRequestClosed", payload, cancellationToken),
+        _hubContext.Clients.Group(UpdatesHub.PharmacistGroup)
+          .SendAsync("ManualLookupRequestClosed", payload, cancellationToken),
+      };
+      await Task.WhenAll(tasks);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish ManualLookupRequestClosed for {RequestId}", requestId);
+    }
+  }
 }

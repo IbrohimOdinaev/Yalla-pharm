@@ -19,6 +19,7 @@ import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePr
 import { usePrescriptionDraftStore, type DraftItem } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { ManualEntryModal } from "@/widgets/pharmacist/ManualEntryModal";
+import { ManualLookupPanel } from "@/widgets/pharmacist/ManualLookupPanel";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
 import { AuthedImage, Button, Icon } from "@/shared/ui";
 
@@ -113,6 +114,7 @@ export default function PharmacistCartPage() {
         pharmacistComment: it.pharmacistComment ?? null,
         displayTitle: it.manualMedicineName || it.medicineId || "",
         kind: it.kind === "Undecoded" ? "Undecoded" : "Original",
+        lookupRequestId: it.lookupRequestId ?? null,
       });
     }
     for (const it of prescription.items) {
@@ -194,6 +196,10 @@ export default function PharmacistCartPage() {
             pharmacistComment: i.pharmacistComment ?? null,
             kind: i.kind === "Undecoded" ? 1 : 0,
             analogIndex: partnerIdx,
+            // Carry the lookup binding through so the server can close
+            // the request + materialise shadow medicines/offers
+            // atomically with the checklist submit.
+            lookupRequestId: i.lookupRequestId ?? null,
           };
         }),
       });
@@ -384,6 +390,20 @@ export default function PharmacistCartPage() {
                             isCommentOpen={editingCommentFor === it.draftId}
                             onPair={() => setPairModalSourceId(it.draftId)}
                           />
+                          {/* Manual line — render the lookup panel so the
+                              pharmacist can ask other pharmacies + see
+                              their responses. Catalog items skip this. */}
+                          {!it.medicineId && it.manualMedicineName ? (
+                            <ManualLookupPanel
+                              prescriptionId={activeId!}
+                              checklistItemId={it.draftId}
+                              manualMedicineName={it.manualMedicineName}
+                              lookupRequestId={it.lookupRequestId ?? null}
+                              onRequestCreated={(reqId) =>
+                                updateItem(activeId!, it.draftId, { lookupRequestId: reqId })
+                              }
+                            />
+                          ) : null}
                         </li>
                       );
                     })}

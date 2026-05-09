@@ -35,4 +35,11 @@ public sealed class DecodePrescriptionItem
     /// for the second-pass linker. Self-reference and circular pairs
     /// are rejected. Ignored for Undecoded items.</summary>
     public int? AnalogIndex { get; set; }
+
+    /// <summary>FK to a <c>ManualItemLookupRequest</c> the pharmacist
+    /// already created for this manual line. Lets the pharmacist preserve
+    /// the lookup binding when re-submitting the checklist (the request
+    /// stays Open so admins can keep responding until the final submit).
+    /// Only meaningful when <see cref="MedicineId"/> is null.</summary>
+    public Guid? LookupRequestId { get; set; }
 }

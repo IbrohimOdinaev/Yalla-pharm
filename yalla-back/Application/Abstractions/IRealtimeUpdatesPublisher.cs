@@ -34,4 +34,37 @@ public interface IRealtimeUpdatesPublisher
     PrescriptionStatus status,
     Guid? assignedPharmacistId,
     CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Pushed when a pharmacist creates a new manual-item lookup request.
+  /// Receivers: every connected pharmacy admin (so the "active" tab
+  /// updates in real time without polling).
+  /// </summary>
+  Task PublishManualLookupRequestCreatedAsync(
+    Guid requestId,
+    Guid prescriptionId,
+    Guid requestedByPharmacistId,
+    CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Pushed when a pharmacy admin upserts their response for a lookup
+  /// request. Receivers: the pharmacist who initiated the request (so
+  /// their lookup-detail panel refreshes).
+  /// </summary>
+  Task PublishManualLookupResponseAddedAsync(
+    Guid requestId,
+    Guid responseId,
+    Guid respondingPharmacyId,
+    Guid requestedByPharmacistId,
+    CancellationToken cancellationToken = default);
+
+  /// <summary>
+  /// Pushed when a request transitions to <c>Closed</c> (typically when
+  /// the pharmacist submits the prescription's checklist). Receivers:
+  /// every connected pharmacy admin (so their "active" tab drops it and
+  /// "history" tab picks it up).
+  /// </summary>
+  Task PublishManualLookupRequestClosedAsync(
+    Guid requestId,
+    CancellationToken cancellationToken = default);
 }

@@ -177,6 +177,10 @@ public sealed class MedicineService : IMedicineService
         var query = _dbContext.Medicines
           .AsNoTracking()
           .Where(x => x.IsActive)
+          // Hide shadow medicines (materialised from manual prescription
+          // lookups) from the catalog — they're orderable but only via
+          // the prescription flow, not via browse/search.
+          .Where(x => x.IsCatalogMedicine)
           .Where(x => filterPharmacyId.HasValue
             ? x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0)
             : x.Offers.Any(o => o.StockQuantity > 0));
@@ -254,7 +258,10 @@ public sealed class MedicineService : IMedicineService
 
         var query = _dbContext.Medicines
           .AsNoTracking()
-          .AsQueryable();
+          // SuperAdmin medicine grid hides shadow rows too — they show up
+          // on the prescription/lookup screens, not in the catalog
+          // editor.
+          .Where(x => x.IsCatalogMedicine);
 
         if (request.IsActive.HasValue)
             query = query.Where(x => x.IsActive == request.IsActive.Value);
@@ -468,6 +475,7 @@ public sealed class MedicineService : IMedicineService
           .AsNoTracking()
           .Where(x =>
             x.IsActive &&
+            x.IsCatalogMedicine &&
             x.Offers.Any(o => o.StockQuantity > 0) &&
             (EF.Functions.Like(x.Title.ToLower(), containsPattern)
              || EF.Functions.Like(x.Articul.ToLower(), containsPattern)))

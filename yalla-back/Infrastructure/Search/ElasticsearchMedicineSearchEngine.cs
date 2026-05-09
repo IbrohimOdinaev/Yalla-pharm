@@ -149,7 +149,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
         // Load all medicines from DB
         var medicines = await _dbContext.Medicines
             .AsNoTracking()
-            .Where(m => m.IsActive)
+            .Where(m => m.IsActive && m.IsCatalogMedicine)
             .Select(m => new MedicineSearchDocument
             {
                 Id = m.Id,

@@ -1,54 +1,24 @@
 # Yalla Farm — project rules for Claude
 
-## Git workflow — READ FIRST, every git operation
+## Git workflow
 
-Before performing **any** git command in this repository — committing,
-branching, merging, pushing, hotfixing, anything — open
-[`docs/git-flow.md`](docs/git-flow.md) and follow it. That document is the
-source of truth for branch naming, commit-message format, merge rules and
-release process. Treat it as binding, not as suggestion.
+Simple two-branch flow:
 
-Hard rules from that document, summarised:
+- **`develop`** — integration branch. All feature/bugfix/refactor work
+  lands here first (directly, or via short-lived branches merged back
+  into `develop`).
+- **`master`** — releases. `develop` is merged into `master` when a
+  release is cut. **Never make changes directly on `master`** unless
+  the user explicitly asks for a release/hotfix.
 
-- **Long-lived branches:** `master` (releases only) and `develop` (integration
-  branch). Direct commits to `master` are forbidden.
-- **Short-lived branches** are always created from `develop`, except
-  `hotfix/*` which is created from `master`:
-  - `feature/<name>` — new functionality
-  - `bugfix/<name>` — non-critical bug fixes (planned for next release)
-  - `hotfix/<name>` — critical production fixes, branched from `master`
-  - `refactor/<name>` — code-quality / structural changes
-  - `release/v<X.Y.Z>` — release stabilisation, branched from `develop`
-- **Lifecycle:** finish work on the short-lived branch → merge back into
-  the right long-lived branch(es) → delete the short-lived branch (local
-  and origin).
-- **Commit messages:** [Conventional Commits](https://www.conventionalcommits.org/)
-  format `type(scope): subject`, English, imperative mood, capitalised
-  subject, no trailing period, ≤ 72 chars. Allowed types: `feat`, `fix`,
-  `refactor`, `docs`, `style`, `test`, `chore`.
-- **Releases on `master`:** every commit there is a release and must be
-  tagged (`v1.2.3`). `release/*` branches merge into BOTH `master` AND
-  `develop`. `hotfix/*` branches likewise merge into BOTH and bump a
-  patch tag.
-- **`receptMaster` (parallel long-lived branch):** holds the in-progress
-  prescription-ordering system. Branched once from `master`. Direct
-  commits forbidden. Periodically synced from `master` (`git merge master`
-  into `receptMaster`). When the whole system is ready it merges back
-  into `master` as a release.
-- **`recept/<name>` branches:** every sub-feature of the prescription
-  system goes here. Branched from `receptMaster`, merged back **only**
-  into `receptMaster` (NOT into `develop` or `master`). Examples:
-  `recept/prescription-upload`, `recept/recipe-validation`. Standard
-  `feature/*` / `bugfix/*` / `release/*` flow continues on
-  `develop` → `master` for everything outside the prescription system.
+Conventional Commits format for messages:
+`type(scope): subject` — English, imperative, capitalised, no trailing
+period, ≤ 72 chars. Types: `feat`, `fix`, `refactor`, `docs`, `style`,
+`test`, `chore`.
 
-When the user says "merge and push" or "ship this", default to the
-release-branch flow (cut a `release/v…` from `develop`, merge into both
-long-lived branches, tag) — do **not** merge a feature branch directly
-into `master`.
-
-If the user requests something that contradicts `docs/git-flow.md`,
-flag the conflict and ask for confirmation before proceeding.
+The old long-lived `receptMaster` branch and its `recept/*` sub-branches
+have been retired — the prescription system is now part of `master` /
+`develop` like any other feature.
 
 ## Other project context
 
