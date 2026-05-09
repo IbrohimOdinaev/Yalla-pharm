@@ -15,6 +15,7 @@ import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { PrescriptionPharmacyPicker } from "@/widgets/prescription/PrescriptionPharmacyPicker";
 import { AuthedImage, Button, Chip, Icon } from "@/shared/ui";
 
 export default function PrescriptionDetailPage() {
@@ -284,27 +285,30 @@ export default function PrescriptionDetailPage() {
                 </ul>
 
                 {prescription.status === "Decoded" ? (
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      size="lg"
-                      fullWidth
-                      loading={moving === "order"}
-                      onClick={() => handleMove("/cart/pharmacy")}
-                      disabled={checklistTotals.available === 0}
-                    >
-                      Оформить заказ
-                    </Button>
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      fullWidth
-                      loading={moving === "cart"}
-                      onClick={() => handleMove("/cart")}
-                      disabled={checklistTotals.available === 0}
-                    >
-                      В корзину
-                    </Button>
-                  </div>
+                  <>
+                    {/* Pharmacy picker covers both catalog items AND manual
+                        items that other pharmacies offered through the
+                        lookup workflow. Render unconditionally for Decoded
+                        prescriptions — empty/partial coverage is handled
+                        inside the widget. */}
+                    <div className="space-y-2">
+                      <h3 className="font-display text-sm font-extrabold">Выбрать аптеку для оформления</h3>
+                      <PrescriptionPharmacyPicker prescriptionId={prescription.prescriptionId} />
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        size="md"
+                        variant="secondary"
+                        fullWidth
+                        loading={moving === "cart"}
+                        onClick={() => handleMove("/cart")}
+                        disabled={checklistTotals.available === 0}
+                      >
+                        Перенести в корзину (только каталог)
+                      </Button>
+                    </div>
+                  </>
                 ) : null}
 
                 {prescription.status === "Decoded" && checklistTotals.unavailable + checklistTotals.manual > 0 ? (

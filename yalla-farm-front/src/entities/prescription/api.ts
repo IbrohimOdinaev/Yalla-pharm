@@ -95,6 +95,45 @@ export async function moveChecklistToCart(
   );
 }
 
+export type ApiPrescriptionPharmacyItem = {
+  checklistItemId: string;
+  medicineId?: string | null;
+  requestedQuantity: number;
+  title: string;
+  isFound: boolean;
+  foundQuantity: number;
+  hasEnoughQuantity: boolean;
+  price?: number | null;
+  isManualLookup: boolean;
+};
+
+export type ApiPrescriptionPharmacyOption = {
+  pharmacyId: string;
+  pharmacyTitle: string;
+  pharmacyIsActive: boolean;
+  foundItemsCount: number;
+  totalItemsCount: number;
+  enoughQuantityItemsCount: number;
+  isAvailable: boolean;
+  totalCost: number;
+  items: ApiPrescriptionPharmacyItem[];
+};
+
+export type ApiPrescriptionPharmacyOptions = {
+  prescriptionId: string;
+  pharmacyOptions: ApiPrescriptionPharmacyOption[];
+};
+
+export async function getPrescriptionPharmacyOptions(
+  token: string,
+  prescriptionId: string,
+): Promise<ApiPrescriptionPharmacyOptions> {
+  return apiFetch<ApiPrescriptionPharmacyOptions>(
+    `/api/prescriptions/${prescriptionId}/pharmacy-options`,
+    { token },
+  );
+}
+
 export async function createPrescription(
   token: string,
   input: { patientAge: number; clientComment: string | null; photos: File[] }

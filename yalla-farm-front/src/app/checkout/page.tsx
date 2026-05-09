@@ -32,6 +32,7 @@ export default function CheckoutPage() {
   const {
     pharmacyId, selectedPharmacyTitle, selectedPharmacyItems,
     isPickup, deliveryCost, deliveryDistance,
+    prescriptionId,
     setDeliveryAddressData, setDeliveryCost,
   } = useCheckoutDraftStore();
 
@@ -184,12 +185,16 @@ export default function CheckoutPage() {
 
     // Positions the user unchecked on this screen — they chose to skip them for
     // this order, so clean them out of the basket too (mirrors the prior UX).
+    // Skipped entirely in prescription mode: that flow is supposed to leave
+    // the user's basket strictly alone (prescription items aren't there).
     const positionsByMedId: Record<string, string> = {};
     for (const p of basket.positions ?? []) positionsByMedId[p.medicineId] = p.id;
-    const uncheckedBasketPositionIds = checkoutItems
-      .filter((i) => !selectedMedIds.has(i.medicineId))
-      .map((i) => positionsByMedId[i.medicineId])
-      .filter((id): id is string => Boolean(id));
+    const uncheckedBasketPositionIds = prescriptionId
+      ? []
+      : checkoutItems
+          .filter((i) => !selectedMedIds.has(i.medicineId))
+          .map((i) => positionsByMedId[i.medicineId])
+          .filter((id): id is string => Boolean(id));
 
     try {
       const idempotencyKey = buildCheckoutIdempotencyKey();
@@ -214,7 +219,11 @@ export default function CheckoutPage() {
         source: {
           kind: 2, // CheckoutSourceKind.Explicit
           positions: explicitPositions,
-          consumeFromBasket: true,
+          // Prescription-flow keeps the regular basket untouched — items
+          // come from the prescription, not the cart. Cart-flow consumes
+          // matching basket rows after the order is created.
+          consumeFromBasket: !prescriptionId,
+          prescriptionId: prescriptionId ?? null,
         },
       };
 
