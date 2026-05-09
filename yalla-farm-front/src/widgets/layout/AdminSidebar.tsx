@@ -14,6 +14,7 @@ const ADMIN_ITEMS: Item[] = [
   { label: "Аптека", href: "/workspace", hash: "pharmacy", icon: "pharmacy" },
   { label: "Предложения", href: "/workspace", hash: "offers", icon: "bag" },
   { label: "Заказы", href: "/workspace", hash: "orders", icon: "orders" },
+  { label: "Запросы", href: "/workspace/lookups", icon: "search" },
 ];
 
 const SUPERADMIN_ITEMS: Item[] = [
