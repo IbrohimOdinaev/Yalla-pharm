@@ -28,6 +28,14 @@ public class PrescriptionChecklistItem
 
     public string? PharmacistComment { get; private set; }
 
+    /// <summary>FK to the <see cref="ManualItemLookupRequest"/> the
+    /// pharmacist created for this manual position. Null until the
+    /// pharmacist hits "ask other pharmacies"; only ever set on Manual
+    /// items (where <see cref="MedicineId"/> is null). All pharmacy
+    /// responses on this request become temp-offers (shadow medicines +
+    /// offers) when the prescription's checklist is submitted.</summary>
+    public Guid? LookupRequestId { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
 
     private PrescriptionChecklistItem() { }
@@ -101,5 +109,27 @@ public class PrescriptionChecklistItem
               "PrescriptionChecklistItem.Quantity must be greater than zero.");
 
         Quantity = quantity;
+    }
+
+    /// <summary>Attach a lookup request to this item. Only valid on Manual
+    /// (out-of-catalog) items — catalog items can't have a lookup since
+    /// we already have the medicine. Replacing an existing attachment is
+    /// a no-op for the new id, allowing idempotent retries from the
+    /// pharmacist UI.</summary>
+    public void AttachLookupRequest(Guid lookupRequestId)
+    {
+        if (lookupRequestId == Guid.Empty)
+            throw new DomainArgumentException("LookupRequestId can't be empty.");
+
+        if (MedicineId is not null)
+            throw new DomainException(
+              "LookupRequest can only be attached to manual (out-of-catalog) items.");
+
+        LookupRequestId = lookupRequestId;
+    }
+
+    public void DetachLookupRequest()
+    {
+        LookupRequestId = null;
     }
 }
