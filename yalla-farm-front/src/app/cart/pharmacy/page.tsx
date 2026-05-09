@@ -239,11 +239,21 @@ function PharmacySelectPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, loadBasket, prescriptionMode, prescriptionId]);
 
-  // Load medicine details for items in cart
+  // Load medicine details for items in cart AND for any extra medicineIds
+  // surfaced in the prescription pharmacy options. Shadow medicines
+  // materialised from manual lookup responses live only in the per-pharmacy
+  // option lists (they're never in the catalog/basket) — without including
+  // them here the rendered cart row falls back to displaying the raw id
+  // instead of the pharmacy's "FullName".
   useEffect(() => {
-    const ids = cartItems.map((i) => i.medicineId).filter((id) => !medicineMap[id]);
-    if (ids.length === 0) return;
-    Promise.all(ids.map((id) => getMedicineById(id).catch(() => null))).then((results) => {
+    const cartIds = cartItems.map((i) => i.medicineId);
+    const pharmacyOptionIds = prescriptionOptions.flatMap((opt) =>
+      (opt.items ?? []).map((i) => i.medicineId).filter((id): id is string => !!id),
+    );
+    const allIds = Array.from(new Set([...cartIds, ...pharmacyOptionIds]))
+      .filter((id) => !medicineMap[id]);
+    if (allIds.length === 0) return;
+    Promise.all(allIds.map((id) => getMedicineById(id).catch(() => null))).then((results) => {
       const map: Record<string, ApiMedicine> = { ...medicineMap };
       for (const m of results) {
         if (m?.id) map[m.id] = m;
@@ -251,7 +261,7 @@ function PharmacySelectPageInner() {
       setMedicineMap(map);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartItems]);
+  }, [cartItems, prescriptionOptions]);
 
   // Build pharmacy geo lookup
   const pharmacyGeo = useMemo(() => {
