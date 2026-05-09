@@ -16,7 +16,6 @@ import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { PrescriptionPharmacyPicker } from "@/widgets/prescription/PrescriptionPharmacyPicker";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
 import { AuthedImage, Button, Chip, Icon } from "@/shared/ui";
 
@@ -513,17 +512,6 @@ export default function PrescriptionDetailPage() {
 
                 {prescription.status === "Decoded" ? (
                   <>
-                    {/* Pharmacy picker covers both catalog items AND manual
-                        items that other pharmacies offered through the
-                        lookup workflow. Render alongside the legacy
-                        order/cart CTAs — picker writes the checkout draft
-                        directly, the buttons go through the
-                        cart-pharmacy/cart fallbacks. */}
-                    <div className="space-y-2">
-                      <h3 className="font-display text-sm font-extrabold">Выбрать аптеку для оформления</h3>
-                      <PrescriptionPharmacyPicker prescriptionId={prescription.prescriptionId} />
-                    </div>
-
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Button
                         size="lg"
@@ -581,6 +569,24 @@ export default function PrescriptionDetailPage() {
   );
 }
 
+/* Title resolver shared by PairSideRow / SingletonRow. Catalog rows
+   wait for the medicine cache to populate; manual rows surface the
+   pharmacist's own name, falling back to their comment when no name
+   was provided, then to a literal "Без названия" stub. Undecoded rows
+   show "Не смог расшифровать" verbatim — that's the verdict. */
+function resolveItemTitle(
+  item: ApiPrescription["items"][number],
+  med: ApiMedicine | undefined,
+  isManual: boolean,
+  isUndecoded: boolean,
+): string {
+  if (isUndecoded) return "Не смог расшифровать";
+  if (item.manualMedicineName) return item.manualMedicineName;
+  if (med) return getMedicineDisplayName(med);
+  if (isManual) return item.pharmacistComment?.trim() || "Без названия";
+  return "Загружаем…";
+}
+
 /* ===================================================================
    PairSideRow — one half of a paired (analog ↔ original) checklist
    block on the client's prescription detail. The whole row is a button
@@ -615,8 +621,9 @@ function PairSideRow({
   const offerCount = med?.offers?.length ?? 0;
   const minPrice = getCheapestPrice(med ?? undefined);
   const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
-  const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
   const isManual = !item.medicineId;
+  const isUndecoded = item.kind === "Undecoded";
+  const title = resolveItemTitle(item, med, isManual, isUndecoded);
   // Same temp-offer treatment as SingletonRow — manual lookup with at
   // least one pharmacy response is orderable.
   const tempCount = item.temporaryOfferCount ?? 0;
@@ -793,8 +800,9 @@ function SingletonRow({
   const offerCount = med?.offers?.length ?? 0;
   const minPrice = getCheapestPrice(med ?? undefined);
   const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
-  const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
   const isManual = !item.medicineId;
+  const isUndecoded = item.kind === "Undecoded";
+  const title = resolveItemTitle(item, med, isManual, isUndecoded);
   // Manual lookup with at least one pharmacy response: render the row
   // as an ordinary orderable item (price + N pharmacies + qty stepper).
   // The "Нет в каталоге" red badge is reserved for manual rows that
@@ -849,10 +857,27 @@ function SingletonRow({
                 </span>
               ) : null}
             </p>
+          ) : isUndecoded ? (
+            // Pharmacist's verdict + their note inline. The note is what
+            // they actually wrote about this line of the doctor's
+            // prescription — the most useful thing to show.
+            <>
+              <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+                Не смог расшифровать
+              </p>
+              {item.pharmacistComment ? (
+                <p className="mt-0.5 text-[11px] text-on-surface-variant">{item.pharmacistComment}</p>
+              ) : null}
+            </>
           ) : isManual ? (
-            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
-              Нет в каталоге — недоступно для онлайн-заказа
-            </p>
+            <>
+              <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+                Нет в каталоге — недоступно для онлайн-заказа
+              </p>
+              {item.pharmacistComment && item.pharmacistComment !== title ? (
+                <p className="mt-0.5 text-[11px] text-on-surface-variant">{item.pharmacistComment}</p>
+              ) : null}
+            </>
           ) : (
             <p className="mt-0.5 text-[11px] font-semibold text-secondary">
               Нет в наличии в аптеках сейчас
