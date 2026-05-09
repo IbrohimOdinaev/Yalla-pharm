@@ -24,6 +24,7 @@ const PHARMACIST_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/pharmacist", label: "Очередь", icon: "orders" },
   { href: "/pharmacist/cart", label: "Корзина", icon: "bag" },
   { href: "/pharmacist/catalog", label: "Каталог", icon: "pharmacy" },
+  { href: "/pharmacist/history", label: "История", icon: "clock" },
 ];
 
 export function BottomNav() {
