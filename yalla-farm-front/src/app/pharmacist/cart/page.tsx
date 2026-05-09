@@ -17,6 +17,7 @@ import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePr
 import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { ManualEntryModal } from "@/widgets/pharmacist/ManualEntryModal";
+import { ManualLookupPanel } from "@/widgets/pharmacist/ManualLookupPanel";
 import { AuthedImage, Button, Icon } from "@/shared/ui";
 
 export default function PharmacistCartPage() {
@@ -82,6 +83,7 @@ export default function PharmacistCartPage() {
         quantity: it.quantity,
         pharmacistComment: it.pharmacistComment ?? null,
         displayTitle: it.manualMedicineName || it.medicineId || "",
+        lookupRequestId: it.lookupRequestId ?? null,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,6 +143,10 @@ export default function PharmacistCartPage() {
           manualMedicineName: i.manualMedicineName ?? null,
           quantity: i.quantity,
           pharmacistComment: i.pharmacistComment ?? null,
+          // Carry the lookup binding through so the server can close the
+          // request + materialise shadow medicines/offers atomically with
+          // the checklist submit.
+          lookupRequestId: i.lookupRequestId ?? null,
         })),
       });
       clearDraft(activeId);
@@ -308,6 +314,21 @@ export default function PharmacistCartPage() {
                             value={it.pharmacistComment ?? ""}
                             onChange={(e) => updateItem(activeId, it.draftId, { pharmacistComment: e.target.value })}
                             className="stitch-input mt-2 w-full text-xs"
+                          />
+                        ) : null}
+
+                        {/* Manual line — render the lookup panel so the
+                            pharmacist can ask other pharmacies + see
+                            their responses. Catalog items skip this. */}
+                        {!it.medicineId && it.manualMedicineName ? (
+                          <ManualLookupPanel
+                            prescriptionId={activeId!}
+                            checklistItemId={it.draftId}
+                            manualMedicineName={it.manualMedicineName}
+                            lookupRequestId={it.lookupRequestId ?? null}
+                            onRequestCreated={(reqId) =>
+                              updateItem(activeId!, it.draftId, { lookupRequestId: reqId })
+                            }
                           />
                         ) : null}
                       </li>

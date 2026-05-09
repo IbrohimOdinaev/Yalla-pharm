@@ -14,6 +14,10 @@ export type DraftItem = {
   displayTitle: string;
   /** Cached price snapshot to show in the cart UI. Optional. */
   minPrice?: number | null;
+  /** Manual lines may carry a manual-lookup request — the pharmacist
+   *  asks every pharmacy admin to physically locate the medicine. Set
+   *  after createManualLookupRequest succeeds; null until then. */
+  lookupRequestId?: string | null;
 };
 
 export type DraftState = {

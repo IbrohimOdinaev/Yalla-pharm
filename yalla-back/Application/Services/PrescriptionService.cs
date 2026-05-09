@@ -812,7 +812,8 @@ public sealed class PrescriptionService : IPrescriptionService
                   MedicineId = x.MedicineId,
                   ManualMedicineName = x.ManualMedicineName,
                   Quantity = x.Quantity,
-                  PharmacistComment = x.PharmacistComment
+                  PharmacistComment = x.PharmacistComment,
+                  LookupRequestId = x.LookupRequestId
               })
               .ToList()
         };

@@ -48,4 +48,8 @@ public sealed class PrescriptionChecklistItemResponse
     public string? ManualMedicineName { get; set; }
     public int Quantity { get; set; }
     public string? PharmacistComment { get; set; }
+    /// <summary>FK to a manual lookup request created for this item, if
+    /// the pharmacist asked other pharmacies to physically locate it.
+    /// Null for catalog items and for manual items without a lookup.</summary>
+    public Guid? LookupRequestId { get; set; }
 }

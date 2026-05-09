@@ -23,6 +23,10 @@ export type ApiPrescriptionChecklistItem = {
   manualMedicineName?: string | null;
   quantity: number;
   pharmacistComment?: string | null;
+  /** FK to a ManualItemLookupRequest the pharmacist already created for
+   *  this manual line (asked other pharmacies). Null for catalog items
+   *  and for manual items without a lookup. */
+  lookupRequestId?: string | null;
 };
 
 export type ApiPrescription = {

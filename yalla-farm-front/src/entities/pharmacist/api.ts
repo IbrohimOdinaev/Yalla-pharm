@@ -60,6 +60,9 @@ export type DecodePrescriptionItemInput = {
   manualMedicineName?: string | null;
   quantity: number;
   pharmacistComment?: string | null;
+  /** When set, the server preserves the lookup binding for this manual
+   *  line and closes the request once the checklist is submitted. */
+  lookupRequestId?: string | null;
 };
 
 export async function submitChecklist(
