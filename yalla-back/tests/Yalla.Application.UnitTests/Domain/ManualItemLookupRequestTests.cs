@@ -9,7 +9,6 @@ public class ManualItemLookupRequestTests
     private static ManualItemLookupRequest MakeRequest() =>
       new(
         prescriptionId: Guid.NewGuid(),
-        checklistItemId: Guid.NewGuid(),
         requestedByPharmacistId: Guid.NewGuid(),
         manualMedicineName: "Eufillin 240mg",
         requestComment: "ампулы 10 мл, не таблетки");
@@ -30,7 +29,6 @@ public class ManualItemLookupRequestTests
     {
         Assert.Throws<DomainArgumentException>(() => new ManualItemLookupRequest(
           prescriptionId: Guid.Empty,
-          checklistItemId: Guid.NewGuid(),
           requestedByPharmacistId: Guid.NewGuid(),
           manualMedicineName: "x",
           requestComment: null));
@@ -41,7 +39,6 @@ public class ManualItemLookupRequestTests
     {
         Assert.Throws<DomainArgumentException>(() => new ManualItemLookupRequest(
           prescriptionId: Guid.NewGuid(),
-          checklistItemId: Guid.NewGuid(),
           requestedByPharmacistId: Guid.NewGuid(),
           manualMedicineName: "  ",
           requestComment: null));

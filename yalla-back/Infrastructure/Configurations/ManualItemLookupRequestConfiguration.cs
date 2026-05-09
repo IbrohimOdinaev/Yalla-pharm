@@ -24,11 +24,6 @@ public class ManualItemLookupRequestConfiguration
           .HasColumnType("uuid")
           .IsRequired();
 
-        builder.Property(x => x.ChecklistItemId)
-          .HasColumnName("checklist_item_id")
-          .HasColumnType("uuid")
-          .IsRequired();
-
         builder.Property(x => x.RequestedByPharmacistId)
           .HasColumnName("requested_by_pharmacist_id")
           .HasColumnType("uuid")
@@ -74,10 +69,6 @@ public class ManualItemLookupRequestConfiguration
 
         builder.HasIndex(x => x.RequestedByPharmacistId)
           .HasDatabaseName("ix_manual_item_lookup_requests_requested_by_pharmacist_id");
-
-        builder.HasIndex(x => x.ChecklistItemId)
-          .IsUnique()
-          .HasDatabaseName("ix_manual_item_lookup_requests_checklist_item_id");
 
         builder.HasMany(x => x.Responses)
           .WithOne()

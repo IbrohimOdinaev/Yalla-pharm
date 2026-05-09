@@ -23,7 +23,6 @@ export type ApiManualLookupResponse = {
 export type ApiManualLookupRequest = {
   id: string;
   prescriptionId: string;
-  checklistItemId: string;
   requestedByPharmacistId: string;
   requestedByPharmacistName?: string | null;
   manualMedicineName: string;
@@ -54,7 +53,6 @@ export async function createManualLookupRequest(
   token: string,
   input: {
     prescriptionId: string;
-    checklistItemId: string;
     manualMedicineName: string;
     requestComment?: string | null;
   },

@@ -396,7 +396,6 @@ export default function PharmacistCartPage() {
                           {!it.medicineId && it.manualMedicineName ? (
                             <ManualLookupPanel
                               prescriptionId={activeId!}
-                              checklistItemId={it.draftId}
                               manualMedicineName={it.manualMedicineName}
                               lookupRequestId={it.lookupRequestId ?? null}
                               onRequestCreated={(reqId) =>

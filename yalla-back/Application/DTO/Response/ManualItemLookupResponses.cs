@@ -22,7 +22,6 @@ public sealed class ManualLookupRequestResponse
 {
     public Guid Id { get; set; }
     public Guid PrescriptionId { get; set; }
-    public Guid ChecklistItemId { get; set; }
     public Guid RequestedByPharmacistId { get; set; }
     public string? RequestedByPharmacistName { get; set; }
     public string ManualMedicineName { get; set; } = string.Empty;

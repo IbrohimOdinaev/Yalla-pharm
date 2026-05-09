@@ -6,7 +6,6 @@ namespace Yalla.Application.DTO.Request;
 public sealed class CreateManualLookupRequest
 {
     public Guid PrescriptionId { get; set; }
-    public Guid ChecklistItemId { get; set; }
     public string ManualMedicineName { get; set; } = string.Empty;
     public string? RequestComment { get; set; }
 }

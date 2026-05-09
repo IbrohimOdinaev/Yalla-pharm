@@ -66,12 +66,15 @@ public sealed class ManualItemLookupService : IManualItemLookupService
             throw new DomainArgumentException("PharmacistId can't be empty.");
         if (request.PrescriptionId == Guid.Empty)
             throw new DomainArgumentException("PrescriptionId can't be empty.");
-        if (request.ChecklistItemId == Guid.Empty)
-            throw new DomainArgumentException("ChecklistItemId can't be empty.");
 
+        // Pharmacist composes manual items locally in the draft store —
+        // they don't yet exist as persisted PrescriptionChecklistItem rows
+        // when the lookup is created. The link runs item → lookup via
+        // PrescriptionChecklistItem.LookupRequestId, set at submit time
+        // (see PrescriptionService.SubmitChecklistAsync). The lookup just
+        // needs the prescription id + the manual name + an optional hint.
         var prescription = await _dbContext.Prescriptions
-          .AsTracking()
-          .Include(p => p.Items)
+          .AsNoTracking()
           .FirstOrDefaultAsync(p => p.Id == request.PrescriptionId, cancellationToken)
           ?? throw new InvalidOperationException(
               $"Prescription '{request.PrescriptionId}' was not found.");
@@ -84,26 +87,12 @@ public sealed class ManualItemLookupService : IManualItemLookupService
             throw new UnauthorizedAccessException(
               "Only the assigned pharmacist can create lookup requests for this prescription.");
 
-        var item = prescription.Items.FirstOrDefault(i => i.Id == request.ChecklistItemId)
-          ?? throw new InvalidOperationException(
-              $"Checklist item '{request.ChecklistItemId}' does not belong to prescription '{prescription.Id}'.");
-
-        if (!item.IsOutOfCatalog)
-            throw new InvalidOperationException(
-              "Lookup requests can only be created for manual (out-of-catalog) checklist items.");
-
-        if (item.LookupRequestId is not null)
-            throw new InvalidOperationException(
-              $"Checklist item '{item.Id}' already has an active lookup request.");
-
         var lookupRequest = new ManualItemLookupRequest(
           prescriptionId: prescription.Id,
-          checklistItemId: item.Id,
           requestedByPharmacistId: pharmacistId,
           manualMedicineName: request.ManualMedicineName,
           requestComment: request.RequestComment);
 
-        item.AttachLookupRequest(lookupRequest.Id);
         _dbContext.ManualItemLookupRequests.Add(lookupRequest);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -112,8 +101,8 @@ public sealed class ManualItemLookupService : IManualItemLookupService
           lookupRequest.Id, prescription.Id, pharmacistId, cancellationToken);
 
         _logger.LogInformation(
-          "Manual lookup request {RequestId} created for prescription {PrescriptionId}, item {ItemId} by pharmacist {PharmacistId}",
-          lookupRequest.Id, prescription.Id, item.Id, pharmacistId);
+          "Manual lookup request {RequestId} created for prescription {PrescriptionId} by pharmacist {PharmacistId}",
+          lookupRequest.Id, prescription.Id, pharmacistId);
 
         return await BuildResponseAsync(lookupRequest.Id, cancellationToken);
     }
@@ -557,7 +546,6 @@ public sealed class ManualItemLookupService : IManualItemLookupService
         {
             Id = request.Id,
             PrescriptionId = request.PrescriptionId,
-            ChecklistItemId = request.ChecklistItemId,
             RequestedByPharmacistId = request.RequestedByPharmacistId,
             RequestedByPharmacistName = pharmacistNames.TryGetValue(request.RequestedByPharmacistId, out var name) ? name : null,
             ManualMedicineName = request.ManualMedicineName,

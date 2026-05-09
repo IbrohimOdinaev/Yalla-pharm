@@ -22,8 +22,6 @@ public class ManualItemLookupRequest
 
     public Guid PrescriptionId { get; private set; }
 
-    public Guid ChecklistItemId { get; private set; }
-
     public Guid RequestedByPharmacistId { get; private set; }
 
     /// <summary>Verbatim manual name the pharmacist entered for this item
@@ -48,21 +46,17 @@ public class ManualItemLookupRequest
 
     public ManualItemLookupRequest(
       Guid prescriptionId,
-      Guid checklistItemId,
       Guid requestedByPharmacistId,
       string manualMedicineName,
       string? requestComment)
     {
         if (prescriptionId == Guid.Empty)
             throw new DomainArgumentException("PrescriptionId can't be empty.");
-        if (checklistItemId == Guid.Empty)
-            throw new DomainArgumentException("ChecklistItemId can't be empty.");
         if (requestedByPharmacistId == Guid.Empty)
             throw new DomainArgumentException("RequestedByPharmacistId can't be empty.");
 
         Id = Guid.NewGuid();
         PrescriptionId = prescriptionId;
-        ChecklistItemId = checklistItemId;
         RequestedByPharmacistId = requestedByPharmacistId;
         ManualMedicineName = NormalizeRequiredString(
           manualMedicineName,

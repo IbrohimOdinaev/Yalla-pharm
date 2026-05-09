@@ -13,7 +13,6 @@ import {
 
 type ManualLookupPanelProps = {
   prescriptionId: string;
-  checklistItemId: string;
   manualMedicineName: string;
   /** Set when a request has already been created for this item. The
    *  panel switches to "responses" mode and polls/listens for new
@@ -36,7 +35,6 @@ type ManualLookupPanelProps = {
  */
 export function ManualLookupPanel({
   prescriptionId,
-  checklistItemId,
   manualMedicineName,
   lookupRequestId,
   onRequestCreated,
@@ -87,7 +85,6 @@ export function ManualLookupPanel({
     try {
       const created = await createManualLookupRequest(token, {
         prescriptionId,
-        checklistItemId,
         manualMedicineName,
         requestComment: comment.trim() || null,
       });
