@@ -66,6 +66,20 @@ public class Prescription
     /// <see cref="CancelledAtUtc"/>.</summary>
     public PrescriptionCancellationReason? CancellationReason { get; private set; }
 
+    /// <summary>Pharmacist who marked the prescription as
+    /// undecodable. Null until <see cref="MarkDecodeFailed"/> is
+    /// called. Frozen once set — re-marking is rejected.</summary>
+    public Guid? DecodeFailedByPharmacistId { get; private set; }
+
+    public DateTime? DecodeFailedAtUtc { get; private set; }
+
+    public PrescriptionDecodeFailureReason? DecodeFailureReason { get; private set; }
+
+    /// <summary>Optional pharmacist comment captured at failure time.
+    /// Shown to the client verbatim so they know what to do differently
+    /// for the next attempt. Capped at <see cref="MaxPharmacistCommentLength"/>.</summary>
+    public string? DecodeFailureComment { get; private set; }
+
     public IReadOnlyCollection<PrescriptionImage> Images => _images.AsReadOnly();
 
     public IReadOnlyCollection<PrescriptionChecklistItem> Items => _items.AsReadOnly();
@@ -212,6 +226,43 @@ public class Prescription
     /// prescription still throw because they're logic errors at the
     /// caller, not benign double-fires.
     /// </summary>
+    /// <summary>
+    /// Pharmacist's "I can't decode this" exit. Must be the assigned
+    /// pharmacist and the prescription must be in <c>InReview</c>.
+    /// Captures the reason, optional comment, and acting pharmacist
+    /// id for the audit trail. Downstream effects (free credit grant
+    /// vs. pending refund row) are wired in
+    /// <c>PrescriptionService.MarkDecodeFailedAsync</c> — the domain
+    /// itself only flips the status + saves the metadata.
+    /// </summary>
+    public void MarkDecodeFailed(
+      Guid pharmacistId,
+      PrescriptionDecodeFailureReason reason,
+      string? comment)
+    {
+        if (pharmacistId == Guid.Empty)
+            throw new DomainArgumentException("PharmacistId can't be empty.");
+
+        if (Status != PrescriptionStatus.InReview)
+            throw new DomainException(
+              $"Prescription must be in {PrescriptionStatus.InReview} to mark as decode-failed; current is {Status}.");
+
+        if (AssignedPharmacistId != pharmacistId)
+            throw new DomainException(
+              "Only the assigned pharmacist can mark a prescription as decode-failed.");
+
+        Status = PrescriptionStatus.DecodeFailed;
+        DecodeFailedByPharmacistId = pharmacistId;
+        DecodeFailedAtUtc = DateTime.UtcNow;
+        DecodeFailureReason = reason;
+        DecodeFailureComment = string.IsNullOrWhiteSpace(comment)
+            ? null
+            : comment.Trim().Length > MaxPharmacistCommentLength
+                ? comment.Trim()[..MaxPharmacistCommentLength]
+                : comment.Trim();
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void Cancel(PrescriptionCancellationReason reason)
     {
         if (Status == PrescriptionStatus.Cancelled)

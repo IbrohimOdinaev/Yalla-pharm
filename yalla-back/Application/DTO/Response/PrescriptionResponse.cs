@@ -40,6 +40,12 @@ public sealed class PrescriptionResponse
     /// field.</summary>
     public string? CancellationReason { get; set; }
     public DateTime? CancelledAtUtc { get; set; }
+
+    /// <summary>Reason the pharmacist couldn't decode the prescription.
+    /// Set only when status === DecodeFailed.</summary>
+    public string? DecodeFailureReason { get; set; }
+    public DateTime? DecodeFailedAtUtc { get; set; }
+    public string? DecodeFailureComment { get; set; }
 }
 
 public sealed class PrescriptionImageResponse

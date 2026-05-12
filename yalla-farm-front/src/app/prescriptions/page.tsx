@@ -25,6 +25,7 @@ const STATUS_TONE: Record<PrescriptionStatus, "primary" | "warning" | "success" 
   OrderPlaced: "success",
   MovedToCart: "primary",
   Cancelled: "danger",
+  DecodeFailed: "danger",
 };
 
 // "Активные" keeps everything still actionable for the client — including

@@ -30,6 +30,14 @@ public class Client : User
     /// job, etc.).</summary>
     public string? PrivacyPolicyAcceptedFromIp { get; private set; }
 
+    /// <summary>One-shot credit toward a free prescription decoding.
+    /// Granted when a pharmacist rejected a prior submission for
+    /// "poor image quality" (the client wasn't at fault for the
+    /// pharmacist's specific image-quality complaint, but the
+    /// pharmacist's time was already paid for). Consumed at the next
+    /// prescription submission, skipping the 3 TJS payment intent.</summary>
+    public bool HasFreePrescriptionCredit { get; private set; }
+
 
     private Client() : base() { }
 
@@ -94,6 +102,30 @@ public class Client : User
             throw new DomainArgumentException("BasketPosition can't be null.");
 
         _basketPositions.Remove(basketPosition);
+    }
+
+    /// <summary>
+    /// Grant a one-shot credit for free prescription decoding —
+    /// called from <c>PrescriptionService.MarkDecodeFailedAsync</c>
+    /// when the pharmacist's stated reason was poor image quality.
+    /// Idempotent: re-granting on an already-credited client is a
+    /// silent no-op so concurrent failures don't accidentally stack
+    /// multiple credits.
+    /// </summary>
+    public void GrantFreePrescriptionCredit() => HasFreePrescriptionCredit = true;
+
+    /// <summary>
+    /// Consume the credit at the next submission. Throws when no
+    /// credit exists — the caller is expected to have checked
+    /// <see cref="HasFreePrescriptionCredit"/> first; this is a
+    /// safety net so we never silently "use" a credit that wasn't
+    /// there.
+    /// </summary>
+    public void ConsumeFreePrescriptionCredit()
+    {
+        if (!HasFreePrescriptionCredit)
+            throw new DomainException("Client has no free prescription credit to consume.");
+        HasFreePrescriptionCredit = false;
     }
 
     /// <summary>

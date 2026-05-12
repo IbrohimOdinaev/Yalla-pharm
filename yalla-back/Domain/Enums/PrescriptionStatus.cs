@@ -10,8 +10,11 @@ namespace Yalla.Domain.Enums;
 /// Decoded                — pharmacist sent the checklist back to the client.
 /// OrderPlaced            — client converted the checklist into an actual order.
 /// MovedToCart            — client pushed in-catalog positions into the regular basket.
-/// Cancelled              — client cancelled (pre-decode) or pharmacist rejected
-///                          ("can't read"). Non-refundable for now.
+/// DecodeFailed           — pharmacist couldn't decode the prescription; either a
+///                          free-credit was granted (poor image) or a pending refund
+///                          row was created (illegible handwriting). Terminal.
+/// Cancelled              — client cancelled (pre-decode) or auto-cancelled (24h
+///                          payment timeout). Terminal.
 /// </summary>
 public enum PrescriptionStatus
 {
@@ -22,5 +25,6 @@ public enum PrescriptionStatus
     Decoded,
     OrderPlaced,
     MovedToCart,
-    Cancelled
+    Cancelled,
+    DecodeFailed
 }

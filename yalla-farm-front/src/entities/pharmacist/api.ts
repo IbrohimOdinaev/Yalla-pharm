@@ -88,3 +88,18 @@ export async function submitChecklist(
     { method: "POST", token, body: input },
   );
 }
+
+/** Pharmacist's "I can't decode this" exit. Reason is required —
+ *  PoorImageQuality grants the client a free credit, IllegibleHandwriting
+ *  creates a PendingRefund row for SuperAdmin. */
+export async function markPrescriptionDecodeFailed(
+  token: string,
+  prescriptionId: string,
+  reason: "PoorImageQuality" | "IllegibleHandwriting",
+  comment?: string | null,
+): Promise<ApiPrescription> {
+  return apiFetch<ApiPrescription>(
+    `/api/prescriptions/pharmacist/${prescriptionId}/decode-failed`,
+    { method: "POST", token, body: { reason, comment: comment ?? null } },
+  );
+}

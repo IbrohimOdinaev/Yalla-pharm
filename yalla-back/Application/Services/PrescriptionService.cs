@@ -158,6 +158,24 @@ public sealed class PrescriptionService : IPrescriptionService
               prescriptionImages,
               tier);
 
+            // Free-credit short-circuit. If the client was awarded a
+            // free decoding (a prior request failed with
+            // PoorImageQuality), skip the payment step entirely:
+            // consume the credit and push the prescription straight to
+            // InQueue. No PaymentIntent, no DC redirect.
+            var clientForCredit = await _dbContext.Clients
+              .AsTracking()
+              .FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+
+            var usedFreeCredit = false;
+            if (clientForCredit is not null && clientForCredit.HasFreePrescriptionCredit)
+            {
+                clientForCredit.ConsumeFreePrescriptionCredit();
+                prescription.MoveToAwaitingConfirmation(); // Submitted → AwaitingConfirmation
+                prescription.MoveToQueue();                // → InQueue, no payment needed
+                usedFreeCredit = true;
+            }
+
             // Stay in Submitted until the client confirms they paid the
             // 3 TJS DC fee. After payment they hit POST /i-paid which
             // moves the prescription to AwaitingConfirmation; SuperAdmin
@@ -179,16 +197,15 @@ public sealed class PrescriptionService : IPrescriptionService
               .FirstOrDefaultAsync(cancellationToken)
               ?? string.Empty;
 
-            var paymentUrl = await BuildPaymentUrlAsync(
-              clientPhone,
-              prescription.Id,
-              cancellationToken);
+            var paymentUrl = usedFreeCredit
+              ? null
+              : await BuildPaymentUrlAsync(clientPhone, prescription.Id, cancellationToken);
 
             var response = await BuildResponseAsync(prescription.Id, cancellationToken)
               ?? throw new InvalidOperationException("Failed to load created prescription.");
 
             response.PaymentUrl = paymentUrl;
-            response.PaymentAmount = DecodingFeeAmount;
+            response.PaymentAmount = usedFreeCredit ? 0m : DecodingFeeAmount;
             response.PaymentCurrency = DecodingFeeCurrency;
             return response;
         }
@@ -676,6 +693,76 @@ public sealed class PrescriptionService : IPrescriptionService
         response.PaymentAmount = DecodingFeeAmount;
         response.PaymentCurrency = DecodingFeeCurrency;
         return response;
+    }
+
+    public async Task<PrescriptionResponse> MarkDecodeFailedAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      MarkDecodeFailedRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (pharmacistId == Guid.Empty)
+            throw new InvalidOperationException("PharmacistId can't be empty.");
+        if (prescriptionId == Guid.Empty)
+            throw new InvalidOperationException("PrescriptionId can't be empty.");
+
+        var prescription = await LoadTrackedAsync(prescriptionId, cancellationToken);
+
+        // Domain validates assigned-pharmacist + InReview status guards.
+        prescription.MarkDecodeFailed(pharmacistId, request.Reason, request.Comment);
+
+        // Reason-driven side effect — kept here so the domain stays
+        // free of pricing knowledge and PendingRefund construction.
+        if (request.Reason == PrescriptionDecodeFailureReason.PoorImageQuality)
+        {
+            var client = await _dbContext.Clients
+              .AsTracking()
+              .FirstOrDefaultAsync(c => c.Id == prescription.ClientId, cancellationToken)
+              ?? throw new InvalidOperationException("Client not found for prescription.");
+            client.GrantFreePrescriptionCredit();
+        }
+        else if (request.Reason == PrescriptionDecodeFailureReason.IllegibleHandwriting)
+        {
+            // Refund the decoding fee. The actual money movement is
+            // out-of-band (SuperAdmin processes physically) — this row
+            // is the to-do list for that.
+            var refund = new PendingRefund(
+              clientId: prescription.ClientId,
+              prescriptionId: prescription.Id,
+              amount: DecodingFeeAmount,
+              currency: DecodingFeeCurrency,
+              reason: "Расшифровка рецепта не выполнена — нечитаемый почерк.");
+            _dbContext.PendingRefunds.Add(refund);
+        }
+
+        if (_auditLogger is not null)
+        {
+            await _auditLogger.LogAsync(
+              AuditAction.StatusChanged,
+              entityType: "Prescription",
+              entityId: prescription.Id,
+              summary: $"Pharmacist {pharmacistId} marked prescription {prescription.Id} as decode-failed ({request.Reason}).",
+              payload: new
+              {
+                  pharmacistId,
+                  reason = request.Reason.ToString(),
+                  comment = request.Comment,
+                  clientId = prescription.ClientId,
+                  freeCreditGranted = request.Reason == PrescriptionDecodeFailureReason.PoorImageQuality,
+                  refundCreated = request.Reason == PrescriptionDecodeFailureReason.IllegibleHandwriting,
+              },
+              cancellationToken: cancellationToken);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _realtimePublisher.PublishPrescriptionUpdatedAsync(
+          prescription.Id, prescription.ClientId, prescription.Status,
+          prescription.AssignedPharmacistId, cancellationToken);
+
+        return await BuildResponseAsync(prescription.Id, cancellationToken)
+          ?? throw new InvalidOperationException("Failed to load prescription after decode-failed marking.");
     }
 
     public async Task<PrescriptionResponse> SubmitChecklistAsync(
@@ -1167,6 +1254,9 @@ public sealed class PrescriptionService : IPrescriptionService
             PaymentIntentId = prescription.PaymentIntentId,
             CancellationReason = prescription.CancellationReason?.ToString(),
             CancelledAtUtc = prescription.CancelledAtUtc,
+            DecodeFailureReason = prescription.DecodeFailureReason?.ToString(),
+            DecodeFailedAtUtc = prescription.DecodeFailedAtUtc,
+            DecodeFailureComment = prescription.DecodeFailureComment,
             Images = prescription.Images
               .OrderBy(x => x.OrderIndex)
               .Select(x => new PrescriptionImageResponse

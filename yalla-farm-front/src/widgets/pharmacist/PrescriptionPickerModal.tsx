@@ -66,7 +66,7 @@ export function PrescriptionPickerModal() {
   // Group by status for visual clarity — same ordering across renders.
   const byStatus: Record<PrescriptionStatus, ApiPrescription[]> = {
     Submitted: [], AwaitingConfirmation: [], InQueue: [], InReview: [],
-    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [],
+    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [], DecodeFailed: [],
   };
   for (const p of items) byStatus[p.status]?.push(p);
 

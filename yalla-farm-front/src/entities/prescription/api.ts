@@ -9,7 +9,25 @@ export type PrescriptionStatus =
   | "Decoded"
   | "OrderPlaced"
   | "MovedToCart"
-  | "Cancelled";
+  | "Cancelled"
+  | "DecodeFailed";
+
+/** Pharmacist's stated reason for failing to decode. Mirrors
+ *  Yalla.Domain.Enums.PrescriptionDecodeFailureReason. */
+export type PrescriptionDecodeFailureReason =
+  | "PoorImageQuality"
+  | "IllegibleHandwriting";
+
+export const PRESCRIPTION_DECODE_FAILURE_REASON_LABEL_RU: Record<PrescriptionDecodeFailureReason, string> = {
+  PoorImageQuality: "Плохое качество фото",
+  IllegibleHandwriting: "Нечитаемый почерк",
+};
+
+/** Tail label shown after the reason so the user knows what's next. */
+export const PRESCRIPTION_DECODE_FAILURE_FOLLOWUP_RU: Record<PrescriptionDecodeFailureReason, string> = {
+  PoorImageQuality: "Следующий запрос на расшифровку будет бесплатным.",
+  IllegibleHandwriting: "Деньги будут возвращены в течение 1-3 рабочих дней.",
+};
 
 /** Reason the prescription landed in Cancelled. Mirrors the
  *  Yalla.Domain.Enums.PrescriptionCancellationReason backend enum
@@ -122,6 +140,12 @@ export type ApiPrescription = {
    *  before the field existed. */
   cancellationReason?: PrescriptionCancellationReason | null;
   cancelledAtUtc?: string | null;
+  /** Set when status === "DecodeFailed" — pharmacist couldn't read
+   *  the prescription. PoorImageQuality → free credit; IllegibleHandwriting
+   *  → pending refund. */
+  decodeFailureReason?: PrescriptionDecodeFailureReason | null;
+  decodeFailedAtUtc?: string | null;
+  decodeFailureComment?: string | null;
 };
 
 /**
@@ -275,5 +299,6 @@ export const PRESCRIPTION_STATUS_LABEL_RU: Record<PrescriptionStatus, string> = 
   Decoded: "Готов чек-лист",
   OrderPlaced: "Заказ оформлен",
   MovedToCart: "В корзине",
-  Cancelled: "Отменён"
+  Cancelled: "Отменён",
+  DecodeFailed: "Не удалось расшифровать"
 };

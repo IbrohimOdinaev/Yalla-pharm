@@ -288,6 +288,26 @@ public sealed class PrescriptionsController : ControllerBase
     }
 
     /// <summary>
+    /// Pharmacist's "I can't decode this" exit — pushes the
+    /// prescription into DecodeFailed and triggers the downstream
+    /// effect dictated by the reason (free credit vs. pending refund).
+    /// Must be the assigned pharmacist and the prescription must be in
+    /// InReview; domain guards both.
+    /// </summary>
+    [HttpPost("pharmacist/{prescriptionId:guid}/decode-failed")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> MarkDecodeFailed(
+      Guid prescriptionId,
+      [FromBody] MarkDecodeFailedRequest request,
+      CancellationToken cancellationToken)
+    {
+        var pharmacistId = User.GetRequiredUserId();
+        var response = await _prescriptionService.MarkDecodeFailedAsync(
+          pharmacistId, prescriptionId, request, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
     /// Anonymous content endpoint mirrors <c>GET /api/medicines/images/{id}/content</c>.
     /// Auth-gated to the client who owns the prescription so other people can't
     /// fish for sensitive medical data by guessing image ids.

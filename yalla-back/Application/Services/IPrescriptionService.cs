@@ -63,6 +63,19 @@ public interface IPrescriptionService
       CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Pharmacist's "I can't decode this" exit. Moves the prescription
+    /// to <see cref="Yalla.Domain.Enums.PrescriptionStatus.DecodeFailed"/>
+    /// and triggers the side-effect dictated by the reason:
+    /// PoorImageQuality grants the client a free credit; IllegibleHandwriting
+    /// creates a PendingRefund row for SuperAdmin to settle physically.
+    /// </summary>
+    Task<PrescriptionResponse> MarkDecodeFailedAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      MarkDecodeFailedRequest request,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Client pushes the in-catalog checklist items into their regular
     /// basket and moves the prescription into MovedToCart. Out-of-catalog
     /// (manual) items and inactive medicines are skipped.

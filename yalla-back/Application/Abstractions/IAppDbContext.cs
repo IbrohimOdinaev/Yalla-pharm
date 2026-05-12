@@ -40,6 +40,7 @@ public interface IAppDbContext
     DbSet<SyncState> SyncStates { get; }
     DbSet<AuditLogEntry> AuditLogs { get; }
     DbSet<ClientConsentHistory> ClientConsentHistory { get; }
+    DbSet<PendingRefund> PendingRefunds { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

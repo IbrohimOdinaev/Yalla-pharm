@@ -43,6 +43,7 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<SyncState> SyncStates => Set<SyncState>();
   public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
   public DbSet<ClientConsentHistory> ClientConsentHistory => Set<ClientConsentHistory>();
+  public DbSet<PendingRefund> PendingRefunds => Set<PendingRefund>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
