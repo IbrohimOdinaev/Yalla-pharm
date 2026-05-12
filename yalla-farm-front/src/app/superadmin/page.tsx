@@ -1831,28 +1831,45 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  // Two refresh modes:
+  //   • full = "Обновить" button + first mount; toggles the loading
+  //     skeleton.
+  //   • silent = SignalR / polling; silently swaps the list so the row
+  //     doesn't flash the spinner each time a status changes upstream.
+  const refresh = useCallback((silent: boolean) => {
+    if (!silent) setLoading(true);
     setError(null);
     return getAwaitingPrescriptions(token)
       .then((data) => {
-        // FIFO — oldest waiting first so SuperAdmin clears the longest-pending
-        // request before brand-new ones. Same rule we apply to the pharmacist
-        // queue and other "new work" lists.
         const sorted = [...data].sort((a, b) =>
           new Date(a.createdAtUtc).getTime() - new Date(b.createdAtUtc).getTime()
         );
         setItems(sorted);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Ошибка загрузки"))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [token]);
+
+  const load = useCallback(() => refresh(false), [refresh]);
+  const liveRefresh = useCallback(() => refresh(true), [refresh]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Live updates — every PrescriptionUpdated SignalR event refreshes the list,
-  // so a brand-new submission appears here without SuperAdmin reloading.
-  useSignalREvent("PrescriptionUpdated", load, token);
+  // Live updates — every PrescriptionUpdated SignalR event silently
+  // refreshes the list, so a brand-new submission appears here without
+  // SuperAdmin reloading and without the spinner flicker.
+  useSignalREvent("PrescriptionUpdated", liveRefresh, token);
+
+  // Polling fallback — kicks in when SignalR stalls (WebSocket upgrade
+  // failed through ngrok / Next.js rewrite, transient drop, etc.). 20s
+  // is short enough that a missed event surfaces in seconds, long
+  // enough that a healthy SignalR connection carries the load with the
+  // poll just providing a safety net.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = window.setInterval(() => { liveRefresh(); }, 20_000);
+    return () => window.clearInterval(id);
+  }, [liveRefresh]);
 
   async function onConfirm(id: string) {
     if (!confirm("Подтвердить оплату 3 TJS? Заявка уйдёт в очередь к фармацевтам.")) return;

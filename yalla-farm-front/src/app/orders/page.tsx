@@ -518,8 +518,21 @@ export default function OrdersPage() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-[10px] xs:text-xs sm:text-sm font-bold truncate">{pos.medicine?.title ?? "Товар"}</p>
-                              {pos.quantity > 0 ? (
+                              <p className="text-[10px] xs:text-xs sm:text-sm font-bold truncate">
+                                {pos.medicine?.title ?? "Товар"}
+                                {pos.useUnitMode && pos.unitTotalPrice != null ? (
+                                  <span className="ml-1.5 rounded-full bg-accent-sun/30 px-1.5 py-0.5 align-middle text-[9px] font-bold text-accent-sun-ink">
+                                    поштучно
+                                  </span>
+                                ) : null}
+                              </p>
+                              {pos.useUnitMode && pos.unitTotalPrice != null ? (
+                                <div className="flex items-center gap-1 text-[10px] xs:text-xs text-on-surface-variant">
+                                  <span className="font-bold text-on-surface">{pos.unitCount ?? 0} шт.</span>
+                                  <span>&middot;</span>
+                                  <span className="font-bold text-primary">{formatMoney(pos.unitTotalPrice)}</span>
+                                </div>
+                              ) : pos.quantity > 0 ? (
                                 <div className="flex items-center gap-1 text-[10px] xs:text-xs text-on-surface-variant">
                                   <span>{pos.quantity} шт.</span>
                                   {pos.price > 0 ? (

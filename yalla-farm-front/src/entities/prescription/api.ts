@@ -21,6 +21,9 @@ export type ApiPrescriptionChecklistItem = {
   id: string;
   medicineId?: string | null;
   manualMedicineName?: string | null;
+  /** Catalog medicine title snapshot. Set when medicineId is non-null;
+   *  use it directly in lists instead of an extra by-ids fetch. */
+  medicineTitle?: string | null;
   quantity: number;
   pharmacistComment?: string | null;
   /** "Original" — pharmacist identified the medicine; "Undecoded" — couldn't read. */
@@ -45,6 +48,14 @@ export type ApiPrescriptionChecklistItem = {
   /** Cheapest price across the temp offers — equivalent to "min offer
    *  price" for catalog items. Null when no responses. */
   temporaryOfferMinPrice?: number | null;
+  /** Pharmacist switched this row into "by units" pricing — UI shows
+   *  unitCount × unitTotalPrice instead of quantity × offer-price. */
+  useUnitMode?: boolean;
+  /** Total tablets/ampoules/etc. the pharmacist priced; meaningful
+   *  only when useUnitMode is true. */
+  unitCount?: number | null;
+  /** Pharmacist-set total for this row (replaces system price calc). */
+  unitTotalPrice?: number | null;
 };
 
 export type PrescriptionPreferenceTier = "AsPrescribed" | "GoldenMiddle" | "MaxSavings";
@@ -178,6 +189,11 @@ export type ApiPrescriptionPharmacyItem = {
   hasEnoughQuantity: boolean;
   price?: number | null;
   isManualLookup: boolean;
+  /** Pharmacist priced this row "by units" — render unitCount /
+   *  unitTotalPrice instead of price × quantity. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export type ApiPrescriptionPharmacyOption = {

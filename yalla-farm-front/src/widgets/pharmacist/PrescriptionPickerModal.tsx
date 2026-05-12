@@ -12,7 +12,12 @@ import {
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { AuthedImage, Icon } from "@/shared/ui";
 
-const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview", "Decoded"];
+// Decoded prescriptions are intentionally excluded from the picker —
+// once the pharmacist hits "Отправить чек-лист" the work is done and
+// the row belongs in /pharmacist/history (read-only), not the active
+// picker. Reopening it here would let the pharmacist edit a frozen
+// submission, which we don't allow.
+const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview"];
 
 /**
  * Modal opened from the header pill. Shows a status-grouped list of every

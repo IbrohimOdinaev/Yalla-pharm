@@ -29,6 +29,14 @@ export type DraftItem = {
    *  asks every pharmacy admin to physically locate the medicine. Set
    *  after createManualLookupRequest succeeds; null until then. */
   lookupRequestId?: string | null;
+  /** "By units" override — pharmacist enters a unit count + total
+   *  price that replace the system's package-times-offer-price calc.
+   *  `quantity` keeps its meaning (= packages, ≥ 1, drives stock check
+   *  on the pharmacy side). Carries through to the OrderPosition once
+   *  the client checks out. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export type DraftState = {

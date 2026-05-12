@@ -76,6 +76,13 @@ export type ApiBasketPharmacyItem = {
   foundQuantity: number;
   hasEnoughQuantity: boolean;
   price?: number | null;
+  /** Pharmacist priced this row "by units" — checkout/cart UIs render
+   *  unitCount + unitTotalPrice instead of price × quantity, and the
+   *  row contributes unitTotalPrice flat to the total. Carried through
+   *  the prescription-checkout pipeline; unset for plain basket items. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export type ApiBasketPharmacyOption = {
@@ -142,6 +149,13 @@ export type ApiOrderPosition = {
   returnedQuantity?: number;
   price: number;
   isRejected?: boolean;
+  /** Pharmacist-supplied "by units" override frozen on the position
+   *  at order-creation time. UI renders unit count + total price
+   *  instead of price × quantity. Carried over from the prescription
+   *  checklist item. Unset for plain basket orders. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export type ApiRefundRequestPosition = {

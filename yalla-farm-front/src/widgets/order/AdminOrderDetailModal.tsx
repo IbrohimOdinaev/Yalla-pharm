@@ -377,15 +377,31 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
                         className="text-sm font-bold truncate block hover:text-primary"
                       >
                         {medicineName}
+                        {pos.useUnitMode && pos.unitTotalPrice != null ? (
+                          <span className="ml-1.5 rounded-full bg-accent-sun/30 px-1.5 py-0.5 align-middle text-[9px] font-bold text-accent-sun-ink">
+                            поштучно
+                          </span>
+                        ) : null}
                       </Link>
-                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                        <span>{pos.quantity} шт.</span>
-                        <span>&times;</span>
-                        <span className="font-bold text-primary">{formatMoney(pos.price, order.currency)}</span>
-                      </div>
+                      {pos.useUnitMode && pos.unitTotalPrice != null ? (
+                        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                          <span className="font-bold text-on-surface">{pos.unitCount ?? 0} шт.</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                          <span>{pos.quantity} шт.</span>
+                          <span>&times;</span>
+                          <span className="font-bold text-primary">{formatMoney(pos.price, order.currency)}</span>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-sm">{formatMoney(pos.quantity * pos.price, order.currency)}</p>
+                      <p className="font-bold text-sm">{formatMoney(
+                        pos.useUnitMode && pos.unitTotalPrice != null
+                          ? pos.unitTotalPrice
+                          : pos.quantity * pos.price,
+                        order.currency,
+                      )}</p>
                       {isRejected && (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Отклонено</span>
                       )}

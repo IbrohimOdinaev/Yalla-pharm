@@ -22,6 +22,19 @@ public class OrderPosition
     /// <summary>How many units of this position the client returned after delivery. 0 by default, bounded by <see cref="Quantity"/>. Only meaningful for non-rejected positions.</summary>
     public int ReturnedQuantity { get; private set; }
 
+    /// <summary>Pharmacist-supplied "by units" override carried over
+    /// from the prescription's checklist item at order-creation time.
+    /// When true, line total is taken from <see cref="UnitTotalPrice"/>
+    /// instead of the offer-price-times-quantity formula, and the row
+    /// is shown as `{UnitCount} штук` instead of `{Quantity} пачек`.
+    /// <see cref="Quantity"/> stays the package count for stock /
+    /// rejection / return semantics.</summary>
+    public bool UseUnitMode { get; private set; }
+
+    public int? UnitCount { get; private set; }
+
+    public decimal? UnitTotalPrice { get; private set; }
+
     private OrderPosition() { }
 
     public OrderPosition(
@@ -100,5 +113,59 @@ public class OrderPosition
             throw new DomainArgumentException($"ReturnedQuantity {quantity} exceeds position Quantity {Quantity}.");
 
         ReturnedQuantity = quantity;
+    }
+
+    /// <summary>
+    /// Carry the prescription's unit-mode override onto this position.
+    /// Called once at order creation; the snapshot is then frozen so
+    /// later prescription edits don't retroactively alter the order.
+    /// </summary>
+    public void SetUnitOverride(int unitCount, decimal unitTotalPrice)
+    {
+        if (unitCount <= 0)
+            throw new DomainArgumentException("UnitCount must be greater than zero.");
+        if (unitTotalPrice <= 0)
+            throw new DomainArgumentException("UnitTotalPrice must be greater than zero.");
+
+        UseUnitMode = true;
+        UnitCount = unitCount;
+        UnitTotalPrice = unitTotalPrice;
+    }
+
+    /// <summary>
+    /// Effective contribution to the order total. For unit-mode rows the
+    /// pharmacist's <see cref="UnitTotalPrice"/> wins outright; the
+    /// remaining-after-returns ratio scales it pro-rata so a partial
+    /// return still refunds the right amount. Catalog rows fall back to
+    /// the original `price × (quantity − returned)` formula.
+    /// </summary>
+    public decimal EffectiveLineTotalAfterReturns()
+    {
+        if (UseUnitMode && UnitTotalPrice.HasValue && Quantity > 0)
+        {
+            var remaining = Quantity - ReturnedQuantity;
+            if (remaining <= 0) return 0m;
+            return Math.Round(UnitTotalPrice.Value * remaining / Quantity, 2);
+        }
+
+        return OfferSnapshot.Price * (Quantity - ReturnedQuantity);
+    }
+
+    /// <summary>
+    /// Effective refund-due contribution. Mirrors <see cref="EffectiveLineTotalAfterReturns"/>
+    /// but for rejected/returned units instead of remaining ones.
+    /// </summary>
+    public decimal EffectiveRefundDue()
+    {
+        if (IsRejected)
+        {
+            if (UseUnitMode && UnitTotalPrice.HasValue) return UnitTotalPrice.Value;
+            return OfferSnapshot.Price * Quantity;
+        }
+
+        if (ReturnedQuantity <= 0) return 0m;
+        if (UseUnitMode && UnitTotalPrice.HasValue && Quantity > 0)
+            return Math.Round(UnitTotalPrice.Value * ReturnedQuantity / Quantity, 2);
+        return OfferSnapshot.Price * ReturnedQuantity;
     }
 }

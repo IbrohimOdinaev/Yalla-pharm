@@ -70,6 +70,12 @@ export type DecodePrescriptionItemInput = {
   /** When set, the server preserves the lookup binding for this manual
    *  line and closes the request once the checklist is submitted. */
   lookupRequestId?: string | null;
+  /** Pharmacist switched the row into "by units" pricing. Required:
+   *  `unitCount` ≥ 1 and `unitTotalPrice` > 0. Server stores it on the
+   *  checklist item and propagates to OrderPosition at checkout. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export async function submitChecklist(

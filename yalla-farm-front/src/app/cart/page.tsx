@@ -17,6 +17,7 @@ import {
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 import { Button, IconButton, Icon, EmptyState } from "@/shared/ui";
 
 export default function CartPage() {
@@ -89,6 +90,11 @@ export default function CartPage() {
   const totalUnits = useMemo(() => cartItems.reduce((n, i) => n + i.quantity, 0), [cartItems]);
 
   const recommendationsLoaded = useRef(false);
+  // Tri-state: null = pending (categories not resolved yet OR cart
+  // empty), true = loading the rail, false = done. Skeletons render
+  // for both null and true so the section reserves its space the
+  // moment the user lands on /cart instead of popping in 300 ms later.
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState<boolean>(true);
   useEffect(() => {
     if (recommendationsLoaded.current) return;
     const cartMedicineIds = new Set(cartItems.map((i) => i.medicineId));
@@ -97,7 +103,14 @@ export default function CartPage() {
       const m = medicineMap[item.medicineId];
       if (m?.categoryId) categories.add(m.categoryId);
     }
-    if (categories.size === 0) return;
+    // Wait for medicineMap to hydrate — until we know at least one
+    // cart item's category we can't fetch recommendations.
+    if (cartItems.length > 0 && categories.size === 0) return;
+    if (cartItems.length === 0) {
+      // Empty cart — there's nothing to recommend FROM. Drop skeletons.
+      setIsLoadingRecommendations(false);
+      return;
+    }
     recommendationsLoaded.current = true;
     const catId = [...categories][0];
     getCatalogMedicinesPaginated(1, 12, catId)
@@ -105,7 +118,8 @@ export default function CartPage() {
         const meds = (data?.medicines ?? []).filter((m: ApiMedicine) => !cartMedicineIds.has(m.id));
         setRecommendations(meds.slice(0, 10));
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setIsLoadingRecommendations(false));
   }, [cartItems, medicineMap]);
 
   const onDecrement = useCallback((itemId: string, medicineId: string, qty: number) => {
@@ -355,21 +369,24 @@ export default function CartPage() {
       </div>
 
       {/* Recommendations — horizontal rail. Cards stay the same size (compact)
-          so two fit visibly on a 360px screen. */}
-      {recommendations.length > 0 && (
+          so two fit visibly on a 360px screen. While the rail is loading we
+          render skeleton placeholders at the exact card width so the layout
+          doesn't jump when the real medicines come in. */}
+      {(isLoadingRecommendations || recommendations.length > 0) && (
         <section className="mt-6 mb-4 space-y-2 xs:mt-8 xs:space-y-3">
           <h3 className="font-display text-base font-extrabold xs:text-lg">Добавьте к заказу</h3>
-          {/* No -mx-* bleed — keep the rail flush with the parent column so
-              the first card aligns with the items above it (the bleed pattern
-              made the leftmost card look 12 px out of line on narrow phones).
-              Trailing card on the right is allowed to clip via overflow as
-              the visual hint that more is scrollable. */}
           <div className="flex gap-2 overflow-x-auto pb-2 scroll-touch scrollbar-hide snap-x">
-            {recommendations.map((med) => (
-              <div key={med.id} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
-                <MedicineCard medicine={med} compact />
-              </div>
-            ))}
+            {isLoadingRecommendations
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
+                    <MedicineCardSkeleton compact />
+                  </div>
+                ))
+              : recommendations.map((med) => (
+                  <div key={med.id} className="w-[130px] flex-shrink-0 snap-start xs:w-[140px]">
+                    <MedicineCard medicine={med} compact />
+                  </div>
+                ))}
           </div>
         </section>
       )}

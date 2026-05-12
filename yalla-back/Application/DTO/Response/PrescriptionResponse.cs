@@ -49,6 +49,11 @@ public sealed class PrescriptionChecklistItemResponse
     public Guid Id { get; set; }
     public Guid? MedicineId { get; set; }
     public string? ManualMedicineName { get; set; }
+    /// <summary>Snapshot of the catalog medicine's title at response build
+    /// time, when <see cref="MedicineId"/> is set. Pharmacist history /
+    /// admin views render this directly so the row always shows a name
+    /// without a follow-up /api/medicines/by-ids round-trip.</summary>
+    public string? MedicineTitle { get; set; }
     public int Quantity { get; set; }
     public string? PharmacistComment { get; set; }
     /// <summary>"Original" or "Undecoded".</summary>
@@ -78,4 +83,11 @@ public sealed class PrescriptionChecklistItemResponse
     /// "от X TJS" line for manual lookup items the same way catalog
     /// items show their min offer price. Null when nobody responded.</summary>
     public decimal? TemporaryOfferMinPrice { get; set; }
+
+    /// <summary>The pharmacist switched this row into "by units"
+    /// pricing — the client should render UnitCount + UnitTotalPrice
+    /// instead of the package count + offer-times-quantity total.</summary>
+    public bool UseUnitMode { get; set; }
+    public int? UnitCount { get; set; }
+    public decimal? UnitTotalPrice { get; set; }
 }

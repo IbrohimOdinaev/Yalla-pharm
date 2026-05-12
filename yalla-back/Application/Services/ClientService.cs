@@ -772,9 +772,14 @@ public sealed class ClientService : IClientService
           .GroupBy(x => x.MedicineId)
           .ToDictionary(x => x.Key, x => x.Sum(y => y.Quantity));
 
+        var unitOverrides = await LoadPrescriptionUnitOverridesAsync(
+          request.Source?.PrescriptionId, cancellationToken);
+
         var itemsCost = evaluation.Positions
           .Where(x => !x.IsRejected)
-          .Sum(x => (x.Price ?? 0m) * x.Draft.Quantity);
+          .Sum(x => unitOverrides.TryGetValue(x.Draft.MedicineId, out var ovr)
+            ? ovr.UnitTotalPrice
+            : (x.Price ?? 0m) * x.Draft.Quantity);
 
         if (itemsCost <= 0m)
             throw new InvalidOperationException("Checkout total amount must be greater than zero.");
@@ -797,6 +802,7 @@ public sealed class ClientService : IClientService
               deliveryCost,
               deliveryDistance,
               sourceKind,
+              unitOverrides,
               cancellationToken);
         }
 
@@ -852,17 +858,23 @@ public sealed class ClientService : IClientService
               .ToDictionaryAsync(x => x.MedicineId, x => x.Price, cancellationToken);
 
             var orderPositions = evaluation.Positions
-              .Select(x => new OrderPosition(
-                orderId: orderId,
-                medicineId: x.Draft.MedicineId,
-                medicine: x.Draft.Medicine,
-                offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
-                  request.PharmacyId,
-                  currentOfferPrices.TryGetValue(x.Draft.MedicineId, out var currentPrice)
-                    ? currentPrice
-                    : x.Price ?? 0m),
-                quantity: x.Draft.Quantity,
-                isRejected: x.IsRejected))
+              .Select(x =>
+              {
+                  var op = new OrderPosition(
+                    orderId: orderId,
+                    medicineId: x.Draft.MedicineId,
+                    medicine: x.Draft.Medicine,
+                    offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
+                      request.PharmacyId,
+                      currentOfferPrices.TryGetValue(x.Draft.MedicineId, out var currentPrice)
+                        ? currentPrice
+                        : x.Price ?? 0m),
+                    quantity: x.Draft.Quantity,
+                    isRejected: x.IsRejected);
+                  if (unitOverrides.TryGetValue(x.Draft.MedicineId, out var ovr))
+                      op.SetUnitOverride(ovr.UnitCount, ovr.UnitTotalPrice);
+                  return op;
+              })
               .ToList();
 
             var orderRequest = new CheckoutBasketRequest
@@ -974,6 +986,68 @@ public sealed class ClientService : IClientService
         prescription.MarkOrderPlaced(orderId);
     }
 
+    /// <summary>
+    /// Loads "by-units" overrides from the prescription's checklist items
+    /// keyed by the medicineId the client is checking out — catalog
+    /// items map directly, manual-lookup items map via the per-pharmacy
+    /// shadow medicine spawned at submit time. Returns an empty map when
+    /// no prescription is involved or no rows opted into the override.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, (int UnitCount, decimal UnitTotalPrice)>>
+      LoadPrescriptionUnitOverridesAsync(
+        Guid? prescriptionId,
+        CancellationToken cancellationToken)
+    {
+        var empty = (IReadOnlyDictionary<Guid, (int, decimal)>)
+          new Dictionary<Guid, (int, decimal)>();
+
+        if (!prescriptionId.HasValue || prescriptionId.Value == Guid.Empty)
+            return empty;
+
+        var unitItems = await _dbContext.PrescriptionChecklistItems
+          .AsNoTracking()
+          .Where(i => i.PrescriptionId == prescriptionId.Value
+                   && i.UseUnitMode
+                   && i.UnitCount.HasValue
+                   && i.UnitTotalPrice.HasValue)
+          .Select(i => new
+          {
+              i.MedicineId,
+              i.LookupRequestId,
+              UnitCount = i.UnitCount!.Value,
+              UnitTotalPrice = i.UnitTotalPrice!.Value
+          })
+          .ToListAsync(cancellationToken);
+
+        if (unitItems.Count == 0) return empty;
+
+        var result = new Dictionary<Guid, (int UnitCount, decimal UnitTotalPrice)>();
+
+        foreach (var i in unitItems.Where(x => x.MedicineId.HasValue))
+            result[i.MedicineId!.Value] = (i.UnitCount, i.UnitTotalPrice);
+
+        var lookupOverrides = unitItems
+          .Where(i => i.LookupRequestId.HasValue && !i.MedicineId.HasValue)
+          .ToDictionary(i => i.LookupRequestId!.Value, i => (i.UnitCount, i.UnitTotalPrice));
+
+        if (lookupOverrides.Count > 0)
+        {
+            var lookupIds = lookupOverrides.Keys.ToList();
+            var shadows = await _dbContext.Medicines
+              .AsNoTracking()
+              .Where(m => m.ManualLookupRequestId.HasValue
+                       && lookupIds.Contains(m.ManualLookupRequestId.Value))
+              .Select(m => new { m.Id, LookupId = m.ManualLookupRequestId!.Value })
+              .ToListAsync(cancellationToken);
+
+            foreach (var s in shadows)
+                if (lookupOverrides.TryGetValue(s.LookupId, out var ovr))
+                    result[s.Id] = ovr;
+        }
+
+        return result;
+    }
+
     private async Task<CheckoutBasketResponse> CheckoutWithPaymentIntentAsync(
       CheckoutBasketRequest request,
       Client client,
@@ -986,6 +1060,7 @@ public sealed class ClientService : IClientService
       decimal deliveryCost,
       double? deliveryDistance,
       CheckoutSourceKind sourceKind,
+      IReadOnlyDictionary<Guid, (int UnitCount, decimal UnitTotalPrice)> unitOverrides,
       CancellationToken cancellationToken)
     {
         var normalizedIdempotencyKey = (request.IdempotencyKey ?? string.Empty).Trim();
@@ -1063,15 +1138,21 @@ public sealed class ClientService : IClientService
           apartment: request.Apartment);
 
         var orderPositions = evaluation.Positions
-          .Select(x => new OrderPosition(
-            orderId: reservedOrderId,
-            medicineId: x.Draft.MedicineId,
-            medicine: x.Draft.Medicine,
-            offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
-              request.PharmacyId,
-              x.Price ?? 0m),
-            quantity: x.Draft.Quantity,
-            isRejected: x.IsRejected))
+          .Select(x =>
+          {
+              var op = new OrderPosition(
+                orderId: reservedOrderId,
+                medicineId: x.Draft.MedicineId,
+                medicine: x.Draft.Medicine,
+                offerSnapshot: new Domain.ValueObjects.OfferSnapshot(
+                  request.PharmacyId,
+                  x.Price ?? 0m),
+                quantity: x.Draft.Quantity,
+                isRejected: x.IsRejected);
+              if (unitOverrides.TryGetValue(x.Draft.MedicineId, out var ovr))
+                  op.SetUnitOverride(ovr.UnitCount, ovr.UnitTotalPrice);
+              return op;
+          })
           .ToList();
 
         var orderRequest = new CheckoutBasketRequest
@@ -1231,9 +1312,14 @@ public sealed class ClientService : IClientService
         var acceptedPositionsCount = evaluation.Positions.Count(x => !x.IsRejected);
         var rejectedPositionsCount = evaluation.Positions.Count(x => x.IsRejected);
 
+        var unitOverrides = await LoadPrescriptionUnitOverridesAsync(
+          request.Source?.PrescriptionId, cancellationToken);
+
         var itemsCost = evaluation.Positions
           .Where(x => !x.IsRejected)
-          .Sum(x => (x.Price ?? 0m) * x.Draft.Quantity);
+          .Sum(x => unitOverrides.TryGetValue(x.Draft.MedicineId, out var ovr)
+            ? ovr.UnitTotalPrice
+            : (x.Price ?? 0m) * x.Draft.Quantity);
 
         var (previewDeliveryCost, previewDeliveryDistance) = await CalculateJuraDeliveryCostAsync(
           pharmacy, request, cancellationToken);
@@ -1252,20 +1338,30 @@ public sealed class ClientService : IClientService
             Cost = itemsCost,
             ReturnCost = evaluation.Positions
               .Where(x => x.IsRejected)
-              .Sum(x => (x.Price ?? 0m) * x.Draft.Quantity),
+              .Sum(x => unitOverrides.TryGetValue(x.Draft.MedicineId, out var ovr)
+                ? ovr.UnitTotalPrice
+                : (x.Price ?? 0m) * x.Draft.Quantity),
             DeliveryCost = previewDeliveryCost,
             DeliveryDistance = previewDeliveryDistance,
             TotalCost = itemsCost + previewDeliveryCost,
             Positions = evaluation.Positions
-              .Select(x => new CheckoutPreviewPositionResponse
+              .Select(x =>
               {
-                  PositionId = x.Draft.BasketPositionId ?? Guid.Empty,
-                  MedicineId = x.Draft.MedicineId,
-                  Quantity = x.Draft.Quantity,
-                  IsRejected = x.IsRejected,
-                  FoundQuantity = x.FoundQuantity,
-                  Price = x.Price,
-                  Reason = x.Reason
+                  unitOverrides.TryGetValue(x.Draft.MedicineId, out var ovr);
+                  var hasOverride = unitOverrides.ContainsKey(x.Draft.MedicineId);
+                  return new CheckoutPreviewPositionResponse
+                  {
+                      PositionId = x.Draft.BasketPositionId ?? Guid.Empty,
+                      MedicineId = x.Draft.MedicineId,
+                      Quantity = x.Draft.Quantity,
+                      IsRejected = x.IsRejected,
+                      FoundQuantity = x.FoundQuantity,
+                      Price = x.Price,
+                      Reason = x.Reason,
+                      UseUnitMode = hasOverride,
+                      UnitCount = hasOverride ? ovr.UnitCount : null,
+                      UnitTotalPrice = hasOverride ? ovr.UnitTotalPrice : null
+                  };
               })
               .ToList()
         };

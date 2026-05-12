@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { env } from "@/shared/config/env";
 
@@ -12,6 +12,15 @@ type AuthedImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> &
   src?: string | null;
   /** Rendered when src is empty or the request fails. */
   fallback?: React.ReactNode;
+  /**
+   * Defer the fetch until the placeholder enters the viewport
+   * (IntersectionObserver, 200px rootMargin). Long lists of authed
+   * images (e.g. /prescriptions, /orders) used to fire 10+ parallel
+   * fetches the moment the page mounted, which queued up against the
+   * per-origin connection pool and starved the next page's API calls.
+   * Off by default — small consumers don't need the IO churn.
+   */
+  lazy?: boolean;
 };
 
 /**
@@ -30,10 +39,39 @@ type AuthedImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> &
  * Object URLs are revoked on unmount / src change, so this leaks no
  * memory across re-renders.
  */
-export function AuthedImage({ src, fallback = null, alt = "", ...rest }: AuthedImageProps) {
+export function AuthedImage({ src, fallback = null, alt = "", lazy = false, ...rest }: AuthedImageProps) {
   const token = useAppSelector((s) => s.auth.token);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  // When `lazy=false` the fetch fires immediately (legacy behaviour);
+  // when `lazy=true` we wait for the placeholder to enter the viewport.
+  const [inView, setInView] = useState(!lazy);
+  const placeholderRef = useRef<HTMLSpanElement | null>(null);
+
+  // IntersectionObserver — only when lazy and not yet visible. 200px
+  // rootMargin starts the fetch slightly before the row scrolls in so
+  // the image is usually ready when the user actually sees it.
+  useEffect(() => {
+    if (!lazy || inView) return;
+    const node = placeholderRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      // No IO support (e.g. SSR snapshot): fall through and load eagerly
+      // so we never leave a row permanently blank.
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [lazy, inView]);
 
   useEffect(() => {
     setFailed(false);
@@ -41,7 +79,7 @@ export function AuthedImage({ src, fallback = null, alt = "", ...rest }: AuthedI
     // /prescriptions/A → /prescriptions/B) immediately renders the fallback
     // instead of leaving the OLD image on screen while the new bytes download.
     setBlobUrl(null);
-    if (!src || !token) return;
+    if (!src || !token || !inView) return;
 
     const controller = new AbortController();
     let cancelled = false;
@@ -71,10 +109,23 @@ export function AuthedImage({ src, fallback = null, alt = "", ...rest }: AuthedI
       controller.abort();
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [src, token]);
+  }, [src, token, inView]);
 
   if (!src || failed || !blobUrl) {
-    return <>{fallback}</>;
+    // Wrap fallback in a real block-level element so IntersectionObserver
+    // has a box to track (display:contents has no layout box and IO
+    // silently never fires, which used to leave lazy=true rows blank
+    // forever inside scrollable modals/lists). The wrapper fills the
+    // parent slot — the existing fallback usually renders a 100%/100%
+    // div, so the visible result is unchanged.
+    return (
+      <span
+        ref={placeholderRef}
+        style={{ display: "block", width: "100%", height: "100%" }}
+      >
+        {fallback}
+      </span>
+    );
   }
 
   // eslint-disable-next-line @next/next/no-img-element

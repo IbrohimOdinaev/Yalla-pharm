@@ -61,6 +61,9 @@ export function PrescriptionPharmacyPicker({ prescriptionId }: Props) {
       foundQuantity: it.foundQuantity,
       hasEnoughQuantity: it.hasEnoughQuantity,
       price: it.price ?? null,
+      useUnitMode: it.useUnitMode ?? false,
+      unitCount: it.unitCount ?? null,
+      unitTotalPrice: it.unitTotalPrice ?? null,
     })).filter((i) => i.medicineId);
 
     if (items.length === 0) return;
@@ -141,26 +144,42 @@ export function PrescriptionPharmacyPicker({ prescriptionId }: Props) {
             {/* Compact item list — show title, qty, price, and a badge
                 for items that came from the manual-lookup workflow. */}
             <ul className="mt-2 space-y-1 text-[11px]">
-              {opt.items.map((it) => (
-                <li key={it.checklistItemId} className="flex items-start gap-2">
-                  <span className={`mt-0.5 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full ${
-                    it.isFound ? (it.hasEnoughQuantity ? "bg-primary" : "bg-warning") : "bg-secondary"
-                  }`} />
-                  <span className="min-w-0 flex-1">
-                    <span className="line-clamp-1 font-bold text-on-surface">{it.title}</span>
-                    {it.isManualLookup ? (
-                      <span className="ml-1 rounded-full bg-tertiary/15 px-1.5 py-0 text-[9px] font-bold text-tertiary">
-                        предложение аптеки
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="flex-shrink-0 text-on-surface-variant">
-                    ×{it.requestedQuantity}
-                    {it.price ? ` · ${formatMoney(it.price)}` : ""}
-                    {!it.isFound ? " · нет" : !it.hasEnoughQuantity ? ` · ост: ${it.foundQuantity}` : ""}
-                  </span>
-                </li>
-              ))}
+              {opt.items.map((it) => {
+                const inUnitMode = it.useUnitMode === true && (it.unitTotalPrice ?? null) != null;
+                return (
+                  <li key={it.checklistItemId} className="flex items-start gap-2">
+                    <span className={`mt-0.5 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+                      it.isFound ? (it.hasEnoughQuantity ? "bg-primary" : "bg-warning") : "bg-secondary"
+                    }`} />
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-1 font-bold text-on-surface">{it.title}</span>
+                      {it.isManualLookup ? (
+                        <span className="ml-1 rounded-full bg-tertiary/15 px-1.5 py-0 text-[9px] font-bold text-tertiary">
+                          предложение аптеки
+                        </span>
+                      ) : null}
+                      {inUnitMode ? (
+                        <span className="ml-1 rounded-full bg-accent-sun/30 px-1.5 py-0 text-[9px] font-bold text-accent-sun-ink">
+                          поштучно
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="flex-shrink-0 text-on-surface-variant">
+                      {inUnitMode ? (
+                        <>
+                          {it.unitCount ?? 0} шт. · {formatMoney(it.unitTotalPrice ?? 0)}
+                        </>
+                      ) : (
+                        <>
+                          ×{it.requestedQuantity}
+                          {it.price ? ` · ${formatMoney(it.price)}` : ""}
+                        </>
+                      )}
+                      {!it.isFound ? " · нет" : !it.hasEnoughQuantity ? ` · ост: ${it.foundQuantity}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </li>
         );

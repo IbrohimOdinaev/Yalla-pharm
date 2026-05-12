@@ -68,6 +68,22 @@ public class PrescriptionChecklistItemConfiguration
           .HasColumnType("uuid")
           .IsRequired(false);
 
+        builder.Property(x => x.UseUnitMode)
+          .HasColumnName("use_unit_mode")
+          .HasColumnType("boolean")
+          .HasDefaultValue(false)
+          .IsRequired();
+
+        builder.Property(x => x.UnitCount)
+          .HasColumnName("unit_count")
+          .HasColumnType("integer")
+          .IsRequired(false);
+
+        builder.Property(x => x.UnitTotalPrice)
+          .HasColumnName("unit_total_price")
+          .HasColumnType("numeric(18, 2)")
+          .IsRequired(false);
+
         builder.Property(x => x.CreatedAtUtc)
           .HasColumnName("created_at_utc")
           .HasColumnType("timestamp")

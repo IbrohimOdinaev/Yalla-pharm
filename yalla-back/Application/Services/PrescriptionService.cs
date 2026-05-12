@@ -224,12 +224,13 @@ public sealed class PrescriptionService : IPrescriptionService
           cancellationToken);
 
         var tempOfferStats = await LoadTempOfferStatsAsync(prescriptions, cancellationToken);
+        var medicineTitles = await LoadMedicineTitlesAsync(prescriptions, cancellationToken);
 
         var responses = new List<PrescriptionResponse>(prescriptions.Count);
         foreach (var p in prescriptions)
         {
             var client = clients.GetValueOrDefault(p.ClientId);
-            var resp = MapToResponse(p, client, tempOfferStats);
+            var resp = MapToResponse(p, client, tempOfferStats, medicineTitles);
 
             // Re-issue a fresh DC payment URL while the prescription is still
             // Submitted (waiting for the user to pay). The detail page renders
@@ -349,7 +350,12 @@ public sealed class PrescriptionService : IPrescriptionService
           prescriptions.Select(x => x.ClientId).Distinct().ToList(),
           cancellationToken);
 
-        return prescriptions.Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId))).ToList();
+        var medicineTitles = await LoadMedicineTitlesAsync(prescriptions, cancellationToken);
+        var tempOfferStats = await LoadTempOfferStatsAsync(prescriptions, cancellationToken);
+
+        return prescriptions
+          .Select(p => MapToResponse(p, clients.GetValueOrDefault(p.ClientId), tempOfferStats, medicineTitles))
+          .ToList();
     }
 
     public async Task<PrescriptionResponse> GetForPharmacistAsync(
@@ -389,7 +395,10 @@ public sealed class PrescriptionService : IPrescriptionService
           .AsNoTracking()
           .FirstOrDefaultAsync(u => u.Id == prescription.ClientId, cancellationToken);
 
-        return MapToResponse(prescription, client);
+        var medicineTitles = await LoadMedicineTitlesAsync(new[] { prescription }, cancellationToken);
+        var tempOfferStats = await LoadTempOfferStatsAsync(new[] { prescription }, cancellationToken);
+
+        return MapToResponse(prescription, client, tempOfferStats, medicineTitles);
     }
 
     public async Task<PrescriptionResponse> TakeIntoReviewAsync(
@@ -724,6 +733,13 @@ public sealed class PrescriptionService : IPrescriptionService
             if (i.LookupRequestId.HasValue && !i.MedicineId.HasValue)
                 item.AttachLookupRequest(i.LookupRequestId.Value);
 
+            // Unit-mode override — pharmacist's manual price/qty per
+            // tablet/ampoule/etc. Quantity already reflects the
+            // package count; UnitCount + UnitTotalPrice ride along
+            // and replace the line total at order-creation time.
+            if (i.UseUnitMode && i.UnitCount.HasValue && i.UnitTotalPrice.HasValue)
+                item.SetUnitOverride(i.UnitCount.Value, i.UnitTotalPrice.Value);
+
             items.Add(item);
         }
 
@@ -851,15 +867,33 @@ public sealed class PrescriptionService : IPrescriptionService
           .Distinct()
           .ToList();
 
-        var catalogTitles = catalogMedicineIds.Count == 0
-          ? new Dictionary<Guid, string>()
+        // Load catalog rows once and split: titles for display + the
+        // subset that's still IsActive. Inactive catalog medicines are
+        // kept on the prescription (the pharmacist already decoded them)
+        // but excluded from the pharmacy-options offer pool — otherwise
+        // the picker shows them as "isFound" and checkout later rejects
+        // the whole order with "Medicine inactive and cannot be checked
+        // out". With this filter, the row simply renders as
+        // "не доступно" at every pharmacy and the user can pick the
+        // remaining items.
+        var catalogRows = catalogMedicineIds.Count == 0
+          ? new List<(Guid Id, string Title, bool IsActive)>()
           : await _dbContext.Medicines
               .AsNoTracking()
               .Where(m => catalogMedicineIds.Contains(m.Id))
-              .Select(m => new { m.Id, m.Title })
-              .ToDictionaryAsync(m => m.Id, m => m.Title, cancellationToken);
+              .Select(m => new { m.Id, m.Title, m.IsActive })
+              .ToListAsync(cancellationToken)
+              .ContinueWith(t => t.Result.Select(r => (r.Id, r.Title, r.IsActive)).ToList(), cancellationToken);
 
-        var allMedicineIds = catalogMedicineIds
+        var catalogTitles = catalogRows.ToDictionary(r => r.Id, r => r.Title);
+        var activeCatalogIds = catalogRows
+          .Where(r => r.IsActive)
+          .Select(r => r.Id)
+          .ToHashSet();
+
+        // Shadow medicines materialised for manual lookups always carry
+        // IsActive = true on creation, so we don't need to recheck them.
+        var activeMedicineIds = activeCatalogIds
           .Concat(shadowRows.Select(s => s.MedicineId))
           .Distinct()
           .ToList();
@@ -871,7 +905,7 @@ public sealed class PrescriptionService : IPrescriptionService
 
         var offers = await _dbContext.Offers
           .AsNoTracking()
-          .Where(o => allMedicineIds.Contains(o.MedicineId))
+          .Where(o => activeMedicineIds.Contains(o.MedicineId))
           .Select(o => new { o.PharmacyId, o.MedicineId, o.Price, o.StockQuantity })
           .ToListAsync(cancellationToken);
 
@@ -930,7 +964,14 @@ public sealed class PrescriptionService : IPrescriptionService
                     var hasEnough = offer.StockQuantity >= item.Quantity;
                     foundCount++;
                     if (hasEnough) enoughCount++;
-                    totalCost += offer.Price * Math.Min(item.Quantity, offer.StockQuantity);
+                    // Unit-mode rows contribute the pharmacist-specified
+                    // total directly, ignoring the offer price entirely.
+                    // Catalog rows keep the live offer × min(qty, stock)
+                    // formula so partial coverage shows a fair partial.
+                    if (item.UseUnitMode && item.UnitTotalPrice.HasValue)
+                        totalCost += item.UnitTotalPrice.Value;
+                    else
+                        totalCost += offer.Price * Math.Min(item.Quantity, offer.StockQuantity);
 
                     lineItems.Add(new PrescriptionPharmacyItemResponse
                     {
@@ -942,7 +983,10 @@ public sealed class PrescriptionService : IPrescriptionService
                         FoundQuantity = offer.StockQuantity,
                         HasEnoughQuantity = hasEnough,
                         Price = offer.Price,
-                        IsManualLookup = isManual
+                        IsManualLookup = isManual,
+                        UseUnitMode = item.UseUnitMode,
+                        UnitCount = item.UnitCount,
+                        UnitTotalPrice = item.UnitTotalPrice
                     });
                 }
                 else
@@ -1024,7 +1068,8 @@ public sealed class PrescriptionService : IPrescriptionService
 
         var tempOfferStats = await LoadTempOfferStatsAsync(
           new[] { prescription }, cancellationToken);
-        var response = MapToResponse(prescription, client, tempOfferStats);
+        var medicineTitles = await LoadMedicineTitlesAsync(new[] { prescription }, cancellationToken);
+        var response = MapToResponse(prescription, client, tempOfferStats, medicineTitles);
 
         // Re-issue a fresh DC payment URL on every read while the prescription
         // is still waiting for payment. The frontend shows it as a clickable
@@ -1055,7 +1100,8 @@ public sealed class PrescriptionService : IPrescriptionService
     private static PrescriptionResponse MapToResponse(
       Prescription prescription,
       User? client = null,
-      IReadOnlyDictionary<Guid, TempOfferStats>? tempOfferStats = null)
+      IReadOnlyDictionary<Guid, TempOfferStats>? tempOfferStats = null,
+      IReadOnlyDictionary<Guid, string>? medicineTitles = null)
     {
         return new PrescriptionResponse
         {
@@ -1101,6 +1147,11 @@ public sealed class PrescriptionService : IPrescriptionService
                       Id = x.Id,
                       MedicineId = x.MedicineId,
                       ManualMedicineName = x.ManualMedicineName,
+                      MedicineTitle = x.MedicineId.HasValue
+                        && medicineTitles is not null
+                        && medicineTitles.TryGetValue(x.MedicineId.Value, out var medTitle)
+                        ? medTitle
+                        : null,
                       Quantity = x.Quantity,
                       PharmacistComment = x.PharmacistComment,
                       Kind = x.Kind.ToString(),
@@ -1115,11 +1166,42 @@ public sealed class PrescriptionService : IPrescriptionService
                       TemporaryOfferCount = x.LookupRequestId.HasValue
                         ? (stats?.OfferCount ?? 0)
                         : (int?)null,
-                      TemporaryOfferMinPrice = stats?.MinPrice
+                      TemporaryOfferMinPrice = stats?.MinPrice,
+                      UseUnitMode = x.UseUnitMode,
+                      UnitCount = x.UnitCount,
+                      UnitTotalPrice = x.UnitTotalPrice
                   };
               })
               .ToList()
         };
+    }
+
+    /// <summary>
+    /// Bulk-load catalog medicine titles for every checklist item across
+    /// the supplied prescriptions. Catalog items keep showing their
+    /// canonical name even after the medicine is later renamed/disabled
+    /// (we still resolve by id), and manual rows fall back to their
+    /// snapshot ManualMedicineName which is already on the row itself.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, string>> LoadMedicineTitlesAsync(
+      IEnumerable<Prescription> prescriptions,
+      CancellationToken cancellationToken)
+    {
+        var medIds = prescriptions
+          .SelectMany(p => p.Items)
+          .Where(i => i.MedicineId.HasValue)
+          .Select(i => i.MedicineId!.Value)
+          .Distinct()
+          .ToList();
+
+        if (medIds.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        return await _dbContext.Medicines
+          .AsNoTracking()
+          .Where(m => medIds.Contains(m.Id))
+          .Select(m => new { m.Id, m.Title })
+          .ToDictionaryAsync(m => m.Id, m => m.Title, cancellationToken);
     }
 
     /// <summary>

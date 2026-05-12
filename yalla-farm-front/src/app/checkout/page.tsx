@@ -103,6 +103,9 @@ export default function CheckoutPage() {
     return checkoutItems
       .filter((i) => selectedMedIds.has(i.medicineId))
       .reduce((sum, i) => {
+        // Unit-mode rows contribute the pharmacist's flat total directly,
+        // bypassing the price × quantity formula.
+        if (i.useUnitMode && i.unitTotalPrice != null) return sum + i.unitTotalPrice;
         const qty = Math.min(i.foundQuantity, i.requestedQuantity);
         return sum + (i.price ?? 0) * qty;
       }, 0);
@@ -477,13 +480,24 @@ export default function CheckoutPage() {
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className={`truncate text-sm font-bold ${missing ? "line-through text-on-surface-variant" : ""}`}>{name}</p>
+                    <p className={`truncate text-sm font-bold ${missing ? "line-through text-on-surface-variant" : ""}`}>
+                      {name}
+                      {item.useUnitMode && item.unitTotalPrice != null ? (
+                        <span className="ml-2 rounded-full bg-accent-sun/30 px-2 py-0.5 align-middle text-[10px] font-bold text-accent-sun-ink">
+                          поштучно
+                        </span>
+                      ) : null}
+                    </p>
                     {missing ? (
                       <Chip tone="danger" asButton={false} size="sm">Нет в наличии</Chip>
                     ) : partial ? (
                       <Chip tone="warning" asButton={false} size="sm">
                         Доступно {item.foundQuantity} из {item.requestedQuantity}
                       </Chip>
+                    ) : item.useUnitMode && item.unitTotalPrice != null ? (
+                      <p className="mt-0.5 text-[11px] text-on-surface-variant">
+                        {item.unitCount ?? 0} шт.
+                      </p>
                     ) : (
                       <p className="mt-0.5 text-[11px] text-on-surface-variant">
                         {formatMoney(item.price ?? 0)} × {cappedFound}
@@ -491,7 +505,11 @@ export default function CheckoutPage() {
                     )}
                   </div>
                   <span className="flex-shrink-0 font-extrabold tabular-nums text-primary">
-                    {formatMoney((item.price ?? 0) * cappedFound)}
+                    {formatMoney(
+                      item.useUnitMode && item.unitTotalPrice != null
+                        ? item.unitTotalPrice
+                        : (item.price ?? 0) * cappedFound,
+                    )}
                   </span>
                 </label>
               );

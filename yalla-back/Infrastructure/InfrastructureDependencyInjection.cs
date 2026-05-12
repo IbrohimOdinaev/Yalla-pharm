@@ -266,18 +266,73 @@ public static class DependencyInjection
     services.AddScoped<IJuraService>(provider => provider.GetRequiredService<JuraService>());
     services.AddHostedService<JuraDeliveryStatusSyncHostedService>();
 
-    // Elasticsearch
-    var esUrl = config["Elasticsearch:Url"] ?? "http://localhost:9200";
+    // Elasticsearch / OpenSearch — auth is optional. Dev runs the
+    // security plugin disabled (no creds); managed prod services
+    // (Bonsai, AWS OpenSearch, Elastic Cloud) need either Basic auth
+    // or a native API key. ApiKey wins when both are present.
+    //
+    // Bonsai's "Full URL with credentials" comes as a single string
+    // `https://user:pass@host:port` — we accept that shape too and
+    // split it here so the HttpClient gets a clean URL plus a
+    // separate Authorization header (embedded credentials in a URL
+    // are passed to the server by some clients but rejected by
+    // others, and the .NET HttpClient is in the latter camp).
+    var (esUrl, embeddedUser, embeddedPass) = ParseSearchUrl(
+        config["Elasticsearch:Url"] ?? "http://localhost:9200");
     var esIndex = config["Elasticsearch:MedicineIndex"] ?? "medicines";
+    // Env-driven config can hand us empty strings instead of nulls
+    // (every env var is set to "" by the compose file even when the
+    // operator didn't pick a value), so `??` alone falls through to
+    // a blank credential. Treat blank as "not set" and prefer the
+    // value parsed out of the URL.
+    var esUser = string.IsNullOrWhiteSpace(config["Elasticsearch:Username"])
+        ? embeddedUser
+        : config["Elasticsearch:Username"];
+    var esPass = string.IsNullOrWhiteSpace(config["Elasticsearch:Password"])
+        ? embeddedPass
+        : config["Elasticsearch:Password"];
+    var esApiKey = string.IsNullOrWhiteSpace(config["Elasticsearch:ApiKey"])
+        ? null
+        : config["Elasticsearch:ApiKey"];
     services.AddScoped<IMedicineSearchEngine>(sp =>
         new ElasticsearchMedicineSearchEngine(
             esUrl,
             sp.GetRequiredService<IAppDbContext>(),
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ElasticsearchMedicineSearchEngine>>(),
-            esIndex));
+            esIndex,
+            esUser,
+            esPass,
+            esApiKey));
     services.AddHostedService<ElasticsearchReindexHostedService>();
 
     return services;
+  }
+
+  /// <summary>
+  /// Splits a search-cluster URL that may carry embedded basic-auth
+  /// credentials ("https://user:pass@host:port") into a clean URL +
+  /// username + password. Returns the original URL with nulls when no
+  /// userInfo segment is present. Bonsai's dashboard hands the URL out
+  /// in this combined shape, which is why the parser exists.
+  /// </summary>
+  private static (string Url, string? Username, string? Password) ParseSearchUrl(string raw)
+  {
+    if (string.IsNullOrWhiteSpace(raw)) return (raw, null, null);
+    if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return (raw, null, null);
+    if (string.IsNullOrEmpty(uri.UserInfo)) return (raw, null, null);
+
+    var parts = uri.UserInfo.Split(':', 2);
+    var user = Uri.UnescapeDataString(parts[0]);
+    var pass = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : null;
+
+    // Rebuild the URL manually — UriBuilder.Password = "" still keeps
+    // a trailing ":@" / "user@" segment in the rendered URI on .NET,
+    // which Bonsai then echoes back as part of the cluster-side auth
+    // attempt and rejects with 401. Building the absolute URL from
+    // scheme/host/port/path/query gives us a clean origin string.
+    var portPart = uri.IsDefaultPort ? string.Empty : $":{uri.Port}";
+    var cleanUrl = $"{uri.Scheme}://{uri.Host}{portPart}{uri.AbsolutePath}{uri.Query}".TrimEnd('/');
+    return (cleanUrl, user, pass);
   }
 
   private static string? NormalizeConnectionStringForContainer(string? connectionString, IConfiguration config)

@@ -161,11 +161,14 @@ export default function PrescriptionDetailPage() {
       const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
       const offerCount = med?.offers?.length ?? 0;
       const price = getCheapestPrice(med ?? undefined);
-      const effectiveQty = it.id in editedQty ? editedQty[it.id] : it.quantity;
+      // Unit-mode rows lock quantity to the pharmacist's package count —
+      // it's the minimum needed to cover the requested unit count and
+      // drives stock-availability checks. Client edits are ignored here.
+      const inUnitMode = it.useUnitMode === true && (it.unitTotalPrice ?? null) != null;
+      const effectiveQty = inUnitMode
+        ? it.quantity
+        : (it.id in editedQty ? editedQty[it.id] : it.quantity);
       const isManual = !it.medicineId;
-      // Manual lines that gathered at least one pharmacy response have
-      // temp shadow offers — treat them as orderable just like catalog
-      // items, using the lookup's min price for the totals row.
       const tempCount = it.temporaryOfferCount ?? 0;
       const tempPrice = it.temporaryOfferMinPrice ?? null;
       const hasTempOffers = isManual && !!it.lookupRequestId && tempCount > 0 && tempPrice != null;
@@ -176,6 +179,8 @@ export default function PrescriptionDetailPage() {
         hasOffers,
         effectiveQty,
         price: effectivePrice,
+        inUnitMode,
+        unitTotalPrice: inUnitMode ? (it.unitTotalPrice ?? 0) : null,
       };
     }
 
@@ -212,10 +217,14 @@ export default function PrescriptionDetailPage() {
       if (e.effectiveQty <= 0) continue;
       // hasOffers is true for both catalog items and manual lookup
       // items with at least one pharmacy response — treat them
-      // identically for the order totals.
+      // identically for the order totals. Unit-mode rows contribute
+      // the pharmacist-specified total directly (one flat sum, not
+      // multiplied by quantity).
       if (e.hasOffers) {
         available++;
-        totalCost += e.price * e.effectiveQty;
+        totalCost += e.inUnitMode && e.unitTotalPrice != null
+          ? e.unitTotalPrice
+          : e.price * e.effectiveQty;
       } else if (e.isManual) {
         manual++;
       } else {
@@ -631,7 +640,8 @@ function PairSideRow({
   const hasTempOffers = isManual && !!item.lookupRequestId && tempCount > 0 && tempMinPrice != null;
   const noOffers = !isManual && offerCount === 0;
   const ineligible = !((!isManual && !noOffers) || hasTempOffers);
-  const effective = !ineligible ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const inUnitMode = item.useUnitMode === true && (item.unitTotalPrice ?? null) != null;
+  const effective = !ineligible && !inUnitMode ? getEffectiveQty(item.id, item.quantity) : item.quantity;
   const removed = effective <= 0;
   const displayMinPrice = hasTempOffers ? tempMinPrice : minPrice ?? null;
   const displayOfferCount = hasTempOffers ? tempCount : offerCount;
@@ -702,6 +712,11 @@ function PairSideRow({
             <p className="mt-0.5 text-[11px] font-semibold text-secondary">
               {isManual ? "Нет в каталоге" : "Нет офферов"}
             </p>
+          ) : inUnitMode ? (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              <span className="font-bold text-on-surface">{item.unitCount ?? 0} шт.</span>
+              {" "}· <span className="font-bold text-primary">{formatMoney(item.unitTotalPrice ?? 0)}</span> за всё
+            </p>
           ) : (
             <p className="mt-0.5 text-[11px] text-on-surface-variant">
               от <span className="font-bold text-primary">{displayMinPrice ? formatMoney(displayMinPrice) : "—"}</span>
@@ -715,7 +730,14 @@ function PairSideRow({
         </div>
 
         <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          {editable && !ineligible ? (
+          {inUnitMode ? (
+            <span
+              className="rounded-full bg-accent-sun/30 px-2.5 py-1 text-xs font-extrabold tabular-nums text-accent-sun-ink"
+              title="Поштучный расчёт от фармацевта"
+            >
+              {item.unitCount ?? 0} шт.
+            </span>
+          ) : editable && !ineligible ? (
             <>
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
@@ -812,14 +834,14 @@ function SingletonRow({
   const hasTempOffers = isManual && !!item.lookupRequestId && tempCount > 0 && tempMinPrice != null;
   const noOffers = !isManual && offerCount === 0;
   const orderable = (!isManual && !noOffers) || hasTempOffers;
-  const effective = orderable ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  // Unit-mode rows lock the qty to the pharmacist's package count and
+  // expose unit-count + total price instead of "от {price} в N аптеках".
+  const inUnitMode = item.useUnitMode === true && (item.unitTotalPrice ?? null) != null;
+  const effective = orderable && !inUnitMode ? getEffectiveQty(item.id, item.quantity) : item.quantity;
   const removed = effective <= 0;
   const recDiff = effective !== item.quantity;
   const [commentOpen, setCommentOpen] = useState(false);
 
-  // Effective price/count chosen between catalog offers and manual
-  // temp offers — manual lookup wins when present (it's the only one
-  // available for that line anyway).
   const displayMinPrice = hasTempOffers ? tempMinPrice : minPrice ?? null;
   const displayOfferCount = hasTempOffers ? tempCount : offerCount;
   return (
@@ -848,7 +870,12 @@ function SingletonRow({
               </span>
             ) : null}
           </p>
-          {orderable ? (
+          {orderable && inUnitMode ? (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              <span className="font-bold text-on-surface">{item.unitCount ?? 0} шт.</span>
+              {" "}· <span className="font-bold text-primary">{formatMoney(item.unitTotalPrice ?? 0)}</span> за всё
+            </p>
+          ) : orderable ? (
             <p className="mt-0.5 text-[11px] text-on-surface-variant">
               от <span className="font-bold text-primary">{displayMinPrice ? formatMoney(displayMinPrice) : "—"}</span>
               {displayOfferCount > 0 ? (
@@ -885,7 +912,14 @@ function SingletonRow({
           )}
         </div>
         <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          {orderable && editable ? (
+          {inUnitMode ? (
+            <span
+              className="rounded-full bg-accent-sun/30 px-2.5 py-1 text-xs font-extrabold tabular-nums text-accent-sun-ink"
+              title="Поштучный расчёт от фармацевта — количество и сумма зафиксированы"
+            >
+              {item.unitCount ?? 0} шт.
+            </span>
+          ) : orderable && editable ? (
             <>
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">

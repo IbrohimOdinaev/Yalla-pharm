@@ -42,4 +42,15 @@ public sealed class DecodePrescriptionItem
     /// stays Open so admins can keep responding until the final submit).
     /// Only meaningful when <see cref="MedicineId"/> is null.</summary>
     public Guid? LookupRequestId { get; set; }
+
+    /// <summary>True when the pharmacist switched the row into "by units"
+    /// pricing. Required fields then: <see cref="UnitCount"/> ≥ 1 and
+    /// <see cref="UnitTotalPrice"/> &gt; 0. <see cref="Quantity"/> stays
+    /// the package count (= minimum number of packages needed to cover
+    /// the requested unit count) and is still used for stock checks.</summary>
+    public bool UseUnitMode { get; set; }
+
+    public int? UnitCount { get; set; }
+
+    public decimal? UnitTotalPrice { get; set; }
 }

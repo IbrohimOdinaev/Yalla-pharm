@@ -67,7 +67,21 @@ export default function PharmacistCartPage() {
     if (!token || role !== "Pharmacist" || !activeId) { setPrescription(null); return; }
     setLoading(true); setError(null);
     return getPharmacistPrescription(token, activeId)
-      .then(setPrescription)
+      .then((p) => {
+        // Decoded / OrderPlaced / MovedToCart / Cancelled prescriptions are
+        // frozen — the pharmacist already submitted the checklist. Reopening
+        // them in the active cart would let them edit a finished submission,
+        // so we redirect to /pharmacist/history (read-only "Подробнее" modal)
+        // instead of rendering the editable view.
+        if (p.status === "Decoded" || p.status === "OrderPlaced"
+          || p.status === "MovedToCart" || p.status === "Cancelled") {
+          setActiveId(null);
+          setPrescription(null);
+          router.replace("/pharmacist/history");
+          return;
+        }
+        setPrescription(p);
+      })
       .catch((err) => {
         // A stale activeId in localStorage (prescription removed / reassigned /
         // no longer accessible to this pharmacist) used to surface the raw
@@ -84,7 +98,7 @@ export default function PharmacistCartPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [token, role, activeId, setActiveId]);
+  }, [token, role, activeId, setActiveId, router]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -115,6 +129,9 @@ export default function PharmacistCartPage() {
         displayTitle: it.manualMedicineName || it.medicineId || "",
         kind: it.kind === "Undecoded" ? "Undecoded" : "Original",
         lookupRequestId: it.lookupRequestId ?? null,
+        useUnitMode: it.useUnitMode ?? false,
+        unitCount: it.unitCount ?? null,
+        unitTotalPrice: it.unitTotalPrice ?? null,
       });
     }
     for (const it of prescription.items) {
@@ -177,6 +194,23 @@ export default function PharmacistCartPage() {
     }
     setError(null); setSubmitting(true);
     try {
+      // Validate unit-mode fields before sending — domain layer would
+      // reject these too, but a client-side check yields a friendlier
+      // error message.
+      for (const i of draft.items) {
+        if (!i.useUnitMode) continue;
+        if (i.kind === "Undecoded") {
+          setError("Поштучный расчёт недоступен для нерасшифрованных позиций.");
+          setSubmitting(false);
+          return;
+        }
+        if (!i.unitCount || i.unitCount < 1
+          || !i.unitTotalPrice || i.unitTotalPrice <= 0) {
+          setError(`У позиции «${i.displayTitle}» заполните количество единиц и сумму.`);
+          setSubmitting(false);
+          return;
+        }
+      }
       // Backend's DecodePrescriptionRequest takes a flat list and references
       // pairs by INDEX into that list. Build a draftId → array-index map
       // first, then translate each row's analogDraftId to analogIndex.
@@ -200,6 +234,9 @@ export default function PharmacistCartPage() {
             // the request + materialise shadow medicines/offers
             // atomically with the checklist submit.
             lookupRequestId: i.lookupRequestId ?? null,
+            useUnitMode: i.useUnitMode === true,
+            unitCount: i.useUnitMode ? i.unitCount ?? null : null,
+            unitTotalPrice: i.useUnitMode ? i.unitTotalPrice ?? null : null,
           };
         }),
       });
@@ -540,14 +577,24 @@ function DraftRow({
                 Нет в каталоге
               </span>
             ) : null}
+            {it.useUnitMode ? (
+              <span className="ml-2 rounded-full bg-accent-sun/30 px-2 py-0.5 text-[10px] font-bold text-accent-sun-ink">
+                Поштучно
+              </span>
+            ) : null}
           </p>
           {it.pharmacistComment ? (
             <p className="mt-0.5 line-clamp-2 text-[11px] text-on-surface-variant">{it.pharmacistComment}</p>
           ) : null}
         </div>
 
-        {/* Qty stepper */}
-        <div className="flex flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+        {/* Qty stepper — represents PACKAGES even in unit-mode (used
+            for stock-availability check). Unit count + total price live
+            in the dedicated panel below when useUnitMode is on. */}
+        <div
+          className="flex flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5"
+          title={it.useUnitMode ? "Минимальное число пачек, нужно для покрытия заявки" : "Кол-во пачек"}
+        >
           <button
             type="button"
             onClick={() => onUpdate(activeId, it.draftId, { quantity: Math.max(1, it.quantity - 1) })}
@@ -589,44 +636,89 @@ function DraftRow({
         </button>
       </div>
 
-      {/* Kind toggle and pair trigger — only in solo mode. Inside a
-          pair the kind is fixed (Original) and the pair-trigger lives
-          on the pair header instead. */}
-      {role === "solo" ? (
-        <div className="mt-2 flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-0.5 text-[11px] font-semibold">
-            <button
-              type="button"
-              onClick={() => onUpdate(activeId, it.draftId, { kind: "Original" })}
-              className={`rounded-full px-2.5 py-1 transition ${
-                (it.kind ?? "Original") === "Original"
-                  ? "bg-primary text-white shadow-card"
-                  : "text-on-surface-variant hover:text-on-surface"
-              }`}
-            >
-              Оригинал
-            </button>
-            <button
-              type="button"
-              onClick={() => onUpdate(activeId, it.draftId, { kind: "Undecoded", analogDraftId: null })}
-              className={`rounded-full px-2.5 py-1 transition ${
-                it.kind === "Undecoded"
-                  ? "bg-secondary text-white shadow-card"
-                  : "text-on-surface-variant hover:text-on-surface"
-              }`}
-            >
-              Не смог расшифровать
-            </button>
-          </div>
-          {(it.kind ?? "Original") === "Original" ? (
-            <button
-              type="button"
-              onClick={onPair}
-              className="rounded-full border border-dashed border-outline px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary"
-            >
-              + Привязать аналог
-            </button>
-          ) : null}
+      {/* Kind toggle, pair trigger and unit-mode switch. Pair-trigger is
+          only shown in solo mode (inside a pair, the kind is fixed
+          Original and the header carries the unpair affordance). The
+          unit-mode toggle is available on every Original-kind row,
+          solo OR paired, since pricing applies independently per row. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {role === "solo" && (it.kind ?? "Original") === "Original" ? (
+          <button
+            type="button"
+            onClick={onPair}
+            className="rounded-full border border-dashed border-outline px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary"
+          >
+            + Привязать аналог
+          </button>
+        ) : null}
+        {(it.kind ?? "Original") === "Original" ? (
+          <button
+            type="button"
+            onClick={() => onUpdate(activeId, it.draftId, {
+              useUnitMode: !it.useUnitMode,
+              // Reset numeric fields when turning off so we don't ship
+              // stale leftovers; keep them when turning on so the
+              // pharmacist can resume editing.
+              ...(it.useUnitMode
+                ? { unitCount: null, unitTotalPrice: null }
+                : {}),
+            })}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+              it.useUnitMode
+                ? "bg-accent-sun text-accent-sun-ink"
+                : "border border-dashed border-outline text-on-surface-variant hover:border-primary hover:text-primary"
+            }`}
+          >
+            {it.useUnitMode ? "✓ В единицах" : "В единицах"}
+          </button>
+        ) : null}
+      </div>
+
+      {it.useUnitMode ? (
+        <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl bg-accent-sun/15 p-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Кол-во единиц
+            </span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={it.unitCount ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                onUpdate(activeId, it.draftId, {
+                  unitCount: v === "" ? null : Math.max(1, Math.floor(Number(v))),
+                });
+              }}
+              placeholder="напр. 30"
+              className="stitch-input text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Сумма за всё, TJS
+            </span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={it.unitTotalPrice ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                onUpdate(activeId, it.draftId, {
+                  unitTotalPrice: v === "" ? null : Math.max(0, Number(v)),
+                });
+              }}
+              placeholder="напр. 75.00"
+              className="stitch-input text-sm"
+            />
+          </label>
+          <p className="col-span-2 text-[10px] leading-tight text-on-surface-variant">
+            Поштучный расчёт: цена позиции = сумма выше. Поле «пачек» сверху —
+            это минимум пачек, нужный, чтобы собрать указанные единицы; по
+            нему проверяется наличие на складе аптеки.
+          </p>
         </div>
       ) : null}
 

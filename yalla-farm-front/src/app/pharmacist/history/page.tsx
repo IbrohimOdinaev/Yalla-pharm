@@ -6,11 +6,12 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { getPharmacistAll } from "@/entities/pharmacist/api";
 import {
   PRESCRIPTION_STATUS_LABEL_RU,
+  resolvePrescriptionImageUrl,
   type ApiPrescription,
 } from "@/entities/prescription/api";
-import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
+import { PrescriptionDetailsModal } from "@/widgets/pharmacist/PrescriptionDetailsModal";
 import { AuthedImage, Button } from "@/shared/ui";
 
 /**
@@ -29,11 +30,12 @@ export default function PharmacistHistoryPage() {
   const hydrated = useAppSelector((s) => s.auth.hydrated);
   const userId = useAppSelector((s) => s.auth.userId);
   const router = useRouter();
-  const setActiveId = useActivePrescriptionStore((s) => s.setActiveId);
 
   const [items, setItems] = useState<ApiPrescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const detailsPrescription = items.find((p) => p.prescriptionId === detailsId) ?? null;
 
   useEffect(() => {
     if (!hydrated) return;
@@ -71,17 +73,12 @@ export default function PharmacistHistoryPage() {
   // pharmacist group on every status change.
   useSignalREvent("PrescriptionUpdated", () => { load(); }, token);
 
-  function openInPicker(prescriptionId: string) {
-    setActiveId(prescriptionId);
-    router.push("/pharmacist/cart");
-  }
-
   return (
     <PharmacistShell>
       <div className="mx-auto max-w-3xl space-y-3 p-4">
         <h1 className="font-display text-lg font-extrabold">История запросов</h1>
         <p className="text-xs text-on-surface-variant">
-          Рецепты, которые вы расшифровали. Нажмите «Открыть», чтобы посмотреть карточку в активном виде.
+          Рецепты, которые вы расшифровали. Нажмите «Подробнее», чтобы открыть карточку — данные доступны только для просмотра.
         </p>
 
         {error ? (
@@ -130,30 +127,40 @@ export default function PharmacistHistoryPage() {
                       </p>
                     ) : null}
                   </div>
-                  <Button size="sm" variant="secondary" onClick={() => openInPicker(p.prescriptionId)}>
-                    Открыть
+                  <Button size="sm" variant="secondary" onClick={() => setDetailsId(p.prescriptionId)}>
+                    Подробнее
                   </Button>
                 </div>
 
-                {/* Quick photo strip — gives the pharmacist a visual cue
-                    while skimming the list. */}
+                {/* Quick photo strip — small thumbs so the list scrolls
+                    fast even on slow connections. The full-res view
+                    happens in the details modal. */}
                 {p.images && p.images.length > 0 ? (
                   <div className="mt-2 flex gap-2 overflow-x-auto">
                     {p.images.map((img) => (
                       <div key={img.id} className="relative h-14 w-12 flex-shrink-0 overflow-hidden rounded-md bg-surface-container">
-                        <AuthedImage src={img.url} alt="" className="h-full w-full object-cover" />
+                        <AuthedImage
+                          src={resolvePrescriptionImageUrl(img.url)}
+                          alt=""
+                          lazy
+                          className="h-full w-full object-cover"
+                        />
                       </div>
                     ))}
                   </div>
                 ) : null}
 
-                {/* Items */}
+                {/* Items — title resolution: Undecoded → verdict label,
+                    manual → ManualMedicineName snapshot, catalog → live
+                    MedicineTitle from the response. Catalog rows that
+                    somehow lost their title (deactivated medicine, race
+                    with rename) fall through to a dash. */}
                 {p.items && p.items.length > 0 ? (
                   <ul className="mt-2 space-y-1 text-[11px]">
                     {p.items.map((it) => {
                       const title = it.kind === "Undecoded"
                         ? "Не смог расшифровать"
-                        : (it.manualMedicineName || (it.medicineId ? "—" : "Без названия"));
+                        : (it.manualMedicineName || it.medicineTitle || (it.medicineId ? "—" : "Без названия"));
                       return (
                         <li key={it.id} className="flex items-start gap-2">
                           <span className="mt-1 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
@@ -174,6 +181,11 @@ export default function PharmacistHistoryPage() {
           })}
         </ul>
       </div>
+
+      <PrescriptionDetailsModal
+        prescription={detailsPrescription}
+        onClose={() => setDetailsId(null)}
+      />
     </PharmacistShell>
   );
 }

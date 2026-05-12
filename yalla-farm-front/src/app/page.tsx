@@ -67,11 +67,8 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
   { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
   { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "stomach", palette: "peach", label: "ЖКТ", image: "/categories/gi.png", keywords: ["жкт", "желуд", "кишеч", "пищевар", "гастро", "печен"] },
   { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
-  { icon: "drop", palette: "coral", label: "Диабет", image: "/categories/diabetes.png", keywords: ["диабет", "инсулин", "глюкоз", "сахар"] },
   { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
-  { icon: "bone", palette: "mint", label: "Кости и суставы", image: "/categories/bones.png", keywords: ["кост", "сустав", "хондро", "остеопор", "артрит"] },
   { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
 ];
 

@@ -150,17 +150,15 @@ public class Order
     {
         // Cost = what the client still owes after rejects/returns (net of refunds).
         // ReturnCost = total refund-due: rejected-positions value + returned-quantity value.
-        // Invariant: Cost + ReturnCost == sum(price * Quantity) for all positions.
+        // Each position knows whether it carries a pharmacist-supplied
+        // "by units" override; the helpers on OrderPosition pick the
+        // right pricing model (UnitTotalPrice for unit-mode rows,
+        // price × qty for normal ones) and apply pro-rata returns.
         Cost = _positions
           .Where(x => !x.IsRejected)
-          .Sum(x => x.OfferSnapshot.Price * (x.Quantity - x.ReturnedQuantity));
+          .Sum(x => x.EffectiveLineTotalAfterReturns());
 
-        ReturnCost = _positions
-          .Where(x => x.IsRejected)
-          .Sum(x => x.OfferSnapshot.Price * x.Quantity)
-          + _positions
-          .Where(x => !x.IsRejected)
-          .Sum(x => x.OfferSnapshot.Price * x.ReturnedQuantity);
+        ReturnCost = _positions.Sum(x => x.EffectiveRefundDue());
     }
 
     /// <summary>

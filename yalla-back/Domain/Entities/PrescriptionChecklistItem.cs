@@ -58,6 +58,27 @@ public class PrescriptionChecklistItem
     /// offers) when the prescription's checklist is submitted.</summary>
     public Guid? LookupRequestId { get; private set; }
 
+    /// <summary>
+    /// "Sell by units" override the pharmacist can switch on per item.
+    /// When true the client sees the row as `{UnitCount} штук` with
+    /// total = <see cref="UnitTotalPrice"/>; the system still uses
+    /// <see cref="Quantity"/> as the package count for stock checks
+    /// (it's the pharmacist-supplied minimum N of packages needed to
+    /// cover the requested unit count). When false the row behaves as
+    /// before: total = Price * Quantity, qty shown as packages.
+    /// </summary>
+    public bool UseUnitMode { get; private set; }
+
+    /// <summary>Number of single units (tablets/ampoules/...) the
+    /// pharmacist asked for. Display value only — has no effect on
+    /// stock decrement. Set iff <see cref="UseUnitMode"/>.</summary>
+    public int? UnitCount { get; private set; }
+
+    /// <summary>Total price for the line, entered manually by the
+    /// pharmacist. Replaces the offer-price-times-quantity calculation
+    /// for this row. Set iff <see cref="UseUnitMode"/>.</summary>
+    public decimal? UnitTotalPrice { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
 
     private PrescriptionChecklistItem() { }
@@ -216,5 +237,35 @@ public class PrescriptionChecklistItem
     public void DetachLookupRequest()
     {
         LookupRequestId = null;
+    }
+
+    /// <summary>
+    /// Switch the row into "by units" mode. <paramref name="unitCount"/>
+    /// is what the client sees ("30 таблеток"); <paramref name="unitTotalPrice"/>
+    /// replaces the auto-calculated line total; the item's own
+    /// <see cref="Quantity"/> stays the package count used for stock
+    /// verification (set separately on the entity, must be ≥ 1).
+    /// Cannot be applied to Undecoded items.
+    /// </summary>
+    public void SetUnitOverride(int unitCount, decimal unitTotalPrice)
+    {
+        if (Kind == PrescriptionChecklistItemKind.Undecoded)
+            throw new DomainException(
+              "Unit-mode override cannot be applied to Undecoded items.");
+        if (unitCount <= 0)
+            throw new DomainArgumentException("UnitCount must be greater than zero.");
+        if (unitTotalPrice <= 0)
+            throw new DomainArgumentException("UnitTotalPrice must be greater than zero.");
+
+        UseUnitMode = true;
+        UnitCount = unitCount;
+        UnitTotalPrice = unitTotalPrice;
+    }
+
+    public void ClearUnitOverride()
+    {
+        UseUnitMode = false;
+        UnitCount = null;
+        UnitTotalPrice = null;
     }
 }

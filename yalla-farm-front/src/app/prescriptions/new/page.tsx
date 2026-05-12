@@ -282,13 +282,14 @@ export default function NewPrescriptionPage() {
           </p>
 
           {/* Layout switches based on how many photos are already attached:
-              0 photos → single centred tile (was sitting in the left half of
-              a 2-col grid before, looking off-balance); 1+ photos → keep the
-              2-col grid so previews and the next-photo tile sit side-by-side. */}
+              0 photos → single wide tile with the two pickers side-by-side
+              (camera | file) so the empty state reads as one inviting card,
+              not a cramped vertical strip; 1+ photos → 2-col grid where each
+              tile is vertical (preview/preview or preview/next-picker). */}
           <div
             className={`mx-auto grid gap-3 ${
               photos.length === 0
-                ? "grid-cols-1 max-w-[180px]"
+                ? "grid-cols-1 max-w-[360px]"
                 : "grid-cols-2 sm:max-w-[336px]"
             }`}
           >
@@ -311,7 +312,13 @@ export default function NewPrescriptionPage() {
             ))}
 
             {photos.length < MAX_PHOTOS ? (
-              <div className="flex aspect-[3/4] flex-col gap-2 rounded-2xl border-2 border-dashed border-outline bg-surface-container-low p-2">
+              <div
+                className={`flex gap-2 rounded-2xl border-2 border-dashed border-outline bg-surface-container-low p-2 ${
+                  photos.length === 0
+                    ? "h-40 flex-row sm:h-48"
+                    : "aspect-[3/4] flex-col"
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => setCameraOpen(true)}

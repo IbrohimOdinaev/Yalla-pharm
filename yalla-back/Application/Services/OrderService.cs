@@ -142,6 +142,7 @@ public sealed class OrderService : IOrderService
       .Where(x => x.Id == request.OrderId && x.ClientId == request.ClientId)
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Images)
       .Include(x => x.DeliveryData)
       .FirstOrDefaultAsync(cancellationToken)
       ?? throw new InvalidOperationException(
@@ -179,15 +180,36 @@ public sealed class OrderService : IOrderService
       ToLatitude = delivery?.ToLatitude,
       ToLongitude = delivery?.ToLongitude,
       Positions = order.Positions
-        .Select(x => new ClientOrderDetailsPositionResponse
+        .Select(x =>
         {
-          PositionId = x.Id,
-          MedicineId = x.MedicineId,
-          MedicineTitle = x.Medicine?.Title ?? $"Medicine:{x.MedicineId}",
-          Quantity = x.Quantity,
-          ReturnedQuantity = x.ReturnedQuantity,
-          IsRejected = x.IsRejected,
-          Price = x.OfferSnapshot.Price
+          // Pick the cover image: prefer Main, then Minimal, then anything
+          // else. Same selection rule the catalog uses so the order detail
+          // matches what the user saw before adding the item.
+          var images = x.Medicine?.Images ?? Array.Empty<MedicineImage>().ToList();
+          var img = images.FirstOrDefault(i => i.IsMain)
+                ?? images.FirstOrDefault(i => i.IsMinimal)
+                ?? images.FirstOrDefault();
+
+          return new ClientOrderDetailsPositionResponse
+          {
+            PositionId = x.Id,
+            MedicineId = x.MedicineId,
+            MedicineTitle = x.Medicine?.Title ?? $"Medicine:{x.MedicineId}",
+            Quantity = x.Quantity,
+            ReturnedQuantity = x.ReturnedQuantity,
+            IsRejected = x.IsRejected,
+            Price = x.OfferSnapshot.Price,
+            UseUnitMode = x.UseUnitMode,
+            UnitCount = x.UnitCount,
+            UnitTotalPrice = x.UnitTotalPrice,
+            Image = img is null ? null : new ClientOrderDetailsPositionImageResponse
+            {
+              Id = img.Id,
+              Key = img.Key,
+              IsMain = img.IsMain,
+              IsMinimal = img.IsMinimal
+            }
+          };
         })
         .ToList()
     };

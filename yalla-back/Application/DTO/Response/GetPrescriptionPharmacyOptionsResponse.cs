@@ -70,4 +70,10 @@ public sealed class PrescriptionPharmacyItemResponse
     /// <summary>True for items materialised from a manual prescription
     /// lookup — UI uses this to render the "временное предложение" badge.</summary>
     public bool IsManualLookup { get; set; }
+
+    /// <summary>The pharmacist priced this row "by units" — UI should
+    /// render UnitCount/UnitTotalPrice and ignore <see cref="Price"/>×qty.</summary>
+    public bool UseUnitMode { get; set; }
+    public int? UnitCount { get; set; }
+    public decimal? UnitTotalPrice { get; set; }
 }
