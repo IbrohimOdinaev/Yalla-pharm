@@ -35,6 +35,7 @@ public sealed class PrescriptionService : IPrescriptionService
     private readonly DushanbeCityPaymentOptions _paymentOptions;
     private readonly IRealtimeUpdatesPublisher _realtimePublisher;
     private readonly IManualItemLookupService? _manualLookupService;
+    private readonly IAuditLogger? _auditLogger;
 
     public PrescriptionService(
       IAppDbContext dbContext,
@@ -42,7 +43,7 @@ public sealed class PrescriptionService : IPrescriptionService
       IPaymentSettingsService paymentSettingsService,
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher)
-      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null)
+      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null, auditLogger: null)
     {
     }
 
@@ -52,7 +53,8 @@ public sealed class PrescriptionService : IPrescriptionService
       IPaymentSettingsService paymentSettingsService,
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher,
-      IManualItemLookupService? manualLookupService)
+      IManualItemLookupService? manualLookupService,
+      IAuditLogger? auditLogger = null)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
@@ -60,6 +62,7 @@ public sealed class PrescriptionService : IPrescriptionService
         _paymentOptions = paymentOptions.Value;
         _realtimePublisher = realtimePublisher;
         _manualLookupService = manualLookupService;
+        _auditLogger = auditLogger;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -772,6 +775,25 @@ public sealed class PrescriptionService : IPrescriptionService
         }
 
         prescription.SubmitChecklist(request.OverallComment, items);
+
+        if (_auditLogger is not null)
+        {
+            await _auditLogger.LogAsync(
+              AuditAction.PrescriptionDecoded,
+              entityType: "Prescription",
+              entityId: prescription.Id,
+              summary: $"Pharmacist submitted checklist with {items.Count} item(s).",
+              payload: new
+              {
+                  pharmacistId = prescription.AssignedPharmacistId,
+                  itemsCount = items.Count,
+                  catalogItemsCount = items.Count(i => i.MedicineId.HasValue),
+                  manualItemsCount = items.Count(i => !i.MedicineId.HasValue),
+                  hasOverallComment = !string.IsNullOrWhiteSpace(request.OverallComment),
+              },
+              cancellationToken: cancellationToken);
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Auto-close every Open lookup request for this prescription —

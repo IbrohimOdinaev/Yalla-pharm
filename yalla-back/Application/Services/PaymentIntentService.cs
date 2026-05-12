@@ -19,6 +19,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
   private readonly IOrderStatusSmsService _orderStatusSmsService;
   private readonly SmsTemplatesOptions _smsTemplatesOptions;
   private readonly ILogger<PaymentIntentService> _logger;
+  private readonly IAuditLogger? _auditLogger;
 
   public PaymentIntentService(IAppDbContext dbContext)
     : this(
@@ -26,7 +27,8 @@ public sealed class PaymentIntentService : IPaymentIntentService
       new NoOpRealtimeUpdatesPublisher(),
       new OrderStatusSmsService(Options.Create(new SmsTemplatesOptions())),
       Options.Create(new SmsTemplatesOptions()),
-      NullLogger<PaymentIntentService>.Instance)
+      NullLogger<PaymentIntentService>.Instance,
+      auditLogger: null)
   {
   }
 
@@ -35,7 +37,8 @@ public sealed class PaymentIntentService : IPaymentIntentService
     IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
     IOrderStatusSmsService orderStatusSmsService,
     IOptions<SmsTemplatesOptions> smsTemplatesOptions,
-    ILogger<PaymentIntentService> logger)
+    ILogger<PaymentIntentService> logger,
+    IAuditLogger? auditLogger = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(realtimeUpdatesPublisher);
@@ -48,6 +51,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
     _orderStatusSmsService = orderStatusSmsService;
     _smsTemplatesOptions = smsTemplatesOptions.Value;
     _logger = logger;
+    _auditLogger = auditLogger;
   }
 
   public async Task<GetPaymentIntentByIdResponse> GetForClientAsync(
@@ -332,6 +336,26 @@ public sealed class PaymentIntentService : IPaymentIntentService
 
       paymentIntent.MarkConfirmed(superAdmin.Id, nowUtc);
       EnqueuePaymentConfirmedSms(existingOrder, paymentIntent.ClientPhoneNumber, nowUtc);
+
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.PaymentConfirmed,
+          entityType: "PaymentIntent",
+          entityId: paymentIntent.Id,
+          summary: $"SuperAdmin {superAdmin.Id} manually confirmed payment "
+            + $"of {paymentIntent.Amount} {paymentIntent.Currency} for order {paymentIntent.ReservedOrderId}.",
+          payload: new
+          {
+            superAdminId = superAdmin.Id,
+            reservedOrderId = paymentIntent.ReservedOrderId,
+            amount = paymentIntent.Amount,
+            currency = paymentIntent.Currency,
+            provider = paymentIntent.PaymentProvider,
+            clientId = paymentIntent.ClientId,
+          },
+          cancellationToken: cancellationToken);
+      }
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);

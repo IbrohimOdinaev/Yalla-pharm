@@ -9,6 +9,13 @@ public sealed class PaymentIntent
 
   public Guid Id { get; private set; }
   public Guid ReservedOrderId { get; private set; }
+
+  /// <summary>Optional back-link to a prescription this intent funds
+  /// (the 3 TJS decoding fee). Stays null for ordinary basket
+  /// checkouts. Set right after creation via
+  /// <see cref="LinkPrescription"/>.</summary>
+  public Guid? PrescriptionId { get; private set; }
+
   public Guid ClientId { get; private set; }
   public string ClientPhoneNumber { get; private set; } = string.Empty;
   public Guid PharmacyId { get; private set; }
@@ -30,6 +37,26 @@ public sealed class PaymentIntent
   public int? Entrance { get; private set; }
   public int? Floor { get; private set; }
   public int? Apartment { get; private set; }
+
+  /// <summary>What the client wrote in the bank-transfer memo (their
+  /// own transaction reference or order id), captured by SuperAdmin
+  /// during manual confirmation. Used later to reconcile against the
+  /// bank's report.</summary>
+  public string? BankReferenceCode { get; private set; }
+
+  /// <summary>Object key (MinIO path) of the receipt screenshot the
+  /// SuperAdmin uploaded as proof of the manual confirmation. Same
+  /// storage layout as medicine images. Null when no proof was
+  /// attached (manual confirmations can still be valid without one,
+  /// e.g. tiny refunds done by trusted operators).</summary>
+  public string? BankReceiptImageUrl { get; private set; }
+
+  /// <summary>Set when a confirmed intent is later refunded — either
+  /// because the client cancelled after payment was confirmed, or
+  /// because we discovered the bank transfer was fraudulent.</summary>
+  public DateTime? RefundedAtUtc { get; private set; }
+
+  public string? RefundReason { get; private set; }
 
   public IReadOnlyCollection<PaymentIntentPosition> Positions => _positions.AsReadOnly();
 
@@ -121,19 +148,59 @@ public sealed class PaymentIntent
     return value.Value;
   }
 
-  public void MarkConfirmed(Guid confirmedByUserId, DateTime confirmedAtUtc)
+  public void MarkConfirmed(
+    Guid confirmedByUserId,
+    DateTime confirmedAtUtc,
+    string? bankReferenceCode = null,
+    string? bankReceiptImageUrl = null)
   {
     if (confirmedByUserId == Guid.Empty)
       throw new DomainArgumentException("ConfirmedByUserId can't be empty.");
 
-    if (State != PaymentIntentState.AwaitingAdminConfirmation)
+    if (State != PaymentIntentState.AwaitingAdminConfirmation
+        && State != PaymentIntentState.NeedsResolution)
       throw new DomainException($"PaymentIntent can't be confirmed from state '{State}'.");
 
     State = PaymentIntentState.Confirmed;
     ConfirmedByUserId = confirmedByUserId;
     ConfirmedAtUtc = NormalizeUtc(confirmedAtUtc, nameof(ConfirmedAtUtc));
     RejectReason = null;
+    BankReferenceCode = NormalizeOptional(bankReferenceCode, 128, nameof(BankReferenceCode));
+    BankReceiptImageUrl = NormalizeOptional(bankReceiptImageUrl, 1024, nameof(BankReceiptImageUrl));
     UpdatedAtUtc = ConfirmedAtUtc.Value;
+  }
+
+  /// <summary>Records that a previously-confirmed intent was refunded.
+  /// State stays <see cref="PaymentIntentState.Confirmed"/> on purpose
+  /// (Confirmed + RefundedAtUtc) so reporting can still see "money came
+  /// in then went out" without inventing a new terminal state that
+  /// existing callers haven't been taught to handle.</summary>
+  public void MarkRefunded(string reason, DateTime refundedAtUtc)
+  {
+    if (State != PaymentIntentState.Confirmed)
+      throw new DomainException("Only confirmed payment intents can be refunded.");
+
+    if (RefundedAtUtc.HasValue)
+      throw new DomainException("Payment intent is already refunded.");
+
+    RefundReason = NormalizeRequired(reason, 512, nameof(RefundReason));
+    RefundedAtUtc = NormalizeUtc(refundedAtUtc, nameof(RefundedAtUtc));
+    UpdatedAtUtc = RefundedAtUtc.Value;
+  }
+
+  /// <summary>One-shot link to the prescription this intent funds.
+  /// Called right after intent creation in the prescription flow; the
+  /// link can't be changed afterwards because doing so would orphan the
+  /// audit trail of the original prescription.</summary>
+  public void LinkPrescription(Guid prescriptionId)
+  {
+    if (prescriptionId == Guid.Empty)
+      throw new DomainArgumentException("PrescriptionId can't be empty.");
+
+    if (PrescriptionId.HasValue && PrescriptionId.Value != prescriptionId)
+      throw new DomainException("PaymentIntent is already linked to a different prescription.");
+
+    PrescriptionId = prescriptionId;
   }
 
   public void MarkRejected(string reason, DateTime updatedAtUtc)

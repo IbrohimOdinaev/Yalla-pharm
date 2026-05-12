@@ -1,5 +1,6 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using Api.Audit;
 using Api.Hubs;
 using Api.Middleware;
 using Api.Startup;
@@ -192,6 +193,10 @@ builder.Services
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IRealtimeUpdatesPublisher, SignalRRealtimeUpdatesPublisher>();
+// Audit log infrastructure — HttpContext-bound bits live in the Api
+// layer so the rest of the stack stays HTTP-agnostic.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
 
 // Telegram bot deeplink auth
 builder.Services.Configure<TelegramAuthOptions>(options =>
@@ -431,6 +436,9 @@ if (app.Environment.IsDevelopment())
 // Old embedded frontend disabled — using separate Next.js frontend (yalla-farm-front)
 // app.UseDefaultFiles();
 // app.UseStaticFiles();
+// Correlation id has to land before Serilog request logging so log
+// lines can include it from the very first frame of the request.
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();

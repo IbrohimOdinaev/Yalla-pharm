@@ -42,6 +42,9 @@ public static class DependencyInjection
     services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
     services.AddScoped<IPasswordHasher, PasswordHasher>();
     services.AddScoped<IJwtTokenProvider, JwtTokenProvider>();
+    // AuditLogger is wired here; its ICurrentUserContext dependency
+    // is registered in the Api layer (it's an HTTP-bound concept).
+    services.AddScoped<IAuditLogger, Yalla.Infrastructure.Audit.AuditLogger>();
     services.Configure<MinIoOptions>(options =>
     {
       options.Endpoint = NormalizeMinIoEndpointForContainer(

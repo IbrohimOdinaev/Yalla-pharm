@@ -18,12 +18,14 @@ public sealed class AuthService : IAuthService
   private readonly IPasswordHasher _passwordHasher;
   private readonly IJwtTokenProvider _jwtTokenProvider;
   private readonly ISmsService? _smsService;
+  private readonly IAuditLogger? _auditLogger;
 
   public AuthService(
     IAppDbContext dbContext,
     IPasswordHasher passwordHasher,
     IJwtTokenProvider jwtTokenProvider,
-    ISmsService? smsService = null)
+    ISmsService? smsService = null,
+    IAuditLogger? auditLogger = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(passwordHasher);
@@ -33,6 +35,9 @@ public sealed class AuthService : IAuthService
     _passwordHasher = passwordHasher;
     _jwtTokenProvider = jwtTokenProvider;
     _smsService = smsService;
+    // Optional dependency — unit tests can omit it without dragging in a
+    // fake; production DI always provides one.
+    _auditLogger = auditLogger;
   }
 
   private ISmsService RequireSmsService()
@@ -76,10 +81,45 @@ public sealed class AuthService : IAuthService
     if (user is null
       || string.IsNullOrWhiteSpace(user.PasswordHash)
       || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+    {
+      // Audit before throwing so a brute-force probe leaves a trail
+      // even without a successful login. ActorUserId stays null
+      // (request was anonymous); the attempted phone goes into the
+      // payload for forensics. We save changes locally because the
+      // throw aborts the request pipeline before the controller
+      // would have flushed the DbContext.
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.LoginFailed,
+          entityType: "User",
+          entityId: user?.Id,
+          summary: "Failed login attempt for phone "
+            + normalizedPhoneNumber.Substring(Math.Max(0, normalizedPhoneNumber.Length - 4))
+              .PadLeft(normalizedPhoneNumber.Length, '*'),
+          payload: new { phoneSuffix4 = normalizedPhoneNumber.Length >= 4
+              ? normalizedPhoneNumber[^4..] : normalizedPhoneNumber, expectedRole = expectedRole?.ToString() },
+          cancellationToken: cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+      }
       throw new InvalidOperationException("Invalid phone number or password.");
+    }
 
     if (expectedRole.HasValue && user.Role != expectedRole.Value)
+    {
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.LoginFailed,
+          entityType: "User",
+          entityId: user.Id,
+          summary: $"Login rejected — wrong role (have {user.Role}, expected {expectedRole}).",
+          payload: new { expectedRole = expectedRole.ToString(), actualRole = user.Role.ToString() },
+          cancellationToken: cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+      }
       throw new InvalidOperationException("Invalid phone number or password.");
+    }
 
     Guid? pharmacyId = null;
     if (user.Role == Role.Admin)
@@ -103,6 +143,18 @@ public sealed class AuthService : IAuthService
       user.PhoneNumber,
       user.Role,
       pharmacyId);
+
+    if (_auditLogger is not null)
+    {
+      await _auditLogger.LogAsync(
+        AuditAction.LoginSucceeded,
+        entityType: "User",
+        entityId: user.Id,
+        summary: $"User '{user.Id}' logged in as {user.Role}.",
+        payload: new { role = user.Role.ToString(), pharmacyId },
+        cancellationToken: cancellationToken);
+      await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 
     return new LoginResponse
     {

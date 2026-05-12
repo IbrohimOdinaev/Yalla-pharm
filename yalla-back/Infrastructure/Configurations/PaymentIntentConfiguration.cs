@@ -143,6 +143,42 @@ public sealed class PaymentIntentConfiguration : IEntityTypeConfiguration<Paymen
       .HasColumnName("apartment")
       .HasColumnType("integer");
 
+    // ── Audit / refund fields added 2026-05-12 ──────────────────────
+
+    builder.Property(x => x.PrescriptionId)
+      .HasColumnName("prescription_id")
+      .HasColumnType("uuid")
+      .IsRequired(false);
+
+    builder.Property(x => x.BankReferenceCode)
+      .HasColumnName("bank_reference_code")
+      .HasColumnType("character varying(128)")
+      .HasMaxLength(128)
+      .IsRequired(false);
+
+    builder.Property(x => x.BankReceiptImageUrl)
+      .HasColumnName("bank_receipt_image_url")
+      .HasColumnType("character varying(1024)")
+      .HasMaxLength(1024)
+      .IsRequired(false);
+
+    builder.Property(x => x.RefundedAtUtc)
+      .HasColumnName("refunded_at_utc")
+      .HasColumnType("timestamp without time zone")
+      .HasConversion(
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified) : value,
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
+
+    builder.Property(x => x.RefundReason)
+      .HasColumnName("refund_reason")
+      .HasColumnType("character varying(512)")
+      .HasMaxLength(512)
+      .IsRequired(false);
+
+    builder.HasIndex(x => x.PrescriptionId)
+      .HasFilter("prescription_id IS NOT NULL")
+      .HasDatabaseName("ix_payment_intents_prescription_id");
+
     builder.HasIndex(x => x.ReservedOrderId)
       .IsUnique()
       .HasDatabaseName("ux_payment_intents_reserved_order_id");

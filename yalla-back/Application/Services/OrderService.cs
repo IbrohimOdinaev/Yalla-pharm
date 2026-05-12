@@ -16,9 +16,10 @@ public sealed class OrderService : IOrderService
   private readonly ILogger<OrderService> _logger;
   private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
   private readonly IJuraService? _juraService;
+  private readonly IAuditLogger? _auditLogger;
 
   public OrderService(IAppDbContext dbContext)
-    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null)
+    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null, null)
   {
   }
 
@@ -26,7 +27,8 @@ public sealed class OrderService : IOrderService
     IAppDbContext dbContext,
     ILogger<OrderService> logger,
     IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
-    IJuraService? juraService = null)
+    IJuraService? juraService = null,
+    IAuditLogger? auditLogger = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(logger);
@@ -36,6 +38,9 @@ public sealed class OrderService : IOrderService
     _logger = logger;
     _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
     _juraService = juraService;
+    // Optional audit dependency — tests can omit it; prod DI always
+    // supplies one.
+    _auditLogger = auditLogger;
   }
 
   public async Task<GetAllOrdersResponse> GetAllOrdersAsync(
@@ -424,6 +429,24 @@ public sealed class OrderService : IOrderService
         order.Cost,
         order.ReturnCost,
         order.Status);
+
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.PositionsRejected,
+          entityType: "Order",
+          entityId: order.Id,
+          summary: $"Worker {worker.Id} rejected {positionsToReject.Count} position(s) on order {order.Id}.",
+          payload: new
+          {
+            workerId = worker.Id,
+            rejectedPositionIds = positionsToReject.Select(p => p.Id).ToArray(),
+            statusAfter = order.Status.ToString(),
+            cost = order.Cost,
+            returnCost = order.ReturnCost,
+          },
+          cancellationToken: cancellationToken);
+      }
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
