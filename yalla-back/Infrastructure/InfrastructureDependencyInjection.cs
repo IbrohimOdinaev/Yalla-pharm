@@ -45,6 +45,13 @@ public static class DependencyInjection
     // AuditLogger is wired here; its ICurrentUserContext dependency
     // is registered in the Api layer (it's an HTTP-bound concept).
     services.AddScoped<IAuditLogger, Yalla.Infrastructure.Audit.AuditLogger>();
+    // UserActivationChecker reads IsActive with a 60s cache window —
+    // it's the JWT validation gate for already-issued tokens. Memory
+    // cache scope is singleton; the checker itself stays scoped since
+    // it depends on the request DbContext.
+    services.AddMemoryCache();
+    services.AddScoped<Yalla.Application.Services.IUserActivationChecker,
+      Yalla.Infrastructure.Security.UserActivationChecker>();
     services.Configure<Yalla.Application.Common.ComplianceOptions>(options =>
     {
       options.PrivacyPolicyCurrentVersion =

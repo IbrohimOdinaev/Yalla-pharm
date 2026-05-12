@@ -121,6 +121,31 @@ public sealed class AuthService : IAuthService
       throw new InvalidOperationException("Invalid phone number or password.");
     }
 
+    if (!user.IsActive)
+    {
+      // Same opaque error as bad-password — refusing to confirm "the
+      // account exists but is disabled" would let an attacker
+      // enumerate which numbers belong to staff. Audit log still
+      // captures the truth.
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.LoginFailed,
+          entityType: "User",
+          entityId: user.Id,
+          summary: $"Login rejected — account is inactive (role={user.Role}).",
+          payload: new
+          {
+            deactivatedAtUtc = user.DeactivatedAtUtc,
+            deactivatedByUserId = user.DeactivatedByUserId,
+            reason = user.DeactivationReason,
+          },
+          cancellationToken: cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+      }
+      throw new InvalidOperationException("Invalid phone number or password.");
+    }
+
     Guid? pharmacyId = null;
     if (user.Role == Role.Admin)
     {

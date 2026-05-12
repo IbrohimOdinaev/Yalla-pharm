@@ -71,6 +71,33 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .HasMaxLength(64)
       .IsRequired(false);
 
+    // Account-activation state — see User.Deactivate / Activate.
+    // Existing rows get IsActive=true via the SQL default.
+    builder.Property(x => x.IsActive)
+      .HasColumnName("is_active")
+      .HasColumnType("boolean")
+      .HasDefaultValue(true)
+      .IsRequired();
+
+    builder.Property(x => x.DeactivatedAtUtc)
+      .HasColumnName("deactivated_at_utc")
+      .HasColumnType("timestamp without time zone")
+      .HasConversion(
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified) : value,
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value)
+      .IsRequired(false);
+
+    builder.Property(x => x.DeactivatedByUserId)
+      .HasColumnName("deactivated_by_user_id")
+      .HasColumnType("uuid")
+      .IsRequired(false);
+
+    builder.Property(x => x.DeactivationReason)
+      .HasColumnName("deactivation_reason")
+      .HasColumnType("character varying(500)")
+      .HasMaxLength(500)
+      .IsRequired(false);
+
     builder.HasIndex(x => x.PhoneNumber)
       .IsUnique()
       .HasDatabaseName("ix_users_phone_number");

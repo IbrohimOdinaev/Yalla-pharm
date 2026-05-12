@@ -15,11 +15,13 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     private readonly IAppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
+    private readonly IAuditLogger? _auditLogger;
 
     public PharmacyWorkerService(
       IAppDbContext dbContext,
       IPasswordHasher passwordHasher,
-      IRealtimeUpdatesPublisher realtimeUpdatesPublisher)
+      IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
+      IAuditLogger? auditLogger = null)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(passwordHasher);
@@ -28,6 +30,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
+        _auditLogger = auditLogger;
     }
 
     public async Task<RegisterPharmacyResponse> RegisterPharmacyAsync(
@@ -424,6 +427,112 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         return new DeletePharmacyWorkerResponse
         {
             DeletedPharmacyWorkerId = request.PharmacyWorkerId
+        };
+    }
+
+    public async Task<DeactivateUserResponse> DeactivatePharmacyWorkerAsync(
+      Guid workerId,
+      Guid superAdminId,
+      DeactivateUserRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (workerId == Guid.Empty)
+            throw new DomainArgumentException("WorkerId can't be empty.");
+        if (superAdminId == Guid.Empty)
+            throw new DomainArgumentException("SuperAdminId can't be empty.");
+
+        var worker = await _dbContext.PharmacyWorkers
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == workerId, cancellationToken)
+          ?? throw new InvalidOperationException(
+            $"PharmacyWorker '{workerId}' was not found.");
+
+        if (!worker.IsActive)
+            throw new ConflictException(
+              $"PharmacyWorker '{workerId}' is already inactive.");
+
+        // Count any in-flight work — Preparing orders that this worker
+        // would normally finish. We don't auto-reassign; the response
+        // tells the SuperAdmin to manually re-route those orders.
+        var openOrdersCount = await _dbContext.Orders
+          .AsNoTracking()
+          .Where(x => x.PharmacyId == worker.PharmacyId
+                   && x.Status == Status.Preparing)
+          .CountAsync(cancellationToken);
+
+        worker.Deactivate(superAdminId, request.Reason, DateTime.UtcNow);
+
+        if (_auditLogger is not null)
+        {
+            await _auditLogger.LogAsync(
+              AuditAction.Deleted, // staff "deletion" semantically — soft-deactivation
+              entityType: "PharmacyWorker",
+              entityId: worker.Id,
+              summary: $"Worker {worker.Id} deactivated by SuperAdmin {superAdminId}.",
+              payload: new
+              {
+                  superAdminId,
+                  pharmacyId = worker.PharmacyId,
+                  reason = request.Reason,
+                  openOrdersCountAtDeactivation = openOrdersCount,
+              },
+              cancellationToken: cancellationToken);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateUserResponse
+        {
+            UserId = worker.Id,
+            IsActive = false,
+            OpenWorkItemsCount = openOrdersCount,
+            Warning = openOrdersCount > 0
+              ? $"У сотрудника {openOrdersCount} активных заказов в сборке — перенесите их вручную на другого сотрудника аптеки."
+              : null,
+        };
+    }
+
+    public async Task<DeactivateUserResponse> ActivatePharmacyWorkerAsync(
+      Guid workerId,
+      Guid superAdminId,
+      CancellationToken cancellationToken = default)
+    {
+        if (workerId == Guid.Empty)
+            throw new DomainArgumentException("WorkerId can't be empty.");
+        if (superAdminId == Guid.Empty)
+            throw new DomainArgumentException("SuperAdminId can't be empty.");
+
+        var worker = await _dbContext.PharmacyWorkers
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == workerId, cancellationToken)
+          ?? throw new InvalidOperationException(
+            $"PharmacyWorker '{workerId}' was not found.");
+
+        if (worker.IsActive)
+            throw new ConflictException(
+              $"PharmacyWorker '{workerId}' is already active.");
+
+        worker.Activate(superAdminId);
+
+        if (_auditLogger is not null)
+        {
+            await _auditLogger.LogAsync(
+              AuditAction.Created, // staff restored
+              entityType: "PharmacyWorker",
+              entityId: worker.Id,
+              summary: $"Worker {worker.Id} reactivated by SuperAdmin {superAdminId}.",
+              payload: new { superAdminId, pharmacyId = worker.PharmacyId },
+              cancellationToken: cancellationToken);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateUserResponse
+        {
+            UserId = worker.Id,
+            IsActive = true,
+            OpenWorkItemsCount = 0,
         };
     }
 }

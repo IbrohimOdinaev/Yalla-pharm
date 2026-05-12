@@ -186,6 +186,25 @@ builder.Services
                   context.Token = accessToken;
               }
               return Task.CompletedTask;
+          },
+          // Cross-check User.IsActive AFTER signature/lifetime are
+          // accepted — already-issued tokens for deactivated accounts
+          // stop working within ~60s (the activation-cache window).
+          // Hits the DB at most once per minute per user; subsequent
+          // requests inside the window are served from IMemoryCache.
+          OnTokenValidated = async context =>
+          {
+              var principal = context.Principal;
+              var idRaw = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+              if (!Guid.TryParse(idRaw, out var userId)) return;
+
+              var checker = context.HttpContext.RequestServices
+                .GetRequiredService<Yalla.Application.Services.IUserActivationChecker>();
+              if (!await checker.IsActiveAsync(userId, context.HttpContext.RequestAborted))
+              {
+                  context.Fail("Account is inactive.");
+              }
           }
       };
   });
