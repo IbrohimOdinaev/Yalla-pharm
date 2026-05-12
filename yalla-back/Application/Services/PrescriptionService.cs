@@ -36,6 +36,7 @@ public sealed class PrescriptionService : IPrescriptionService
     private readonly IRealtimeUpdatesPublisher _realtimePublisher;
     private readonly IManualItemLookupService? _manualLookupService;
     private readonly IAuditLogger? _auditLogger;
+    private readonly IPrivacyPolicyService? _privacyPolicyService;
 
     public PrescriptionService(
       IAppDbContext dbContext,
@@ -43,7 +44,7 @@ public sealed class PrescriptionService : IPrescriptionService
       IPaymentSettingsService paymentSettingsService,
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher)
-      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null, auditLogger: null)
+      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null, auditLogger: null, privacyPolicyService: null)
     {
     }
 
@@ -54,7 +55,8 @@ public sealed class PrescriptionService : IPrescriptionService
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher,
       IManualItemLookupService? manualLookupService,
-      IAuditLogger? auditLogger = null)
+      IAuditLogger? auditLogger = null,
+      IPrivacyPolicyService? privacyPolicyService = null)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
@@ -63,6 +65,7 @@ public sealed class PrescriptionService : IPrescriptionService
         _realtimePublisher = realtimePublisher;
         _manualLookupService = manualLookupService;
         _auditLogger = auditLogger;
+        _privacyPolicyService = privacyPolicyService;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -76,6 +79,24 @@ public sealed class PrescriptionService : IPrescriptionService
 
         if (clientId == Guid.Empty)
             throw new InvalidOperationException("ClientId can't be empty.");
+
+        // Privacy-policy gate — uploading a prescription photo is
+        // processing of "special category" personal data (медицинские
+        // данные) under Закон РТ № 1537. The acceptance check must run
+        // BEFORE any image is read off the wire or uploaded to MinIO
+        // so we don't store anything until consent is on record.
+        if (_privacyPolicyService is not null)
+        {
+            var accepted = await _privacyPolicyService.HasAcceptedCurrentAsync(clientId, cancellationToken);
+            if (!accepted)
+            {
+                throw new ClientErrorException(
+                  errorCode: "privacy_policy_acceptance_required",
+                  detail: "Перед загрузкой рецепта необходимо принять обновлённую политику обработки персональных данных.",
+                  reason: "privacy_policy_acceptance_required",
+                  statusCode: 412);
+            }
+        }
 
         if (images.Count < Prescription.MinImagesPerPrescription)
             throw new InvalidOperationException(

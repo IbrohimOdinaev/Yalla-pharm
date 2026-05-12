@@ -42,6 +42,7 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
   public DbSet<SyncState> SyncStates => Set<SyncState>();
   public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
+  public DbSet<ClientConsentHistory> ClientConsentHistory => Set<ClientConsentHistory>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

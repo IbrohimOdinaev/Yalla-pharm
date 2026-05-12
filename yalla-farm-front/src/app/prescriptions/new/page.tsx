@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
@@ -9,8 +9,10 @@ import {
   PRESCRIPTION_TIER_LABEL_RU,
   PRESCRIPTION_TIER_DESCRIPTION_RU,
 } from "@/entities/prescription/api";
+import { getPrivacyPolicyStatus } from "@/entities/legal/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
+import { PrivacyPolicyAcceptanceModal } from "@/widgets/legal/PrivacyPolicyAcceptanceModal";
 import { Button, Icon, Input } from "@/shared/ui";
 
 const MAX_PHOTOS = 2;
@@ -196,6 +198,15 @@ export default function NewPrescriptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [tier, setTier] = useState<PrescriptionPreferenceTier>("AsPrescribed");
+  // Privacy-policy gate state. `policyAccepted` is null while we're
+  // waiting for the status round-trip; true/false once known. When the
+  // user hits submit before accepting, we pop the modal and pause the
+  // submit until they accept. `pendingSubmit` flags "submit was
+  // attempted, resume after acceptance".
+  const [policyVersion, setPolicyVersion] = useState<string | null>(null);
+  const [policyAccepted, setPolicyAccepted] = useState<boolean | null>(null);
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const pendingSubmitRef = useRef(false);
 
   // Auth gate — same pattern as /prescriptions. Wait for the auth slice
   // to hydrate from localStorage so a refresh doesn't kick the user out.
@@ -204,6 +215,42 @@ export default function NewPrescriptionPage() {
     if (!token) { router.replace("/login?next=/prescriptions/new"); return; }
     if (role && role !== "Client") router.replace("/");
   }, [hydrated, token, role, router]);
+
+  // Privacy-policy status — fire-and-forget on mount. The result
+  // gates the submit button below; while we're waiting we treat
+  // `policyAccepted` as null and let the button work — backend's 412
+  // is the source of truth and will pop the modal on failure too.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    getPrivacyPolicyStatus(token)
+      .then((status) => {
+        if (cancelled) return;
+        setPolicyVersion(status.currentVersion);
+        setPolicyAccepted(status.accepted);
+      })
+      .catch(() => {
+        // Soft fail: leave both null so submit still works; if
+        // policy is actually required, the server will 412 and we
+        // catch it in onSubmit.
+      });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  const handlePolicyAccepted = useCallback(() => {
+    setPolicyAccepted(true);
+    setPolicyModalOpen(false);
+    // Resume the in-flight submit if the user had clicked submit first.
+    if (pendingSubmitRef.current) {
+      pendingSubmitRef.current = false;
+      // Use a microtask to let state flush before re-entering submit.
+      Promise.resolve().then(() => {
+        // Trigger a synthetic submit. The real handler reads state
+        // directly, so a no-op event is fine.
+        document.querySelector("form")?.requestSubmit();
+      });
+    }
+  }, []);
 
   // Object URLs for inline previews; revoke on photos[] change to avoid leaks.
   const previews = useMemo(
@@ -244,6 +291,16 @@ export default function NewPrescriptionPage() {
       return;
     }
 
+    // Privacy-policy gate. We do a client-side check first to avoid a
+    // round-trip when we already know acceptance is missing; backend
+    // still re-validates (returns 412) so a stale `policyAccepted`
+    // doesn't let anyone slip through.
+    if (policyAccepted === false) {
+      pendingSubmitRef.current = true;
+      setPolicyModalOpen(true);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const created = await createPrescription(token, {
@@ -265,7 +322,17 @@ export default function NewPrescriptionPage() {
       }
       router.push(`/prescriptions/${created.prescriptionId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось отправить рецепт.");
+      const message = err instanceof Error ? err.message : "Не удалось отправить рецепт.";
+      // Backend rejects unsupported privacy version with a
+      // 412/machine-readable code; surface the accept-modal instead
+      // of a raw error.
+      if (message.includes("privacy_policy_acceptance_required")) {
+        setPolicyAccepted(false);
+        pendingSubmitRef.current = true;
+        setPolicyModalOpen(true);
+      } else {
+        setError(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -427,6 +494,23 @@ export default function NewPrescriptionPage() {
           Отправить рецепт
         </Button>
       </form>
+
+      {/* Privacy-policy gate. Opens automatically when submit is
+          attempted before the client has accepted the current
+          version, or when the backend returns 412 because the gate
+          was bypassed. */}
+      {token && policyVersion ? (
+        <PrivacyPolicyAcceptanceModal
+          open={policyModalOpen}
+          token={token}
+          version={policyVersion}
+          onAccepted={handlePolicyAccepted}
+          onClose={() => {
+            setPolicyModalOpen(false);
+            pendingSubmitRef.current = false;
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }

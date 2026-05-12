@@ -45,6 +45,15 @@ public static class DependencyInjection
     // AuditLogger is wired here; its ICurrentUserContext dependency
     // is registered in the Api layer (it's an HTTP-bound concept).
     services.AddScoped<IAuditLogger, Yalla.Infrastructure.Audit.AuditLogger>();
+    services.Configure<Yalla.Application.Common.ComplianceOptions>(options =>
+    {
+      options.PrivacyPolicyCurrentVersion =
+        config[$"{Yalla.Application.Common.ComplianceOptions.SectionName}:PrivacyPolicyCurrentVersion"]
+        ?? options.PrivacyPolicyCurrentVersion;
+      options.PrivacyPolicyEffectiveDate =
+        config[$"{Yalla.Application.Common.ComplianceOptions.SectionName}:PrivacyPolicyEffectiveDate"]
+        ?? options.PrivacyPolicyEffectiveDate;
+    });
     services.Configure<MinIoOptions>(options =>
     {
       options.Endpoint = NormalizeMinIoEndpointForContainer(
