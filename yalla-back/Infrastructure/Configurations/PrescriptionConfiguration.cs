@@ -83,6 +83,17 @@ public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
           .HasColumnType("timestamp")
           .IsRequired(false);
 
+        builder.Property(x => x.CancelledAtUtc)
+          .HasColumnName("cancelled_at_utc")
+          .HasColumnType("timestamp")
+          .IsRequired(false);
+
+        builder.Property(x => x.CancellationReason)
+          .HasColumnName("cancellation_reason")
+          .HasColumnType("integer")
+          .HasConversion<int?>()
+          .IsRequired(false);
+
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_prescriptions_client_id");
 

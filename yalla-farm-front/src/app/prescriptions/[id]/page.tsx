@@ -8,6 +8,7 @@ import {
   moveChecklistToCart,
   resubmitPrescription,
   PRESCRIPTION_STATUS_LABEL_RU,
+  PRESCRIPTION_CANCELLATION_REASON_LABEL_RU,
   PRESCRIPTION_TIER_LABEL_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
@@ -363,6 +364,11 @@ export default function PrescriptionDetailPage() {
             {prescription.status === "Cancelled" ? (
               <section className="space-y-3 rounded-2xl bg-secondary/10 p-4">
                 <p className="text-sm font-bold text-secondary">Рецепт отменён</p>
+                {prescription.cancellationReason ? (
+                  <p className="text-xs font-semibold text-secondary/80">
+                    Причина: {PRESCRIPTION_CANCELLATION_REASON_LABEL_RU[prescription.cancellationReason]}
+                  </p>
+                ) : null}
                 <p className="text-xs text-on-surface-variant">
                   Вы можете переотправить тот же рецепт. Создастся новая заявка с теми же фото и данными — нужно будет снова оплатить 3 TJS.
                 </p>

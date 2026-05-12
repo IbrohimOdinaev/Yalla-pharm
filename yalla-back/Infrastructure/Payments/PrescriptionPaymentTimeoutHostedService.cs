@@ -10,30 +10,30 @@ using Yalla.Domain.Enums;
 namespace Yalla.Infrastructure.Payments;
 
 /// <summary>
-/// Cancels prescription requests that sit unpaid for more than 24 hours.
-/// Mirrors <see cref="ManualPaymentTimeoutHostedService"/> for orders — runs on
-/// the same configurable interval and uses a single transaction per batch so
-/// either the whole batch advances to <c>Cancelled</c> or none of it does.
-/// Once cancelled, the client can hit the resubmit endpoint to clone the
-/// prescription with a fresh payment URL.
+/// Cancels prescription requests that sit unpaid for longer than
+/// <see cref="PrescriptionTimeoutOptions.PaymentTimeoutHours"/>.
+/// Idempotent: re-running over an already-cancelled row is a no-op
+/// thanks to <c>Prescription.Cancel(PaymentTimeout)</c>'s benign-retry
+/// path. Tracks both Submitted (uploaded, no payment URL hit) and
+/// AwaitingConfirmation (client clicked pay but SuperAdmin hasn't
+/// reviewed) — both states block further progress and should bow out
+/// after the timeout window.
+///
+/// The cleanup itself is exposed as a public method so unit/integration
+/// tests can drive it directly without standing up the BackgroundService
+/// scheduler.
 /// </summary>
 public sealed class PrescriptionPaymentTimeoutHostedService : BackgroundService
 {
   private const int BatchSize = 100;
-  /// <summary>
-  /// How long an unpaid prescription is allowed to live before the service
-  /// auto-cancels it. Pinned to 24h per product spec — a request that sat for
-  /// a full day without payment is treated as the user having walked away.
-  /// </summary>
-  private static readonly TimeSpan UnpaidTtl = TimeSpan.FromHours(24);
 
   private readonly IServiceScopeFactory _scopeFactory;
-  private readonly DushanbeCityPaymentOptions _options;
+  private readonly PrescriptionTimeoutOptions _options;
   private readonly ILogger<PrescriptionPaymentTimeoutHostedService> _logger;
 
   public PrescriptionPaymentTimeoutHostedService(
     IServiceScopeFactory scopeFactory,
-    IOptions<DushanbeCityPaymentOptions> options,
+    IOptions<PrescriptionTimeoutOptions> options,
     ILogger<PrescriptionPaymentTimeoutHostedService> logger)
   {
     ArgumentNullException.ThrowIfNull(scopeFactory);
@@ -47,51 +47,80 @@ public sealed class PrescriptionPaymentTimeoutHostedService : BackgroundService
 
   protected override async Task ExecuteAsync(CancellationToken stoppingToken)
   {
-    var intervalSeconds = Math.Max(5, _options.CleanupIntervalSeconds);
-    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+    var intervalMinutes = Math.Max(1, _options.PaymentTimeoutCheckIntervalMinutes);
+    using var timer = new PeriodicTimer(TimeSpan.FromMinutes(intervalMinutes));
 
     _logger.LogInformation(
-      "Prescription payment timeout worker started. IntervalSeconds={IntervalSeconds}, UnpaidTtlHours={UnpaidTtlHours}.",
-      intervalSeconds,
-      UnpaidTtl.TotalHours);
+      "Prescription payment timeout worker started. IntervalMinutes={IntervalMinutes}, PaymentTimeoutHours={Hours}.",
+      intervalMinutes,
+      _options.PaymentTimeoutHours);
 
-    await CleanupExpiredPrescriptionsAsync(stoppingToken);
+    await CancelExpiredAsync(stoppingToken);
     while (!stoppingToken.IsCancellationRequested
       && await timer.WaitForNextTickAsync(stoppingToken))
     {
-      await CleanupExpiredPrescriptionsAsync(stoppingToken);
+      await CancelExpiredAsync(stoppingToken);
     }
   }
 
-  private async Task CleanupExpiredPrescriptionsAsync(CancellationToken cancellationToken)
+  /// <summary>
+  /// Run a single cleanup sweep. Public so tests can invoke directly
+  /// without spinning up the hosted-service scheduler. Catches all
+  /// exceptions and logs them — the worker keeps ticking even if one
+  /// pass fails. Returns the number of rows cancelled in this pass.
+  /// </summary>
+  public async Task<int> CancelExpiredAsync(CancellationToken cancellationToken)
   {
     try
     {
-      var cutoffUtc = DateTime.UtcNow - UnpaidTtl;
+      var ttl = TimeSpan.FromHours(Math.Max(1, _options.PaymentTimeoutHours));
+      var cutoffUtc = DateTime.UtcNow - ttl;
 
       using var scope = _scopeFactory.CreateScope();
       var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
       var realtimePublisher = scope.ServiceProvider.GetRequiredService<IRealtimeUpdatesPublisher>();
+      var auditLogger = scope.ServiceProvider.GetService<IAuditLogger>();
 
-      // Submitted = uploaded but no payment confirmation yet. Anything still
-      // sitting in this state past the cutoff is fair game to cancel.
+      // Both Submitted and AwaitingConfirmation block the request from
+      // progressing — neither makes sense to keep alive past the TTL.
       var expired = await dbContext.Prescriptions
         .AsTracking()
-        .Where(p => p.Status == PrescriptionStatus.Submitted
+        .Where(p => (p.Status == PrescriptionStatus.Submitted
+                  || p.Status == PrescriptionStatus.AwaitingConfirmation)
                  && p.CreatedAtUtc <= cutoffUtc)
         .OrderBy(p => p.CreatedAtUtc)
         .Take(BatchSize)
         .ToListAsync(cancellationToken);
 
-      if (expired.Count == 0)
-        return;
+      if (expired.Count == 0) return 0;
 
       await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
       try
       {
         foreach (var prescription in expired)
         {
-          prescription.Cancel();
+          // Cancel(PaymentTimeout) is benign-idempotent — already
+          // cancelled rows are skipped silently. Status guards on
+          // OrderPlaced/MovedToCart still throw, so the query above
+          // filters down to the two states that are safe to cancel.
+          prescription.Cancel(PrescriptionCancellationReason.PaymentTimeout);
+
+          if (auditLogger is not null)
+          {
+            await auditLogger.LogAsync(
+              AuditAction.StatusChanged,
+              entityType: "Prescription",
+              entityId: prescription.Id,
+              summary: $"Prescription {prescription.Id} auto-cancelled — payment not received within {_options.PaymentTimeoutHours}h.",
+              payload: new
+              {
+                clientId = prescription.ClientId,
+                reason = PrescriptionCancellationReason.PaymentTimeout.ToString(),
+                createdAtUtc = prescription.CreatedAtUtc,
+                cancelledAtUtc = prescription.CancelledAtUtc,
+              },
+              cancellationToken: cancellationToken);
+          }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -103,9 +132,12 @@ public sealed class PrescriptionPaymentTimeoutHostedService : BackgroundService
         throw;
       }
 
-      // Push an update for each so the client's prescription detail page can
-      // refresh without polling. Failures here aren't fatal — the DB transition
-      // already committed.
+      // Realtime push so the client's prescription page refreshes
+      // without polling. Best-effort — DB transition already committed.
+      // SMS + Telegram notification is intentionally deferred to a
+      // follow-up PR that extends the existing outbox machinery to
+      // support non-order-bound messages (today every SmsOutboxMessage
+      // / TelegramOutboxMessage row requires an OrderId).
       foreach (var prescription in expired)
       {
         try
@@ -128,6 +160,8 @@ public sealed class PrescriptionPaymentTimeoutHostedService : BackgroundService
       _logger.LogInformation(
         "Prescription payment timeout cleanup cancelled {PrescriptionsCount} prescriptions.",
         expired.Count);
+
+      return expired.Count;
     }
     catch (OperationCanceledException)
     {
@@ -136,6 +170,7 @@ public sealed class PrescriptionPaymentTimeoutHostedService : BackgroundService
     catch (Exception exception)
     {
       _logger.LogError(exception, "Prescription payment timeout cleanup failed.");
+      return 0;
     }
   }
 }

@@ -55,6 +55,17 @@ public class Prescription
 
     public DateTime? UpdatedAtUtc { get; private set; }
 
+    /// <summary>Set when the prescription moves to
+    /// <see cref="PrescriptionStatus.Cancelled"/>. Null on every other
+    /// status; never overwritten once set so re-cancel attempts can't
+    /// rewrite the audit trail.</summary>
+    public DateTime? CancelledAtUtc { get; private set; }
+
+    /// <summary>Why the prescription was cancelled. Null for rows that
+    /// pre-date the field; new cancellations always set both this and
+    /// <see cref="CancelledAtUtc"/>.</summary>
+    public PrescriptionCancellationReason? CancellationReason { get; private set; }
+
     public IReadOnlyCollection<PrescriptionImage> Images => _images.AsReadOnly();
 
     public IReadOnlyCollection<PrescriptionChecklistItem> Items => _items.AsReadOnly();
@@ -190,14 +201,37 @@ public class Prescription
     }
 
     public void Cancel()
+        => Cancel(PrescriptionCancellationReason.ClientCancelled);
+
+    /// <summary>
+    /// Move the prescription into the terminal <c>Cancelled</c> state
+    /// with an explicit reason. Idempotent for repeat
+    /// <c>PaymentTimeout</c> calls (already-cancelled prescriptions
+    /// are left untouched) — the timeout worker can re-fire without
+    /// raising; explicit client/pharmacist cancels on a finalised
+    /// prescription still throw because they're logic errors at the
+    /// caller, not benign double-fires.
+    /// </summary>
+    public void Cancel(PrescriptionCancellationReason reason)
     {
+        if (Status == PrescriptionStatus.Cancelled)
+        {
+            // PaymentTimeout retry is benign — skip. Other reasons hitting
+            // an already-cancelled row are call-site bugs and should fail
+            // loud so we notice.
+            if (reason == PrescriptionCancellationReason.PaymentTimeout) return;
+            throw new DomainException(
+              $"Prescription is already cancelled (reason={CancellationReason}).");
+        }
+
         if (Status is PrescriptionStatus.OrderPlaced
-                   or PrescriptionStatus.MovedToCart
-                   or PrescriptionStatus.Cancelled)
+                   or PrescriptionStatus.MovedToCart)
             throw new DomainException(
               $"Prescription can't be cancelled from {Status} status.");
 
         Status = PrescriptionStatus.Cancelled;
+        CancellationReason = reason;
+        CancelledAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 }

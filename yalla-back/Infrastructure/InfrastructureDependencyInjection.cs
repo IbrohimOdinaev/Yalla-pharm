@@ -61,6 +61,18 @@ public static class DependencyInjection
         config[$"{Yalla.Application.Common.ComplianceOptions.SectionName}:PrivacyPolicyEffectiveDate"]
         ?? options.PrivacyPolicyEffectiveDate;
     });
+    services.Configure<Yalla.Application.Common.PrescriptionTimeoutOptions>(options =>
+    {
+      var section = Yalla.Application.Common.PrescriptionTimeoutOptions.SectionName;
+      options.PaymentTimeoutHours = int.TryParse(
+        config[$"{section}:PaymentTimeoutHours"], out var hours) && hours > 0
+        ? hours
+        : options.PaymentTimeoutHours;
+      options.PaymentTimeoutCheckIntervalMinutes = int.TryParse(
+        config[$"{section}:PaymentTimeoutCheckIntervalMinutes"], out var minutes) && minutes > 0
+        ? minutes
+        : options.PaymentTimeoutCheckIntervalMinutes;
+    });
     services.Configure<MinIoOptions>(options =>
     {
       options.Endpoint = NormalizeMinIoEndpointForContainer(

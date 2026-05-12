@@ -34,6 +34,12 @@ public sealed class PrescriptionResponse
     public string? PaymentCurrency { get; set; }
     public List<PrescriptionImageResponse> Images { get; set; } = new();
     public List<PrescriptionChecklistItemResponse> Items { get; set; } = new();
+    /// <summary>Reason the prescription was cancelled, when applicable.
+    /// Serialised as the enum name string ("ClientCancelled", etc.).
+    /// Null on any non-Cancelled status and on rows that pre-date the
+    /// field.</summary>
+    public string? CancellationReason { get; set; }
+    public DateTime? CancelledAtUtc { get; set; }
 }
 
 public sealed class PrescriptionImageResponse

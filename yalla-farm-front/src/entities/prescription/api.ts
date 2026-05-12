@@ -11,6 +11,20 @@ export type PrescriptionStatus =
   | "MovedToCart"
   | "Cancelled";
 
+/** Reason the prescription landed in Cancelled. Mirrors the
+ *  Yalla.Domain.Enums.PrescriptionCancellationReason backend enum
+ *  (serialised as string). Null on rows that pre-date the field. */
+export type PrescriptionCancellationReason =
+  | "ClientCancelled"
+  | "PaymentTimeout"
+  | "PharmacistDecodeFailed";
+
+export const PRESCRIPTION_CANCELLATION_REASON_LABEL_RU: Record<PrescriptionCancellationReason, string> = {
+  ClientCancelled: "Вы отменили запрос",
+  PaymentTimeout: "Истёк срок оплаты (24 часа)",
+  PharmacistDecodeFailed: "Фармацевт не смог расшифровать рецепт",
+};
+
 export type ApiPrescriptionImage = {
   id: string;
   orderIndex: number;
@@ -103,6 +117,11 @@ export type ApiPrescription = {
   paymentCurrency?: string | null;
   images: ApiPrescriptionImage[];
   items: ApiPrescriptionChecklistItem[];
+  /** Set when status === "Cancelled". Tells the client UI why the
+   *  request ended in the terminal state. Null for rows cancelled
+   *  before the field existed. */
+  cancellationReason?: PrescriptionCancellationReason | null;
+  cancelledAtUtc?: string | null;
 };
 
 /**

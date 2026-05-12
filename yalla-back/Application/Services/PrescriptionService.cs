@@ -1165,6 +1165,8 @@ public sealed class PrescriptionService : IPrescriptionService
             AssignedPharmacistId = prescription.AssignedPharmacistId,
             OrderId = prescription.OrderId,
             PaymentIntentId = prescription.PaymentIntentId,
+            CancellationReason = prescription.CancellationReason?.ToString(),
+            CancelledAtUtc = prescription.CancelledAtUtc,
             Images = prescription.Images
               .OrderBy(x => x.OrderIndex)
               .Select(x => new PrescriptionImageResponse
