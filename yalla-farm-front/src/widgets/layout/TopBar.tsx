@@ -320,8 +320,12 @@ export function TopBar({
             slot. left + padding + text opacity all transition together
             for a smooth morph; nothing outside the slot moves. */}
         <span
-          className={`absolute inset-y-0 right-0 flex items-center justify-center gap-0 rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-all duration-300 hover:bg-[#35B7B6] sm:gap-2.5
-            ${cartFilled ? "left-0 px-5 sm:px-6" : "left-[120px] sm:left-[132px] px-0"}`}
+          // `gap` must be 0 in the empty state — otherwise the (collapsed,
+          // max-w-0 / opacity-0) price span still contributes its sibling
+          // gap to the flex layout and pushes the icon a few pixels to the
+          // left of true centre. Gap only kicks in once the pill is filled.
+          className={`absolute inset-y-0 right-0 flex items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-all duration-300 hover:bg-[#35B7B6]
+            ${cartFilled ? "left-0 gap-2 px-5 sm:gap-2.5 sm:px-6" : "left-[120px] gap-0 px-0 sm:left-[132px]"}`}
         >
           <Icon name="bag" size={20} strokeWidth={cartFilled ? 2.4 : 2.2} className="flex-shrink-0" />
           {/* Price label — slides in / out on the right. opacity +
