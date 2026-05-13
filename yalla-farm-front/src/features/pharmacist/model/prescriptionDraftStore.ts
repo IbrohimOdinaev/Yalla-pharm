@@ -25,6 +25,18 @@ export type DraftItem = {
    *  list (lookup happens at render time) but is hidden from the flat
    *  list to avoid double-display. Only meaningful for Original-kind. */
   analogDraftId?: string | null;
+  /** Manual lines may carry a manual-lookup request — the pharmacist
+   *  asks every pharmacy admin to physically locate the medicine. Set
+   *  after createManualLookupRequest succeeds; null until then. */
+  lookupRequestId?: string | null;
+  /** "By units" override — pharmacist enters a unit count + total
+   *  price that replace the system's package-times-offer-price calc.
+   *  `quantity` keeps its meaning (= packages, ≥ 1, drives stock check
+   *  on the pharmacy side). Carries through to the OrderPosition once
+   *  the client checks out. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export type DraftState = {

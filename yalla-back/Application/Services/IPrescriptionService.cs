@@ -63,6 +63,19 @@ public interface IPrescriptionService
       CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Pharmacist's "I can't decode this" exit. Moves the prescription
+    /// to <see cref="Yalla.Domain.Enums.PrescriptionStatus.DecodeFailed"/>
+    /// and triggers the side-effect dictated by the reason:
+    /// PoorImageQuality grants the client a free credit; IllegibleHandwriting
+    /// creates a PendingRefund row for SuperAdmin to settle physically.
+    /// </summary>
+    Task<PrescriptionResponse> MarkDecodeFailedAsync(
+      Guid pharmacistId,
+      Guid prescriptionId,
+      MarkDecodeFailedRequest request,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Client pushes the in-catalog checklist items into their regular
     /// basket and moves the prescription into MovedToCart. Out-of-catalog
     /// (manual) items and inactive medicines are skipped.
@@ -80,6 +93,19 @@ public interface IPrescriptionService
     /// again — the original cancelled record is left intact for history.
     /// </summary>
     Task<PrescriptionResponse> ResubmitPrescriptionAsync(
+      Guid clientId,
+      Guid prescriptionId,
+      CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pharmacy-coverage breakdown for a decoded prescription. Catalog
+    /// items resolve through normal offers; manual items resolve through
+    /// shadow medicines materialised from each pharmacy's lookup
+    /// response. Each option carries a per-line item with the
+    /// pharmacy-specific shadow medicineId so the client can pass the
+    /// right id into the explicit-source checkout.
+    /// </summary>
+    Task<GetPrescriptionPharmacyOptionsResponse> GetPharmacyOptionsAsync(
       Guid clientId,
       Guid prescriptionId,
       CancellationToken cancellationToken = default);

@@ -26,7 +26,11 @@ public static class DependencyInjection
     services.AddScoped<IPharmacyWorkerService, PharmacyWorkerService>();
     services.AddScoped<IPrescriptionService, PrescriptionService>();
     services.AddScoped<IPharmacistService, PharmacistService>();
+    services.AddScoped<IManualItemLookupService, ManualItemLookupService>();
     services.AddScoped<IUserReadService, UserReadService>();
+    services.AddScoped<IAuditLogService, AuditLogService>();
+    services.AddScoped<IPrivacyPolicyService, PrivacyPolicyService>();
+    services.AddScoped<IPendingRefundService, PendingRefundService>();
     services.AddTransient(typeof(IValidator<>), typeof(RequestDtoFluentValidator<>));
 
     return services;

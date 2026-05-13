@@ -16,9 +16,10 @@ public sealed class OrderService : IOrderService
   private readonly ILogger<OrderService> _logger;
   private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
   private readonly IJuraService? _juraService;
+  private readonly IAuditLogger? _auditLogger;
 
   public OrderService(IAppDbContext dbContext)
-    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null)
+    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null, null)
   {
   }
 
@@ -26,7 +27,8 @@ public sealed class OrderService : IOrderService
     IAppDbContext dbContext,
     ILogger<OrderService> logger,
     IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
-    IJuraService? juraService = null)
+    IJuraService? juraService = null,
+    IAuditLogger? auditLogger = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(logger);
@@ -36,6 +38,9 @@ public sealed class OrderService : IOrderService
     _logger = logger;
     _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
     _juraService = juraService;
+    // Optional audit dependency — tests can omit it; prod DI always
+    // supplies one.
+    _auditLogger = auditLogger;
   }
 
   public async Task<GetAllOrdersResponse> GetAllOrdersAsync(
@@ -142,6 +147,7 @@ public sealed class OrderService : IOrderService
       .Where(x => x.Id == request.OrderId && x.ClientId == request.ClientId)
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Images)
       .Include(x => x.DeliveryData)
       .FirstOrDefaultAsync(cancellationToken)
       ?? throw new InvalidOperationException(
@@ -179,15 +185,36 @@ public sealed class OrderService : IOrderService
       ToLatitude = delivery?.ToLatitude,
       ToLongitude = delivery?.ToLongitude,
       Positions = order.Positions
-        .Select(x => new ClientOrderDetailsPositionResponse
+        .Select(x =>
         {
-          PositionId = x.Id,
-          MedicineId = x.MedicineId,
-          MedicineTitle = x.Medicine?.Title ?? $"Medicine:{x.MedicineId}",
-          Quantity = x.Quantity,
-          ReturnedQuantity = x.ReturnedQuantity,
-          IsRejected = x.IsRejected,
-          Price = x.OfferSnapshot.Price
+          // Pick the cover image: prefer Main, then Minimal, then anything
+          // else. Same selection rule the catalog uses so the order detail
+          // matches what the user saw before adding the item.
+          var images = x.Medicine?.Images ?? Array.Empty<MedicineImage>().ToList();
+          var img = images.FirstOrDefault(i => i.IsMain)
+                ?? images.FirstOrDefault(i => i.IsMinimal)
+                ?? images.FirstOrDefault();
+
+          return new ClientOrderDetailsPositionResponse
+          {
+            PositionId = x.Id,
+            MedicineId = x.MedicineId,
+            MedicineTitle = x.Medicine?.Title ?? $"Medicine:{x.MedicineId}",
+            Quantity = x.Quantity,
+            ReturnedQuantity = x.ReturnedQuantity,
+            IsRejected = x.IsRejected,
+            Price = x.OfferSnapshot.Price,
+            UseUnitMode = x.UseUnitMode,
+            UnitCount = x.UnitCount,
+            UnitTotalPrice = x.UnitTotalPrice,
+            Image = img is null ? null : new ClientOrderDetailsPositionImageResponse
+            {
+              Id = img.Id,
+              Key = img.Key,
+              IsMain = img.IsMain,
+              IsMinimal = img.IsMinimal
+            }
+          };
         })
         .ToList()
     };
@@ -402,6 +429,24 @@ public sealed class OrderService : IOrderService
         order.Cost,
         order.ReturnCost,
         order.Status);
+
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.PositionsRejected,
+          entityType: "Order",
+          entityId: order.Id,
+          summary: $"Worker {worker.Id} rejected {positionsToReject.Count} position(s) on order {order.Id}.",
+          payload: new
+          {
+            workerId = worker.Id,
+            rejectedPositionIds = positionsToReject.Select(p => p.Id).ToArray(),
+            statusAfter = order.Status.ToString(),
+            cost = order.Cost,
+            returnCost = order.ReturnCost,
+          },
+          cancellationToken: cancellationToken);
+      }
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);

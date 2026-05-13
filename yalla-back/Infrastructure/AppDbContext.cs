@@ -22,6 +22,8 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<Prescription> Prescriptions => Set<Prescription>();
   public DbSet<PrescriptionImage> PrescriptionImages => Set<PrescriptionImage>();
   public DbSet<PrescriptionChecklistItem> PrescriptionChecklistItems => Set<PrescriptionChecklistItem>();
+  public DbSet<ManualItemLookupRequest> ManualItemLookupRequests => Set<ManualItemLookupRequest>();
+  public DbSet<ManualItemLookupResponse> ManualItemLookupResponses => Set<ManualItemLookupResponse>();
   public DbSet<BasketPosition> BasketPositions => Set<BasketPosition>();
   public DbSet<OrderPosition> OrderPositions => Set<OrderPosition>();
   public DbSet<PaymentHistory> PaymentHistories => Set<PaymentHistory>();
@@ -39,6 +41,9 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<ClientAddress> ClientAddresses => Set<ClientAddress>();
   public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
   public DbSet<SyncState> SyncStates => Set<SyncState>();
+  public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
+  public DbSet<ClientConsentHistory> ClientConsentHistory => Set<ClientConsentHistory>();
+  public DbSet<PendingRefund> PendingRefunds => Set<PendingRefund>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

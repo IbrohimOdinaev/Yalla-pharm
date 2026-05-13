@@ -9,7 +9,39 @@ export type PrescriptionStatus =
   | "Decoded"
   | "OrderPlaced"
   | "MovedToCart"
-  | "Cancelled";
+  | "Cancelled"
+  | "DecodeFailed";
+
+/** Pharmacist's stated reason for failing to decode. Mirrors
+ *  Yalla.Domain.Enums.PrescriptionDecodeFailureReason. */
+export type PrescriptionDecodeFailureReason =
+  | "PoorImageQuality"
+  | "IllegibleHandwriting";
+
+export const PRESCRIPTION_DECODE_FAILURE_REASON_LABEL_RU: Record<PrescriptionDecodeFailureReason, string> = {
+  PoorImageQuality: "Плохое качество фото",
+  IllegibleHandwriting: "Нечитаемый почерк",
+};
+
+/** Tail label shown after the reason so the user knows what's next. */
+export const PRESCRIPTION_DECODE_FAILURE_FOLLOWUP_RU: Record<PrescriptionDecodeFailureReason, string> = {
+  PoorImageQuality: "Следующий запрос на расшифровку будет бесплатным.",
+  IllegibleHandwriting: "Деньги будут возвращены в течение 1-3 рабочих дней.",
+};
+
+/** Reason the prescription landed in Cancelled. Mirrors the
+ *  Yalla.Domain.Enums.PrescriptionCancellationReason backend enum
+ *  (serialised as string). Null on rows that pre-date the field. */
+export type PrescriptionCancellationReason =
+  | "ClientCancelled"
+  | "PaymentTimeout"
+  | "PharmacistDecodeFailed";
+
+export const PRESCRIPTION_CANCELLATION_REASON_LABEL_RU: Record<PrescriptionCancellationReason, string> = {
+  ClientCancelled: "Вы отменили запрос",
+  PaymentTimeout: "Истёк срок оплаты (24 часа)",
+  PharmacistDecodeFailed: "Фармацевт не смог расшифровать рецепт",
+};
 
 export type ApiPrescriptionImage = {
   id: string;
@@ -21,6 +53,9 @@ export type ApiPrescriptionChecklistItem = {
   id: string;
   medicineId?: string | null;
   manualMedicineName?: string | null;
+  /** Catalog medicine title snapshot. Set when medicineId is non-null;
+   *  use it directly in lists instead of an extra by-ids fetch. */
+  medicineTitle?: string | null;
   quantity: number;
   pharmacistComment?: string | null;
   /** "Original" — pharmacist identified the medicine; "Undecoded" — couldn't read. */
@@ -34,6 +69,25 @@ export type ApiPrescriptionChecklistItem = {
    *  "original" of the pair; the referenced sibling stays in `items`
    *  under its own row, and the renderer groups them into a block. */
   analogItemId?: string | null;
+  /** FK to a ManualItemLookupRequest the pharmacist already created for
+   *  this manual line (asked other pharmacies). Null for catalog items
+   *  and for manual items without a lookup. */
+  lookupRequestId?: string | null;
+  /** Number of pharmacy admins who responded with a temp offer for
+   *  this manual lookup. Null for catalog items; 0 when no pharmacy
+   *  has responded yet (the row stays "недоступно"). */
+  temporaryOfferCount?: number | null;
+  /** Cheapest price across the temp offers — equivalent to "min offer
+   *  price" for catalog items. Null when no responses. */
+  temporaryOfferMinPrice?: number | null;
+  /** Pharmacist switched this row into "by units" pricing — UI shows
+   *  unitCount × unitTotalPrice instead of quantity × offer-price. */
+  useUnitMode?: boolean;
+  /** Total tablets/ampoules/etc. the pharmacist priced; meaningful
+   *  only when useUnitMode is true. */
+  unitCount?: number | null;
+  /** Pharmacist-set total for this row (replaces system price calc). */
+  unitTotalPrice?: number | null;
 };
 
 export type PrescriptionPreferenceTier = "AsPrescribed" | "GoldenMiddle" | "MaxSavings";
@@ -81,6 +135,17 @@ export type ApiPrescription = {
   paymentCurrency?: string | null;
   images: ApiPrescriptionImage[];
   items: ApiPrescriptionChecklistItem[];
+  /** Set when status === "Cancelled". Tells the client UI why the
+   *  request ended in the terminal state. Null for rows cancelled
+   *  before the field existed. */
+  cancellationReason?: PrescriptionCancellationReason | null;
+  cancelledAtUtc?: string | null;
+  /** Set when status === "DecodeFailed" — pharmacist couldn't read
+   *  the prescription. PoorImageQuality → free credit; IllegibleHandwriting
+   *  → pending refund. */
+  decodeFailureReason?: PrescriptionDecodeFailureReason | null;
+  decodeFailedAtUtc?: string | null;
+  decodeFailureComment?: string | null;
 };
 
 /**
@@ -157,6 +222,50 @@ export async function resubmitPrescription(
   );
 }
 
+export type ApiPrescriptionPharmacyItem = {
+  checklistItemId: string;
+  medicineId?: string | null;
+  requestedQuantity: number;
+  title: string;
+  isFound: boolean;
+  foundQuantity: number;
+  hasEnoughQuantity: boolean;
+  price?: number | null;
+  isManualLookup: boolean;
+  /** Pharmacist priced this row "by units" — render unitCount /
+   *  unitTotalPrice instead of price × quantity. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
+};
+
+export type ApiPrescriptionPharmacyOption = {
+  pharmacyId: string;
+  pharmacyTitle: string;
+  pharmacyIsActive: boolean;
+  foundItemsCount: number;
+  totalItemsCount: number;
+  enoughQuantityItemsCount: number;
+  isAvailable: boolean;
+  totalCost: number;
+  items: ApiPrescriptionPharmacyItem[];
+};
+
+export type ApiPrescriptionPharmacyOptions = {
+  prescriptionId: string;
+  pharmacyOptions: ApiPrescriptionPharmacyOption[];
+};
+
+export async function getPrescriptionPharmacyOptions(
+  token: string,
+  prescriptionId: string,
+): Promise<ApiPrescriptionPharmacyOptions> {
+  return apiFetch<ApiPrescriptionPharmacyOptions>(
+    `/api/prescriptions/${prescriptionId}/pharmacy-options`,
+    { token },
+  );
+}
+
 export async function createPrescription(
   token: string,
   input: {
@@ -190,5 +299,6 @@ export const PRESCRIPTION_STATUS_LABEL_RU: Record<PrescriptionStatus, string> = 
   Decoded: "Готов чек-лист",
   OrderPlaced: "Заказ оформлен",
   MovedToCart: "В корзине",
-  Cancelled: "Отменён"
+  Cancelled: "Отменён",
+  DecodeFailed: "Не удалось расшифровать"
 };

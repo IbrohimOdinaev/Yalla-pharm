@@ -18,17 +18,47 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
         string esUrl,
         IAppDbContext dbContext,
         ILogger<ElasticsearchMedicineSearchEngine> logger,
-        string indexName = "medicines")
+        string indexName = "medicines",
+        string? username = null,
+        string? password = null,
+        string? apiKey = null)
     {
         _dbContext = dbContext;
         _logger = logger;
         _baseUrl = (esUrl ?? "").TrimEnd('/');
         _indexName = indexName;
 
+        // 60 s timeout covers bulk reindex of the full catalog (~5k
+        // documents) against a managed cluster that's a continent away
+        // (Bonsai US-East, AWS OpenSearch). Individual queries inside
+        // a request handler are still bounded by the request's own
+        // cancellation token, so a slow per-doc call doesn't keep
+        // clients waiting longer than the request itself.
         if (!string.IsNullOrEmpty(_baseUrl))
-            _http = new HttpClient { BaseAddress = new Uri(_baseUrl), Timeout = TimeSpan.FromSeconds(10) };
+            _http = new HttpClient { BaseAddress = new Uri(_baseUrl), Timeout = TimeSpan.FromSeconds(60) };
         else
-            _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+        // Auth precedence: API key > Basic auth > no auth.
+        // - API key path: Elasticsearch native API keys (managed AWS
+        //   OpenSearch Service, Elastic Cloud) ship as a single
+        //   base64 token sent as `Authorization: ApiKey <token>`.
+        // - Basic auth path: Bonsai, Aiven, self-hosted with the
+        //   security plugin enabled. Standard `Authorization: Basic`.
+        // - Neither set: untouched HttpClient — used by the dev
+        //   container where the security plugin is disabled.
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            _http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("ApiKey", apiKey);
+        }
+        else if (!string.IsNullOrWhiteSpace(username))
+        {
+            var raw = $"{username}:{password ?? string.Empty}";
+            var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(raw));
+            _http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", encoded);
+        }
     }
 
     private bool IsDisabled => string.IsNullOrEmpty(_baseUrl);
@@ -149,7 +179,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
         // Load all medicines from DB
         var medicines = await _dbContext.Medicines
             .AsNoTracking()
-            .Where(m => m.IsActive)
+            .Where(m => m.IsActive && m.IsCatalogMedicine)
             .Select(m => new MedicineSearchDocument
             {
                 Id = m.Id,

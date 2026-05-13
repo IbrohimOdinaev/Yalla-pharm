@@ -16,17 +16,20 @@ public sealed class ClientsController : ControllerBase
   private readonly IAuthService _authService;
   private readonly ITelegramAuthService _telegramAuthService;
   private readonly IClientAddressService _addressService;
+  private readonly IPrivacyPolicyService _privacyPolicyService;
 
   public ClientsController(
     IClientService clientService,
     IAuthService authService,
     ITelegramAuthService telegramAuthService,
-    IClientAddressService addressService)
+    IClientAddressService addressService,
+    IPrivacyPolicyService privacyPolicyService)
   {
     _clientService = clientService;
     _authService = authService;
     _telegramAuthService = telegramAuthService;
     _addressService = addressService;
+    _privacyPolicyService = privacyPolicyService;
   }
 
   [HttpPost("register")]
@@ -369,5 +372,42 @@ public sealed class ClientsController : ControllerBase
     var clientId = User.GetRequiredUserId();
     await _addressService.DeleteAsync(clientId, addressId, cancellationToken);
     return Ok(new { deleted = true });
+  }
+
+  /// <summary>
+  /// Records the current client's acceptance of the privacy policy
+  /// version specified in the body. Required before any flow that
+  /// processes special-category data (today: prescription submission).
+  /// IP + user-agent are captured server-side from the HTTP request
+  /// — clients can't fake them.
+  /// </summary>
+  [HttpPost("me/accept-privacy-policy")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> AcceptPrivacyPolicy(
+    [FromBody] AcceptPrivacyPolicyRequest request,
+    CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var ip = HttpContext.Request.Headers["X-Forwarded-For"].ToString();
+    if (string.IsNullOrWhiteSpace(ip))
+      ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+    else
+      ip = ip.Split(',', 2)[0].Trim();
+
+    var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
+    await _privacyPolicyService.AcceptAsync(clientId, request.Version, ip, userAgent, cancellationToken);
+    return Ok(new { accepted = true, version = request.Version });
+  }
+
+  /// <summary>Per-client privacy-policy acceptance status — used by the
+  /// SPA to decide whether to show the accept-modal before sensitive
+  /// flows like prescription submission.</summary>
+  [HttpGet("me/privacy-policy-status")]
+  [Authorize(Roles = nameof(Role.Client))]
+  public async Task<IActionResult> GetPrivacyPolicyStatus(CancellationToken cancellationToken)
+  {
+    var clientId = User.GetRequiredUserId();
+    var status = await _privacyPolicyService.GetStatusForClientAsync(clientId, cancellationToken);
+    return Ok(status);
   }
 }

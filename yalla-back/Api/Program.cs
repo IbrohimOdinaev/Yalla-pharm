@@ -1,5 +1,6 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using Api.Audit;
 using Api.Hubs;
 using Api.Middleware;
 using Api.Startup;
@@ -185,6 +186,25 @@ builder.Services
                   context.Token = accessToken;
               }
               return Task.CompletedTask;
+          },
+          // Cross-check User.IsActive AFTER signature/lifetime are
+          // accepted — already-issued tokens for deactivated accounts
+          // stop working within ~60s (the activation-cache window).
+          // Hits the DB at most once per minute per user; subsequent
+          // requests inside the window are served from IMemoryCache.
+          OnTokenValidated = async context =>
+          {
+              var principal = context.Principal;
+              var idRaw = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+              if (!Guid.TryParse(idRaw, out var userId)) return;
+
+              var checker = context.HttpContext.RequestServices
+                .GetRequiredService<Yalla.Application.Services.IUserActivationChecker>();
+              if (!await checker.IsActiveAsync(userId, context.HttpContext.RequestAborted))
+              {
+                  context.Fail("Account is inactive.");
+              }
           }
       };
   });
@@ -192,6 +212,10 @@ builder.Services
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IRealtimeUpdatesPublisher, SignalRRealtimeUpdatesPublisher>();
+// Audit log infrastructure — HttpContext-bound bits live in the Api
+// layer so the rest of the stack stays HTTP-agnostic.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
 
 // Telegram bot deeplink auth
 builder.Services.Configure<TelegramAuthOptions>(options =>
@@ -431,6 +455,9 @@ if (app.Environment.IsDevelopment())
 // Old embedded frontend disabled — using separate Next.js frontend (yalla-farm-front)
 // app.UseDefaultFiles();
 // app.UseStaticFiles();
+// Correlation id has to land before Serilog request logging so log
+// lines can include it from the very first frame of the request.
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();

@@ -175,6 +175,25 @@ public sealed class PrescriptionsController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>
+    /// Client picks a pharmacy: returns each pharmacy with the
+    /// prescription items it covers (catalog offers + manual lookup
+    /// shadow offers). Each item carries the pharmacy-specific
+    /// medicineId the frontend then passes into the explicit-source
+    /// checkout payload.
+    /// </summary>
+    [HttpGet("{prescriptionId:guid}/pharmacy-options")]
+    [Authorize(Roles = nameof(Role.Client))]
+    public async Task<IActionResult> GetPharmacyOptions(
+      Guid prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        var clientId = User.GetRequiredUserId();
+        var response = await _prescriptionService.GetPharmacyOptionsAsync(
+          clientId, prescriptionId, cancellationToken);
+        return Ok(response);
+    }
+
     // ── SuperAdmin ────────────────────────────────────────────────────────
 
     /// <summary>SuperAdmin queue of prescriptions waiting for the 3 TJS sign-off.</summary>
@@ -265,6 +284,26 @@ public sealed class PrescriptionsController : ControllerBase
           prescriptionId,
           request,
           cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Pharmacist's "I can't decode this" exit — pushes the
+    /// prescription into DecodeFailed and triggers the downstream
+    /// effect dictated by the reason (free credit vs. pending refund).
+    /// Must be the assigned pharmacist and the prescription must be in
+    /// InReview; domain guards both.
+    /// </summary>
+    [HttpPost("pharmacist/{prescriptionId:guid}/decode-failed")]
+    [Authorize(Roles = nameof(Role.Pharmacist))]
+    public async Task<IActionResult> MarkDecodeFailed(
+      Guid prescriptionId,
+      [FromBody] MarkDecodeFailedRequest request,
+      CancellationToken cancellationToken)
+    {
+        var pharmacistId = User.GetRequiredUserId();
+        var response = await _prescriptionService.MarkDecodeFailedAsync(
+          pharmacistId, prescriptionId, request, cancellationToken);
         return Ok(response);
     }
 

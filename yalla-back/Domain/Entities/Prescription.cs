@@ -55,6 +55,31 @@ public class Prescription
 
     public DateTime? UpdatedAtUtc { get; private set; }
 
+    /// <summary>Set when the prescription moves to
+    /// <see cref="PrescriptionStatus.Cancelled"/>. Null on every other
+    /// status; never overwritten once set so re-cancel attempts can't
+    /// rewrite the audit trail.</summary>
+    public DateTime? CancelledAtUtc { get; private set; }
+
+    /// <summary>Why the prescription was cancelled. Null for rows that
+    /// pre-date the field; new cancellations always set both this and
+    /// <see cref="CancelledAtUtc"/>.</summary>
+    public PrescriptionCancellationReason? CancellationReason { get; private set; }
+
+    /// <summary>Pharmacist who marked the prescription as
+    /// undecodable. Null until <see cref="MarkDecodeFailed"/> is
+    /// called. Frozen once set — re-marking is rejected.</summary>
+    public Guid? DecodeFailedByPharmacistId { get; private set; }
+
+    public DateTime? DecodeFailedAtUtc { get; private set; }
+
+    public PrescriptionDecodeFailureReason? DecodeFailureReason { get; private set; }
+
+    /// <summary>Optional pharmacist comment captured at failure time.
+    /// Shown to the client verbatim so they know what to do differently
+    /// for the next attempt. Capped at <see cref="MaxPharmacistCommentLength"/>.</summary>
+    public string? DecodeFailureComment { get; private set; }
+
     public IReadOnlyCollection<PrescriptionImage> Images => _images.AsReadOnly();
 
     public IReadOnlyCollection<PrescriptionChecklistItem> Items => _items.AsReadOnly();
@@ -190,14 +215,74 @@ public class Prescription
     }
 
     public void Cancel()
+        => Cancel(PrescriptionCancellationReason.ClientCancelled);
+
+    /// <summary>
+    /// Move the prescription into the terminal <c>Cancelled</c> state
+    /// with an explicit reason. Idempotent for repeat
+    /// <c>PaymentTimeout</c> calls (already-cancelled prescriptions
+    /// are left untouched) — the timeout worker can re-fire without
+    /// raising; explicit client/pharmacist cancels on a finalised
+    /// prescription still throw because they're logic errors at the
+    /// caller, not benign double-fires.
+    /// </summary>
+    /// <summary>
+    /// Pharmacist's "I can't decode this" exit. Must be the assigned
+    /// pharmacist and the prescription must be in <c>InReview</c>.
+    /// Captures the reason, optional comment, and acting pharmacist
+    /// id for the audit trail. Downstream effects (free credit grant
+    /// vs. pending refund row) are wired in
+    /// <c>PrescriptionService.MarkDecodeFailedAsync</c> — the domain
+    /// itself only flips the status + saves the metadata.
+    /// </summary>
+    public void MarkDecodeFailed(
+      Guid pharmacistId,
+      PrescriptionDecodeFailureReason reason,
+      string? comment)
     {
+        if (pharmacistId == Guid.Empty)
+            throw new DomainArgumentException("PharmacistId can't be empty.");
+
+        if (Status != PrescriptionStatus.InReview)
+            throw new DomainException(
+              $"Prescription must be in {PrescriptionStatus.InReview} to mark as decode-failed; current is {Status}.");
+
+        if (AssignedPharmacistId != pharmacistId)
+            throw new DomainException(
+              "Only the assigned pharmacist can mark a prescription as decode-failed.");
+
+        Status = PrescriptionStatus.DecodeFailed;
+        DecodeFailedByPharmacistId = pharmacistId;
+        DecodeFailedAtUtc = DateTime.UtcNow;
+        DecodeFailureReason = reason;
+        DecodeFailureComment = string.IsNullOrWhiteSpace(comment)
+            ? null
+            : comment.Trim().Length > MaxPharmacistCommentLength
+                ? comment.Trim()[..MaxPharmacistCommentLength]
+                : comment.Trim();
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void Cancel(PrescriptionCancellationReason reason)
+    {
+        if (Status == PrescriptionStatus.Cancelled)
+        {
+            // PaymentTimeout retry is benign — skip. Other reasons hitting
+            // an already-cancelled row are call-site bugs and should fail
+            // loud so we notice.
+            if (reason == PrescriptionCancellationReason.PaymentTimeout) return;
+            throw new DomainException(
+              $"Prescription is already cancelled (reason={CancellationReason}).");
+        }
+
         if (Status is PrescriptionStatus.OrderPlaced
-                   or PrescriptionStatus.MovedToCart
-                   or PrescriptionStatus.Cancelled)
+                   or PrescriptionStatus.MovedToCart)
             throw new DomainException(
               $"Prescription can't be cancelled from {Status} status.");
 
         Status = PrescriptionStatus.Cancelled;
+        CancellationReason = reason;
+        CancelledAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 }

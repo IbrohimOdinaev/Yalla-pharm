@@ -26,7 +26,8 @@ type CheckoutDraftState = {
   /** When set, the checkout submits with `Source.Kind = Explicit` carrying
    *  the prescription items (so the basket isn't read or mutated) and
    *  `Source.PrescriptionId` so the backend transitions the prescription to
-   *  OrderPlaced atomically with the order. Cleared on reset. */
+   *  OrderPlaced atomically with the order, AND skips basket consumption.
+   *  Cleared on reset. */
   prescriptionId: string | null;
   setDraft: (payload: Partial<Pick<CheckoutDraftState, "pharmacyId" | "selectedPharmacyTitle" | "selectedPharmacyItems" | "selectedPharmacyTotalCost" | "ignoredPositionIds" | "deliveryAddress" | "isPickup" | "prescriptionId">>) => void;
   setDeliveryAddressData: (data: DeliveryAddressData | null) => void;

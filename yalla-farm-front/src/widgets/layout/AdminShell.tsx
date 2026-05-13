@@ -4,7 +4,7 @@ import { BottomNav } from "./BottomNav";
 
 export function AdminShell({ children, top }: { children: ReactNode; top?: ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-surface">
+    <div className="flex min-h-screen min-h-svh bg-surface">
       <AdminSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         {top}

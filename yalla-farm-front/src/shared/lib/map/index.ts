@@ -10,9 +10,16 @@ let _provider: JuraMapProvider | null = null;
 
 export function getMapProvider(): MapProvider {
   if (!_provider) {
-    const baseProvider = env.googleMapsApiKey
-      ? new GoogleMapProvider()
-      : new YandexMapProvider();
+    // env.mapProvider is the source of truth — flip
+    // NEXT_PUBLIC_MAP_PROVIDER to switch the geocoder/suggester used by
+    // the address picker without touching call sites. Falls back to the
+    // other provider if its key is missing.
+    const useYandex = env.mapProvider === "yandex" || !env.googleMapsApiKey;
+    const baseProvider = useYandex && env.yandexMapsApiKey
+      ? new YandexMapProvider()
+      : env.googleMapsApiKey
+        ? new GoogleMapProvider()
+        : new YandexMapProvider();
     _provider = new JuraMapProvider(baseProvider);
   }
   return _provider;

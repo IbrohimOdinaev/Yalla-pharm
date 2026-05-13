@@ -83,6 +83,39 @@ public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
           .HasColumnType("timestamp")
           .IsRequired(false);
 
+        builder.Property(x => x.CancelledAtUtc)
+          .HasColumnName("cancelled_at_utc")
+          .HasColumnType("timestamp")
+          .IsRequired(false);
+
+        builder.Property(x => x.CancellationReason)
+          .HasColumnName("cancellation_reason")
+          .HasColumnType("integer")
+          .HasConversion<int?>()
+          .IsRequired(false);
+
+        builder.Property(x => x.DecodeFailedByPharmacistId)
+          .HasColumnName("decode_failed_by_pharmacist_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
+        builder.Property(x => x.DecodeFailedAtUtc)
+          .HasColumnName("decode_failed_at_utc")
+          .HasColumnType("timestamp")
+          .IsRequired(false);
+
+        builder.Property(x => x.DecodeFailureReason)
+          .HasColumnName("decode_failure_reason")
+          .HasColumnType("integer")
+          .HasConversion<int?>()
+          .IsRequired(false);
+
+        builder.Property(x => x.DecodeFailureComment)
+          .HasColumnName("decode_failure_comment")
+          .HasColumnType("character varying(2000)")
+          .HasMaxLength(2000)
+          .IsRequired(false);
+
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_prescriptions_client_id");
 

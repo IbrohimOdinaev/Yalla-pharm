@@ -667,7 +667,10 @@ function OrderCard({
               {!pos.isRejected ? (
                 <input type="checkbox" checked={selectedPositions.has(pos.positionId)} onChange={() => togglePosition(pos.positionId)} />
               ) : null}
-              <span>{pos.medicine?.title ?? pos.medicineId.slice(0, 8)} × {pos.quantity}</span>
+              <span>
+                {pos.medicine?.title ?? pos.medicineId.slice(0, 8)}
+                {" "}× {pos.useUnitMode && pos.unitCount != null ? `${pos.unitCount} шт.` : pos.quantity}
+              </span>
             </label>
           ))}
           {selectedPositions.size > 0 ? (

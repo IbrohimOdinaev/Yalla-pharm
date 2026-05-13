@@ -67,6 +67,15 @@ export type DecodePrescriptionItemInput = {
    *  sibling becomes the analog. Server resolves indices to GUIDs after
    *  creating the rows. Self-reference / cycles / out-of-bounds rejected. */
   analogIndex?: number | null;
+  /** When set, the server preserves the lookup binding for this manual
+   *  line and closes the request once the checklist is submitted. */
+  lookupRequestId?: string | null;
+  /** Pharmacist switched the row into "by units" pricing. Required:
+   *  `unitCount` ≥ 1 and `unitTotalPrice` > 0. Server stores it on the
+   *  checklist item and propagates to OrderPosition at checkout. */
+  useUnitMode?: boolean;
+  unitCount?: number | null;
+  unitTotalPrice?: number | null;
 };
 
 export async function submitChecklist(
@@ -77,5 +86,20 @@ export async function submitChecklist(
   return apiFetch<ApiPrescription>(
     `/api/prescriptions/pharmacist/${prescriptionId}/decode`,
     { method: "POST", token, body: input },
+  );
+}
+
+/** Pharmacist's "I can't decode this" exit. Reason is required —
+ *  PoorImageQuality grants the client a free credit, IllegibleHandwriting
+ *  creates a PendingRefund row for SuperAdmin. */
+export async function markPrescriptionDecodeFailed(
+  token: string,
+  prescriptionId: string,
+  reason: "PoorImageQuality" | "IllegibleHandwriting",
+  comment?: string | null,
+): Promise<ApiPrescription> {
+  return apiFetch<ApiPrescription>(
+    `/api/prescriptions/pharmacist/${prescriptionId}/decode-failed`,
+    { method: "POST", token, body: { reason, comment: comment ?? null } },
   );
 }

@@ -83,7 +83,7 @@ export default function PharmacistQueuePage() {
 
   const byStatus: Record<PrescriptionStatus, ApiPrescription[]> = {
     Submitted: [], AwaitingConfirmation: [], InQueue: [], InReview: [],
-    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [],
+    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [], DecodeFailed: [],
   };
   for (const p of items) byStatus[p.status]?.push(p);
   // Pending work — sort oldest first so the queue is FIFO; the longest-waiting

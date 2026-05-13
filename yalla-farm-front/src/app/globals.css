@@ -72,6 +72,13 @@ h1, h2, h3, h4 {
 
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  /* Stacks safe-area on top of an existing base padding. Use on
+     bottom-sheet modals that already have content padding (p-5) but
+     need to push action buttons clear of the home indicator. */
+  .pb-safe-1 { padding-bottom: calc(0.25rem + env(safe-area-inset-bottom)); }
+  .pb-safe-2 { padding-bottom: calc(0.5rem  + env(safe-area-inset-bottom)); }
+  .pb-safe-4 { padding-bottom: calc(1rem    + env(safe-area-inset-bottom)); }
+  .pb-safe-5 { padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
 }
 
 /* `overflow-x: hidden` on html/body would break `position: sticky` on the

@@ -1,9 +1,21 @@
+/** Active map renderer + geocoder. Set via `NEXT_PUBLIC_MAP_PROVIDER`;
+ *  defaults to `yandex` when its key is configured (otherwise falls
+ *  through to `google`). The Google integration is kept around as a
+ *  fallback while the Yandex migration settles — flip the env var to
+ *  switch back without rebuilding the bundle's wiring. */
+function resolveMapProvider(): "yandex" | "google" {
+  const raw = (process.env.NEXT_PUBLIC_MAP_PROVIDER ?? "").trim().toLowerCase();
+  if (raw === "yandex" || raw === "google") return raw;
+  return process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY ? "yandex" : "google";
+}
+
 export const env = {
   apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
   signalRUpdatesHubUrl: process.env.NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL ?? "/hubs/updates",
   signalRTelegramAuthHubUrl: process.env.NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL ?? "/hubs/telegram-auth",
   yandexMapsApiKey: process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY ?? "",
   googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+  mapProvider: resolveMapProvider(),
 } as const;
 
 /**
@@ -43,9 +55,14 @@ export function validateEnv(): { errors: string[]; warnings: string[] } {
     );
   }
 
-  if (!env.googleMapsApiKey) {
+  if (env.mapProvider === "yandex" && !env.yandexMapsApiKey) {
     warnings.push(
-      "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is empty. Pharmacy map + address picker will fall back to a placeholder.",
+      "NEXT_PUBLIC_YANDEX_MAPS_API_KEY is empty while NEXT_PUBLIC_MAP_PROVIDER=yandex. Maps will render an error placeholder.",
+    );
+  }
+  if (env.mapProvider === "google" && !env.googleMapsApiKey) {
+    warnings.push(
+      "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is empty while NEXT_PUBLIC_MAP_PROVIDER=google. Pharmacy map + address picker will fall back to a placeholder.",
     );
   }
 

@@ -12,7 +12,12 @@ import {
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { AuthedImage, Icon } from "@/shared/ui";
 
-const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview", "Decoded"];
+// Decoded prescriptions are intentionally excluded from the picker —
+// once the pharmacist hits "Отправить чек-лист" the work is done and
+// the row belongs in /pharmacist/history (read-only), not the active
+// picker. Reopening it here would let the pharmacist edit a frozen
+// submission, which we don't allow.
+const STATUS_ORDER: PrescriptionStatus[] = ["InQueue", "InReview"];
 
 /**
  * Modal opened from the header pill. Shows a status-grouped list of every
@@ -61,7 +66,7 @@ export function PrescriptionPickerModal() {
   // Group by status for visual clarity — same ordering across renders.
   const byStatus: Record<PrescriptionStatus, ApiPrescription[]> = {
     Submitted: [], AwaitingConfirmation: [], InQueue: [], InReview: [],
-    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [],
+    Decoded: [], OrderPlaced: [], MovedToCart: [], Cancelled: [], DecodeFailed: [],
   };
   for (const p of items) byStatus[p.status]?.push(p);
 
@@ -86,7 +91,7 @@ export function PrescriptionPickerModal() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 pb-safe-4 sm:pb-4">
           {error ? (
             <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
           ) : null}

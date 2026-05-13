@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
@@ -24,14 +25,15 @@ const STATUS_TONE: Record<PrescriptionStatus, "primary" | "warning" | "success" 
   OrderPlaced: "success",
   MovedToCart: "primary",
   Cancelled: "danger",
+  DecodeFailed: "danger",
 };
 
-// Anything past the pharmacist's hand-off (a finished checklist) is moved
-// to the "История" section. Statuses still in the active pipeline (uploaded,
-// awaiting payment / decoding) stay at the top so the client always sees
-// the in-flight requests first.
+// "Активные" keeps everything still actionable for the client — including
+// Decoded (готов чек-лист, ждёт оформления заказа или перевода в корзину).
+// "История" is for prescriptions whose checklist already ended up
+// somewhere: an order was placed, the items moved to the regular cart,
+// or the request was cancelled.
 const HISTORY_STATUSES: ReadonlySet<PrescriptionStatus> = new Set<PrescriptionStatus>([
-  "Decoded",
   "OrderPlaced",
   "MovedToCart",
   "Cancelled",
@@ -116,6 +118,8 @@ export default function MyPrescriptionsPage() {
   );
 }
 
+type Tab = "active" | "history";
+
 function Sections({ prescriptions }: { prescriptions: ApiPrescription[] }) {
   const { active, history } = useMemo(() => {
     const a: ApiPrescription[] = [];
@@ -127,37 +131,57 @@ function Sections({ prescriptions }: { prescriptions: ApiPrescription[] }) {
     return { active: a, history: h };
   }, [prescriptions]);
 
+  // Default to whichever tab actually has rows. Falls back to "active"
+  // when both are empty so the empty-state of the active tab shows.
+  const [tab, setTab] = useState<Tab>(active.length === 0 && history.length > 0 ? "history" : "active");
+  const list = tab === "active" ? active : history;
+
   return (
-    <div className="space-y-6">
-      {active.length > 0 ? (
-        <Section title="Активные" count={active.length}>
-          <ul className="space-y-3">
-            {active.map((p) => <Row key={p.prescriptionId} p={p} />)}
-          </ul>
-        </Section>
-      ) : null}
-      {history.length > 0 ? (
-        <Section title="История" count={history.length} muted>
-          <ul className="space-y-3">
-            {history.map((p) => <Row key={p.prescriptionId} p={p} />)}
-          </ul>
-        </Section>
-      ) : null}
+    <div className="space-y-4">
+      <div className="flex gap-2 rounded-full bg-surface-container-low p-1">
+        <TabButton
+          label="Активные"
+          count={active.length}
+          isActive={tab === "active"}
+          onClick={() => setTab("active")}
+        />
+        <TabButton
+          label="История"
+          count={history.length}
+          isActive={tab === "history"}
+          onClick={() => setTab("history")}
+        />
+      </div>
+
+      {list.length === 0 ? (
+        <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
+          {tab === "active" ? "Активных рецептов нет." : "В истории пусто."}
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {list.map((p) => <Row key={p.prescriptionId} p={p} />)}
+        </ul>
+      )}
     </div>
   );
 }
 
-function Section({ title, count, muted, children }: { title: string; count: number; muted?: boolean; children: React.ReactNode }) {
+function TabButton({ label, count, isActive, onClick }: { label: string; count: number; isActive: boolean; onClick: () => void }) {
   return (
-    <section>
-      <header className="mb-2 flex items-baseline gap-2 px-1">
-        <h2 className={`font-display text-base font-extrabold ${muted ? "text-on-surface-variant" : "text-on-surface"}`}>
-          {title}
-        </h2>
-        <span className="text-xs text-on-surface-variant">· {count}</span>
-      </header>
-      {children}
-    </section>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
+        isActive
+          ? "bg-surface-container-lowest text-on-surface shadow-card"
+          : "text-on-surface-variant hover:bg-surface-container"
+      }`}
+    >
+      <span>{label}</span>
+      <span className={`text-xs font-extrabold tabular-nums ${isActive ? "text-primary" : "text-on-surface-variant/60"}`}>
+        {count}
+      </span>
+    </button>
   );
 }
 
@@ -177,6 +201,7 @@ function Row({ p }: { p: ApiPrescription }) {
           <AuthedImage
             src={cover?.url}
             alt=""
+            lazy
             className="h-full w-full object-cover"
             fallback={
               <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">

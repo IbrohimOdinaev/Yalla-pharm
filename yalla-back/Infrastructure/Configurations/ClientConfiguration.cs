@@ -10,6 +10,39 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
     {
         builder.HasBaseType<User>();
 
+        // Privacy-policy acceptance fields stored on the TPH client row
+        // (the discriminator is "client" — see UserConfiguration). All
+        // nullable so existing clients that pre-date the gate keep
+        // working until they accept; the application layer enforces
+        // acceptance before any sensitive flow.
+        builder.Property(x => x.PrivacyPolicyVersionAccepted)
+          .HasColumnName("privacy_policy_version_accepted")
+          .HasColumnType("character varying(64)")
+          .HasMaxLength(64)
+          .IsRequired(false);
+
+        builder.Property(x => x.PrivacyPolicyAcceptedAtUtc)
+          .HasColumnName("privacy_policy_accepted_at_utc")
+          .HasColumnType("timestamp without time zone")
+          .HasConversion(
+            value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified) : value,
+            value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value)
+          .IsRequired(false);
+
+        builder.Property(x => x.PrivacyPolicyAcceptedFromIp)
+          .HasColumnName("privacy_policy_accepted_from_ip")
+          .HasColumnType("character varying(64)")
+          .HasMaxLength(64)
+          .IsRequired(false);
+
+        // One-shot free-decoding credit. Default false at SQL level so
+        // existing rows keep their current "pays normally" behaviour.
+        builder.Property(x => x.HasFreePrescriptionCredit)
+          .HasColumnName("has_free_prescription_credit")
+          .HasColumnType("boolean")
+          .HasDefaultValue(false)
+          .IsRequired();
+
         builder.HasMany(x => x.Orders)
           .WithOne()
           .HasForeignKey(x => x.ClientId);

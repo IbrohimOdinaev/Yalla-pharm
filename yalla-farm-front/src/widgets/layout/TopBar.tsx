@@ -160,7 +160,10 @@ export function TopBar({
         title={addressTitle ? addressText : undefined}
       >
         <Icon name="pin" size={14} className="flex-shrink-0 text-secondary" />
-        <span className="truncate max-w-[120px] sm:max-w-[160px] lg:max-w-[140px] xl:max-w-[200px] text-on-surface">
+        {/* Address text capped 20% tighter than before so the search
+            bar has more room to breathe. Long addresses still fit
+            with ellipsis; the full string lives in the title hover. */}
+        <span className="truncate max-w-[96px] sm:max-w-[128px] lg:max-w-[112px] xl:max-w-[160px] text-on-surface">
           {addressTitle || addressText || "Выберите адрес"}
         </span>
         <Icon name="chevron-down" size={12} className="flex-shrink-0 text-on-surface-variant" />
@@ -250,14 +253,14 @@ export function TopBar({
         <button
           type="button"
           onClick={onSearchClick}
-          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1072px]"
+          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1543px]"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1072px]"
+          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1543px]"
         >
           {SearchInner}
         </Link>
@@ -283,44 +286,57 @@ export function TopBar({
       )
     ) : null;
 
-    // Inline cart button — used in both the desktop block and the mobile
-    // block. Both states are hidden below `sm` so phone screens never see
-    // the in-header pill (the floating pill below covers phones). The outer
-    // block's `lg:flex` / `lg:hidden` then gates further; effectively:
-    //   • desktop block: visible at lg+
-    //   • mobile block:  visible at sm..md
+    // Inline cart button — single morphing element so the empty↔filled
+    // transition doesn't shift any sibling buttons.
     //
-    // Empty state is a simple round capsule with just the bag icon; filled
-    // state expands into a wider pill that fits the price text comfortably.
-    // The two flex-1 elements in the header (search bar + trailing spacer)
-    // absorb the width delta on transition, so address/pharmacy/profile
-    // buttons keep their size.
-    const CartButton =
-      cartCount > 0 ? (
-        <Link
-          href="/cart"
-          aria-label={
-            bestPrice
-              ? `Корзина, от ${formatMoney(bestPrice.price)}`
-              : `Корзина, ${cartCount} товаров`
-          }
-          className="relative hidden h-11 w-[164px] flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#3FC5C4] px-5 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-12 sm:w-[180px] sm:gap-2.5 sm:px-6"
+    // The container has a *fixed* width (180px desktop / 164px below),
+    // matching the wider "filled" state. When the cart is empty we
+    // collapse the visible pill inside via inline left+width clamp so
+    // it reads as a compact round capsule, while the outer footprint
+    // keeps the surrounding header layout still. Going empty → filled
+    // animates the inner pill outward without nudging the search bar,
+    // address, profile, etc.
+    const cartFilled = cartCount > 0;
+    const CartButton = (
+      <Link
+        href="/cart"
+        aria-label={
+          cartFilled
+            ? (bestPrice
+                ? `Корзина, от ${formatMoney(bestPrice.price)}`
+                : `Корзина, ${cartCount} товаров`)
+            : "Корзина"
+        }
+        // Outer slot: fixed size, always reserved. Hides below `sm` so
+        // phones use the floating pill instead.
+        className="relative hidden h-11 w-[164px] flex-shrink-0 sm:block sm:h-12 sm:w-[180px]"
+      >
+        {/* Morphing pill — absolutely positioned inside the slot.
+            Empty state: collapses to a round 44×44 (sm: 48×48) circle
+            docked to the right edge, so the bag icon sits in a true
+            square and reads as a circle, not a stretched oval. Math:
+            slot width − pill width = left offset. Mobile 164−44=120;
+            sm 180−48=132. Filled state: expands to fill the whole
+            slot. left + padding + text opacity all transition together
+            for a smooth morph; nothing outside the slot moves. */}
+        <span
+          className={`absolute inset-y-0 right-0 flex items-center justify-center gap-0 rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-all duration-300 hover:bg-[#35B7B6] sm:gap-2.5
+            ${cartFilled ? "left-0 px-5 sm:px-6" : "left-[120px] sm:left-[132px] px-0"}`}
         >
-          <Icon name="bag" size={20} strokeWidth={2.4} className="flex-shrink-0" />
-          <span className="font-display text-sm font-black tabular-nums whitespace-nowrap sm:text-[15px]">
-            {bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`}
+          <Icon name="bag" size={20} strokeWidth={cartFilled ? 2.4 : 2.2} className="flex-shrink-0" />
+          {/* Price label — slides in / out on the right. opacity +
+              max-width carry the animation; the actual text only
+              renders when cartFilled is true so an empty cart never
+              has a screen-reader-spoofable hidden "от 0 TJS". */}
+          <span
+            className={`overflow-hidden whitespace-nowrap font-display text-sm font-black tabular-nums transition-all duration-300 sm:text-[15px]
+              ${cartFilled ? "max-w-[140px] opacity-100" : "max-w-0 opacity-0"}`}
+          >
+            {cartFilled ? (bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`) : ""}
           </span>
-        </Link>
-      ) : (
-        // Empty state — compact round capsule like the original design.
-        <Link
-          href="/cart"
-          className="relative hidden h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:flex sm:h-11 sm:w-11"
-          aria-label="Корзина"
-        >
-          <Icon name="bag" size={20} strokeWidth={2.2} />
-        </Link>
-      );
+        </span>
+      </Link>
+    );
 
     const renderProfileButton = (ref: RefObject<HTMLDivElement | null>) => (
       <div className="relative flex-shrink-0" ref={ref}>

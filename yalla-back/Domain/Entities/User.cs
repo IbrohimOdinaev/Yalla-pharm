@@ -23,6 +23,20 @@ public class User
 
     public string? TelegramUsername { get; private protected set; }
 
+    /// <summary>Per-account active flag. False blocks login and any
+    /// already-issued access token after a short cache window (~60s)
+    /// via the JWT validation handler. Clients are always active —
+    /// the flag exists for staff accounts (PharmacyWorker /
+    /// Pharmacist) but lives on the base class so future role types
+    /// inherit the behaviour for free.</summary>
+    public bool IsActive { get; private protected set; } = true;
+
+    public DateTime? DeactivatedAtUtc { get; private protected set; }
+
+    public Guid? DeactivatedByUserId { get; private protected set; }
+
+    public string? DeactivationReason { get; private protected set; }
+
     private protected User() { }
 
     public User(
@@ -125,4 +139,48 @@ public class User
         DateOfBirth = dateOfBirth;
     }
 
+    /// <summary>
+    /// Mark this account inactive. Subsequent login attempts are
+    /// rejected with the same error code as a wrong password (to
+    /// avoid account enumeration). Already-issued access tokens stop
+    /// working within ~60 seconds via the JWT validation handler's
+    /// IMemoryCache window.
+    /// </summary>
+    /// <param name="deactivatedByUserId">Acting SuperAdmin.</param>
+    /// <param name="reason">Free-form reason captured for audit/UI.
+    /// Truncated to 500 chars.</param>
+    /// <param name="deactivatedAtUtc">UTC timestamp.</param>
+    public void Deactivate(Guid deactivatedByUserId, string? reason, DateTime deactivatedAtUtc)
+    {
+        if (deactivatedByUserId == Guid.Empty)
+            throw new DomainArgumentException("DeactivatedByUserId can't be empty.");
+
+        IsActive = false;
+        DeactivatedByUserId = deactivatedByUserId;
+        DeactivatedAtUtc = deactivatedAtUtc.Kind == DateTimeKind.Utc
+            ? deactivatedAtUtc
+            : DateTime.SpecifyKind(deactivatedAtUtc, DateTimeKind.Utc);
+        DeactivationReason = string.IsNullOrWhiteSpace(reason)
+            ? null
+            : reason.Trim().Length > 500
+                ? reason.Trim()[..500]
+                : reason.Trim();
+    }
+
+    /// <summary>
+    /// Restore an inactive account. Clears deactivation metadata so
+    /// future deactivations don't see stale state if the account is
+    /// re-deactivated later — each deactivation event should be a
+    /// fresh capture.
+    /// </summary>
+    public void Activate(Guid activatedByUserId)
+    {
+        if (activatedByUserId == Guid.Empty)
+            throw new DomainArgumentException("ActivatedByUserId can't be empty.");
+
+        IsActive = true;
+        DeactivatedAtUtc = null;
+        DeactivatedByUserId = null;
+        DeactivationReason = null;
+    }
 }

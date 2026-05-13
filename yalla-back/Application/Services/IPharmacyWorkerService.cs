@@ -49,4 +49,21 @@ public interface IPharmacyWorkerService
       DeletePharmacyWorkerRequest request,
       Guid pharmacyId,
       CancellationToken cancellationToken = default);
+
+    /// <summary>Mark the pharmacy worker inactive. Login is rejected
+    /// immediately; already-issued access tokens stop being honoured
+    /// within ~60s via the JWT validation handler's cache window.
+    /// In-flight work (Preparing orders) is NOT auto-reassigned —
+    /// the response carries a warning + count so the SuperAdmin can
+    /// re-route those manually.</summary>
+    Task<DeactivateUserResponse> DeactivatePharmacyWorkerAsync(
+      Guid workerId,
+      Guid superAdminId,
+      DeactivateUserRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<DeactivateUserResponse> ActivatePharmacyWorkerAsync(
+      Guid workerId,
+      Guid superAdminId,
+      CancellationToken cancellationToken = default);
 }

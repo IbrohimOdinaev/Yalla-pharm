@@ -31,6 +31,24 @@ public class Medicine
     public Guid? CategoryId { get; private set; }
     public Category? Category { get; private set; }
 
+    /// <summary>
+    /// Shadow medicines materialised from a manual prescription lookup are
+    /// flagged as non-catalog (default <c>true</c>). They power per-pharmacy
+    /// temp-offers for out-of-catalog prescription items but stay out of
+    /// catalog listings, search indexing and medicine pickers.
+    /// </summary>
+    public bool IsCatalogMedicine { get; private set; } = true;
+
+    /// <summary>FK to <see cref="ManualItemLookupRequest"/> when this row is
+    /// a shadow medicine materialised from that lookup. Null for regular
+    /// catalog medicines.</summary>
+    public Guid? ManualLookupRequestId { get; private set; }
+
+    /// <summary>FK to the specific <see cref="ManualItemLookupResponse"/>
+    /// (one-of-N pharmacy answers) this shadow row corresponds to. Null for
+    /// regular catalog medicines.</summary>
+    public Guid? ManualLookupResponseId { get; private set; }
+
     private readonly List<Atribute> _atributes = new();
 
     private readonly List<Offer> _offers = new();
@@ -201,5 +219,41 @@ public class Medicine
     {
         _offers.Clear();
         _offers.AddRange(offers);
+    }
+
+    /// <summary>
+    /// Build a shadow medicine row that materialises a single pharmacy's
+    /// answer to a manual lookup request. The row is intentionally hidden
+    /// from the catalog (<see cref="IsCatalogMedicine"/> = false) but acts
+    /// as a real Medicine for the order pipeline (pharmacy options,
+    /// checkout, OrderPosition). The <paramref name="articul"/> must be
+    /// unique across the catalog — caller is expected to use a
+    /// well-namespaced value (e.g. <c>manual-{responseId}</c>).
+    /// </summary>
+    public static Medicine ForManualLookup(
+      string title,
+      string articul,
+      Guid manualLookupRequestId,
+      Guid manualLookupResponseId)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new DomainArgumentException("Medicine.Title can't be null or whitespace.");
+        if (string.IsNullOrWhiteSpace(articul))
+            throw new DomainArgumentException("Medicine.Articul can't be null or whitespace.");
+        if (manualLookupRequestId == Guid.Empty)
+            throw new DomainArgumentException("ManualLookupRequestId can't be empty.");
+        if (manualLookupResponseId == Guid.Empty)
+            throw new DomainArgumentException("ManualLookupResponseId can't be empty.");
+
+        return new Medicine
+        {
+            Id = Guid.NewGuid(),
+            Title = title.Trim(),
+            Articul = articul.Trim(),
+            IsActive = true,
+            IsCatalogMedicine = false,
+            ManualLookupRequestId = manualLookupRequestId,
+            ManualLookupResponseId = manualLookupResponseId
+        };
     }
 }

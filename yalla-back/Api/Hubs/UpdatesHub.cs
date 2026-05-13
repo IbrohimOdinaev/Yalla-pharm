@@ -9,6 +9,10 @@ public sealed class UpdatesHub : Hub
 {
   public const string SuperAdminGroup = "role:SuperAdmin";
   public const string PharmacistGroup = "role:Pharmacist";
+  /// <summary>Single broadcast group for every connected pharmacy admin —
+  /// used by manual-lookup notifications so admins of all pharmacies see
+  /// new requests / closures in real time.</summary>
+  public const string AdminGroup = "role:Admin";
 
   public override async Task OnConnectedAsync()
   {
@@ -23,6 +27,10 @@ public sealed class UpdatesHub : Hub
       // prescription queue can refetch on any state change without
       // the publisher needing per-user routing.
       await Groups.AddToGroupAsync(Context.ConnectionId, PharmacistGroup);
+    }
+    else if (string.Equals(role, "Admin", StringComparison.Ordinal))
+    {
+      await Groups.AddToGroupAsync(Context.ConnectionId, AdminGroup);
     }
 
     // Add admin to pharmacy group

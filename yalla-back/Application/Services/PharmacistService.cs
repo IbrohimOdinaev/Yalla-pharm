@@ -4,6 +4,8 @@ using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Domain.Entities;
+using Yalla.Domain.Enums;
+using Yalla.Domain.Exceptions;
 
 namespace Yalla.Application.Services;
 
@@ -11,11 +13,16 @@ public sealed class PharmacistService : IPharmacistService
 {
     private readonly IAppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IAuditLogger? _auditLogger;
 
-    public PharmacistService(IAppDbContext dbContext, IPasswordHasher passwordHasher)
+    public PharmacistService(
+      IAppDbContext dbContext,
+      IPasswordHasher passwordHasher,
+      IAuditLogger? auditLogger = null)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
+        _auditLogger = auditLogger;
     }
 
     public async Task<RegisterPharmacistResponse> RegisterAsync(
@@ -82,5 +89,107 @@ public sealed class PharmacistService : IPharmacistService
 
         _dbContext.Users.Remove(pharmacist);
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<DeactivateUserResponse> DeactivateAsync(
+      Guid pharmacistId,
+      Guid superAdminId,
+      DeactivateUserRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (pharmacistId == Guid.Empty)
+            throw new DomainArgumentException("PharmacistId can't be empty.");
+        if (superAdminId == Guid.Empty)
+            throw new DomainArgumentException("SuperAdminId can't be empty.");
+
+        var pharmacist = await _dbContext.Pharmacists
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == pharmacistId, cancellationToken)
+          ?? throw new InvalidOperationException(
+            $"Pharmacist '{pharmacistId}' was not found.");
+
+        if (!pharmacist.IsActive)
+            throw new ConflictException(
+              $"Pharmacist '{pharmacistId}' is already inactive.");
+
+        var openReviewsCount = await _dbContext.Prescriptions
+          .AsNoTracking()
+          .CountAsync(p => p.AssignedPharmacistId == pharmacistId
+                        && p.Status == PrescriptionStatus.InReview,
+                      cancellationToken);
+
+        pharmacist.Deactivate(superAdminId, request.Reason, DateTime.UtcNow);
+
+        if (_auditLogger is not null)
+        {
+            await _auditLogger.LogAsync(
+              AuditAction.Deleted,
+              entityType: "Pharmacist",
+              entityId: pharmacist.Id,
+              summary: $"Pharmacist {pharmacist.Id} deactivated by SuperAdmin {superAdminId}.",
+              payload: new
+              {
+                  superAdminId,
+                  reason = request.Reason,
+                  openReviewsCountAtDeactivation = openReviewsCount,
+              },
+              cancellationToken: cancellationToken);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateUserResponse
+        {
+            UserId = pharmacist.Id,
+            IsActive = false,
+            OpenWorkItemsCount = openReviewsCount,
+            Warning = openReviewsCount > 0
+              ? $"У фармацевта {openReviewsCount} активных расшифровок — назначьте их другому фармацевту."
+              : null,
+        };
+    }
+
+    public async Task<DeactivateUserResponse> ActivateAsync(
+      Guid pharmacistId,
+      Guid superAdminId,
+      CancellationToken cancellationToken = default)
+    {
+        if (pharmacistId == Guid.Empty)
+            throw new DomainArgumentException("PharmacistId can't be empty.");
+        if (superAdminId == Guid.Empty)
+            throw new DomainArgumentException("SuperAdminId can't be empty.");
+
+        var pharmacist = await _dbContext.Pharmacists
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.Id == pharmacistId, cancellationToken)
+          ?? throw new InvalidOperationException(
+            $"Pharmacist '{pharmacistId}' was not found.");
+
+        if (pharmacist.IsActive)
+            throw new ConflictException(
+              $"Pharmacist '{pharmacistId}' is already active.");
+
+        pharmacist.Activate(superAdminId);
+
+        if (_auditLogger is not null)
+        {
+            await _auditLogger.LogAsync(
+              AuditAction.Created,
+              entityType: "Pharmacist",
+              entityId: pharmacist.Id,
+              summary: $"Pharmacist {pharmacist.Id} reactivated by SuperAdmin {superAdminId}.",
+              payload: new { superAdminId },
+              cancellationToken: cancellationToken);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateUserResponse
+        {
+            UserId = pharmacist.Id,
+            IsActive = true,
+            OpenWorkItemsCount = 0,
+        };
     }
 }

@@ -1,0 +1,130 @@
+# ============================================
+# DEV override — auto-merged on top of docker-compose.yml by plain
+# `docker compose up` (Compose's default override discovery). Adds the
+# local Postgres / MinIO / OpenSearch stack, exposes host ports for
+# direct browser/curl access, and wires API health-gates onto them.
+#
+# Usage: docker compose --env-file .env.dev up -d --build
+#
+# Heads up: never `down -v` here — the postgres-data + minio-data
+# volumes hold real local dev state (catalog, prescriptions, MinIO
+# objects). They're declared `external: true` on purpose so a stray
+# `docker compose down -v` can't drop them.
+# ============================================
+
+services:
+
+  front:
+    image: yalla/front:dev
+    ports:
+      - "3000:3000"
+
+  api:
+    image: yalla/api:dev
+    ports:
+      - "5000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    container_name: yalla-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-app_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - yalla-net
+
+  minio:
+    image: minio/minio
+    container_name: yalla-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      # 9000 — S3 API, 9001 — admin console (login: minioadmin/minioadmin).
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - yalla-net
+
+  # OpenSearch replaces the previous Elasticsearch container — same
+  # REST surface (it's a fork of ES 7.10, so the existing raw-HttpClient
+  # search engine in Infrastructure works unchanged). Security plugin
+  # is disabled because this is local dev only; never do this in prod.
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: yalla-opensearch
+    restart: unless-stopped
+    environment:
+      - cluster.name=yalla-search
+      - node.name=os-node-1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx512m
+      # No HTTPS / no auth in dev — DISABLE_SECURITY_PLUGIN turns the
+      # demo certificates + internal users off so requests are plain
+      # HTTP. DISABLE_INSTALL_DEMO_CONFIG skips the bundled cert
+      # generation step that otherwise runs on every cold start.
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - yalla-net
+
+volumes:
+  # Declared external so a stray `docker compose down -v` can't wipe
+  # the local dev catalog / minio object store. Create them once:
+  #   docker volume create postgres-data
+  #   docker volume create minio-data
+  postgres-data:
+    external: true
+  minio-data:
+    external: true
+  # OpenSearch data is safe to recreate — it's a derived index of the
+  # catalog and the API re-syncs it on boot via the reindex hosted
+  # service. So it stays internal (lifecycle tied to the compose project).
+  opensearch-data:

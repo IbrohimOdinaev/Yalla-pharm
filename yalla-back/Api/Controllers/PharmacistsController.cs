@@ -1,3 +1,4 @@
+using Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Yalla.Application.DTO.Request;
@@ -41,5 +42,36 @@ public sealed class PharmacistsController : ControllerBase
     {
         await _pharmacistService.DeleteAsync(pharmacistId, cancellationToken);
         return Ok();
+    }
+
+    /// <summary>Mark a pharmacist inactive. Login is rejected; tokens
+    /// stop working within ~60s. In-flight InReview prescriptions are
+    /// NOT auto-reassigned — the response carries a warning + count
+    /// so the SuperAdmin can re-route them manually.</summary>
+    [HttpPost("{pharmacistId:guid}/deactivate")]
+    public async Task<IActionResult> Deactivate(
+      Guid pharmacistId,
+      [FromBody] DeactivateUserRequest request,
+      [FromServices] IUserActivationChecker activationChecker,
+      CancellationToken cancellationToken)
+    {
+        var superAdminId = User.GetRequiredUserId();
+        var response = await _pharmacistService.DeactivateAsync(
+          pharmacistId, superAdminId, request, cancellationToken);
+        activationChecker.Invalidate(pharmacistId);
+        return Ok(response);
+    }
+
+    [HttpPost("{pharmacistId:guid}/activate")]
+    public async Task<IActionResult> Activate(
+      Guid pharmacistId,
+      [FromServices] IUserActivationChecker activationChecker,
+      CancellationToken cancellationToken)
+    {
+        var superAdminId = User.GetRequiredUserId();
+        var response = await _pharmacistService.ActivateAsync(
+          pharmacistId, superAdminId, cancellationToken);
+        activationChecker.Invalidate(pharmacistId);
+        return Ok(response);
     }
 }

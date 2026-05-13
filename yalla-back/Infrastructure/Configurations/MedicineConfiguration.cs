@@ -63,6 +63,22 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .HasColumnType("uuid")
           .IsRequired(false);
 
+        builder.Property(x => x.IsCatalogMedicine)
+          .HasColumnName("is_catalog_medicine")
+          .HasColumnType("boolean")
+          .HasDefaultValue(true)
+          .IsRequired();
+
+        builder.Property(x => x.ManualLookupRequestId)
+          .HasColumnName("manual_lookup_request_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
+        builder.Property(x => x.ManualLookupResponseId)
+          .HasColumnName("manual_lookup_response_id")
+          .HasColumnType("uuid")
+          .IsRequired(false);
+
         builder.HasOne(x => x.Category)
           .WithMany(x => x.Medicines)
           .HasForeignKey(x => x.CategoryId)
@@ -91,6 +107,22 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
 
         builder.HasIndex(x => x.CategoryId)
           .HasDatabaseName("ix_medicines_category_id");
+
+        // Filtered indexes for the manual-lookup shadow-medicine path.
+        // Catalog rows are by far the majority — keep the indexes small
+        // by indexing only the non-null tail.
+        builder.HasIndex(x => x.IsCatalogMedicine)
+          .HasFilter("is_catalog_medicine = false")
+          .HasDatabaseName("ix_medicines_non_catalog");
+
+        builder.HasIndex(x => x.ManualLookupRequestId)
+          .HasFilter("manual_lookup_request_id IS NOT NULL")
+          .HasDatabaseName("ix_medicines_manual_lookup_request_id");
+
+        builder.HasIndex(x => x.ManualLookupResponseId)
+          .IsUnique()
+          .HasFilter("manual_lookup_response_id IS NOT NULL")
+          .HasDatabaseName("ix_medicines_manual_lookup_response_id");
 
         builder.OwnsMany(x => x.Atributes, attr =>
         {

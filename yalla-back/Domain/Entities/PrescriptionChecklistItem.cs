@@ -50,6 +50,35 @@ public class PrescriptionChecklistItem
     /// <see cref="PrescriptionChecklistItemKind.Original"/>.</summary>
     public Guid? AnalogItemId { get; private set; }
 
+    /// <summary>FK to the <see cref="ManualItemLookupRequest"/> the
+    /// pharmacist created for this manual position. Null until the
+    /// pharmacist hits "ask other pharmacies"; only ever set on Manual
+    /// items (where <see cref="MedicineId"/> is null). All pharmacy
+    /// responses on this request become temp-offers (shadow medicines +
+    /// offers) when the prescription's checklist is submitted.</summary>
+    public Guid? LookupRequestId { get; private set; }
+
+    /// <summary>
+    /// "Sell by units" override the pharmacist can switch on per item.
+    /// When true the client sees the row as `{UnitCount} штук` with
+    /// total = <see cref="UnitTotalPrice"/>; the system still uses
+    /// <see cref="Quantity"/> as the package count for stock checks
+    /// (it's the pharmacist-supplied minimum N of packages needed to
+    /// cover the requested unit count). When false the row behaves as
+    /// before: total = Price * Quantity, qty shown as packages.
+    /// </summary>
+    public bool UseUnitMode { get; private set; }
+
+    /// <summary>Number of single units (tablets/ampoules/...) the
+    /// pharmacist asked for. Display value only — has no effect on
+    /// stock decrement. Set iff <see cref="UseUnitMode"/>.</summary>
+    public int? UnitCount { get; private set; }
+
+    /// <summary>Total price for the line, entered manually by the
+    /// pharmacist. Replaces the offer-price-times-quantity calculation
+    /// for this row. Set iff <see cref="UseUnitMode"/>.</summary>
+    public decimal? UnitTotalPrice { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
 
     private PrescriptionChecklistItem() { }
@@ -186,5 +215,57 @@ public class PrescriptionChecklistItem
               "Undecoded items cannot carry an analog reference.");
 
         AnalogItemId = analogItemId;
+    }
+
+    /// <summary>Attach a lookup request to this item. Only valid on Manual
+    /// (out-of-catalog) items — catalog items can't have a lookup since
+    /// we already have the medicine. Replacing an existing attachment is
+    /// a no-op for the new id, allowing idempotent retries from the
+    /// pharmacist UI.</summary>
+    public void AttachLookupRequest(Guid lookupRequestId)
+    {
+        if (lookupRequestId == Guid.Empty)
+            throw new DomainArgumentException("LookupRequestId can't be empty.");
+
+        if (MedicineId is not null)
+            throw new DomainException(
+              "LookupRequest can only be attached to manual (out-of-catalog) items.");
+
+        LookupRequestId = lookupRequestId;
+    }
+
+    public void DetachLookupRequest()
+    {
+        LookupRequestId = null;
+    }
+
+    /// <summary>
+    /// Switch the row into "by units" mode. <paramref name="unitCount"/>
+    /// is what the client sees ("30 таблеток"); <paramref name="unitTotalPrice"/>
+    /// replaces the auto-calculated line total; the item's own
+    /// <see cref="Quantity"/> stays the package count used for stock
+    /// verification (set separately on the entity, must be ≥ 1).
+    /// Cannot be applied to Undecoded items.
+    /// </summary>
+    public void SetUnitOverride(int unitCount, decimal unitTotalPrice)
+    {
+        if (Kind == PrescriptionChecklistItemKind.Undecoded)
+            throw new DomainException(
+              "Unit-mode override cannot be applied to Undecoded items.");
+        if (unitCount <= 0)
+            throw new DomainArgumentException("UnitCount must be greater than zero.");
+        if (unitTotalPrice <= 0)
+            throw new DomainArgumentException("UnitTotalPrice must be greater than zero.");
+
+        UseUnitMode = true;
+        UnitCount = unitCount;
+        UnitTotalPrice = unitTotalPrice;
+    }
+
+    public void ClearUnitOverride()
+    {
+        UseUnitMode = false;
+        UnitCount = null;
+        UnitTotalPrice = null;
     }
 }

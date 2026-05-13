@@ -14,21 +14,56 @@ const PAYMENT_STATE_MAP: Record<number, string> = {
 type RawOrder = Record<string, unknown>;
 
 function normalizePosition(raw: Record<string, unknown>): ApiOrderPosition {
+  // Two shapes can land here:
+  //  • Worker/Admin-side responses include a nested `medicine` object with
+  //    `images: [...]`.
+  //  • Client-side order details flatten things — top-level `medicineTitle`
+  //    + a single `image: { id, key, isMain, isMinimal }` for the cover.
+  // Normalise both into the unified `medicine` field the renderer reads.
+  const nestedMedicine = raw.medicine as Record<string, unknown> | undefined;
+  const flatImage = raw.image as Record<string, unknown> | undefined;
+
+  let medicine: ApiOrderPosition["medicine"];
+  if (nestedMedicine) {
+    medicine = {
+      id: String(nestedMedicine.id || nestedMedicine.medicineId || ""),
+      title: String(nestedMedicine.title || ""),
+      articul: String(nestedMedicine.articul || ""),
+      images: Array.isArray(nestedMedicine.images)
+        ? (nestedMedicine.images as Array<Record<string, unknown>>).map((i) => ({
+            id: String(i.id || ""),
+            key: i.key ? String(i.key) : undefined,
+            isMain: Boolean(i.isMain),
+            isMinimal: Boolean(i.isMinimal),
+          }))
+        : undefined,
+    };
+  } else if (raw.medicineTitle) {
+    medicine = {
+      id: String(raw.medicineId || ""),
+      title: String(raw.medicineTitle),
+      images: flatImage
+        ? [{
+            id: String(flatImage.id || ""),
+            key: flatImage.key ? String(flatImage.key) : undefined,
+            isMain: Boolean(flatImage.isMain),
+            isMinimal: Boolean(flatImage.isMinimal),
+          }]
+        : undefined,
+    };
+  }
+
   return {
     positionId: String(raw.positionId || raw.id || ""),
-    medicineId: String(raw.medicineId || (raw.medicine as Record<string, unknown>)?.id || ""),
+    medicineId: String(raw.medicineId || nestedMedicine?.id || ""),
     quantity: Number(raw.quantity || 0),
     returnedQuantity: Number(raw.returnedQuantity || 0),
     price: Number(raw.price || 0),
     isRejected: Boolean(raw.isRejected),
-    medicine: raw.medicine ? {
-      id: String((raw.medicine as Record<string, unknown>).id || (raw.medicine as Record<string, unknown>).medicineId || ""),
-      title: String((raw.medicine as Record<string, unknown>).title || ""),
-      articul: String((raw.medicine as Record<string, unknown>).articul || ""),
-    } : raw.medicineTitle ? {
-      id: String(raw.medicineId || ""),
-      title: String(raw.medicineTitle),
-    } : undefined,
+    medicine,
+    useUnitMode: Boolean(raw.useUnitMode),
+    unitCount: raw.unitCount != null ? Number(raw.unitCount) : null,
+    unitTotalPrice: raw.unitTotalPrice != null ? Number(raw.unitTotalPrice) : null,
   };
 }
 
@@ -47,7 +82,10 @@ export function normalizeOrder(raw: RawOrder): ApiOrder {
   if (cost <= 0 && positions.length > 0) {
     cost = positions
       .filter((p) => !p.isRejected)
-      .reduce((sum, p) => sum + (p.price ?? 0) * (p.quantity ?? 0), 0);
+      .reduce((sum, p) => {
+        if (p.useUnitMode && p.unitTotalPrice != null) return sum + p.unitTotalPrice;
+        return sum + (p.price ?? 0) * (p.quantity ?? 0);
+      }, 0);
   }
 
   return {

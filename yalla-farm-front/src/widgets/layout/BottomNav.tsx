@@ -10,6 +10,7 @@ const ADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/workspace#pharmacy", label: "Аптека", icon: "pharmacy" },
   { href: "/workspace#offers", label: "Предложения", icon: "bag" },
   { href: "/workspace#orders", label: "Заказы", icon: "orders" },
+  { href: "/workspace/lookups", label: "Запросы", icon: "search" },
 ];
 
 const SUPERADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
@@ -23,6 +24,7 @@ const PHARMACIST_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/pharmacist", label: "Очередь", icon: "orders" },
   { href: "/pharmacist/cart", label: "Корзина", icon: "bag" },
   { href: "/pharmacist/catalog", label: "Каталог", icon: "pharmacy" },
+  { href: "/pharmacist/history", label: "История", icon: "clock" },
 ];
 
 export function BottomNav() {

@@ -35,4 +35,22 @@ public sealed class DecodePrescriptionItem
     /// for the second-pass linker. Self-reference and circular pairs
     /// are rejected. Ignored for Undecoded items.</summary>
     public int? AnalogIndex { get; set; }
+
+    /// <summary>FK to a <c>ManualItemLookupRequest</c> the pharmacist
+    /// already created for this manual line. Lets the pharmacist preserve
+    /// the lookup binding when re-submitting the checklist (the request
+    /// stays Open so admins can keep responding until the final submit).
+    /// Only meaningful when <see cref="MedicineId"/> is null.</summary>
+    public Guid? LookupRequestId { get; set; }
+
+    /// <summary>True when the pharmacist switched the row into "by units"
+    /// pricing. Required fields then: <see cref="UnitCount"/> ≥ 1 and
+    /// <see cref="UnitTotalPrice"/> &gt; 0. <see cref="Quantity"/> stays
+    /// the package count (= minimum number of packages needed to cover
+    /// the requested unit count) and is still used for stock checks.</summary>
+    public bool UseUnitMode { get; set; }
+
+    public int? UnitCount { get; set; }
+
+    public decimal? UnitTotalPrice { get; set; }
 }

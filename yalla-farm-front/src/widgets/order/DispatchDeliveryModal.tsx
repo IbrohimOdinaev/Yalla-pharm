@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GoogleMap, useJsApiLoader, OverlayView } from "@react-google-maps/api";
-import { env } from "@/shared/config/env";
 import { formatMoney } from "@/shared/lib/format";
 import {
   getDeliveryTariffs,
@@ -11,6 +9,7 @@ import {
   type DeliveryTariff,
 } from "@/shared/api/delivery";
 import type { ApiOrder } from "@/shared/types/api";
+import { DispatchRouteMap } from "@/widgets/map/DispatchRouteMap";
 
 type Props = {
   open: boolean;
@@ -20,22 +19,7 @@ type Props = {
   onDispatched: () => void;
 };
 
-const LIBRARIES: ("places")[] = ["places"];
-
-const MAP_OPTIONS: google.maps.MapOptions = {
-  disableDefaultUI: false,
-  zoomControl: true,
-  streetViewControl: false,
-  mapTypeControl: false,
-  fullscreenControl: false,
-};
-
 export function DispatchDeliveryModal({ open, token, order, onClose, onDispatched }: Props) {
-  const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: env.googleMapsApiKey,
-    libraries: LIBRARIES,
-  });
-
   const [tariffs, setTariffs] = useState<DeliveryTariff[]>([]);
   const [selectedTariffId, setSelectedTariffId] = useState<number | null>(null);
   const [isLoadingTariffs, setIsLoadingTariffs] = useState(false);
@@ -58,8 +42,6 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
     }
     return null;
   }, [order.toLatitude, order.toLongitude]);
-
-  const center = fromPoint ?? toPoint ?? { lat: 38.5598, lng: 68.7738 };
 
   useEffect(() => {
     if (!open) return;
@@ -142,39 +124,9 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
         <div className="p-4 space-y-4">
           {error && <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div>}
 
-          {/* Map */}
+          {/* Map — provider switch lives inside DispatchRouteMap. */}
           <div className="rounded-xl overflow-hidden border border-surface-container-high">
-            {isLoaded ? (
-              <GoogleMap
-                mapContainerClassName="w-full h-48 sm:h-56"
-                center={center}
-                zoom={13}
-                options={MAP_OPTIONS}
-              >
-                {fromPoint && (
-                  <OverlayView position={fromPoint} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
-                    <div
-                      className="w-4 h-4 rounded-full bg-primary border-2 border-white shadow-lg"
-                      style={{ transform: "translate(-50%, -50%)" }}
-                      title="Аптека"
-                    />
-                  </OverlayView>
-                )}
-                {toPoint && (
-                  <OverlayView position={toPoint} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
-                    <div
-                      className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow-lg"
-                      style={{ transform: "translate(-50%, -50%)" }}
-                      title="Клиент"
-                    />
-                  </OverlayView>
-                )}
-              </GoogleMap>
-            ) : (
-              <div className="w-full h-48 sm:h-56 flex items-center justify-center bg-surface-container-low">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              </div>
-            )}
+            <DispatchRouteMap fromPoint={fromPoint} toPoint={toPoint} heightClassName="h-48 sm:h-56" />
           </div>
 
           <div className="flex items-center justify-between text-xs">
@@ -244,7 +196,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-surface border-t border-surface-container-high p-4 flex gap-2">
+        <div className="sticky bottom-0 bg-surface border-t border-surface-container-high p-4 pb-safe-4 sm:pb-4 flex gap-2">
           <button
             type="button"
             onClick={onClose}

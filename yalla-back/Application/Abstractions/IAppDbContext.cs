@@ -13,6 +13,8 @@ public interface IAppDbContext
     DbSet<Prescription> Prescriptions { get; }
     DbSet<PrescriptionImage> PrescriptionImages { get; }
     DbSet<PrescriptionChecklistItem> PrescriptionChecklistItems { get; }
+    DbSet<ManualItemLookupRequest> ManualItemLookupRequests { get; }
+    DbSet<ManualItemLookupResponse> ManualItemLookupResponses { get; }
     DbSet<Pharmacy> Pharmacies { get; }
     DbSet<Medicine> Medicines { get; }
     DbSet<MedicineImage> MedicineImages { get; }
@@ -36,6 +38,9 @@ public interface IAppDbContext
     DbSet<ClientAddress> ClientAddresses { get; }
     DbSet<PaymentSettings> PaymentSettings { get; }
     DbSet<SyncState> SyncStates { get; }
+    DbSet<AuditLogEntry> AuditLogs { get; }
+    DbSet<ClientConsentHistory> ClientConsentHistory { get; }
+    DbSet<PendingRefund> PendingRefunds { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

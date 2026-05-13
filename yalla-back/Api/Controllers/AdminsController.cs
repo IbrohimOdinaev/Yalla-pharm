@@ -62,6 +62,43 @@ public sealed class AdminsController : ControllerBase
     return Ok(response);
   }
 
+  /// <summary>
+  /// Mark a pharmacy admin inactive. Login is rejected immediately;
+  /// already-issued tokens stop working within ~60s. Open orders in
+  /// Preparing are NOT auto-reassigned — the response carries a
+  /// warning + count so the SuperAdmin can re-route those manually.
+  /// </summary>
+  [HttpPost("{workerId:guid}/deactivate")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> Deactivate(
+    Guid workerId,
+    [FromBody] DeactivateUserRequest request,
+    [FromServices] IUserActivationChecker activationChecker,
+    CancellationToken cancellationToken)
+  {
+    var superAdminId = User.GetRequiredUserId();
+    var response = await _pharmacyWorkerService.DeactivatePharmacyWorkerAsync(
+      workerId, superAdminId, request, cancellationToken);
+    // Drop the cached "active" entry so the very next request from
+    // the deactivated user fails immediately, not after the TTL.
+    activationChecker.Invalidate(workerId);
+    return Ok(response);
+  }
+
+  [HttpPost("{workerId:guid}/activate")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> Activate(
+    Guid workerId,
+    [FromServices] IUserActivationChecker activationChecker,
+    CancellationToken cancellationToken)
+  {
+    var superAdminId = User.GetRequiredUserId();
+    var response = await _pharmacyWorkerService.ActivatePharmacyWorkerAsync(
+      workerId, superAdminId, cancellationToken);
+    activationChecker.Invalidate(workerId);
+    return Ok(response);
+  }
+
   [HttpPut("me")]
   [Authorize(Roles = nameof(Role.Admin))]
   public async Task<IActionResult> UpdateMyProfile(

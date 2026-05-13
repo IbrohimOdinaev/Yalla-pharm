@@ -8,6 +8,7 @@ import {
   moveChecklistToCart,
   resubmitPrescription,
   PRESCRIPTION_STATUS_LABEL_RU,
+  PRESCRIPTION_CANCELLATION_REASON_LABEL_RU,
   PRESCRIPTION_TIER_LABEL_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
@@ -161,14 +162,26 @@ export default function PrescriptionDetailPage() {
       const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
       const offerCount = med?.offers?.length ?? 0;
       const price = getCheapestPrice(med ?? undefined);
-      const effectiveQty = it.id in editedQty ? editedQty[it.id] : it.quantity;
+      // Unit-mode rows lock quantity to the pharmacist's package count —
+      // it's the minimum needed to cover the requested unit count and
+      // drives stock-availability checks. Client edits are ignored here.
+      const inUnitMode = it.useUnitMode === true && (it.unitTotalPrice ?? null) != null;
+      const effectiveQty = inUnitMode
+        ? it.quantity
+        : (it.id in editedQty ? editedQty[it.id] : it.quantity);
       const isManual = !it.medicineId;
-      const hasOffers = !isManual && offerCount > 0 && !!price;
+      const tempCount = it.temporaryOfferCount ?? 0;
+      const tempPrice = it.temporaryOfferMinPrice ?? null;
+      const hasTempOffers = isManual && !!it.lookupRequestId && tempCount > 0 && tempPrice != null;
+      const hasOffers = (!isManual && offerCount > 0 && !!price) || hasTempOffers;
+      const effectivePrice = hasTempOffers ? (tempPrice ?? 0) : (price ?? 0);
       return {
         isManual,
         hasOffers,
         effectiveQty,
-        price: price ?? 0,
+        price: effectivePrice,
+        inUnitMode,
+        unitTotalPrice: inUnitMode ? (it.unitTotalPrice ?? 0) : null,
       };
     }
 
@@ -202,11 +215,19 @@ export default function PrescriptionDetailPage() {
       }
 
       const e = eligibility(chosen);
-      if (e.isManual) { manual++; continue; }
       if (e.effectiveQty <= 0) continue;
+      // hasOffers is true for both catalog items and manual lookup
+      // items with at least one pharmacy response — treat them
+      // identically for the order totals. Unit-mode rows contribute
+      // the pharmacist-specified total directly (one flat sum, not
+      // multiplied by quantity).
       if (e.hasOffers) {
         available++;
-        totalCost += e.price * e.effectiveQty;
+        totalCost += e.inUnitMode && e.unitTotalPrice != null
+          ? e.unitTotalPrice
+          : e.price * e.effectiveQty;
+      } else if (e.isManual) {
+        manual++;
       } else {
         unavailable++;
       }
@@ -343,6 +364,11 @@ export default function PrescriptionDetailPage() {
             {prescription.status === "Cancelled" ? (
               <section className="space-y-3 rounded-2xl bg-secondary/10 p-4">
                 <p className="text-sm font-bold text-secondary">Рецепт отменён</p>
+                {prescription.cancellationReason ? (
+                  <p className="text-xs font-semibold text-secondary/80">
+                    Причина: {PRESCRIPTION_CANCELLATION_REASON_LABEL_RU[prescription.cancellationReason]}
+                  </p>
+                ) : null}
                 <p className="text-xs text-on-surface-variant">
                   Вы можете переотправить тот же рецепт. Создастся новая заявка с теми же фото и данными — нужно будет снова оплатить 3 TJS.
                 </p>
@@ -500,26 +526,28 @@ export default function PrescriptionDetailPage() {
                 </ul>
 
                 {prescription.status === "Decoded" ? (
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      size="lg"
-                      fullWidth
-                      onClick={handleOrderFromPrescription}
-                      disabled={checklistTotals.available === 0}
-                    >
-                      Оформить заказ
-                    </Button>
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      fullWidth
-                      loading={moving === "cart"}
-                      onClick={handleMoveToCart}
-                      disabled={checklistTotals.available === 0}
-                    >
-                      В корзину
-                    </Button>
-                  </div>
+                  <>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        size="lg"
+                        fullWidth
+                        onClick={handleOrderFromPrescription}
+                        disabled={checklistTotals.available === 0}
+                      >
+                        Оформить заказ
+                      </Button>
+                      <Button
+                        size="lg"
+                        variant="secondary"
+                        fullWidth
+                        loading={moving === "cart"}
+                        onClick={handleMoveToCart}
+                        disabled={checklistTotals.available === 0}
+                      >
+                        В корзину
+                      </Button>
+                    </div>
+                  </>
                 ) : null}
 
                 {prescription.status === "Decoded" && checklistTotals.unavailable + checklistTotals.manual > 0 ? (
@@ -556,6 +584,24 @@ export default function PrescriptionDetailPage() {
   );
 }
 
+/* Title resolver shared by PairSideRow / SingletonRow. Catalog rows
+   wait for the medicine cache to populate; manual rows surface the
+   pharmacist's own name, falling back to their comment when no name
+   was provided, then to a literal "Без названия" stub. Undecoded rows
+   show "Не смог расшифровать" verbatim — that's the verdict. */
+function resolveItemTitle(
+  item: ApiPrescription["items"][number],
+  med: ApiMedicine | undefined,
+  isManual: boolean,
+  isUndecoded: boolean,
+): string {
+  if (isUndecoded) return "Не смог расшифровать";
+  if (item.manualMedicineName) return item.manualMedicineName;
+  if (med) return getMedicineDisplayName(med);
+  if (isManual) return item.pharmacistComment?.trim() || "Без названия";
+  return "Загружаем…";
+}
+
 /* ===================================================================
    PairSideRow — one half of a paired (analog ↔ original) checklist
    block on the client's prescription detail. The whole row is a button
@@ -590,12 +636,21 @@ function PairSideRow({
   const offerCount = med?.offers?.length ?? 0;
   const minPrice = getCheapestPrice(med ?? undefined);
   const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
-  const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
   const isManual = !item.medicineId;
+  const isUndecoded = item.kind === "Undecoded";
+  const title = resolveItemTitle(item, med, isManual, isUndecoded);
+  // Same temp-offer treatment as SingletonRow — manual lookup with at
+  // least one pharmacy response is orderable.
+  const tempCount = item.temporaryOfferCount ?? 0;
+  const tempMinPrice = item.temporaryOfferMinPrice ?? null;
+  const hasTempOffers = isManual && !!item.lookupRequestId && tempCount > 0 && tempMinPrice != null;
   const noOffers = !isManual && offerCount === 0;
-  const effective = !isManual && !noOffers ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const ineligible = !((!isManual && !noOffers) || hasTempOffers);
+  const inUnitMode = item.useUnitMode === true && (item.unitTotalPrice ?? null) != null;
+  const effective = !ineligible && !inUnitMode ? getEffectiveQty(item.id, item.quantity) : item.quantity;
   const removed = effective <= 0;
-  const ineligible = isManual || noOffers;
+  const displayMinPrice = hasTempOffers ? tempMinPrice : minPrice ?? null;
+  const displayOfferCount = hasTempOffers ? tempCount : offerCount;
   const [commentOpen, setCommentOpen] = useState(false);
 
   return (
@@ -651,17 +706,29 @@ function PairSideRow({
               Рекомендация фармацевта по вашим запросам
             </p>
           ) : null}
-          <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>
+          <p className="line-clamp-2 text-sm font-bold leading-tight">
+            {title}
+            {hasTempOffers ? (
+              <span className="ml-2 rounded-full bg-tertiary/15 px-2 py-0.5 align-middle text-[10px] font-bold text-tertiary">
+                предложение аптеки
+              </span>
+            ) : null}
+          </p>
           {ineligible ? (
             <p className="mt-0.5 text-[11px] font-semibold text-secondary">
               {isManual ? "Нет в каталоге" : "Нет офферов"}
             </p>
+          ) : inUnitMode ? (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              <span className="font-bold text-on-surface">{item.unitCount ?? 0} шт.</span>
+              {" "}· <span className="font-bold text-primary">{formatMoney(item.unitTotalPrice ?? 0)}</span> за всё
+            </p>
           ) : (
             <p className="mt-0.5 text-[11px] text-on-surface-variant">
-              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
-              {offerCount > 0 ? (
+              от <span className="font-bold text-primary">{displayMinPrice ? formatMoney(displayMinPrice) : "—"}</span>
+              {displayOfferCount > 0 ? (
                 <span>
-                  {" "}· в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}
+                  {" "}· в {displayOfferCount} {displayOfferCount === 1 ? "аптеке" : "аптеках"}
                 </span>
               ) : null}
             </p>
@@ -669,7 +736,14 @@ function PairSideRow({
         </div>
 
         <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          {editable && !ineligible ? (
+          {inUnitMode ? (
+            <span
+              className="rounded-full bg-accent-sun/30 px-2.5 py-1 text-xs font-extrabold tabular-nums text-accent-sun-ink"
+              title="Поштучный расчёт от фармацевта"
+            >
+              {item.unitCount ?? 0} шт.
+            </span>
+          ) : editable && !ineligible ? (
             <>
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
@@ -754,17 +828,32 @@ function SingletonRow({
   const offerCount = med?.offers?.length ?? 0;
   const minPrice = getCheapestPrice(med ?? undefined);
   const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
-  const title = item.manualMedicineName ?? (med ? getMedicineDisplayName(med) : "Загружаем…");
   const isManual = !item.medicineId;
+  const isUndecoded = item.kind === "Undecoded";
+  const title = resolveItemTitle(item, med, isManual, isUndecoded);
+  // Manual lookup with at least one pharmacy response: render the row
+  // as an ordinary orderable item (price + N pharmacies + qty stepper).
+  // The "Нет в каталоге" red badge is reserved for manual rows that
+  // either have no lookup or no responses yet.
+  const tempCount = item.temporaryOfferCount ?? 0;
+  const tempMinPrice = item.temporaryOfferMinPrice ?? null;
+  const hasTempOffers = isManual && !!item.lookupRequestId && tempCount > 0 && tempMinPrice != null;
   const noOffers = !isManual && offerCount === 0;
-  const effective = !isManual && !noOffers ? getEffectiveQty(item.id, item.quantity) : item.quantity;
+  const orderable = (!isManual && !noOffers) || hasTempOffers;
+  // Unit-mode rows lock the qty to the pharmacist's package count and
+  // expose unit-count + total price instead of "от {price} в N аптеках".
+  const inUnitMode = item.useUnitMode === true && (item.unitTotalPrice ?? null) != null;
+  const effective = orderable && !inUnitMode ? getEffectiveQty(item.id, item.quantity) : item.quantity;
   const removed = effective <= 0;
   const recDiff = effective !== item.quantity;
   const [commentOpen, setCommentOpen] = useState(false);
+
+  const displayMinPrice = hasTempOffers ? tempMinPrice : minPrice ?? null;
+  const displayOfferCount = hasTempOffers ? tempCount : offerCount;
   return (
     <li
       className={`rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:p-4 transition ${
-        isManual || noOffers ? "ring-1 ring-secondary/30" : ""
+        !orderable ? "ring-1 ring-secondary/30" : ""
       } ${removed ? "opacity-50" : ""}`}
     >
       <div className="flex items-center gap-3 xs:gap-4">
@@ -779,28 +868,64 @@ function SingletonRow({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>
-          {isManual ? (
-            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
-              Нет в каталоге — недоступно для онлайн-заказа
-            </p>
-          ) : noOffers ? (
-            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
-              Нет в наличии в аптеках сейчас
-            </p>
-          ) : (
+          <p className="line-clamp-2 text-sm font-bold leading-tight">
+            {title}
+            {hasTempOffers ? (
+              <span className="ml-2 rounded-full bg-tertiary/15 px-2 py-0.5 align-middle text-[10px] font-bold text-tertiary">
+                предложение аптеки
+              </span>
+            ) : null}
+          </p>
+          {orderable && inUnitMode ? (
             <p className="mt-0.5 text-[11px] text-on-surface-variant">
-              от <span className="font-bold text-primary">{minPrice ? formatMoney(minPrice) : "—"}</span>
-              {offerCount > 0 ? (
+              <span className="font-bold text-on-surface">{item.unitCount ?? 0} шт.</span>
+              {" "}· <span className="font-bold text-primary">{formatMoney(item.unitTotalPrice ?? 0)}</span> за всё
+            </p>
+          ) : orderable ? (
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              от <span className="font-bold text-primary">{displayMinPrice ? formatMoney(displayMinPrice) : "—"}</span>
+              {displayOfferCount > 0 ? (
                 <span>
-                  {" "}· в {offerCount} {offerCount === 1 ? "аптеке" : "аптеках"}
+                  {" "}· в {displayOfferCount} {displayOfferCount === 1 ? "аптеке" : "аптеках"}
                 </span>
               ) : null}
+            </p>
+          ) : isUndecoded ? (
+            // Pharmacist's verdict + their note inline. The note is what
+            // they actually wrote about this line of the doctor's
+            // prescription — the most useful thing to show.
+            <>
+              <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+                Не смог расшифровать
+              </p>
+              {item.pharmacistComment ? (
+                <p className="mt-0.5 text-[11px] text-on-surface-variant">{item.pharmacistComment}</p>
+              ) : null}
+            </>
+          ) : isManual ? (
+            <>
+              <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+                Нет в каталоге — недоступно для онлайн-заказа
+              </p>
+              {item.pharmacistComment && item.pharmacistComment !== title ? (
+                <p className="mt-0.5 text-[11px] text-on-surface-variant">{item.pharmacistComment}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-0.5 text-[11px] font-semibold text-secondary">
+              Нет в наличии в аптеках сейчас
             </p>
           )}
         </div>
         <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          {!isManual && !noOffers && editable ? (
+          {inUnitMode ? (
+            <span
+              className="rounded-full bg-accent-sun/30 px-2.5 py-1 text-xs font-extrabold tabular-nums text-accent-sun-ink"
+              title="Поштучный расчёт от фармацевта — количество и сумма зафиксированы"
+            >
+              {item.unitCount ?? 0} шт.
+            </span>
+          ) : orderable && editable ? (
             <>
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">

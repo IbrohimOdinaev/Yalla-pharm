@@ -22,6 +22,77 @@ namespace Yalla.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Yalla.Domain.Entities.AuditLogEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Action")
+                        .HasColumnType("integer")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ActorIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("actor_ip");
+
+                    b.Property<int?>("ActorRole")
+                        .HasColumnType("integer")
+                        .HasColumnName("actor_role");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<Guid?>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("occurred_at_utc");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("summary");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId")
+                        .HasDatabaseName("ix_audit_log_actor_user_id")
+                        .HasFilter("actor_user_id IS NOT NULL");
+
+                    b.HasIndex("CorrelationId")
+                        .HasDatabaseName("ix_audit_log_correlation_id")
+                        .HasFilter("correlation_id IS NOT NULL");
+
+                    b.HasIndex("OccurredAtUtc")
+                        .IsDescending()
+                        .HasDatabaseName("ix_audit_log_occurred_at_utc_desc");
+
+                    b.HasIndex("EntityType", "EntityId")
+                        .HasDatabaseName("ix_audit_log_entity_type_entity_id");
+
+                    b.ToTable("audit_log", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.BasketPosition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -229,6 +300,51 @@ namespace Yalla.Infrastructure.Migrations
                     b.ToTable("client_addresses", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.ClientConsentHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("AcceptedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("accepted_at_utc");
+
+                    b.Property<string>("AcceptedFromIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("accepted_from_ip");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("policy_version");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcceptedAtUtc")
+                        .IsDescending()
+                        .HasDatabaseName("ix_client_consent_history_accepted_at_utc_desc");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_client_consent_history_client_id");
+
+                    b.HasIndex("PolicyVersion")
+                        .HasDatabaseName("ix_client_consent_history_policy_version");
+
+                    b.ToTable("client_consent_history", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.DeliveryData", b =>
                 {
                     b.Property<Guid>("Id")
@@ -343,6 +459,117 @@ namespace Yalla.Infrastructure.Migrations
                     b.ToTable("delivery_data", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.ManualItemLookupRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("ClosedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("closed_at_utc");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("ManualMedicineName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("manual_medicine_name");
+
+                    b.Property<Guid>("PrescriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prescription_id");
+
+                    b.Property<string>("RequestComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("request_comment");
+
+                    b.Property<Guid>("RequestedByPharmacistId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_pharmacist_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrescriptionId")
+                        .HasDatabaseName("ix_manual_item_lookup_requests_prescription_id");
+
+                    b.HasIndex("RequestedByPharmacistId")
+                        .HasDatabaseName("ix_manual_item_lookup_requests_requested_by_pharmacist_id");
+
+                    b.HasIndex("Status", "CreatedAtUtc")
+                        .HasDatabaseName("ix_manual_item_lookup_requests_active")
+                        .HasFilter("status = 0");
+
+                    b.ToTable("manual_item_lookup_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ManualItemLookupResponse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("ImageKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("image_key");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric(18, 2)")
+                        .HasColumnName("price");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<Guid>("RespondingAdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("responding_admin_id");
+
+                    b.Property<Guid>("RespondingPharmacyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("responding_pharmacy_id");
+
+                    b.Property<string>("ResponseComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("response_comment");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId", "RespondingPharmacyId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_manual_item_lookup_responses_request_pharmacy");
+
+                    b.ToTable("manual_item_lookup_responses", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
                 {
                     b.Property<Guid>("Id")
@@ -376,6 +603,20 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsCatalogMedicine")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_catalog_medicine");
+
+                    b.Property<Guid?>("ManualLookupRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("manual_lookup_request_id");
+
+                    b.Property<Guid?>("ManualLookupResponseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("manual_lookup_response_id");
+
                     b.Property<string>("Slug")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
@@ -405,6 +646,19 @@ namespace Yalla.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_medicines_id_1c")
                         .HasFilter("id_1c IS NOT NULL");
+
+                    b.HasIndex("IsCatalogMedicine")
+                        .HasDatabaseName("ix_medicines_non_catalog")
+                        .HasFilter("is_catalog_medicine = false");
+
+                    b.HasIndex("ManualLookupRequestId")
+                        .HasDatabaseName("ix_medicines_manual_lookup_request_id")
+                        .HasFilter("manual_lookup_request_id IS NOT NULL");
+
+                    b.HasIndex("ManualLookupResponseId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_medicines_manual_lookup_response_id")
+                        .HasFilter("manual_lookup_response_id IS NOT NULL");
 
                     b.HasIndex("Slug")
                         .IsUnique()
@@ -702,6 +956,20 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("returned_quantity");
 
+                    b.Property<int?>("UnitCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("unit_count");
+
+                    b.Property<decimal?>("UnitTotalPrice")
+                        .HasColumnType("numeric(18, 2)")
+                        .HasColumnName("unit_total_price");
+
+                    b.Property<bool>("UseUnitMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("use_unit_mode");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MedicineId")
@@ -814,6 +1082,16 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("apartment");
 
+                    b.Property<string>("BankReceiptImageUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("bank_receipt_image_url");
+
+                    b.Property<string>("BankReferenceCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("bank_reference_code");
+
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
@@ -894,6 +1172,19 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("pharmacy_id");
 
+                    b.Property<Guid?>("PrescriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prescription_id");
+
+                    b.Property<string>("RefundReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("refund_reason");
+
+                    b.Property<DateTime?>("RefundedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("refunded_at_utc");
+
                     b.Property<string>("RejectReason")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)")
@@ -921,6 +1212,10 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDatabaseName("ix_payment_intents_created_at_utc");
 
                     b.HasIndex("PharmacyId");
+
+                    b.HasIndex("PrescriptionId")
+                        .HasDatabaseName("ix_payment_intents_prescription_id")
+                        .HasFilter("prescription_id IS NOT NULL");
 
                     b.HasIndex("ReservedOrderId")
                         .IsUnique()
@@ -1001,6 +1296,69 @@ namespace Yalla.Infrastructure.Migrations
                     b.ToTable("payment_settings", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.PendingRefund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("PrescriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prescription_id");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("processed_at_utc");
+
+                    b.Property<Guid?>("ProcessedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processed_by_user_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("SuperAdminComment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("super_admin_comment");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_pending_refunds_client_id");
+
+                    b.HasIndex("PrescriptionId")
+                        .HasDatabaseName("ix_pending_refunds_prescription_id");
+
+                    b.HasIndex("ProcessedAtUtc")
+                        .HasDatabaseName("ix_pending_refunds_unprocessed")
+                        .HasFilter("processed_at_utc IS NULL");
+
+                    b.ToTable("pending_refunds", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1072,6 +1430,14 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assigned_pharmacist_id");
 
+                    b.Property<int?>("CancellationReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancellation_reason");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("cancelled_at_utc");
+
                     b.Property<string>("ClientComment")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -1084,6 +1450,23 @@ namespace Yalla.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp")
                         .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime?>("DecodeFailedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("decode_failed_at_utc");
+
+                    b.Property<Guid?>("DecodeFailedByPharmacistId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decode_failed_by_pharmacist_id");
+
+                    b.Property<string>("DecodeFailureComment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("decode_failure_comment");
+
+                    b.Property<int?>("DecodeFailureReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("decode_failure_reason");
 
                     b.Property<DateTime?>("DecodedAtUtc")
                         .HasColumnType("timestamp")
@@ -1101,16 +1484,16 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("payment_intent_id");
 
+                    b.Property<string>("PharmacistOverallComment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("pharmacist_overall_comment");
+
                     b.Property<int>("PreferenceTier")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(0)
                         .HasColumnName("preference_tier");
-
-                    b.Property<string>("PharmacistOverallComment")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("pharmacist_overall_comment");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -1159,6 +1542,10 @@ namespace Yalla.Infrastructure.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("kind");
 
+                    b.Property<Guid?>("LookupRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lookup_request_id");
+
                     b.Property<string>("ManualMedicineName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -1181,6 +1568,20 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("quantity");
 
+                    b.Property<int?>("UnitCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("unit_count");
+
+                    b.Property<decimal?>("UnitTotalPrice")
+                        .HasColumnType("numeric(18, 2)")
+                        .HasColumnName("unit_total_price");
+
+                    b.Property<bool>("UseUnitMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("use_unit_mode");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AnalogItemId")
@@ -1190,6 +1591,11 @@ namespace Yalla.Infrastructure.Migrations
                     b.HasIndex("AnalogMedicineId")
                         .HasDatabaseName("ix_prescription_checklist_items_analog_medicine_id")
                         .HasFilter("analog_medicine_id IS NOT NULL");
+
+                    b.HasIndex("LookupRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_prescription_checklist_items_lookup_request_id")
+                        .HasFilter("lookup_request_id IS NOT NULL");
 
                     b.HasIndex("MedicineId")
                         .HasDatabaseName("ix_prescription_checklist_items_medicine_id")
@@ -1759,9 +2165,28 @@ namespace Yalla.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("date_of_birth");
 
+                    b.Property<DateTime?>("DeactivatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("deactivated_at_utc");
+
+                    b.Property<Guid?>("DeactivatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deactivated_by_user_id");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("deactivation_reason");
+
                     b.Property<int?>("Gender")
                         .HasColumnType("integer")
                         .HasColumnName("gender");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1832,6 +2257,26 @@ namespace Yalla.Infrastructure.Migrations
             modelBuilder.Entity("Yalla.Domain.Entities.Client", b =>
                 {
                     b.HasBaseType("Yalla.Domain.Entities.User");
+
+                    b.Property<bool>("HasFreePrescriptionCredit")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("has_free_prescription_credit");
+
+                    b.Property<DateTime?>("PrivacyPolicyAcceptedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("privacy_policy_accepted_at_utc");
+
+                    b.Property<string>("PrivacyPolicyAcceptedFromIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("privacy_policy_accepted_from_ip");
+
+                    b.Property<string>("PrivacyPolicyVersionAccepted")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("privacy_policy_version_accepted");
 
                     b.HasDiscriminator().HasValue("client");
                 });
@@ -1907,6 +2352,15 @@ namespace Yalla.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.ClientConsentHistory", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.DeliveryData", b =>
                 {
                     b.HasOne("Yalla.Domain.Entities.Order", "Order")
@@ -1916,6 +2370,15 @@ namespace Yalla.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ManualItemLookupResponse", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.ManualItemLookupRequest", null)
+                        .WithMany("Responses")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>
@@ -2175,6 +2638,11 @@ namespace Yalla.Infrastructure.Migrations
                     b.Navigation("Children");
 
                     b.Navigation("Medicines");
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ManualItemLookupRequest", b =>
+                {
+                    b.Navigation("Responses");
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.Medicine", b =>

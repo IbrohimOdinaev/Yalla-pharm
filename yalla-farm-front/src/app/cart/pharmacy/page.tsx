@@ -5,7 +5,12 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import { getGuestBasketPreview } from "@/entities/basket/api";
-import { getMyPrescriptions, type ApiPrescription } from "@/entities/prescription/api";
+import {
+  getMyPrescriptions,
+  getPrescriptionPharmacyOptions,
+  type ApiPrescription,
+  type ApiPrescriptionPharmacyOption,
+} from "@/entities/prescription/api";
 import type { ApiMedicine, ApiBasketPharmacyOption, ApiBasketPharmacyItem } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useAppSelector } from "@/shared/lib/redux";
@@ -27,6 +32,41 @@ import dynamic from "next/dynamic";
 type PharmacySort = "cheapest" | "most-positions";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
+
+/** Map prescription-side pharmacy option to the basket-side shape this
+ *  page already understands. Manual lookup items contribute their
+ *  per-pharmacy shadow medicineId so explicit checkout (Source.Positions)
+ *  can submit them as ordinary entries. Items the pharmacy can't fulfil
+ *  (no resolved medicineId) are dropped — the cart-style row needs an id
+ *  to render and to add to the order. */
+function adaptPrescriptionPharmacyOption(
+  p: ApiPrescriptionPharmacyOption,
+): ApiBasketPharmacyOption {
+  return {
+    pharmacyId: p.pharmacyId,
+    pharmacyTitle: p.pharmacyTitle,
+    pharmacyIsActive: p.pharmacyIsActive,
+    isAvailable: p.isAvailable,
+    totalCost: p.totalCost,
+    foundMedicinesCount: p.foundItemsCount,
+    totalMedicinesCount: p.totalItemsCount,
+    enoughQuantityMedicinesCount: p.enoughQuantityItemsCount,
+    foundMedicinesRatio: `${p.foundItemsCount}/${p.totalItemsCount}`,
+    items: p.items
+      .filter((i) => !!i.medicineId)
+      .map((i) => ({
+        medicineId: i.medicineId!,
+        requestedQuantity: i.requestedQuantity,
+        isFound: i.isFound,
+        foundQuantity: i.foundQuantity,
+        hasEnoughQuantity: i.hasEnoughQuantity,
+        price: i.price ?? null,
+        useUnitMode: i.useUnitMode ?? false,
+        unitCount: i.unitCount ?? null,
+        unitTotalPrice: i.unitTotalPrice ?? null,
+      })),
+  };
+}
 
 export default function PharmacySelectPage() {
   // useSearchParams must live under a Suspense boundary for static export
@@ -71,7 +111,23 @@ function PharmacySelectPageInner() {
   // (the basket is never read or mutated). On selection we stash
   // prescriptionId in the checkout draft so /checkout posts with
   // Source.Kind=Explicit + Source.PrescriptionId.
-  const prescriptionId = searchParams.get("prescription") ?? "";
+  //
+  // Defensive read: useSearchParams sometimes returns an empty bag during
+  // the very first client render after a hard reload (Next.js streaming
+  // hydration). Falling back to window.location.search ensures the mode
+  // is detected on the synchronous first pass — without this, the
+  // pharmacy picker would briefly mount in basket mode and fire
+  // loadBasket() before the searchParams hook caught up.
+  const searchPrescriptionId = searchParams.get("prescription") ?? "";
+  const prescriptionId = useMemo(() => {
+    if (searchPrescriptionId) return searchPrescriptionId;
+    if (typeof window === "undefined") return "";
+    try {
+      return new URLSearchParams(window.location.search).get("prescription") ?? "";
+    } catch {
+      return "";
+    }
+  }, [searchPrescriptionId]);
   const prescriptionMode = !!prescriptionId;
 
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
@@ -90,6 +146,10 @@ function PharmacySelectPageInner() {
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Imperative handle from the map — lets the page panTo a coord (when
+  // the user clicks "show on map" on a pharmacy card) and reset the
+  // viewport to Dushanbe-wide framing (fit-to-city floating button).
+  const mapHandleRef = useRef<import("@/widgets/map/PharmacyMap").PharmacyMapHandle | null>(null);
 
   // Cart items — server for auth, guest for unauth, OR prescription items
   // when we're in prescription-checkout mode (basket is intentionally
@@ -170,9 +230,19 @@ function PharmacySelectPageInner() {
             drafts.push({ medicineId: chosen.medicineId, quantity: qty });
           }
           setPrescriptionItems(drafts);
-          // Pharmacy options are computed without touching the basket — same
-          // endpoint anonymous guests use.
-          if (drafts.length > 0) {
+          // Use the prescription-aware pharmacy-options endpoint instead
+          // of the generic basket preview — it resolves manual lookup
+          // items via shadow medicines server-side, so a pharmacy that
+          // only answered the manual lookup still shows up in the
+          // picker with the right coverage and total.
+          const presOpts = await getPrescriptionPharmacyOptions(token, prescriptionId)
+            .catch(() => null);
+          if (presOpts && presOpts.pharmacyOptions.length > 0) {
+            setPrescriptionOptions(presOpts.pharmacyOptions.map(adaptPrescriptionPharmacyOption));
+          } else if (drafts.length > 0) {
+            // Fallback: if the prescription endpoint failed (e.g. no
+            // checklist yet), fall back to the catalog-only preview so
+            // the page still renders something usable.
             const opts = await getGuestBasketPreview(drafts).catch(() => [] as ApiBasketPharmacyOption[]);
             setPrescriptionOptions(opts);
           } else {
@@ -192,11 +262,21 @@ function PharmacySelectPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, loadBasket, prescriptionMode, prescriptionId]);
 
-  // Load medicine details for items in cart
+  // Load medicine details for items in cart AND for any extra medicineIds
+  // surfaced in the prescription pharmacy options. Shadow medicines
+  // materialised from manual lookup responses live only in the per-pharmacy
+  // option lists (they're never in the catalog/basket) — without including
+  // them here the rendered cart row falls back to displaying the raw id
+  // instead of the pharmacy's "FullName".
   useEffect(() => {
-    const ids = cartItems.map((i) => i.medicineId).filter((id) => !medicineMap[id]);
-    if (ids.length === 0) return;
-    Promise.all(ids.map((id) => getMedicineById(id).catch(() => null))).then((results) => {
+    const cartIds = cartItems.map((i) => i.medicineId);
+    const pharmacyOptionIds = prescriptionOptions.flatMap((opt) =>
+      (opt.items ?? []).map((i) => i.medicineId).filter((id): id is string => !!id),
+    );
+    const allIds = Array.from(new Set([...cartIds, ...pharmacyOptionIds]))
+      .filter((id) => !medicineMap[id]);
+    if (allIds.length === 0) return;
+    Promise.all(allIds.map((id) => getMedicineById(id).catch(() => null))).then((results) => {
       const map: Record<string, ApiMedicine> = { ...medicineMap };
       for (const m of results) {
         if (m?.id) map[m.id] = m;
@@ -204,7 +284,7 @@ function PharmacySelectPageInner() {
       setMedicineMap(map);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartItems]);
+  }, [cartItems, prescriptionOptions]);
 
   // Build pharmacy geo lookup
   const pharmacyGeo = useMemo(() => {
@@ -213,11 +293,17 @@ function PharmacySelectPageInner() {
     return map;
   }, [pharmacies]);
 
-  // Sum across in-stock-at-required-qty items only
+  // Sum across in-stock-at-required-qty items only. Unit-mode rows
+  // contribute the pharmacist's `unitTotalPrice` flat — the pack count
+  // (`requestedQuantity`) is only there for the stock check, not for
+  // pricing.
   function availableItemsTotal(items: ApiBasketPharmacyItem[] | undefined) {
     return (items ?? [])
       .filter((i) => i.hasEnoughQuantity)
-      .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
+      .reduce((sum, i) => {
+        if (i.useUnitMode && i.unitTotalPrice != null) return sum + i.unitTotalPrice;
+        return sum + (i.price ?? 0) * i.requestedQuantity;
+      }, 0);
   }
 
   // Sort comparator applied to both server-built and guest-computed options.
@@ -350,21 +436,35 @@ function PharmacySelectPageInner() {
       }));
   }, [pharmacies, filteredOptions, resolvedAddresses, isPickup, deliveryCosts]);
 
-  // Tap on a map marker → make sure the side panel is open, then scroll
-  // its card into view and highlight it briefly so the user immediately
-  // sees the pharmacy's price/items in the list.
+  // Tap on a map marker → make sure the side panel is open, expand
+  // that pharmacy's card so the user sees its item rows immediately,
+  // scroll the card into view, and highlight it briefly.
+  //
+  // The panel's open/close animation runs for 300 ms
+  // (transition-transform duration-300 on the <aside>). If we
+  // scrollIntoView before that's done, the card's bounding box is
+  // still off-screen on phones (panel slides up from below) so the
+  // scroll lands on an element that's mid-flight. Wait out the full
+  // animation + one rAF for layout to settle, then scroll.
   const handlePharmacyMapClick = useCallback((id: string) => {
     setIsPanelCollapsed(false);
-    // Defer scroll until the panel has actually painted (it animates in
-    // when toggling collapsed → expanded; without the rAF the cardRef
-    // measurement is taken against a width-0 panel and scrollIntoView
-    // becomes a no-op on phones).
-    requestAnimationFrame(() => {
-      const el = cardRefs.current[id];
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
+    setExpandedId(id);
     setHighlightedId(id);
-    setTimeout(() => setHighlightedId(""), 2000);
+
+    const scrollWhenReady = () => {
+      const el = cardRefs.current[id];
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    // 350 ms = panel slide-in (300) + a buffer for the card's own
+    // expand animation. If the panel was already open, the extra
+    // wait is invisible (smooth-scroll itself takes ~300 ms anyway).
+    window.setTimeout(scrollWhenReady, 350);
+
+    // Highlight long enough that the user's eye catches it even
+    // when they look back at the panel after dismissing the marker
+    // tooltip on mobile.
+    setTimeout(() => setHighlightedId(""), 2500);
   }, []);
 
   // Select pharmacy — final per-position selection happens on checkout page.
@@ -402,11 +502,13 @@ function PharmacySelectPageInner() {
   }
 
   return (
-    // h-[100dvh] (dynamic viewport) instead of h-screen so iOS Safari's
-    // retractable URL bar doesn't crop the bottom of the layout when
-    // it's expanded. h-screen is kept first as a fallback for browsers
-    // without dvh support.
-    <div className="h-screen h-[100dvh] flex flex-col bg-surface">
+    // Triple fallback: legacy h-screen (= 100vh) for browsers that
+    // don't know either viewport unit; 100dvh for dynamic adaptation
+    // when iOS Safari's URL bar collapses/expands; 100svh as the
+    // safest floor — always equal to the smallest viewport the user
+    // will see, so action buttons never end up under Safari's
+    // bottom toolbar.
+    <div className="h-screen h-[100dvh] h-svh flex flex-col bg-surface">
       {/* Global header — search, address, cart, account */}
       <GlobalTopBar />
 
@@ -466,7 +568,7 @@ function PharmacySelectPageInner() {
         <aside
           className={`absolute z-30 flex flex-col bg-surface-container-low overflow-hidden shadow-glass transition-transform duration-300 ease-in-out
             inset-x-0 bottom-0 max-h-full rounded-t-2xl
-            md:inset-y-0 md:left-0 md:right-auto md:bottom-auto md:max-h-none md:w-[420px] md:rounded-t-none lg:w-[460px]
+            md:inset-y-0 md:left-0 md:right-auto md:w-[420px] md:rounded-t-none lg:w-[460px]
             ${isPanelCollapsed
               ? "translate-y-full md:-translate-x-full md:translate-y-0 pointer-events-none"
               : "translate-y-0"
@@ -475,7 +577,7 @@ function PharmacySelectPageInner() {
         >
           {/* Header: sort chips + collapse toggle. Horizontal-scroll strip so
               chips never get hidden behind the toggle on narrow phones. */}
-          <div className="flex items-center gap-1.5 border-b border-outline/50 bg-surface-container-low/80 px-3 py-2 sticky top-0 z-10">
+          <div className="flex items-center gap-1.5 border-b border-outline/50 bg-surface-container-low/80 px-3 py-2 flex-shrink-0">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-hide scroll-touch">
               <button
                 type="button"
@@ -522,8 +624,13 @@ function PharmacySelectPageInner() {
               browser UI overlap (collapsing URL bar) never clip the LAST
               pharmacy card / its expanded item rows. The earlier pb-24 was
               just enough on average phones but routinely cut a row off on
-              shorter / split-screen sessions. */}
-          <div className="flex-1 overflow-y-auto overscroll-contain">
+              shorter / split-screen sessions.
+
+              `min-h-0` is what makes the inner overflow-y-auto actually
+              scroll — without it, this flex-1 child grows past the aside's
+              clipped height and the bottom cards spill off the screen
+              with no scrollbar to recover them. */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {filteredOptions.length === 0 ? (
             <div className="p-6 text-center text-sm text-on-surface-variant">
               Нет доступных аптек для вашей корзины.
@@ -547,8 +654,12 @@ function PharmacySelectPageInner() {
                   <div
                     key={option.pharmacyId}
                     ref={(el) => { cardRefs.current[option.pharmacyId] = el; }}
-                    className={`rounded-3xl bg-surface-container-lowest p-4 shadow-card transition ${
-                      isHighlighted ? "ring-2 ring-primary" : ""
+                    // `scroll-mt-12` gives scrollIntoView a top breathing
+                    // room so the matched card never lands hugging the
+                    // sticky header. Highlight ring + soft scale up so a
+                    // marker-driven reveal really catches the eye.
+                    className={`scroll-mt-12 rounded-3xl bg-surface-container-lowest p-4 shadow-card transition-all duration-300 ${
+                      isHighlighted ? "ring-2 ring-primary shadow-float scale-[1.015]" : ""
                     }`}
                   >
                     {/* Pharmacy header */}
@@ -580,9 +691,7 @@ function PharmacySelectPageInner() {
 
                     {/* Price + availability + actions */}
                     {(() => {
-                      const availableTotal = (option.items ?? [])
-                        .filter((i) => i.hasEnoughQuantity)
-                        .reduce((sum, i) => sum + (i.price ?? 0) * i.requestedQuantity, 0);
+                      const availableTotal = availableItemsTotal(option.items);
                       const deliveryCost =
                         delivery?.state === "ready" ? delivery.cost : 0;
                       const grandTotal = availableTotal + deliveryCost;
@@ -611,20 +720,50 @@ function PharmacySelectPageInner() {
                                 )}
                               </p>
                             ) : null}
-                            <button
-                              type="button"
-                              onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
-                              className="mt-1 flex items-center gap-1 text-xs font-semibold transition hover:text-primary"
-                            >
-                              {allAvailable ? (
-                                <Chip tone="success" asButton={false} size="sm" leftIcon="check">Всё в наличии</Chip>
-                              ) : (
-                                <Chip tone="warning" asButton={false} size="sm">
-                                  {option.enoughQuantityMedicinesCount ?? 0} из {option.totalMedicinesCount ?? 0}
-                                </Chip>
-                              )}
-                              <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={14} className="text-on-surface-variant" />
-                            </button>
+                            {/* Stock chip + "show on map" button. Tapping the
+                                chip toggles the expanded item list (same as
+                                before); the map button is dedicated to
+                                centring the map on this pharmacy so the user
+                                can locate it visually. Used to be a chevron-
+                                up/down indicator — replaced because the user
+                                wanted an explicit "show on map" affordance. */}
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
+                                className="text-xs font-semibold transition hover:text-primary"
+                              >
+                                {allAvailable ? (
+                                  <Chip tone="success" asButton={false} size="sm" leftIcon="check">Всё в наличии</Chip>
+                                ) : (
+                                  <Chip tone="warning" asButton={false} size="sm">
+                                    {option.enoughQuantityMedicinesCount ?? 0} из {option.totalMedicinesCount ?? 0}
+                                  </Chip>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Centre the map on the pharmacy + reveal
+                                  // its details by expanding the card. Don't
+                                  // collapse the panel — keep it open so the
+                                  // map and the card details are visible
+                                  // side-by-side on desktop.
+                                  const geo = pharmacyGeo[option.pharmacyId];
+                                  if (geo?.latitude != null && geo?.longitude != null) {
+                                    mapHandleRef.current?.panTo({ lat: geo.latitude, lng: geo.longitude });
+                                  }
+                                  setExpandedId(option.pharmacyId);
+                                  setHighlightedId(option.pharmacyId);
+                                  setTimeout(() => setHighlightedId(""), 1500);
+                                }}
+                                aria-label="Показать аптеку на карте"
+                                title="Показать на карте"
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant transition hover:bg-primary/10 hover:text-primary active:scale-95"
+                              >
+                                <Icon name="map" size={14} />
+                              </button>
+                            </div>
                           </div>
 
                           <Button
@@ -650,6 +789,7 @@ function PharmacySelectPageInner() {
                           const partial = item.isFound && !enough;
                           const missing = !item.isFound;
                           const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
+                          const inUnitMode = item.useUnitMode === true && item.unitTotalPrice != null;
                           return (
                             <button
                               key={item.medicineId}
@@ -664,7 +804,14 @@ function PharmacySelectPageInner() {
                                 <div className="w-8 h-8 rounded bg-surface-container-high flex-shrink-0" />
                               )}
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium truncate">{name}</p>
+                                <p className="font-medium truncate">
+                                  {name}
+                                  {inUnitMode ? (
+                                    <span className="ml-1 rounded-full bg-accent-sun/30 px-1 py-0 text-[9px] font-bold text-accent-sun-ink">
+                                      поштучно
+                                    </span>
+                                  ) : null}
+                                </p>
                                 {missing ? (
                                   <p className="text-[10px] text-red-500">Нет в наличии</p>
                                 ) : partial ? (
@@ -672,10 +819,15 @@ function PharmacySelectPageInner() {
                                 ) : null}
                               </div>
                               <span className={`flex-shrink-0 tabular-nums ${enough ? "text-on-surface-variant" : "text-amber-600 font-semibold"}`}>
-                                {cappedFound}/{item.requestedQuantity}
+                                {inUnitMode
+                                  ? `${item.unitCount ?? 0} шт.`
+                                  : `${cappedFound}/${item.requestedQuantity}`}
                               </span>
                               <span className={`font-bold flex-shrink-0 ${missing ? "line-through text-on-surface-variant" : ""}`}>
-                                {formatMoney(item.price ?? 0, "TJS")}
+                                {formatMoney(
+                                  inUnitMode ? (item.unitTotalPrice ?? 0) : (item.price ?? 0),
+                                  "TJS",
+                                )}
                               </span>
                             </button>
                           );
@@ -699,6 +851,7 @@ function PharmacySelectPageInner() {
             pharmacies={mapMarkers}
             onPharmacyClick={handlePharmacyMapClick}
             userLocation={deliveryCoords}
+            mapHandle={(handle) => { mapHandleRef.current = handle; }}
           />
 
           {/* Floating "expand" button — visible while the sidebar is
@@ -724,6 +877,21 @@ function PharmacySelectPageInner() {
               <span>Список аптек</span>
             </button>
           ) : null}
+
+          {/* "Fit to Dushanbe" — resets the viewport to the city-wide
+              framing (every pharmacy + user location fit at once).
+              Placed at the bottom-right of the map so it doesn't fight
+              with Yandex's own attribution at the top-right or the
+              panel-collapse chevron at top-left/right. */}
+          <button
+            type="button"
+            onClick={() => mapHandleRef.current?.fitDushanbe()}
+            aria-label="Показать весь Душанбе"
+            title="Показать весь Душанбе"
+            className="absolute bottom-4 right-3 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-float transition hover:bg-surface-container-high active:scale-95"
+          >
+            <Icon name="map" size={20} />
+          </button>
         </div>
       </div>
 

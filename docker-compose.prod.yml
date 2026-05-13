@@ -1,0 +1,21 @@
+# ============================================
+# PROD override — explicit. Pass with `-f` to skip the auto-merged
+# docker-compose.override.yml (the dev local stack).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     --env-file .env.prod up -d --build
+#
+# Most of the prod config lives in docker-compose.yml already (no host
+# port bindings, env wiring from .env). This override just pins the
+# image tags so deploy artefacts don't share the dev tag — handy when
+# pushing to a registry per-environment.
+# ============================================
+
+services:
+
+  front:
+    image: yalla/front:latest
+
+  api:
+    image: yalla/api:latest

@@ -177,6 +177,10 @@ public sealed class MedicineService : IMedicineService
         var query = _dbContext.Medicines
           .AsNoTracking()
           .Where(x => x.IsActive)
+          // Hide shadow medicines (materialised from manual prescription
+          // lookups) from the catalog — they're orderable but only via
+          // the prescription flow, not via browse/search.
+          .Where(x => x.IsCatalogMedicine)
           .Where(x => filterPharmacyId.HasValue
             ? x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0)
             : x.Offers.Any(o => o.StockQuantity > 0));
@@ -254,7 +258,10 @@ public sealed class MedicineService : IMedicineService
 
         var query = _dbContext.Medicines
           .AsNoTracking()
-          .AsQueryable();
+          // SuperAdmin medicine grid hides shadow rows too — they show up
+          // on the prescription/lookup screens, not in the catalog
+          // editor.
+          .Where(x => x.IsCatalogMedicine);
 
         if (request.IsActive.HasValue)
             query = query.Where(x => x.IsActive == request.IsActive.Value);
@@ -327,13 +334,20 @@ public sealed class MedicineService : IMedicineService
         if (request.MedicineId == Guid.Empty)
             throw new InvalidOperationException("MedicineId can't be empty.");
 
+        // Direct id lookup never filters by IsActive: by the time the
+        // client has a medicine id in hand it's already in their basket,
+        // prescription checklist or order history. Hiding the row would
+        // surface as a generic "operation not allowed" 400 in the
+        // product modal / cart-pharmacy resolver — confusing and useless.
+        // Catalog browse and search still filter, so deactivated rows
+        // don't reappear in discovery.
         var medicine = await _dbContext.Medicines
           .AsNoTracking()
           .Include(x => x.Atributes)
           .Include(x => x.Images)
           .Include(x => x.Category)
           .FirstOrDefaultAsync(
-            x => x.Id == request.MedicineId && (request.IncludeInactive || x.IsActive),
+            x => x.Id == request.MedicineId,
             cancellationToken)
           ?? throw new InvalidOperationException($"Medicine with id '{request.MedicineId}' was not found.");
 
@@ -367,12 +381,15 @@ public sealed class MedicineService : IMedicineService
         // We fan out the offers by medicine id locally rather than running
         // one offer query per medicine (the loop kept the total at 2 round-
         // trips regardless of N).
+        // Same rationale as GetMedicineByIdAsync — drop the IsActive
+        // filter on direct lookups so deactivated rows still resolve
+        // their title for clients who already have them referenced.
         var medicines = await _dbContext.Medicines
           .AsNoTracking()
           .Include(x => x.Atributes)
           .Include(x => x.Images)
           .Include(x => x.Category)
-          .Where(m => ids.Contains(m.Id) && m.IsActive)
+          .Where(m => ids.Contains(m.Id))
           .ToListAsync(cancellationToken);
 
         var offerRows = await (
@@ -468,6 +485,7 @@ public sealed class MedicineService : IMedicineService
           .AsNoTracking()
           .Where(x =>
             x.IsActive &&
+            x.IsCatalogMedicine &&
             x.Offers.Any(o => o.StockQuantity > 0) &&
             (EF.Functions.Like(x.Title.ToLower(), containsPattern)
              || EF.Functions.Like(x.Articul.ToLower(), containsPattern)))

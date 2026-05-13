@@ -34,6 +34,18 @@ public sealed class PrescriptionResponse
     public string? PaymentCurrency { get; set; }
     public List<PrescriptionImageResponse> Images { get; set; } = new();
     public List<PrescriptionChecklistItemResponse> Items { get; set; } = new();
+    /// <summary>Reason the prescription was cancelled, when applicable.
+    /// Serialised as the enum name string ("ClientCancelled", etc.).
+    /// Null on any non-Cancelled status and on rows that pre-date the
+    /// field.</summary>
+    public string? CancellationReason { get; set; }
+    public DateTime? CancelledAtUtc { get; set; }
+
+    /// <summary>Reason the pharmacist couldn't decode the prescription.
+    /// Set only when status === DecodeFailed.</summary>
+    public string? DecodeFailureReason { get; set; }
+    public DateTime? DecodeFailedAtUtc { get; set; }
+    public string? DecodeFailureComment { get; set; }
 }
 
 public sealed class PrescriptionImageResponse
@@ -49,6 +61,11 @@ public sealed class PrescriptionChecklistItemResponse
     public Guid Id { get; set; }
     public Guid? MedicineId { get; set; }
     public string? ManualMedicineName { get; set; }
+    /// <summary>Snapshot of the catalog medicine's title at response build
+    /// time, when <see cref="MedicineId"/> is set. Pharmacist history /
+    /// admin views render this directly so the row always shows a name
+    /// without a follow-up /api/medicines/by-ids round-trip.</summary>
+    public string? MedicineTitle { get; set; }
     public int Quantity { get; set; }
     public string? PharmacistComment { get; set; }
     /// <summary>"Original" or "Undecoded".</summary>
@@ -63,4 +80,26 @@ public sealed class PrescriptionChecklistItemResponse
     /// own row; the client renders the pair as one block with the
     /// analog highlighted on top.</summary>
     public Guid? AnalogItemId { get; set; }
+    /// <summary>FK to a manual lookup request created for this item, if
+    /// the pharmacist asked other pharmacies to physically locate it.
+    /// Null for catalog items and for manual items without a lookup.</summary>
+    public Guid? LookupRequestId { get; set; }
+
+    /// <summary>Number of pharmacy admins who answered this item's
+    /// lookup with a temp offer (= shadow medicines + offers
+    /// materialised on submit). Null for catalog items; 0 when nobody
+    /// has replied yet so the frontend can still render "ждём ответов".</summary>
+    public int? TemporaryOfferCount { get; set; }
+
+    /// <summary>Cheapest price across the temp offers — gives the UI a
+    /// "от X TJS" line for manual lookup items the same way catalog
+    /// items show their min offer price. Null when nobody responded.</summary>
+    public decimal? TemporaryOfferMinPrice { get; set; }
+
+    /// <summary>The pharmacist switched this row into "by units"
+    /// pricing — the client should render UnitCount + UnitTotalPrice
+    /// instead of the package count + offer-times-quantity total.</summary>
+    public bool UseUnitMode { get; set; }
+    public int? UnitCount { get; set; }
+    public decimal? UnitTotalPrice { get; set; }
 }

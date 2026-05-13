@@ -1,8 +1,18 @@
 # ============================================
-# PROD: front + back only (external DB, S3) — default compose file.
-# Usage: docker compose --env-file .env.prod up -d --build
-# Pre-req: docker network create yalla-net
-# Local dev with all services lives in docker-compose.dev.yml.
+# BASE compose — front + api, shared by dev and prod.
+#
+# Defaults to DEV when you run plain `docker compose ...` because the
+# adjacent docker-compose.override.yml is auto-loaded and adds the
+# local-stack services (postgres / minio / opensearch) on top.
+#
+#   Dev (default, picks up override.yml automatically):
+#     docker compose --env-file .env.dev up -d --build
+#
+#   Prod (explicit overrides, ignores override.yml):
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#       --env-file .env.prod up -d --build
+#
+# Pre-req: `docker network create yalla-net` (once per host).
 # ============================================
 
 services:
@@ -13,14 +23,14 @@ services:
       dockerfile: Dockerfile
       args:
         - INTERNAL_API_URL=${INTERNAL_API_URL:-http://api:8080}
-        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-    image: yalla/front:latest
+        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-${GOOGLE_MAPS_API_KEY:-}}
+        - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+        - NEXT_PUBLIC_MAP_PROVIDER=${NEXT_PUBLIC_MAP_PROVIDER:-}
     container_name: yalla-front
     restart: unless-stopped
-    # No host port mapping in prod — the front is reached through the
-    # reverse proxy (Traefik / nginx / Render router) sitting in front of
-    # the docker network. `expose` documents the container port for the
-    # proxy without binding it to the host's external interface.
+    # No host port mapping here — the dev override binds 3000:3000 for
+    # local browsers; in prod the front is reached through the reverse
+    # proxy on the same docker network.
     expose:
       - "3000"
     depends_on:
@@ -31,12 +41,9 @@ services:
 
   api:
     build: ./yalla-back
-    image: yalla/api:latest
     container_name: yalla-api
     restart: unless-stopped
-    # Same — no external host port. Other services on `yalla-net` reach
-    # the API by hostname `api:8080`; the public reverse proxy forwards
-    # `https://api.<domain>` to the same internal port.
+    # Same as front — host port binding lives in the dev override only.
     expose:
       - "8080"
     healthcheck:
@@ -53,12 +60,25 @@ services:
       - Jwt__Audience=${JWT_AUDIENCE:-Yalla.Api.Client}
       - Jwt__AccessTokenMinutes=${JWT_ACCESS_TOKEN_MINUTES:-43200}
       - MinIo__Endpoint=${MINIO_ENDPOINT}
+      - MinIo__ContainerEndpoint=${MINIO_CONTAINER_ENDPOINT:-${MINIO_ENDPOINT}}
       - MinIo__AccessKey=${MINIO_ACCESS_KEY}
       - MinIo__SecretKey=${MINIO_SECRET_KEY}
       - MinIo__BucketName=${MINIO_BUCKET}
-      - MinIo__UseSsl=${MINIO_USE_SSL:-true}
-      - Elasticsearch__Url=${ELASTICSEARCH_URL}
+      - MinIo__UseSsl=${MINIO_USE_SSL:-false}
+      # `Elasticsearch:*` config keys stay as-is — the search engine
+      # uses raw HttpClient + JSON, so swapping the cluster behind the
+      # URL between Elasticsearch and OpenSearch is invisible to the
+      # backend. Dev's override points this at opensearch:9200, prod
+      # points wherever the deployment uses (managed ES, OpenSearch
+      # Service, etc.).
+      - Elasticsearch__Url=${ELASTICSEARCH_URL:-}
       - Elasticsearch__MedicineIndex=${ELASTICSEARCH_INDEX:-medicines}
+      # Auth — optional. Used by managed clusters (Bonsai / AWS
+      # OpenSearch / Elastic Cloud). Dev's bundled OpenSearch runs
+      # with the security plugin disabled so these stay empty there.
+      - Elasticsearch__Username=${ELASTICSEARCH_USERNAME:-}
+      - Elasticsearch__Password=${ELASTICSEARCH_PASSWORD:-}
+      - Elasticsearch__ApiKey=${ELASTICSEARCH_API_KEY:-}
       - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
       - Telegram__BotUsername=${TELEGRAM_BOT_USERNAME}
       - Telegram__WebhookPublicBaseUrl=${TELEGRAM_WEBHOOK_URL}
@@ -77,8 +97,8 @@ services:
       - Jura__BaseUrl=${JURA_BASE_URL}
       - Jura__Login=${JURA_LOGIN}
       - Jura__Password=${JURA_PASSWORD}
-      - Cors__AllowedOrigins__0=${CORS_ORIGIN_0}
-      - Cors__AllowedOrigins__1=${CORS_ORIGIN_1}
+      - Cors__AllowedOrigins__0=${CORS_ORIGIN_0:-http://localhost:3000}
+      - Cors__AllowedOrigins__1=${CORS_ORIGIN_1:-http://127.0.0.1:3000}
     networks:
       - yalla-net
 
