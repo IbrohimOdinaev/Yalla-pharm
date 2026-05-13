@@ -17,7 +17,7 @@ type AppShellProps = {
 
 export function AppShell({ top, children, hideGlobalNav, hideFooter, narrow }: AppShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-surface text-on-surface">
+    <div className="flex min-h-screen min-h-svh flex-col bg-surface text-on-surface">
       {!hideGlobalNav ? <GlobalTopBar /> : null}
       {top}
       <main

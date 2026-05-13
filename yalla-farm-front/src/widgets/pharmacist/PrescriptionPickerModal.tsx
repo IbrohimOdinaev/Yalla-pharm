@@ -91,7 +91,7 @@ export function PrescriptionPickerModal() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 pb-safe-4 sm:pb-4">
           {error ? (
             <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
           ) : null}

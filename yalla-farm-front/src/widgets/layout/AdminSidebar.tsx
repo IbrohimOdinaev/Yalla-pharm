@@ -49,7 +49,7 @@ export function AdminSidebar() {
   }
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-64 flex-shrink-0 flex-col bg-surface-container-lowest shadow-glass lg:flex">
+    <aside className="sticky top-0 hidden h-screen h-svh w-64 flex-shrink-0 flex-col bg-surface-container-lowest shadow-glass lg:flex">
       <div className="flex items-center gap-2.5 px-6 py-5">
         <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary-container text-white font-display font-extrabold">
           Y

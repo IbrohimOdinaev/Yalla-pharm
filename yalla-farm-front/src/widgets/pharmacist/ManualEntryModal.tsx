@@ -42,7 +42,7 @@ export function ManualEntryModal({ open, onClose, onSubmit }: ManualEntryModalPr
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-md flex-col gap-3 rounded-t-3xl bg-surface-container-lowest p-5 shadow-float sm:rounded-3xl"
+        className="flex w-full max-w-md flex-col gap-3 rounded-t-3xl bg-surface-container-lowest p-5 pb-safe-5 shadow-float sm:rounded-3xl sm:pb-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

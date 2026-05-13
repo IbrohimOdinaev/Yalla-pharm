@@ -38,7 +38,7 @@ export function PharmacistShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface text-on-surface">
+    <div className="flex min-h-screen min-h-svh flex-col bg-surface text-on-surface">
       <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center gap-3 px-3 sm:px-6 lg:px-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}

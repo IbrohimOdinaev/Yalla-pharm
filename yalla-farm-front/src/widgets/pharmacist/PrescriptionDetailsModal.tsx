@@ -54,7 +54,7 @@ export function PrescriptionDetailsModal({ prescription, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-t-3xl bg-surface-container-lowest p-5 shadow-float sm:rounded-3xl"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-t-3xl bg-surface-container-lowest p-5 pb-safe-5 shadow-float sm:rounded-3xl sm:pb-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">

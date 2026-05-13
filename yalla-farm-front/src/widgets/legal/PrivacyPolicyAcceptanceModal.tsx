@@ -49,7 +49,7 @@ export function PrivacyPolicyAcceptanceModal({ open, token, version, onAccepted,
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
-      <div className="w-full max-w-lg rounded-t-3xl bg-surface p-5 shadow-float sm:rounded-3xl">
+      <div className="w-full max-w-lg rounded-t-3xl bg-surface p-5 pb-safe-5 shadow-float sm:rounded-3xl sm:pb-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="font-display text-lg font-extrabold">
             Согласие на обработку персональных данных

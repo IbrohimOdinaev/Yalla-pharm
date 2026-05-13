@@ -196,7 +196,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-surface border-t border-surface-container-high p-4 flex gap-2">
+        <div className="sticky bottom-0 bg-surface border-t border-surface-container-high p-4 pb-safe-4 sm:pb-4 flex gap-2">
           <button
             type="button"
             onClick={onClose}
