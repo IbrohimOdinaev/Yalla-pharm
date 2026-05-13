@@ -439,23 +439,32 @@ function PharmacySelectPageInner() {
   // Tap on a map marker → make sure the side panel is open, expand
   // that pharmacy's card so the user sees its item rows immediately,
   // scroll the card into view, and highlight it briefly.
+  //
+  // The panel's open/close animation runs for 300 ms
+  // (transition-transform duration-300 on the <aside>). If we
+  // scrollIntoView before that's done, the card's bounding box is
+  // still off-screen on phones (panel slides up from below) so the
+  // scroll lands on an element that's mid-flight. Wait out the full
+  // animation + one rAF for layout to settle, then scroll.
   const handlePharmacyMapClick = useCallback((id: string) => {
     setIsPanelCollapsed(false);
     setExpandedId(id);
-    // Defer scroll until the panel has actually painted (it animates
-    // in when toggling collapsed → expanded; without the rAF the
-    // cardRef measurement is taken against a width-0 panel and
-    // scrollIntoView becomes a no-op on phones). One extra frame for
-    // the card's own expand animation so the centre block math sees
-    // the full grown height.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = cardRefs.current[id];
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      });
-    });
     setHighlightedId(id);
-    setTimeout(() => setHighlightedId(""), 2000);
+
+    const scrollWhenReady = () => {
+      const el = cardRefs.current[id];
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    // 350 ms = panel slide-in (300) + a buffer for the card's own
+    // expand animation. If the panel was already open, the extra
+    // wait is invisible (smooth-scroll itself takes ~300 ms anyway).
+    window.setTimeout(scrollWhenReady, 350);
+
+    // Highlight long enough that the user's eye catches it even
+    // when they look back at the panel after dismissing the marker
+    // tooltip on mobile.
+    setTimeout(() => setHighlightedId(""), 2500);
   }, []);
 
   // Select pharmacy — final per-position selection happens on checkout page.
@@ -493,11 +502,13 @@ function PharmacySelectPageInner() {
   }
 
   return (
-    // h-[100dvh] (dynamic viewport) instead of h-screen so iOS Safari's
-    // retractable URL bar doesn't crop the bottom of the layout when
-    // it's expanded. h-screen is kept first as a fallback for browsers
-    // without dvh support.
-    <div className="h-screen h-[100dvh] flex flex-col bg-surface">
+    // Triple fallback: legacy h-screen (= 100vh) for browsers that
+    // don't know either viewport unit; 100dvh for dynamic adaptation
+    // when iOS Safari's URL bar collapses/expands; 100svh as the
+    // safest floor — always equal to the smallest viewport the user
+    // will see, so action buttons never end up under Safari's
+    // bottom toolbar.
+    <div className="h-screen h-[100dvh] h-svh flex flex-col bg-surface">
       {/* Global header — search, address, cart, account */}
       <GlobalTopBar />
 
@@ -643,8 +654,12 @@ function PharmacySelectPageInner() {
                   <div
                     key={option.pharmacyId}
                     ref={(el) => { cardRefs.current[option.pharmacyId] = el; }}
-                    className={`rounded-3xl bg-surface-container-lowest p-4 shadow-card transition ${
-                      isHighlighted ? "ring-2 ring-primary" : ""
+                    // `scroll-mt-12` gives scrollIntoView a top breathing
+                    // room so the matched card never lands hugging the
+                    // sticky header. Highlight ring + soft scale up so a
+                    // marker-driven reveal really catches the eye.
+                    className={`scroll-mt-12 rounded-3xl bg-surface-container-lowest p-4 shadow-card transition-all duration-300 ${
+                      isHighlighted ? "ring-2 ring-primary shadow-float scale-[1.015]" : ""
                     }`}
                   >
                     {/* Pharmacy header */}
