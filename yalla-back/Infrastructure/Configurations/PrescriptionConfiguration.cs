@@ -34,6 +34,12 @@ public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
           .HasMaxLength(Prescription.MaxClientCommentLength)
           .IsRequired(false);
 
+        builder.Property(x => x.ClientContacts)
+          .HasColumnName("client_contacts")
+          .HasColumnType("character varying(256)")
+          .HasMaxLength(Prescription.MaxClientContactsLength)
+          .IsRequired(false);
+
         builder.Property(x => x.Status)
           .HasColumnName("status")
           .HasColumnType("integer")

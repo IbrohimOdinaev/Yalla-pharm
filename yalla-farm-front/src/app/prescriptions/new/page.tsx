@@ -3,12 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
-import {
-  createPrescription,
-  type PrescriptionPreferenceTier,
-  PRESCRIPTION_TIER_LABEL_RU,
-  PRESCRIPTION_TIER_DESCRIPTION_RU,
-} from "@/entities/prescription/api";
+import { createPrescription } from "@/entities/prescription/api";
 import { getPrivacyPolicyStatus } from "@/entities/legal/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
@@ -17,6 +12,39 @@ import { Button, Icon, Input } from "@/shared/ui";
 
 const MAX_PHOTOS = 2;
 const ACCEPTED = "image/png,image/jpeg,image/jpg,image/webp";
+
+// Guest-flow draft: stashed in localStorage when an unauthenticated user
+// hits "Отправить рецепт", so after they finish /login we can drop them
+// right back here with everything already filled in (including photos).
+const DRAFT_KEY = "yalla.prescription.new.draft.v1";
+
+type DraftPhoto = { name: string; type: string; dataUrl: string };
+type Draft = {
+  age: string;
+  comment: string;
+  contacts: string;
+  photos: DraftPhoto[];
+};
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataUrlToFile(dataUrl: string, name: string, type: string): File {
+  // data:image/jpeg;base64,...  →  File reconstructed from the base64
+  // payload so we can re-submit the same photos after the OTP flow.
+  const comma = dataUrl.indexOf(",");
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  const bytes = atob(b64);
+  const buf = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+  return new File([buf], name, { type });
+}
 
 function CameraIcon({ className }: { className?: string }) {
   return (
@@ -194,10 +222,10 @@ export default function NewPrescriptionPage() {
   const [photos, setPhotos] = useState<File[]>([]);
   const [age, setAge] = useState<string>("");
   const [comment, setComment] = useState<string>("");
+  const [contacts, setContacts] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [tier, setTier] = useState<PrescriptionPreferenceTier>("AsPrescribed");
   // Privacy-policy gate state. `policyAccepted` is null while we're
   // waiting for the status round-trip; true/false once known. When the
   // user hits submit before accepting, we pop the modal and pause the
@@ -208,13 +236,49 @@ export default function NewPrescriptionPage() {
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
   const pendingSubmitRef = useRef(false);
 
-  // Auth gate — same pattern as /prescriptions. Wait for the auth slice
-  // to hydrate from localStorage so a refresh doesn't kick the user out.
+  // Auth gate — only staff roles are bounced. Guests are intentionally
+  // allowed to fill the form; the submit handler stashes their draft
+  // and redirects them to /login when they actually try to send, then
+  // /login restores the draft on return.
   useEffect(() => {
     if (!hydrated) return;
-    if (!token) { router.replace("/login?next=/prescriptions/new"); return; }
     if (role && role !== "Client") router.replace("/");
-  }, [hydrated, token, role, router]);
+  }, [hydrated, role, router]);
+
+  // Rehydrate the guest draft once auth state is known. Two-stage:
+  //  • If a draft exists on first visit, restore it regardless of auth
+  //    state — covers the user editing on the same device across a
+  //    refresh. Photos come back as real File objects so submit can
+  //    POST them as-is.
+  //  • If a draft exists AND the user is now authenticated, also clear
+  //    the draft so a subsequent fresh visit doesn't re-prefill it.
+  const draftRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as Partial<Draft>;
+      if (typeof draft.age === "string") setAge(draft.age);
+      if (typeof draft.comment === "string") setComment(draft.comment);
+      if (typeof draft.contacts === "string") setContacts(draft.contacts);
+      if (Array.isArray(draft.photos)) {
+        const restored: File[] = [];
+        for (const p of draft.photos) {
+          if (p && typeof p.name === "string" && typeof p.type === "string" && typeof p.dataUrl === "string") {
+            restored.push(dataUrlToFile(p.dataUrl, p.name, p.type));
+          }
+        }
+        if (restored.length > 0) setPhotos(restored.slice(0, MAX_PHOTOS));
+      }
+      // Once authenticated, drop the draft — its job is done.
+      if (token) window.localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Corrupt draft is not worth crashing the form over.
+      window.localStorage.removeItem(DRAFT_KEY);
+    }
+  }, [hydrated, token]);
 
   // Privacy-policy status — fire-and-forget on mount. The result
   // gates the submit button below; while we're waiting we treat
@@ -279,8 +343,6 @@ export default function NewPrescriptionPage() {
     event.preventDefault();
     setError(null);
 
-    if (!token) return;
-
     const ageNum = Number(age);
     if (!Number.isFinite(ageNum) || ageNum <= 0 || ageNum > 150) {
       setError("Введите корректный возраст пациента.");
@@ -288,6 +350,38 @@ export default function NewPrescriptionPage() {
     }
     if (photos.length === 0) {
       setError("Добавьте хотя бы одно фото рецепта.");
+      return;
+    }
+
+    // Guest flow: serialize the form (including photo bytes) into
+    // localStorage and bounce to /login. The `next` param brings them
+    // back here on success, and the rehydrate effect above will refill
+    // the form so they only have to tap "Отправить рецепт" once more.
+    if (!token) {
+      try {
+        setSubmitting(true);
+        const draftPhotos: DraftPhoto[] = await Promise.all(
+          photos.map(async (file) => ({
+            name: file.name,
+            type: file.type,
+            dataUrl: await fileToDataUrl(file),
+          })),
+        );
+        const draft: Draft = {
+          age,
+          comment,
+          contacts,
+          photos: draftPhotos,
+        };
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Storage write can fail (quota exceeded with very large
+        // photos). Fall through to the login redirect anyway — the
+        // user can re-pick photos after logging in.
+      } finally {
+        setSubmitting(false);
+      }
+      router.push("/login?redirect=/prescriptions/new");
       return;
     }
 
@@ -306,8 +400,9 @@ export default function NewPrescriptionPage() {
       const created = await createPrescription(token, {
         patientAge: ageNum,
         clientComment: comment.trim() || null,
+        clientContacts: contacts.trim() || null,
         photos,
-        preferenceTier: tier,
+        preferenceTier: "AsPrescribed",
       });
       // Если бэк выдал DC payment URL — отправляем клиента на оплату 3 TJS.
       // Перед редиректом подменяем текущий URL на /prescriptions, чтобы
@@ -415,38 +510,6 @@ export default function NewPrescriptionPage() {
         ) : null}
 
         <section className="space-y-3">
-          <h2 className="font-display text-base font-extrabold">Чек-лист</h2>
-          <p className="text-xs text-on-surface-variant">
-            Выберите, как фармацевту собирать список лекарств — этот выбор увидит фармацевт в работе над расшифровкой.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(["AsPrescribed", "GoldenMiddle", "MaxSavings"] as const).map((t) => {
-              const active = tier === t;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTier(t)}
-                  className={`rounded-2xl border p-3 text-left transition ${
-                    active
-                      ? "border-primary bg-primary-soft shadow-card"
-                      : "border-outline bg-surface-container-lowest hover:border-primary/40"
-                  }`}
-                  aria-pressed={active}
-                >
-                  <p className={`text-sm font-bold ${active ? "text-primary" : "text-on-surface"}`}>
-                    {PRESCRIPTION_TIER_LABEL_RU[t]}
-                  </p>
-                  <p className="mt-1 text-[11px] leading-snug text-on-surface-variant">
-                    {PRESCRIPTION_TIER_DESCRIPTION_RU[t]}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="space-y-3">
           <h2 className="font-display text-base font-extrabold">Возраст пациента</h2>
           <Input
             type="number"
@@ -474,6 +537,24 @@ export default function NewPrescriptionPage() {
             maxLength={1000}
             className="w-full rounded-2xl border border-outline bg-surface-container-lowest p-3 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none"
           />
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="font-display text-base font-extrabold">
+            Контакты для связи <span className="text-on-surface-variant/60">(необязательно)</span>
+          </h2>
+          <textarea
+            value={contacts}
+            onChange={(e) => setContacts(e.target.value)}
+            placeholder="Например: +992 ••• •• •• ••, @telegram, WhatsApp"
+            rows={2}
+            maxLength={256}
+            className="w-full rounded-2xl border border-outline bg-surface-container-lowest p-3 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none"
+          />
+          <p className="text-xs text-on-surface-variant">
+            Эти контакты нужны, чтобы фармацевт связался с вами в случае
+            необходимости или для уточнения данных о рецепте.
+          </p>
         </section>
 
         {error ? (

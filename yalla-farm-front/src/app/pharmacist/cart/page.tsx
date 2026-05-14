@@ -312,6 +312,15 @@ export default function PharmacistCartPage() {
                   {prescription.clientComment}
                 </p>
               ) : null}
+              {prescription.clientContacts ? (
+                <p className="text-xs">
+                  <span className="font-semibold text-on-surface-variant">Контакты для связи: </span>
+                  <span className="font-medium">{prescription.clientContacts}</span>
+                  <span className="ml-1 text-on-surface-variant/80">
+                    — клиент оставил для уточнения данных о рецепте.
+                  </span>
+                </p>
+              ) : null}
               <div className="grid grid-cols-2 gap-3">
                 {prescription.images.map((img) => (
                   <button

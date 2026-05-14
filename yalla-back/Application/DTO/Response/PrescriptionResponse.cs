@@ -16,6 +16,9 @@ public sealed class PrescriptionResponse
     public string PreferenceTier { get; set; } = "AsPrescribed";
     public int PatientAge { get; set; }
     public string? ClientComment { get; set; }
+    /// <summary>Callback contacts the client left at submission so the
+    /// pharmacist can reach them for clarifications during decoding.</summary>
+    public string? ClientContacts { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public DateTime? DecodedAtUtc { get; set; }

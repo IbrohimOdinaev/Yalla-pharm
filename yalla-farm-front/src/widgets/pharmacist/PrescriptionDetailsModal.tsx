@@ -124,6 +124,16 @@ export function PrescriptionDetailsModal({ prescription, onClose }: Props) {
                 <span>{prescription.clientComment}</span>
               </div>
             ) : null}
+            {prescription.clientContacts ? (
+              <div className="sm:col-span-2">
+                <span className="font-semibold text-on-surface-variant">Контакты для связи: </span>
+                <span className="font-medium">{prescription.clientContacts}</span>
+                <p className="mt-1 text-[11px] text-on-surface-variant/80">
+                  Эти контакты клиент оставил, чтобы вы могли связаться с
+                  ним для уточнения данных о рецепте.
+                </p>
+              </div>
+            ) : null}
           </section>
 
           {prescription.pharmacistOverallComment ? (

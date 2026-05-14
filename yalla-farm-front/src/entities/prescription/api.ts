@@ -122,6 +122,10 @@ export type ApiPrescription = {
   preferenceTier?: PrescriptionPreferenceTier;
   patientAge: number;
   clientComment?: string | null;
+  /** Optional callback contacts the client left at submission so the
+   *  pharmacist can reach them for clarifications during decoding
+   *  (additional phone, Telegram, WhatsApp, etc.). */
+  clientContacts?: string | null;
   createdAtUtc: string;
   updatedAtUtc?: string | null;
   decodedAtUtc?: string | null;
@@ -271,6 +275,7 @@ export async function createPrescription(
   input: {
     patientAge: number;
     clientComment: string | null;
+    clientContacts?: string | null;
     photos: File[];
     preferenceTier: PrescriptionPreferenceTier;
   }
@@ -282,6 +287,7 @@ export async function createPrescription(
   form.append("PatientAge", String(input.patientAge));
   form.append("PreferenceTier", String(PRESCRIPTION_TIER_VALUE[input.preferenceTier]));
   if (input.clientComment) form.append("ClientComment", input.clientComment);
+  if (input.clientContacts) form.append("ClientContacts", input.clientContacts);
   for (const photo of input.photos) form.append("photos", photo);
 
   return apiFetch<ApiPrescription>("/api/prescriptions", {

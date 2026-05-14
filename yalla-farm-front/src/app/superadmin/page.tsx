@@ -1993,6 +1993,15 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                         {p.clientComment}
                       </p>
                     ) : null}
+                    {p.clientContacts ? (
+                      <p className="text-xs">
+                        <span className="font-semibold text-on-surface-variant">Контакты для связи: </span>
+                        <span className="font-medium">{p.clientContacts}</span>
+                        <span className="ml-1 text-on-surface-variant/80">
+                          — клиент оставил для уточнения данных о рецепте.
+                        </span>
+                      </p>
+                    ) : null}
                     <p className="text-[11px] text-on-surface-variant">{created}</p>
                     {/* IDs block — same convention as orders / payment intents:
                         short prefix in bold + full GUID in tiny grey, so the

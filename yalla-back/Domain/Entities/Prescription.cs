@@ -14,6 +14,7 @@ public class Prescription
     public const int MinImagesPerPrescription = 1;
     public const int MaxImagesPerPrescription = 2;
     public const int MaxClientCommentLength = 1000;
+    public const int MaxClientContactsLength = 256;
     public const int MaxPharmacistCommentLength = 2000;
 
     private readonly List<PrescriptionImage> _images = new();
@@ -28,6 +29,12 @@ public class Prescription
 
     /// <summary>Optional free-text comment from the client.</summary>
     public string? ClientComment { get; private set; }
+
+    /// <summary>Optional callback contacts the client leaves so the
+    /// pharmacist can reach them for clarifications during decoding
+    /// (additional phone, Telegram handle, WhatsApp, etc). Capped at
+    /// <see cref="MaxClientContactsLength"/>.</summary>
+    public string? ClientContacts { get; private set; }
 
     public PrescriptionStatus Status { get; private set; }
 
@@ -91,7 +98,8 @@ public class Prescription
       int patientAge,
       string? clientComment,
       IReadOnlyList<PrescriptionImage> images,
-      PrescriptionPreferenceTier preferenceTier = PrescriptionPreferenceTier.AsPrescribed)
+      PrescriptionPreferenceTier preferenceTier = PrescriptionPreferenceTier.AsPrescribed,
+      string? clientContacts = null)
     {
         if (clientId == Guid.Empty)
             throw new DomainArgumentException("Prescription.ClientId can't be empty.");
@@ -103,6 +111,10 @@ public class Prescription
         if (clientComment is { Length: > MaxClientCommentLength })
             throw new DomainArgumentException(
               $"Prescription.ClientComment can't exceed {MaxClientCommentLength} characters.");
+
+        if (clientContacts is { Length: > MaxClientContactsLength })
+            throw new DomainArgumentException(
+              $"Prescription.ClientContacts can't exceed {MaxClientContactsLength} characters.");
 
         if (images is null || images.Count < MinImagesPerPrescription)
             throw new DomainArgumentException(
@@ -116,6 +128,7 @@ public class Prescription
         ClientId = clientId;
         PatientAge = patientAge;
         ClientComment = string.IsNullOrWhiteSpace(clientComment) ? null : clientComment.Trim();
+        ClientContacts = string.IsNullOrWhiteSpace(clientContacts) ? null : clientContacts.Trim();
         Status = PrescriptionStatus.Submitted;
         PreferenceTier = preferenceTier;
         CreatedAtUtc = DateTime.UtcNow;

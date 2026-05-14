@@ -156,7 +156,8 @@ public sealed class PrescriptionService : IPrescriptionService
               request.PatientAge,
               request.ClientComment,
               prescriptionImages,
-              tier);
+              tier,
+              request.ClientContacts);
 
             // Free-credit short-circuit. If the client was awarded a
             // free decoding (a prior request failed with
@@ -665,7 +666,8 @@ public sealed class PrescriptionService : IPrescriptionService
           original.PatientAge,
           original.ClientComment,
           clonedImages,
-          original.PreferenceTier);
+          original.PreferenceTier,
+          original.ClientContacts);
 
         _dbContext.Prescriptions.Add(resubmitted);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -1245,6 +1247,7 @@ public sealed class PrescriptionService : IPrescriptionService
             PreferenceTier = prescription.PreferenceTier.ToString(),
             PatientAge = prescription.PatientAge,
             ClientComment = prescription.ClientComment,
+            ClientContacts = prescription.ClientContacts,
             CreatedAtUtc = prescription.CreatedAtUtc,
             UpdatedAtUtc = prescription.UpdatedAtUtc,
             DecodedAtUtc = prescription.DecodedAtUtc,
