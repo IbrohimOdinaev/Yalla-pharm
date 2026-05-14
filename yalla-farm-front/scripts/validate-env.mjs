@@ -47,9 +47,9 @@ if (!publicApiBaseUrl && !internalApiUrl) {
   );
 }
 
-if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+if (!process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY) {
   warnings.push(
-    "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is empty. Pharmacy map + address picker will be unavailable.",
+    "NEXT_PUBLIC_YANDEX_MAPS_API_KEY is empty. Pharmacy map + address picker will render an error placeholder.",
   );
 }
 

@@ -5,11 +5,18 @@ import { useEffect, useRef, useState } from "react";
 import { loadYmaps } from "@/shared/lib/map/yandex-loader";
 import type { GeoPoint } from "@/shared/lib/map";
 import { getDriverPosition } from "@/shared/api/delivery";
-import type { DriverTrackingMapProps } from "./DriverTrackingMapGoogle";
 
-/** Yandex v2 variant of the order-tracking mini-map. Two static
- *  endpoint pins (pharmacy + client) plus a polled driver pin that
- *  updates in place every 5 s. lat-first throughout. */
+export type DriverTrackingMapProps = {
+  token: string;
+  orderId: string;
+  fromPoint: GeoPoint;
+  toPoint: GeoPoint;
+  className?: string;
+};
+
+/** Yandex v2 order-tracking mini-map. Two static endpoint pins (pharmacy
+ *  + client) plus a polled driver pin that updates in place every 5 s.
+ *  lat-first throughout. */
 export function DriverTrackingMapYandex({
   token,
   orderId,

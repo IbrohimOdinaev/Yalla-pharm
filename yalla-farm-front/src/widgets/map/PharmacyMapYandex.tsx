@@ -3,19 +3,58 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadYmaps } from "@/shared/lib/map/yandex-loader";
-import { DUSHANBE_CENTER, getMapProvider, type GeoPoint } from "@/shared/lib/map";
+import { DUSHANBE_CENTER, getMapProvider, type GeoPoint, type GeoResult } from "@/shared/lib/map";
 import { formatMoney } from "@/shared/lib/format";
-import type { PharmacyMapHandle, PharmacyMapProps, PharmacyMarker } from "./PharmacyMapGoogle";
+
+export type PharmacyMarker = {
+  id: string;
+  title: string;
+  address: string;
+  lat: number;
+  lng: number;
+  iconUrl?: string | null;
+  cost?: number;
+};
+
+export type PharmacyMapHandle = {
+  panTo: (point: GeoPoint) => void;
+  /** Reset the viewport to the default Dushanbe-wide framing — all
+   *  pharmacies + user location are visible at once. Used by the
+   *  "fit-to-city" button on the map. */
+  fitDushanbe: () => void;
+  /** Briefly animate the given pharmacy's marker so the user can spot
+   *  it among neighbours. Called from the side panel's per-card
+   *  "show on map" chip in addition to a `panTo`. No-op if the
+   *  marker doesn't exist (yet). */
+  highlightPharmacy: (id: string) => void;
+};
+
+export type PharmacyMapProps = {
+  pharmacies: PharmacyMarker[];
+  className?: string;
+  onPharmacyClick?: (id: string) => void;
+  /** Legacy: click on map to pick address */
+  onMapClick?: (result: GeoResult) => void;
+  /** New: drag map, center pin picks address on idle */
+  onCenterChange?: (result: GeoResult) => void;
+  userLocation?: GeoPoint | null;
+  selectedPoint?: GeoPoint | null;
+  /** Legacy click-to-pick mode */
+  pickMode?: boolean;
+  /** New drag-to-pick mode with center pin */
+  centerPinMode?: boolean;
+  /** Ref callback to get imperative handle (panTo) */
+  mapHandle?: (handle: PharmacyMapHandle | null) => void;
+};
 
 /**
- * Yandex Maps v2.1 variant of PharmacyMap. Same props contract as the
- * Google variant — the runtime switch in `PharmacyMap.tsx` picks one or
- * the other based on `NEXT_PUBLIC_MAP_PROVIDER`.
+ * Yandex Maps v2.1 PharmacyMap.
  *
  * Pharmacy pills are real DOM elements rendered through ymaps2's
- * `templateLayoutFactory` — we attach our own children on `build` so the
- * `createPinElement` shape (icon + name + price tail) stays identical to
- * the Google version, click handlers and all.
+ * `templateLayoutFactory` — we attach our own children on `build` so
+ * `createPinElement` shape (icon + name + price tail), click handlers
+ * and all, mirrors what was on the live UI before the Google variant
+ * was retired.
  *
  * Coords are lat-first throughout because the SDK is loaded with
  * `coordorder=latlong` (see yandex-loader.ts). That keeps the rest of
@@ -540,5 +579,3 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
 
   return root;
 }
-
-export type { PharmacyMapHandle };

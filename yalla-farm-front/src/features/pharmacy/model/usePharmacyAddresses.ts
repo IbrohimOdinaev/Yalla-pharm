@@ -10,7 +10,7 @@ import { stripPlusCode } from "@/shared/lib/map/jura-provider";
  * across response noise. */
 const cache = new Map<string, string>();
 
-/** Reject raw coordinate strings — e.g. Google's fallback when no address
+/** Reject raw coordinate strings — e.g. the geocoder's fallback when no address
  * matches a point — so cards don't end up showing "38.564712, 68.762566". */
 const COORDS_ONLY_RE = /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/;
 

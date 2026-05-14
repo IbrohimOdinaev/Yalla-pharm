@@ -95,7 +95,7 @@ html, body { overflow-x: clip; }
 /* Map marker pulse — fires once when the user taps a pharmacy's "show
    on map" chip in the side panel. Uses the `scale` CSS property (not
    `transform`), so it stacks on top of the existing inline
-   `transform: translate(...)` Google/Yandex use to anchor the bubble. */
+   `transform: translate(...)` Yandex uses to anchor the bubble. */
 @keyframes pharmacyMarkerPulse {
   0%   { scale: 1;    }
   35%  { scale: 1.35; }

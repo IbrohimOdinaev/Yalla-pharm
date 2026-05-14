@@ -23,9 +23,7 @@ services:
       dockerfile: Dockerfile
       args:
         - INTERNAL_API_URL=${INTERNAL_API_URL:-http://api:8080}
-        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-${GOOGLE_MAPS_API_KEY:-}}
         - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
-        - NEXT_PUBLIC_MAP_PROVIDER=${NEXT_PUBLIC_MAP_PROVIDER:-}
     container_name: yalla-front
     restart: unless-stopped
     # No host port mapping here — the dev override binds 3000:3000 for

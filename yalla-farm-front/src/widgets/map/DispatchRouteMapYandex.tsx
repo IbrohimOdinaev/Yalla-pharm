@@ -3,11 +3,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { loadYmaps } from "@/shared/lib/map/yandex-loader";
-import type { DispatchRouteMapProps } from "./DispatchRouteMapGoogle";
+import type { GeoPoint } from "@/shared/lib/map";
 
-/** Yandex v2 variant of the from→to mini-map used in
- *  DispatchDeliveryModal — pharmacy pin + client pin, no controls
- *  besides zoom, fixed zoom 13 like the Google variant. */
+export type DispatchRouteMapProps = {
+  fromPoint: GeoPoint | null;
+  toPoint: GeoPoint | null;
+  /** Tailwind height class for the map container (defaults to h-48 sm:h-56). */
+  heightClassName?: string;
+};
+
+/** Yandex v2 from→to mini-map used in DispatchDeliveryModal — pharmacy
+ *  pin + client pin, no controls besides zoom, fixed zoom 13. */
 export function DispatchRouteMapYandex({
   fromPoint,
   toPoint,

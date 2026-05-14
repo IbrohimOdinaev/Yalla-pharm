@@ -555,7 +555,7 @@ function PharmacySelectPageInner() {
 
       {/* Main content — map fills the whole area, pharmacy panel slides in
           on top of it as an absolute overlay. The map element itself never
-          resizes regardless of panel state, so Google Maps doesn't trigger
+          resizes regardless of panel state, so the renderer doesn't trigger
           a relayout / re-tile / "shake" each time the user toggles the
           list on or off. */}
       <div className="flex-1 overflow-hidden relative">
@@ -861,7 +861,7 @@ function PharmacySelectPageInner() {
 
         {/* Map fills the entire viewport area, identical size at all
             times — the panel slides on top of it instead of pushing it
-            around, so Google Maps never sees its container resize. */}
+            around, so the map renderer never sees its container resize. */}
         <div className="absolute inset-0">
           <PharmacyMap
             className="h-full w-full"

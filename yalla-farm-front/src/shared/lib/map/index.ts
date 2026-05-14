@@ -1,26 +1,16 @@
 export type { MapProvider, MapInstance, MapOptions, MapMarkerOptions, MapClickHandler, GeoPoint, GeoResult, SuggestItem } from "./types";
 
 import type { MapProvider } from "./types";
-import { env } from "@/shared/config/env";
-import { GoogleMapProvider } from "./google-provider";
 import { YandexMapProvider } from "./yandex-provider";
 import { JuraMapProvider } from "./jura-provider";
 
 let _provider: JuraMapProvider | null = null;
 
 export function getMapProvider(): MapProvider {
+  // Yandex is the only supported provider; the Google variant was
+  // retired together with the @react-google-maps/api dep.
   if (!_provider) {
-    // env.mapProvider is the source of truth — flip
-    // NEXT_PUBLIC_MAP_PROVIDER to switch the geocoder/suggester used by
-    // the address picker without touching call sites. Falls back to the
-    // other provider if its key is missing.
-    const useYandex = env.mapProvider === "yandex" || !env.googleMapsApiKey;
-    const baseProvider = useYandex && env.yandexMapsApiKey
-      ? new YandexMapProvider()
-      : env.googleMapsApiKey
-        ? new GoogleMapProvider()
-        : new YandexMapProvider();
-    _provider = new JuraMapProvider(baseProvider);
+    _provider = new JuraMapProvider(new YandexMapProvider());
   }
   return _provider;
 }
