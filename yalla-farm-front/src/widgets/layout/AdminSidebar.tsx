@@ -86,7 +86,7 @@ export function AdminSidebar() {
         <button
           type="button"
           onClick={onLogout}
-          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-secondary transition hover:bg-secondary/10"
+          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-secondary transition active:scale-95 hover:bg-secondary/10"
         >
           <Icon name="logout" size={18} />
           Выйти

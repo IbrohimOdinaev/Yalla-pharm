@@ -619,7 +619,7 @@ function DraftRow({
         <button
           type="button"
           onClick={() => onToggleComment(it.draftId)}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-image-backdrop"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition active:scale-95 hover:bg-image-backdrop"
           aria-label="Комментарий"
           title="Комментарий по позиции"
         >
@@ -629,7 +629,7 @@ function DraftRow({
         <button
           type="button"
           onClick={() => onRemove(activeId, it.draftId)}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition active:scale-95 hover:bg-secondary-soft hover:text-secondary"
           aria-label="Удалить"
         >
           <Icon name="close" size={14} />
@@ -646,7 +646,7 @@ function DraftRow({
           <button
             type="button"
             onClick={onPair}
-            className="rounded-full border border-dashed border-outline px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary"
+            className="rounded-full border border-dashed border-outline px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant transition active:scale-95 hover:border-primary hover:text-primary"
           >
             + Привязать аналог
           </button>
@@ -822,7 +822,7 @@ function PairAnalogModal({
                   <button
                     type="button"
                     onClick={() => onPick(c.draftId)}
-                    className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-image-backdrop ${
+                    className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition active:scale-95 hover:bg-image-backdrop ${
                       isCurrent ? "ring-2 ring-primary bg-primary-soft" : "bg-surface-container-lowest"
                     }`}
                   >

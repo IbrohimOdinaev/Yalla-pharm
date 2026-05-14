@@ -55,7 +55,9 @@ public sealed class AuthorizationMatrixIntegrationTests : ApiTestBase
     yield return [HttpMethod.Put, "/api/medicines", new { medicineId = ApiTestData.Medicine1Id, title = "X", articul = "Y", url = "https://example.com" }];
     yield return [HttpMethod.Delete, "/api/medicines", new { medicineId = ApiTestData.Medicine1Id }];
 
-    yield return [HttpMethod.Get, "/api/pharmacies", null];
+    // GET /api/pharmacies is now anonymous-readable — the pharmacy list
+    // feeds the public address picker / banner rail on the home page, so
+    // it intentionally doesn't require a token.
     yield return [HttpMethod.Post, "/api/pharmacies", new { title = "New Pharmacy", address = "Addr", adminId = ApiTestData.Admin1Id }];
     yield return [HttpMethod.Put, "/api/pharmacies", new { pharmacyId = ApiTestData.Pharmacy1Id, title = "Updated", address = "Addr2", adminId = ApiTestData.Admin1Id, isActive = true }];
     yield return [HttpMethod.Delete, "/api/pharmacies", new { pharmacyId = ApiTestData.Pharmacy1Id }];

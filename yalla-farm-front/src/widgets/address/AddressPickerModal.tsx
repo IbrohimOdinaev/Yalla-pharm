@@ -189,15 +189,24 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
   async function saveName(a: ClientAddress) {
     if (!token) return;
     const title = nameInput.trim();
+    // Optimistic: close the inline rename, paint the new title in the list,
+    // then sync. Rollback both the list and the rename UI on failure so the
+    // user can retry without losing what they typed.
+    const prev = remoteAddresses;
+    const optimistic: ClientAddress = { ...a, title: title || "" };
+    setRemoteAddresses((p) => p.map((x) => (x.id === a.id ? optimistic : x)));
+    setNamingForId(null);
+    setNameInput("");
     try {
       const updated = await updateMyAddress(token, a.id, {
         title: title || undefined,
         clearTitle: !title,
       });
-      setRemoteAddresses((prev) => prev.map((x) => (x.id === a.id ? updated : x)));
-      setNamingForId(null);
-      setNameInput("");
+      setRemoteAddresses((p) => p.map((x) => (x.id === a.id ? updated : x)));
     } catch (err) {
+      setRemoteAddresses(prev);
+      setNamingForId(a.id);
+      setNameInput(title);
       alert(err instanceof Error ? err.message : "Не удалось сохранить имя");
     }
   }
@@ -522,10 +531,10 @@ function AddressRow({ item, isNamed, onSelect, onRemove, onRename, isRenaming, n
             if (e.key === "Escape") onCancelName();
           }}
         />
-        <button type="button" onClick={onSaveName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-50 transition" aria-label="Сохранить">
+        <button type="button" onClick={onSaveName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-50 active:scale-90 transition" aria-label="Сохранить">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
-        <button type="button" onClick={onCancelName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high transition" aria-label="Отмена">
+        <button type="button" onClick={onCancelName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high active:scale-90 transition" aria-label="Отмена">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
         </button>
       </div>

@@ -32,7 +32,6 @@ export default function ProfilePage() {
   const [editGender, setEditGender] = useState<string>("");
   const [editDob, setEditDob] = useState("");
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -80,21 +79,30 @@ export default function ProfilePage() {
   async function onSaveProfile(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
-    setIsSavingProfile(true);
-    setProfileMsg(null);
+    // Optimistic: reflect the edits in the displayed profile immediately so the
+    // "Профиль обновлён" feedback lands in the same frame as the click. The
+    // background PUT reconciles; on failure we roll back the visible card but
+    // keep the form inputs intact so the user can retry without retyping.
+    const prev = profile;
+    const optimistic = prev
+      ? {
+          ...prev,
+          name: editName || prev.name,
+          gender: editGender ? Number(editGender) : null,
+          dateOfBirth: editDob || null,
+        }
+      : prev;
+    if (optimistic) setProfile(optimistic);
+    setProfileMsg("Профиль обновлён.");
     try {
       await updateMyProfile(token, {
         name: editName || undefined,
         gender: editGender ? Number(editGender) : null,
         dateOfBirth: editDob || null,
       });
-      setProfileMsg("Профиль обновлён.");
-      const updated = await getMyProfile(token);
-      setProfile(updated);
     } catch (err) {
+      if (prev) setProfile(prev);
       setProfileMsg(err instanceof Error ? err.message : "Ошибка обновления.");
-    } finally {
-      setIsSavingProfile(false);
     }
   }
 
@@ -342,7 +350,7 @@ export default function ProfilePage() {
               </div>
             ) : null}
 
-            <Button type="submit" size="md" fullWidth loading={isSavingProfile}>
+            <Button type="submit" size="md" fullWidth>
               Сохранить
             </Button>
           </form>
@@ -359,7 +367,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="w-full py-2 text-center text-xs font-semibold text-on-surface-variant/70 transition hover:text-secondary"
+                className="w-full py-2 text-center text-xs font-semibold text-on-surface-variant/70 transition active:scale-95 hover:text-secondary"
               >
                 Удалить аккаунт
               </button>
@@ -446,7 +454,7 @@ function LinkRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl bg-surface-container-low p-3 text-left transition hover:bg-surface-container-high"
+      className="flex w-full items-center gap-3 rounded-2xl bg-surface-container-low p-3 text-left transition active:scale-95 hover:bg-surface-container-high"
     >
       <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full sm:h-10 sm:w-10 ${iconTint}`}>
         <Icon name={icon} size={18} />

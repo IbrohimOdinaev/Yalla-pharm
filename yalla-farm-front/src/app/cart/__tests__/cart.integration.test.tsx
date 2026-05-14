@@ -9,73 +9,27 @@ vi.mock("@/shared/lib/useSignalR", () => ({
 }));
 
 describe("CartPage", () => {
-  it("guest with empty cart: shows empty message", () => {
+  it("guest with empty cart: shows the empty state", () => {
     renderWithProviders(<CartPage />);
     expect(screen.getByText(/Корзина пустая/)).toBeInTheDocument();
   });
 
-  it("guest with items in cart: shows auth prompt for checkout", async () => {
-    window.localStorage.setItem(
-      "yalla.guest.basket.v1",
-      JSON.stringify({ items: [{ medicineId: "med-1", quantity: 2 }] })
-    );
+  it("authenticated empty cart: shows the empty state (after fetch resolves to 0 positions)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({
-            medicine: { id: "med-1", title: "TestMed", price: 10, images: [] },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      )
-    );
-    renderWithProviders(<CartPage />);
-    expect(await screen.findByText("Войти и оформить")).toBeInTheDocument();
-  });
-
-  it("authenticated: shows cart title", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({ positions: [], pharmacyOptions: [] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      )
+          JSON.stringify({ basketPositions: [], pharmacyOptions: [] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
     );
     renderWithProviders(<CartPage />, { preloadedAuth: { token: "t", role: "Client" } });
-    expect(screen.getByRole("heading", { name: "Корзина" })).toBeInTheDocument();
+    expect(await screen.findByText(/Корзина пустая/)).toBeInTheDocument();
   });
 
-  it("guest checkout shows login/register buttons", async () => {
-    window.localStorage.setItem(
-      "yalla.guest.basket.v1",
-      JSON.stringify({
-        items: [{ medicineId: "med-1", quantity: 1 }],
-      })
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            medicine: {
-              id: "med-1",
-              title: "Test",
-              offers: [
-                { pharmacyId: "p1", price: 10, stockQuantity: 5 },
-              ],
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      )
-    );
-
+  it("renders the «Корзина» heading from TopBar", () => {
     renderWithProviders(<CartPage />);
-
-    expect(await screen.findByText("Войти и оформить")).toBeInTheDocument();
-    expect(screen.getByText("Регистрация")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Корзина" })).toBeInTheDocument();
   });
 });

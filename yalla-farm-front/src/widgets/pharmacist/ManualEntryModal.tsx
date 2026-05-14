@@ -50,7 +50,7 @@ export function ManualEntryModal({ open, onClose, onSubmit }: ManualEntryModalPr
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-on-surface-variant transition active:scale-95 hover:bg-surface-container"
             aria-label="Закрыть"
           >
             <Icon name="close" size={16} />

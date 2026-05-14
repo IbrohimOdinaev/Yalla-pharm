@@ -57,14 +57,12 @@ describe("ProfilePage", () => {
     expect(screen.getByText("Требуется авторизация")).toBeInTheDocument();
   });
 
-  it("authenticated: shows hero after load", async () => {
+  it("authenticated: shows the name in the hero", async () => {
     mockProfileFetch();
     renderWithProviders(<ProfilePage />, {
       preloadedAuth: { token: "t", role: "Client", userId: "c1" },
     });
-    expect(
-      await screen.findByText(/Здравствуйте, Тест/)
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Тест")).toBeInTheDocument();
   });
 
   it("authenticated: shows logout button", async () => {

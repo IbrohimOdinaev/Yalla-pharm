@@ -52,7 +52,7 @@ export function PharmacistShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={onLogout}
-              className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary transition hover:bg-secondary-soft"
+              className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary transition active:scale-95 hover:bg-secondary-soft"
               aria-label="Выйти"
             >
               <Icon name="logout" size={14} />

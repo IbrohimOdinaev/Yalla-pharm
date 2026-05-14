@@ -21,6 +21,7 @@ import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddre
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
+import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { PharmacyLogo } from "@/shared/ui";
 
@@ -109,6 +110,11 @@ function HomeContent() {
   const isStaff = role === "Admin" || role === "SuperAdmin" || role === "Pharmacist";
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
+  // Modal flag for the "Все аптеки" picker. PharmacyBanners triggers
+  // `openPicker()` on the store, this page is what actually renders the
+  // modal — without it the click was a no-op.
+  const isPickerOpen = usePharmacyStore((s) => s.isPickerOpen);
+  const closePicker = usePharmacyStore((s) => s.closePicker);
   const searchParams = useSearchParams();
   const navRouter = useRouter();
 
@@ -738,7 +744,7 @@ function HomeContent() {
           {!isAdminOrSA ? (
             <Link
               href="/prescriptions/new"
-              className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition hover:bg-primary/15 sm:p-4 xl:hidden"
+              className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:p-4 xl:hidden"
             >
               <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-card sm:h-12 sm:w-12">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -764,6 +770,7 @@ function HomeContent() {
 
           {/* Pharmacy banners */}
           <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
+          <PharmacyPickerModal open={isPickerOpen} onClose={closePicker} />
 
           {/* Rails — fixed-count horizontal shelves, one per popular category.
               Each fetches independently so they flip from skeleton → content
@@ -795,7 +802,7 @@ function HomeContent() {
           <div className="flex justify-center pt-4">
             <Link
               href="/catalog"
-              className="rounded-full bg-surface-container px-6 py-3 text-sm font-bold text-on-surface transition hover:bg-surface-container-high"
+              className="rounded-full bg-surface-container px-6 py-3 text-sm font-bold text-on-surface transition active:scale-95 hover:bg-surface-container-high"
             >
               Открыть каталог →
             </Link>

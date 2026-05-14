@@ -63,7 +63,7 @@ export function MedicineRail({
           <button
             type="button"
             onClick={onViewAll}
-            className="flex-shrink-0 text-xs font-bold text-primary transition hover:text-primary-container sm:text-sm"
+            className="flex-shrink-0 text-xs font-bold text-primary transition active:scale-95 hover:text-primary-container sm:text-sm"
           >
             Все →
           </button>

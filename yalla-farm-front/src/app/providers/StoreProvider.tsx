@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Provider, useDispatch, useSelector } from "react-redux";
 import { store, type RootState } from "@/app/store";
 import { setCredentials, markHydrated } from "@/features/auth/model/authSlice";
@@ -62,10 +63,36 @@ function AuthPersistenceBridge() {
   return null;
 }
 
+/** Once the auth state has hydrated from storage, send staff users
+ *  (Admin / SuperAdmin / Pharmacist) straight to their management
+ *  screen no matter where they landed — including the public home,
+ *  catalog, cart, or login pages. Stays out of the way once they're
+ *  already inside their workspace area so the redirect doesn't loop. */
+function RoleBasedRedirect() {
+  const role = useSelector((s: RootState) => s.auth.role);
+  const hydrated = useSelector((s: RootState) => s.auth.hydrated);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!hydrated || !role) return;
+    if (role === "Admin" && !pathname.startsWith("/workspace")) {
+      router.replace("/workspace");
+    } else if (role === "SuperAdmin" && !pathname.startsWith("/superadmin")) {
+      router.replace("/superadmin");
+    } else if (role === "Pharmacist" && !pathname.startsWith("/pharmacist")) {
+      router.replace("/pharmacist");
+    }
+  }, [hydrated, role, pathname, router]);
+
+  return null;
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   return (
     <Provider store={store}>
       <AuthPersistenceBridge />
+      <RoleBasedRedirect />
       {children}
     </Provider>
   );

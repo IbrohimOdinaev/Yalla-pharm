@@ -243,6 +243,12 @@ var app = builder.Build();
 // running workers against a half-empty schema (the classic
 // "column users.telegram_id does not exist" footgun on first boot).
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup") ?? true;
+// Integration tests substitute an in-memory SQLite DbContext via
+// WebApplicationFactory and create the schema with EnsureCreated.
+// Migration history is irrelevant in that path — skip the pending-check
+// and the MigrateAsync call so the host can come up.
+var skipMigrationManagement = app.Environment.EnvironmentName == "IntegrationTests";
+if (!skipMigrationManagement)
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

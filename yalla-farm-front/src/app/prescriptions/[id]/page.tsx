@@ -341,7 +341,7 @@ export default function PrescriptionDetailPage() {
                     href={prescription.paymentUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-card transition hover:bg-primary-container"
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-card transition active:scale-95 hover:bg-primary-container"
                   >
                     <Icon name="bolt" size={14} />
                     Оплатить 3 TJS
@@ -772,7 +772,7 @@ function PairSideRow({
                   type="button"
                   onClick={() => onSetQty(0)}
                   disabled={effective === 0}
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition active:scale-95 hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
                   aria-label="Убрать"
                 >
                   <Icon name="close" size={14} />
@@ -955,7 +955,7 @@ function SingletonRow({
                   onClick={() => onSetQty(0)}
                   disabled={effective === 0}
                   title={effective === 0 ? "Позиция удалена — нажмите +, чтобы вернуть" : "Убрать позицию из заказа"}
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant transition active:scale-95 hover:bg-secondary-soft hover:text-secondary disabled:opacity-30"
                   aria-label="Убрать позицию"
                 >
                   <Icon name="close" size={14} />
@@ -1027,7 +1027,7 @@ function ItemRowFooter({
           <button
             type="button"
             onClick={onOpenDetails}
-            className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1 text-[11px] font-semibold text-on-surface transition hover:bg-image-backdrop"
+            className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1 text-[11px] font-semibold text-on-surface transition active:scale-95 hover:bg-image-backdrop"
           >
             <Icon name="search" size={12} />
             Подробно

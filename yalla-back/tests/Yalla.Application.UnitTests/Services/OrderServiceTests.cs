@@ -176,8 +176,13 @@ public class OrderServiceTests
   }
 
   [Fact]
-  public async Task MarkOrderOnTheWayAsync_ForPickup_MovesReadyToDelivered()
+  public async Task MarkOrderOnTheWayAsync_ForPickup_MovesReadyToPickedUp()
   {
+    // Pickup orders skip the OnTheWay/Delivered transition entirely —
+    // once the client collects the order at the pharmacy, the worker
+    // marks it PickedUp directly from Ready. This used to map to
+    // Delivered; the domain was tightened to distinguish the two
+    // fulfilment paths (delivered-by-courier vs. picked-up-on-site).
     using var scope = TestDbFactory.Create();
     var setup = await SeedWorkerSetup(scope);
     var order = await CreateOrderWithStatus(
@@ -195,7 +200,7 @@ public class OrderServiceTests
       OrderId = order.Id
     });
 
-    Assert.Equal(Status.Delivered, response.Status);
+    Assert.Equal(Status.PickedUp, response.Status);
   }
 
   [Fact]

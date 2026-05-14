@@ -60,26 +60,35 @@ export function TopBar({
 
   const serverBasket = useCartStore((s) => s.basket);
   const guestCartCount = useGuestCartStore((s) => s.items.length);
+  const guestItems = useGuestCartStore((s) => s.items);
   const serverCartCount = (serverBasket.positions ?? []).length;
   const cartCount = token ? serverCartCount : guestCartCount;
   const guestPharmacyOptions = useGuestPharmacyOptions();
 
   const bestPrice = useMemo(() => {
+    // Pass current local positions so the price recomputes in the same
+    // frame as an optimistic +/− click — without this we read the stale
+    // `totalCost` the server emitted *before* the mutation and the pill
+    // amount visibly lags by one network round-trip behind the dot count.
     if (token) {
       return computeBestPriceFromPharmacyOptions(
         serverBasket.pharmacyOptions,
         serverCartCount,
+        serverBasket.positions,
       );
     }
     return computeBestPriceFromPharmacyOptions(
       guestPharmacyOptions,
       guestCartCount,
+      guestItems,
     );
   }, [
     token,
     serverBasket.pharmacyOptions,
+    serverBasket.positions,
     serverCartCount,
     guestPharmacyOptions,
+    guestItems,
     guestCartCount,
   ]);
 
@@ -89,10 +98,19 @@ export function TopBar({
   // checkout — the redundant CTA looks weird when the user is literally on
   // the cart screen.
   const pathname = usePathname();
+  // Hide the floating mobile cart pill on:
+  //  • cart / checkout pages — the CTA is already on screen, a second
+  //    floating copy looks weird and steals taps from the checkout flow.
+  //  • auth pages — the user isn't shopping right now; the floating
+  //    cart overlays the phone-input field on small screens and gets in
+  //    the way of typing the OTP / signing in.
   const onCartRoute =
     pathname === "/cart" ||
     pathname === "/cart/pharmacy" ||
-    pathname === "/checkout";
+    pathname === "/checkout" ||
+    pathname === "/login" ||
+    pathname === "/login/admin" ||
+    pathname === "/register";
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -156,7 +174,7 @@ export function TopBar({
       <button
         type="button"
         onClick={onAddressClick}
-        className="flex flex-shrink items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container sm:text-sm sm:px-3.5"
+        className="flex flex-shrink items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface transition active:scale-95 hover:bg-surface-container sm:text-sm sm:px-3.5"
         title={addressTitle ? addressText : undefined}
       >
         <Icon name="pin" size={14} className="flex-shrink-0 text-secondary" />
@@ -174,7 +192,7 @@ export function TopBar({
       <Link
         href="/prescriptions/new"
         title="Загрузите рецепт от врача · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
-        className="hidden lg:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition hover:bg-primary/15"
+        className="hidden lg:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15"
       >
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -253,14 +271,14 @@ export function TopBar({
         <button
           type="button"
           onClick={onSearchClick}
-          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1543px]"
+          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest lg:max-w-[1543px]"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest lg:max-w-[1543px]"
+          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest lg:max-w-[1543px]"
         >
           {SearchInner}
         </Link>
@@ -272,14 +290,14 @@ export function TopBar({
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest"
+          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest"
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition hover:bg-surface-container-highest"
+          className="flex h-11 w-full items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest"
         >
           {SearchInner}
         </Link>
@@ -309,7 +327,7 @@ export function TopBar({
         }
         // Outer slot: fixed size, always reserved. Hides below `sm` so
         // phones use the floating pill instead.
-        className="relative hidden h-11 w-[164px] flex-shrink-0 sm:block sm:h-12 sm:w-[180px]"
+        className="relative hidden h-11 w-[210px] flex-shrink-0 sm:block sm:h-12 sm:w-[230px]"
       >
         {/* Morphing pill — absolutely positioned inside the slot.
             Empty state: collapses to a round 44×44 (sm: 48×48) circle
@@ -320,8 +338,12 @@ export function TopBar({
             slot. left + padding + text opacity all transition together
             for a smooth morph; nothing outside the slot moves. */}
         <span
-          className={`absolute inset-y-0 right-0 flex items-center justify-center gap-0 rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-all duration-300 hover:bg-[#35B7B6] sm:gap-2.5
-            ${cartFilled ? "left-0 px-5 sm:px-6" : "left-[120px] sm:left-[132px] px-0"}`}
+          // `gap` must be 0 in the empty state — otherwise the (collapsed,
+          // max-w-0 / opacity-0) price span still contributes its sibling
+          // gap to the flex layout and pushes the icon a few pixels to the
+          // left of true centre. Gap only kicks in once the pill is filled.
+          className={`absolute inset-y-0 right-0 flex items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-all duration-150 hover:bg-[#35B7B6] active:scale-[0.98]
+            ${cartFilled ? "left-0 gap-2 px-5 sm:gap-2.5 sm:px-6" : "left-[166px] gap-0 px-0 sm:left-[182px]"}`}
         >
           <Icon name="bag" size={20} strokeWidth={cartFilled ? 2.4 : 2.2} className="flex-shrink-0" />
           {/* Price label — slides in / out on the right. opacity +
@@ -329,8 +351,8 @@ export function TopBar({
               renders when cartFilled is true so an empty cart never
               has a screen-reader-spoofable hidden "от 0 TJS". */}
           <span
-            className={`overflow-hidden whitespace-nowrap font-display text-sm font-black tabular-nums transition-all duration-300 sm:text-[15px]
-              ${cartFilled ? "max-w-[140px] opacity-100" : "max-w-0 opacity-0"}`}
+            className={`overflow-hidden whitespace-nowrap font-display text-sm font-black tabular-nums transition-all duration-150 sm:text-[15px]
+              ${cartFilled ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"}`}
           >
             {cartFilled ? (bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`) : ""}
           </span>
@@ -343,7 +365,7 @@ export function TopBar({
         <button
           type="button"
           onClick={() => setMenuOpen(!menuOpen)}
-          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition hover:bg-surface-container-high sm:h-11 sm:w-11"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition hover:bg-surface-container-high active:scale-95 sm:h-11 sm:w-11"
           aria-label="Аккаунт"
         >
           <Icon name="user" size={20} />
@@ -365,7 +387,7 @@ export function TopBar({
                   <Link
                     href="/profile"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                   >
                     <Icon name="user" size={16} />
                     Мой профиль
@@ -376,7 +398,7 @@ export function TopBar({
                     <Link
                       href="/cart"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                     >
                       <Icon name="bag" size={16} />
                       Корзина
@@ -384,7 +406,7 @@ export function TopBar({
                     <Link
                       href="/orders"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                     >
                       <Icon name="orders" size={16} />
                       Мои заказы
@@ -392,7 +414,7 @@ export function TopBar({
                     <Link
                       href="/prescriptions"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                     >
                       <Icon name="orders" size={16} />
                       Мои рецепты
@@ -403,7 +425,7 @@ export function TopBar({
                   <Link
                     href="/workspace"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                   >
                     <Icon name="settings" size={16} />
                     Кабинет
@@ -413,7 +435,7 @@ export function TopBar({
                   <Link
                     href="/superadmin"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                   >
                     <Icon name="settings" size={16} />
                     Панель управления
@@ -423,7 +445,7 @@ export function TopBar({
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-secondary transition hover:bg-secondary-soft"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-secondary transition active:scale-95 hover:bg-secondary-soft"
                 >
                   <Icon name="logout" size={16} />
                   Выйти
@@ -439,7 +461,7 @@ export function TopBar({
                 <Link
                   href="/cart"
                   onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-surface-container"
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                 >
                   <Icon name="bag" size={16} />
                   Корзина
@@ -447,7 +469,7 @@ export function TopBar({
                 <Link
                   href="/login"
                   onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary-soft"
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-primary transition active:scale-95 hover:bg-primary-soft"
                 >
                   <Icon name="login" size={16} />
                   Войти по SMS
@@ -544,7 +566,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={goBack}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition hover:bg-surface-container-high"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition active:scale-95 hover:bg-surface-container-high"
                 aria-label="Назад"
               >
                 <Icon name="back" size={16} />
@@ -552,7 +574,7 @@ export function TopBar({
             ) : (
               <Link
                 href={backHref}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition hover:bg-surface-container-high"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition active:scale-95 hover:bg-surface-container-high"
                 aria-label="Назад"
               >
                 <Icon name="back" size={16} />
@@ -568,7 +590,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onLogout}
-            className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary transition hover:bg-secondary-soft"
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary transition active:scale-95 hover:bg-secondary-soft"
             aria-label="Выйти"
           >
             <Icon name="logout" size={14} />

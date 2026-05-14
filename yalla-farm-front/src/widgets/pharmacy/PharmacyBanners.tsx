@@ -9,6 +9,11 @@ type Props = {
 };
 
 export function PharmacyBanners({ onPharmacyClick }: Props) {
+  // We keep two collections: `totalActive` (every active pharmacy, used to
+  // decide whether the section is worth rendering — pointless to surface a
+  // picker when there's only 0 or 1 choice) and `pharmacies` (banner-having
+  // ones we actually paint as visual cards).
+  const [totalActive, setTotalActive] = useState<number | null>(null);
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
@@ -16,10 +21,21 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
 
   useEffect(() => {
     getActivePharmacies()
-      .then((p) => setPharmacies(p.filter((x) => x.bannerUrl)))
-      .catch(() => setPharmacies([]))
+      .then((p) => {
+        setTotalActive(p.length);
+        setPharmacies(p.filter((x) => x.bannerUrl));
+      })
+      .catch(() => {
+        setTotalActive(0);
+        setPharmacies([]);
+      })
       .finally(() => setIsLoading(false));
   }, []);
+
+  // Hide the whole section if there's nothing meaningful to pick from. We
+  // also suppress the skeletons in this case so the page doesn't flash an
+  // "Аптеки" row that immediately disappears once the fetch resolves to ≤1.
+  if (!isLoading && (totalActive ?? 0) <= 1) return null;
 
   if (isLoading) {
     return (

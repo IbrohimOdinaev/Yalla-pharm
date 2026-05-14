@@ -42,10 +42,15 @@ export function SavedAddressesSection({ token }: Props) {
   }
   async function onDelete(a: ClientAddress) {
     if (!confirm(`Удалить адрес «${a.title}»?`)) return;
+    // Optimistic: drop the row from the list in the same frame as the click;
+    // restore on failure so the user can retry.
+    const prev = addresses;
+    setAddresses((p) => p.filter((x) => x.id !== a.id));
     try {
       await deleteMyAddress(token, a.id);
-      setAddresses((prev) => prev.filter((x) => x.id !== a.id));
-    } catch { /* ignore */ }
+    } catch {
+      setAddresses(prev);
+    }
   }
   function onSaved(saved: ClientAddress) {
     setAddresses((prev) => {

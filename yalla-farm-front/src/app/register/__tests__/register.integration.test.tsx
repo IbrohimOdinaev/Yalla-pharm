@@ -1,40 +1,23 @@
 import React from "react";
 import { screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import RegisterPage from "@/app/register/page";
 import { renderWithProviders } from "@/test/render";
 
-describe("register page integration", () => {
-  it("shows backend validation errors on failed sms registration request", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            title: "Request validation failed.",
-            errors: {
-              PhoneNumber: ["Phone number has invalid format."]
-            },
-            reason: "validation_error"
-          }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" }
-          }
-        )
-      )
-    );
-
-    const user = userEvent.setup();
+// /register is now a thin redirect page: there's no separate registration
+// form anymore — sign-up happens implicitly via the SMS-OTP flow on
+// /login. The page surfaces a short explainer and a link back to /login.
+describe("RegisterPage", () => {
+  it("shows the «Регистрация теперь по SMS» explainer", () => {
     renderWithProviders(<RegisterPage />);
+    expect(screen.getByText("Регистрация теперь по SMS")).toBeInTheDocument();
+  });
 
-    await user.type(screen.getByLabelText("Имя"), "Test User");
-    await user.type(screen.getByLabelText("Телефон"), "911111111");
-    await user.type(screen.getByLabelText("Пароль"), "Password123");
-
-    await user.click(screen.getByRole("button", { name: "Получить код" }));
-
-    expect(await screen.findByText(/PhoneNumber: Phone number has invalid format\./i)).toBeInTheDocument();
+  it("links to /login via the «Перейти ко входу» button", () => {
+    renderWithProviders(<RegisterPage />);
+    const loginLink = screen
+      .getAllByRole("link")
+      .find((a) => a.getAttribute("href") === "/login");
+    expect(loginLink).toBeDefined();
   });
 });

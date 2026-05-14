@@ -18,7 +18,8 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
-import { Button, IconButton, Icon, EmptyState } from "@/shared/ui";
+import { CartItemSkeleton } from "@/widgets/cart/CartItemSkeleton";
+import { Button, IconButton, Icon, EmptyState, Skeleton } from "@/shared/ui";
 
 export default function CartPage() {
   const token = useAppSelector((state) => state.auth.token);
@@ -68,16 +69,39 @@ export default function CartPage() {
     });
   }, [isGuest, guestItems, basket.positions, medicineMap]);
 
+  // Has the per-medicine offer data hydrated for every cart item? When yes we
+  // can compute the total fully client-side, which is the only way the price
+  // updates in the same frame as an optimistic +/− click. Without this guard
+  // we'd silently undercount a freshly-added item while its medicine is still
+  // being fetched.
+  const allMedicinesLoaded = useMemo(
+    () => cartItems.every((item) => medicineMap[item.medicineId] !== undefined),
+    [cartItems, medicineMap],
+  );
+
   const bestPrice = useMemo(() => {
+    // Prefer client-side compute (positions × cheapest offer per pharmacy) so
+    // the total reflects optimistic quantity changes immediately. Server-
+    // computed `pharmacyOptions.totalCost` lags by one network round-trip and
+    // shows the OLD total against the NEW visible quantities, which reads as a
+    // "wrong total" bug. We fall back to it only while medicines hydrate.
+    if (allMedicinesLoaded) {
+      const fromClient = computeBestPriceFromOffers(cartItems, medicineMap);
+      if (fromClient) return fromClient;
+    }
     if (!isGuest) {
+      // Pass cartItems so totalCost is recomputed from per-item prices
+      // using current local quantities — keeps the receipt total in
+      // sync with optimistic +/− clicks even before medicineMap loads.
       const fromServer = computeBestPriceFromPharmacyOptions(
         basket.pharmacyOptions,
         cartItems.length,
+        cartItems,
       );
       if (fromServer) return fromServer;
     }
     return computeBestPriceFromOffers(cartItems, medicineMap);
-  }, [isGuest, basket.pharmacyOptions, cartItems, medicineMap]);
+  }, [isGuest, basket.pharmacyOptions, cartItems, medicineMap, allMedicinesLoaded]);
 
   const cartMinTotal = useMemo(() => {
     if (bestPrice) return bestPrice.price;
@@ -88,6 +112,16 @@ export default function CartPage() {
   }, [bestPrice, cartItems, medicineMap]);
 
   const totalUnits = useMemo(() => cartItems.reduce((n, i) => n + i.quantity, 0), [cartItems]);
+
+  // True only on the very first cart fetch (auth user) before any positions
+  // land. Guests load synchronously from localStorage so they never see this.
+  const isInitialLoading = !isGuest && isLoading && cartItems.length === 0;
+
+  const itemsLabel = totalUnits === 1
+    ? "товар"
+    : totalUnits < 5
+      ? "товара"
+      : "товаров";
 
   const recommendationsLoaded = useRef(false);
   // Tri-state: null = pending (categories not resolved yet OR cart
@@ -158,6 +192,10 @@ export default function CartPage() {
     }
   }, [isGuest, token, clearGuest, clearAll]);
 
+  const onCheckout = useCallback(() => {
+    router.push("/cart/pharmacy");
+  }, [router]);
+
   if (cartItems.length === 0 && !isLoading) {
     return (
       <AppShell top={<TopBar title="Корзина" backHref="back" />}>
@@ -177,25 +215,6 @@ export default function CartPage() {
 
   return (
     <AppShell top={<TopBar title="Корзина" backHref="back" />}>
-      {/* Header row: total + clear */}
-      <div className="mb-3 flex items-center justify-between gap-2 xs:mb-4">
-        <div className="min-w-0">
-          <p className="text-[11px] text-on-surface-variant xs:text-xs">
-            {totalUnits} {totalUnits === 1 ? "товар" : totalUnits < 5 ? "товара" : "товаров"}
-          </p>
-          <p className="font-display text-lg font-extrabold text-on-surface xs:text-xl">
-            от {formatMoney(cartMinTotal)}
-          </p>
-        </div>
-        <IconButton
-          icon="trash"
-          variant="danger"
-          size="md"
-          onClick={() => setShowClearConfirm(true)}
-          aria-label="Очистить корзину"
-        />
-      </div>
-
       {showClearConfirm ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -235,143 +254,234 @@ export default function CartPage() {
         <div className="mb-3 rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
       ) : null}
 
-      {/* Items list */}
-      <ul className="space-y-2">
-        {cartItems.map((item) => {
-          const medicine = medicineMap[item.medicineId];
-          const image = resolveMedicineImageUrl(medicine, 240);
-          const name = medicine ? getMedicineDisplayName(medicine) : `Загрузка...`;
-          const minPrice = getCheapestPrice(medicine);
+      {/* Two-column shell on lg+ : positions on the left, receipt on
+          the right. Below lg the right column hides; the receipt
+          reappears as a fixed-to-viewport bar at the bottom of the
+          page (see <MobileReceipt /> below). lg:items-start lets the
+          right column stick at the top instead of growing to match
+          the positions list. The two blocks are wrapped into their own
+          framed containers at lg+ with a wider gap between them so the
+          positions list reads as a clearly distinct block from the
+          receipt + checkout pane. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_440px] xl:gap-12">
+        <div className="min-w-0 lg:rounded-3xl lg:bg-surface-container/30 lg:p-5 lg:shadow-card xl:p-6">
+          {/* Header row: count summary + clear-cart icon. The total
+              price moves out of here — it now lives in the receipt
+              block on desktop and in the pinned bottom bar on mobile,
+              so it's never duplicated in the user's eye-line. */}
+          <div className="mb-3 flex items-center justify-between gap-2 xs:mb-4">
+            {isInitialLoading ? (
+              <Skeleton className="h-6 w-40 xs:h-7" rounded="md" />
+            ) : (
+              <p className="font-display text-lg font-extrabold text-on-surface xs:text-xl">
+                В корзине: {totalUnits} {itemsLabel}
+              </p>
+            )}
+            <IconButton
+              icon="trash"
+              variant="danger"
+              size="md"
+              onClick={() => setShowClearConfirm(true)}
+              aria-label="Очистить корзину"
+              disabled={isInitialLoading}
+            />
+          </div>
 
-          return (
-            <li
-              key={item.id}
-              className="flex items-center gap-2.5 rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:gap-3 xs:p-3.5 sm:gap-4 sm:p-4 md:gap-6 md:p-5 lg:gap-6"
-            >
-              {/* Delete X — leftmost only at lg+. Below 1024px the X moves
-                  into the qty-stepper cluster (rendered inline below) so the
-                  row stays tight and the X+stepper read as one block. */}
-              <button
-                type="button"
-                onClick={() => onRemove(item.id, item.medicineId)}
-                className="hidden h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 lg:flex"
-                aria-label="Удалить"
-              >
-                <Icon name="close" size={14} />
-              </button>
+          {/* Items list */}
+          <ul className="space-y-2">
+            {isInitialLoading
+              ? Array.from({ length: 3 }).map((_, i) => <CartItemSkeleton key={`sk-${i}`} />)
+              : cartItems.map((item) => {
+              const medicine = medicineMap[item.medicineId];
+              // Per-row skeleton while the medicine record hydrates — covers
+              // the brief gap after an optimistic add when positions are in
+              // state but `medicineMap[item.medicineId]` hasn't arrived yet,
+              // and the slower initial-load case where basket landed but the
+              // per-medicine fetches are still in flight.
+              if (!medicine) return <CartItemSkeleton key={item.id} />;
+              const image = resolveMedicineImageUrl(medicine, 240);
+              const name = getMedicineDisplayName(medicine);
+              const minPrice = getCheapestPrice(medicine);
 
-              {/* Image — shrinks one step at md- so the whole row fits the
-                  smaller font scale. */}
-              <Link
-                href={`/product/${item.medicineId}`}
-                className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-12 xs:w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-2xl"
-              >
-                {image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={image} alt={name} className="h-full w-full object-contain mix-blend-multiply" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-on-surface-variant/40">
-                    <Icon name="bag" size={20} />
-                  </div>
-                )}
-              </Link>
-
-              {/* Name + per-unit "от X TJS" right under it. The small inline
-                  hint hides at lg+ — that breakpoint promotes the price into
-                  its own bigger column inside the right cluster, sitting at
-                  the same vertical level as the title and the stepper. */}
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/product/${item.medicineId}`}
-                  className="line-clamp-2 text-[11px] font-bold leading-tight text-on-surface transition hover:text-primary xs:text-[12px] sm:text-[13px] md:text-sm"
+              return (
+                <li
+                  key={item.id}
+                  className="flex items-center gap-2.5 rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:gap-3 xs:p-3.5 sm:gap-4 sm:p-4 md:gap-6 md:p-5 lg:gap-6"
                 >
-                  {name}
-                </Link>
-                <p className="mt-0.5 text-[10px] text-on-surface-variant xs:text-[11px] sm:text-xs lg:hidden">
-                  от{" "}
-                  <span className="font-bold text-primary tabular-nums">
-                    {minPrice ? formatMoney(minPrice) : "—"}
-                  </span>
-                </p>
-              </div>
-
-              {/* Right cluster — at lg+ now houses a prominent per-unit price
-                  column to the LEFT of the stepper so all three (name,
-                  price, stepper) align on the same horizontal line. */}
-              <div className="flex flex-shrink-0 items-center gap-2.5 xs:gap-3 sm:gap-4 md:gap-6 lg:gap-12">
-                {/* Big per-unit price — desktop only. Bumped to a heavier
-                    weight + bigger size than the inline mobile hint so it
-                    reads as the row's primary number alongside the stepper. */}
-                <p className="hidden whitespace-nowrap text-base font-bold text-on-surface-variant tabular-nums lg:block">
-                  от{" "}
-                  <span className="font-extrabold text-primary">
-                    {minPrice ? formatMoney(minPrice) : "—"}
-                  </span>
-                </p>
-                {/* Stepper cluster — at <lg the X-button stacks BELOW the
-                    stepper inside this same flex column, vertically centred
-                    so the gap between them sits on the row's mid-line. At
-                    lg+ this collapses to just the stepper (the X lives back
-                    on the left). */}
-                <div className="flex flex-col items-center justify-center gap-2 lg:flex-row lg:gap-0">
-                  <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
-                      aria-label="Уменьшить"
-                    >
-                      <Icon name="minus" size={14} />
-                    </button>
-                    <span className="min-w-[1.25rem] text-center text-xs font-extrabold tabular-nums md:min-w-[1.5rem] md:text-sm">
-                      {item.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
-                      aria-label="Увеличить"
-                    >
-                      <Icon name="plus" size={14} />
-                    </button>
-                  </div>
+                  {/* Delete X — leftmost from md (≥768px). Below md the X moves
+                      into the qty-stepper cluster (rendered inline below) so the
+                      row stays tight and the X+stepper read as one block on
+                      narrow phones. At md+ there's enough horizontal room for a
+                      dedicated left column. */}
                   <button
                     type="button"
                     onClick={() => onRemove(item.id, item.medicineId)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 lg:hidden"
+                    className="hidden h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 md:flex"
                     aria-label="Удалить"
                   >
                     <Icon name="close" size={14} />
                   </button>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
 
-      {/* Inline CTA — placed directly under the cart list so the primary
-          action stays in the user's eye-line; the upsell rail follows below. */}
-      <div className="mt-6 xs:mt-8">
-        <div className="mx-auto max-w-3xl">
-          <Button
-            type="button"
-            size="lg"
-            fullWidth
-            rightIcon="arrow-right"
-            onClick={() => router.push("/cart/pharmacy")}
-            disabled={cartItems.length === 0}
-          >
-            <span className="xs:hidden">Выбрать · от {formatMoney(cartMinTotal)}</span>
-            <span className="hidden xs:inline">Выбрать аптеку · от {formatMoney(cartMinTotal)}</span>
-          </Button>
+                  {/* Image — shrinks one step at md- so the whole row fits the
+                      smaller font scale. */}
+                  <Link
+                    href={`/product/${item.medicineId}`}
+                    className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-12 xs:w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-2xl"
+                  >
+                    {image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={image} alt={name} className="h-full w-full object-contain mix-blend-multiply" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-on-surface-variant/40">
+                        <Icon name="bag" size={20} />
+                      </div>
+                    )}
+                  </Link>
+
+                  {/* Name + per-unit "от X TJS" right under it. The small inline
+                      hint hides at xl+ — that breakpoint promotes the price into
+                      its own bigger column inside the right cluster, sitting at
+                      the same vertical level as the title and the stepper. */}
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/product/${item.medicineId}`}
+                      className="line-clamp-2 text-[11px] font-bold leading-tight text-on-surface transition active:scale-95 hover:text-primary xs:text-[12px] sm:text-[13px] md:text-sm"
+                    >
+                      {name}
+                    </Link>
+                    <p className="mt-0.5 text-[10px] text-on-surface-variant xs:text-[11px] sm:text-xs xl:hidden">
+                      от{" "}
+                      <span className="font-bold text-primary tabular-nums">
+                        {minPrice ? formatMoney(minPrice) : "—"}
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Right cluster — at xl+ now houses a prominent per-unit price
+                      column to the LEFT of the stepper so all three (name,
+                      price, stepper) align on the same horizontal line. */}
+                  <div className="flex flex-shrink-0 items-center gap-2.5 xs:gap-3 sm:gap-4 md:gap-6 xl:gap-8">
+                    {/* Big per-unit price — wide-desktop only (xl+). Bumped to
+                        a heavier weight + bigger size than the inline mobile
+                        hint so it reads as the row's primary number alongside
+                        the stepper. */}
+                    <p className="hidden whitespace-nowrap text-base font-bold text-on-surface-variant tabular-nums xl:block">
+                      от{" "}
+                      <span className="font-extrabold text-primary">
+                        {minPrice ? formatMoney(minPrice) : "—"}
+                      </span>
+                    </p>
+                    {/* Stepper cluster — below xl the X-button stacks BELOW the
+                        stepper inside this same flex column, vertically centred
+                        so the gap between them sits on the row's mid-line. At
+                        xl+ this collapses to just the stepper (the X lives back
+                        on the left). */}
+                    <div className="flex flex-col items-center justify-center gap-2 xl:flex-row xl:gap-0">
+                      <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => onDecrement(item.id, item.medicineId, item.quantity)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
+                          aria-label="Уменьшить"
+                        >
+                          <Icon name="minus" size={14} />
+                        </button>
+                        <span className="min-w-[1.25rem] text-center text-xs font-extrabold tabular-nums md:min-w-[1.5rem] md:text-sm">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
+                          aria-label="Увеличить"
+                        >
+                          <Icon name="plus" size={14} />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(item.id, item.medicineId)}
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 md:hidden"
+                        aria-label="Удалить"
+                      >
+                        <Icon name="close" size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
+
+        {/* Desktop receipt — sticky in the right column so it follows
+            the page as the list scrolls. `top-24` clears the global
+            top bar. Hidden below lg (the mobile bar covers <lg). The
+            inner card now hugs its own content at the top of the
+            column (no min-height / no centring) — the user prefers the
+            receipt sitting flush with the first cart row so the eye
+            doesn't have to travel down the right column to find it. */}
+        <aside className="mt-6 hidden lg:sticky lg:top-24 lg:mt-0 lg:block">
+          <div className="rounded-3xl bg-surface-container-lowest p-4 shadow-card xl:p-7">
+            <p className="font-display text-base font-extrabold uppercase tracking-wider text-on-surface-variant xl:text-lg">
+              Итого
+            </p>
+
+            <dl className="mt-4 space-y-2 text-sm xl:mt-5 xl:space-y-3 xl:text-base">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-on-surface-variant">Товаров</dt>
+                <dd className="font-semibold tabular-nums">
+                  {isInitialLoading
+                    ? <Skeleton className="inline-block h-4 w-16 align-middle xl:h-5 xl:w-20" rounded="md" />
+                    : <>{totalUnits} {itemsLabel}</>}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-on-surface-variant">Стоимость</dt>
+                <dd className="font-semibold tabular-nums">
+                  {isInitialLoading
+                    ? <Skeleton className="inline-block h-4 w-20 align-middle xl:h-5 xl:w-24" rounded="md" />
+                    : <>от {formatMoney(cartMinTotal)}</>}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-4 border-t border-surface-container-high pt-4 xl:mt-5 xl:pt-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-bold xl:text-base">К оплате</span>
+                {isInitialLoading ? (
+                  <Skeleton className="h-7 w-28 xl:h-8 xl:w-32" rounded="md" />
+                ) : (
+                  <span className="font-display text-xl font-extrabold text-primary tabular-nums xl:text-2xl">
+                    от {formatMoney(cartMinTotal)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              size="lg"
+              fullWidth
+              rightIcon="arrow-right"
+              onClick={onCheckout}
+              disabled={cartItems.length === 0 || isInitialLoading}
+              className="mt-5 xl:mt-6"
+            >
+              Выбрать аптеку
+            </Button>
+
+            <p className="mt-3 text-[11px] leading-snug text-on-surface-variant xl:text-xs">
+              На следующем шаге выберете аптеку — цена может измениться в зависимости от наличия позиций.
+            </p>
+          </div>
+        </aside>
       </div>
 
-      {/* Recommendations — horizontal rail. Cards stay the same size (compact)
-          so two fit visibly on a 360px screen. While the rail is loading we
-          render skeleton placeholders at the exact card width so the layout
-          doesn't jump when the real medicines come in. */}
+      {/* Recommendations — sits below BOTH columns on desktop, between
+          positions and the pinned bottom bar on mobile. Skeletons hold
+          the row height while the rail loads so the layout doesn't
+          jump as recommendations stream in. */}
       {(isLoadingRecommendations || recommendations.length > 0) && (
         <section className="mt-6 mb-4 space-y-2 xs:mt-8 xs:space-y-3">
           <h3 className="font-display text-base font-extrabold xs:text-lg">Добавьте к заказу</h3>
@@ -390,6 +500,50 @@ export default function CartPage() {
           </div>
         </section>
       )}
+
+      {/* Spacer for the fixed bottom bar on mobile so the last
+          recommendation row isn't covered. Sized to match the bar's
+          rough height (≈ 84 px of content + safe-area inset). lg+
+          has no bar, so no spacer needed. */}
+      <div aria-hidden className="h-28 lg:hidden" />
+
+      {/* Mobile pinned receipt — fixed to the viewport bottom, lifted
+          above the iOS home indicator via pb-safe-4. backdrop-blur
+          softens the recommendation cards visible behind it. Uses
+          z-30 (under the clear-confirm modal at z-50 and the global
+          BottomNav at z-40 — irrelevant here because BottomNav only
+          shows for admin/pharmacist roles, never for /cart clients). */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-surface-container-high bg-surface-container-lowest/95 backdrop-blur-md pb-safe-4 lg:hidden">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-3 py-3 sm:px-6">
+          <div className="min-w-0 flex-1 space-y-1">
+            {isInitialLoading ? (
+              <>
+                <Skeleton className="h-3 w-16" rounded="md" />
+                <Skeleton className="h-6 w-24 xs:h-7 xs:w-28" rounded="md" />
+              </>
+            ) : (
+              <>
+                <p className="text-[10px] text-on-surface-variant xs:text-xs">
+                  {totalUnits} {itemsLabel}
+                </p>
+                <p className="font-display text-lg font-extrabold tabular-nums xs:text-xl">
+                  от {formatMoney(cartMinTotal)}
+                </p>
+              </>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="lg"
+            rightIcon="arrow-right"
+            onClick={onCheckout}
+            disabled={cartItems.length === 0 || isInitialLoading}
+          >
+            <span className="xs:hidden">Оформить</span>
+            <span className="hidden xs:inline">Выбрать аптеку</span>
+          </Button>
+        </div>
+      </div>
     </AppShell>
   );
 }

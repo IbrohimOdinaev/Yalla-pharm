@@ -527,7 +527,7 @@ function PharmacySelectPageInner() {
           <button
             type="button"
             onClick={() => setIsPickup(false)}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition ${
+            className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition active:scale-[0.97] ${
               !isPickup
                 ? "bg-primary text-white shadow-card"
                 : "text-on-surface-variant"
@@ -539,7 +539,7 @@ function PharmacySelectPageInner() {
           <button
             type="button"
             onClick={() => setIsPickup(true)}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition ${
+            className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition active:scale-[0.97] ${
               isPickup
                 ? "bg-primary text-white shadow-card"
                 : "text-on-surface-variant"
@@ -656,10 +656,13 @@ function PharmacySelectPageInner() {
                     ref={(el) => { cardRefs.current[option.pharmacyId] = el; }}
                     // `scroll-mt-12` gives scrollIntoView a top breathing
                     // room so the matched card never lands hugging the
-                    // sticky header. Highlight ring + soft scale up so a
-                    // marker-driven reveal really catches the eye.
+                    // sticky header. Highlight: thicker ring + brief
+                    // ripple pulse via .pharmacy-card-pulse so a
+                    // marker-driven reveal really catches the eye, even
+                    // when the user looks back after dismissing the
+                    // tooltip on the map.
                     className={`scroll-mt-12 rounded-3xl bg-surface-container-lowest p-4 shadow-card transition-all duration-300 ${
-                      isHighlighted ? "ring-2 ring-primary shadow-float scale-[1.015]" : ""
+                      isHighlighted ? "ring-4 ring-primary shadow-float scale-[1.015] pharmacy-card-pulse" : ""
                     }`}
                   >
                     {/* Pharmacy header */}
@@ -720,19 +723,15 @@ function PharmacySelectPageInner() {
                                 )}
                               </p>
                             ) : null}
-                            {/* Stock chip + "show on map" button. Tapping the
-                                chip toggles the expanded item list (same as
-                                before); the map button is dedicated to
-                                centring the map on this pharmacy so the user
-                                can locate it visually. Used to be a chevron-
-                                up/down indicator — replaced because the user
-                                wanted an explicit "show on map" affordance. */}
+                            {/* Stock chip + map + expand chevron. Three roles,
+                                three controls — each affordance does exactly
+                                one thing:
+                                  • Chip: passive status label (no click).
+                                  • Map: centre the map and pulse the marker;
+                                    does NOT open the items list.
+                                  • Chevron: toggles the items list. */}
                             <div className="mt-1 flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
-                                className="text-xs font-semibold transition hover:text-primary"
-                              >
+                              <span className="inline-flex">
                                 {allAvailable ? (
                                   <Chip tone="success" asButton={false} size="sm" leftIcon="check">Всё в наличии</Chip>
                                 ) : (
@@ -740,22 +739,40 @@ function PharmacySelectPageInner() {
                                     {option.enoughQuantityMedicinesCount ?? 0} из {option.totalMedicinesCount ?? 0}
                                   </Chip>
                                 )}
+                              </span>
+                              {/* Expand toggle — single-purpose chevron that
+                                  flips when the items list is open so the
+                                  user can predict what happens on click. */}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
+                                aria-label={isExpanded ? "Скрыть позиции" : "Показать позиции"}
+                                title={isExpanded ? "Скрыть позиции" : "Показать позиции"}
+                                aria-expanded={isExpanded}
+                                className={`flex h-7 w-7 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant transition hover:bg-primary/10 hover:text-primary active:scale-95 ${
+                                  isExpanded ? "rotate-180" : ""
+                                }`}
+                              >
+                                <Icon name="chevron-down" size={14} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  // Centre the map on the pharmacy + reveal
-                                  // its details by expanding the card. Don't
-                                  // collapse the panel — keep it open so the
-                                  // map and the card details are visible
-                                  // side-by-side on desktop.
+                                  // Centre the map + pulse the marker.
+                                  // Crucially: do NOT toggle expand or
+                                  // highlight the card — this button is
+                                  // exclusively about the *marker*.
                                   const geo = pharmacyGeo[option.pharmacyId];
                                   if (geo?.latitude != null && geo?.longitude != null) {
                                     mapHandleRef.current?.panTo({ lat: geo.latitude, lng: geo.longitude });
                                   }
-                                  setExpandedId(option.pharmacyId);
-                                  setHighlightedId(option.pharmacyId);
-                                  setTimeout(() => setHighlightedId(""), 1500);
+                                  // Map's pan animation is ~300 ms; trigger
+                                  // the marker pulse after that so the user
+                                  // sees the highlight on the centred view,
+                                  // not on a marker mid-flight off-screen.
+                                  window.setTimeout(() => {
+                                    mapHandleRef.current?.highlightPharmacy(option.pharmacyId);
+                                  }, 320);
                                 }}
                                 aria-label="Показать аптеку на карте"
                                 title="Показать на карте"
@@ -795,7 +812,7 @@ function PharmacySelectPageInner() {
                               key={item.medicineId}
                               type="button"
                               onClick={(e) => { e.stopPropagation(); openProductModal(med, item.medicineId); }}
-                              className={`flex w-full items-center gap-2.5 rounded-lg p-1 text-left text-xs transition hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
+                              className={`flex w-full items-center gap-2.5 rounded-lg p-1 text-left text-xs transition active:scale-95 hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
                             >
                               {imgUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element

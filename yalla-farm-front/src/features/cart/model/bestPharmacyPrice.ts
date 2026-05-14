@@ -12,6 +12,13 @@ export type BestPharmacyPrice = {
 export function computeBestPriceFromPharmacyOptions(
   options: ApiBasketPharmacyOption[] | undefined,
   totalPositions: number,
+  // Optional: current local positions. When provided, the price is
+  // recomputed in-place as Σ(item.price × position.quantity) using the
+  // best pharmacy's per-item prices. That side-steps the server-side
+  // staleness of `totalCost` during optimistic +/− mutations — the
+  // server-provided unit prices are still authoritative, only the
+  // quantities have moved client-side and we know those locally.
+  positions?: ReadonlyArray<{ medicineId: string; quantity: number }>,
 ): BestPharmacyPrice | null {
   if (!options || options.length === 0 || totalPositions === 0) return null;
 
@@ -35,8 +42,20 @@ export function computeBestPriceFromPharmacyOptions(
       : b,
   );
 
+  let price = best.totalCost ?? 0;
+  if (positions && best.items && best.items.length > 0) {
+    const allPriced = best.items.every((i) => typeof i.price === "number");
+    if (allPriced) {
+      price = best.items.reduce((sum, item) => {
+        const pos = positions.find((p) => p.medicineId === item.medicineId);
+        const qty = pos?.quantity ?? item.requestedQuantity ?? 0;
+        return sum + (item.price ?? 0) * qty;
+      }, 0);
+    }
+  }
+
   return {
-    price: best.totalCost ?? 0,
+    price,
     enoughCount: maxEnough,
     totalCount: totalPositions,
     missingCount: Math.max(0, totalPositions - maxEnough),

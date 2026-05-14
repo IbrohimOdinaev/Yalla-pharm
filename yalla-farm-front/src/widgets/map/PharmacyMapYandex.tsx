@@ -136,6 +136,22 @@ export function PharmacyMapYandex({
               { duration: 400 },
             );
           },
+          highlightPharmacy: (id) => {
+            const marker = markersRef.current.get(id) as
+              | { __el?: HTMLElement }
+              | undefined;
+            const root = marker?.__el;
+            if (!root) return;
+            // Restart the keyframe: removing then re-adding the class
+            // (with a forced reflow in between) re-triggers the
+            // animation even if a previous pulse hadn't finished.
+            root.classList.remove("pharmacy-marker-pulse");
+            void root.offsetWidth;
+            root.classList.add("pharmacy-marker-pulse");
+            window.setTimeout(() => {
+              root.classList.remove("pharmacy-marker-pulse");
+            }, 1000);
+          },
         });
       })
       .catch((err) => {

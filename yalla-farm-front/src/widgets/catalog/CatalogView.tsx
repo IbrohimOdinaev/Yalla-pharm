@@ -245,7 +245,7 @@ export function CatalogView({
           <button
             type="button"
             onClick={() => setShowMobileCategories(!showMobileCategories)}
-            className="flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3 text-left transition hover:bg-surface-container"
+            className="flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3 text-left transition active:scale-95 hover:bg-surface-container"
             aria-expanded={showMobileCategories}
           >
             <span className="flex min-w-0 flex-col">

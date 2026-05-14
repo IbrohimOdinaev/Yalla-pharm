@@ -195,7 +195,7 @@ function Row({ p }: { p: ApiPrescription }) {
     <li>
       <Link
         href={`/prescriptions/${p.prescriptionId}`}
-        className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card transition hover:bg-image-backdrop xs:gap-4 xs:p-4"
+        className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 shadow-card transition active:scale-95 hover:bg-image-backdrop xs:gap-4 xs:p-4"
       >
         <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-16 xs:w-16 xs:rounded-2xl">
           <AuthedImage
