@@ -413,7 +413,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
             {status === "Preparing" && selectedPositions.size > 0 && (
               <button
                 type="button"
-                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200"
+                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200 active:scale-[0.98]"
                 onClick={onReject}
                 disabled={actionLoading}
               >
@@ -453,7 +453,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
             {!order.isPickup && order.juraOrderId != null && (status === "Ready" || status === "OnTheWay") && (
               <button
                 type="button"
-                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200"
+                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200 active:scale-[0.98]"
                 onClick={onCancelDeliveryClick}
                 disabled={actionLoading}
               >
@@ -468,7 +468,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
             {status === "New" && (
               <button
                 type="button"
-                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200"
+                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200 active:scale-[0.98]"
                 onClick={() => {
                   if (window.confirm("Удалить этот заказ?")) onAction("delete");
                 }}

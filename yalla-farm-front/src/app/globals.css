@@ -91,3 +91,31 @@ html, body { overflow-x: clip; }
 .hair-divider {
   border-bottom: 1px solid #ECEBE7;
 }
+
+/* Map marker pulse — fires once when the user taps a pharmacy's "show
+   on map" chip in the side panel. Uses the `scale` CSS property (not
+   `transform`), so it stacks on top of the existing inline
+   `transform: translate(...)` Google/Yandex use to anchor the bubble. */
+@keyframes pharmacyMarkerPulse {
+  0%   { scale: 1;    }
+  35%  { scale: 1.35; }
+  70%  { scale: 1.05; }
+  100% { scale: 1;    }
+}
+.pharmacy-marker-pulse {
+  animation: pharmacyMarkerPulse 0.9s ease-in-out 1;
+  z-index: 100;
+}
+
+/* Side-panel card pulse — fires when a marker click reveals its card or
+   the user taps the panel-side highlight chip. A short ripple in the
+   primary colour around the card on top of the static `ring` so it
+   reads as “this is the one” without permanently colouring the card. */
+@keyframes pharmacyCardPulse {
+  0%   { box-shadow: 0 0 0 0    rgba(14, 139, 96, 0.55); }
+  60%  { box-shadow: 0 0 0 14px rgba(14, 139, 96, 0);    }
+  100% { box-shadow: 0 0 0 0    rgba(14, 139, 96, 0);    }
+}
+.pharmacy-card-pulse {
+  animation: pharmacyCardPulse 0.9s ease-out 1;
+}

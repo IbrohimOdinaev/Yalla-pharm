@@ -252,7 +252,7 @@ export default function OrdersPage() {
           <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-1">
             <button
               type="button"
-              className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition ${
+              className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition active:scale-[0.97] ${
                 activeTab === "active"
                   ? "bg-primary text-white shadow-card"
                   : "text-on-surface-variant hover:bg-surface-container-high"
@@ -263,7 +263,7 @@ export default function OrdersPage() {
             </button>
             <button
               type="button"
-              className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition ${
+              className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition active:scale-[0.97] ${
                 activeTab === "history"
                   ? "bg-primary text-white shadow-card"
                   : "text-on-surface-variant hover:bg-surface-container-high"
@@ -505,7 +505,7 @@ export default function OrdersPage() {
                           <Link
                             key={pos.positionId}
                             href={pos.medicineId ? `/product/${pos.medicineId}` : "#"}
-                            className="flex items-center gap-2 xs:gap-3 rounded-xl bg-surface-container-low p-2 xs:p-3 transition hover:bg-surface-container-high"
+                            className="flex items-center gap-2 xs:gap-3 rounded-xl bg-surface-container-low p-2 xs:p-3 transition active:scale-95 hover:bg-surface-container-high"
                           >
                             <div className="h-9 w-9 xs:h-10 xs:w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded-lg bg-image-backdrop overflow-hidden">
                               {pos.medicine?.images?.[0] ? (

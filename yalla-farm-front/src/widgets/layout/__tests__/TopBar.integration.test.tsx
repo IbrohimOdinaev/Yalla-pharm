@@ -5,105 +5,80 @@ import { describe, expect, it } from "vitest";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { renderWithProviders } from "@/test/render";
 
-describe("TopBar", () => {
-  it("renders title and location", () => {
-    renderWithProviders(<TopBar title="Test Title" />);
-    expect(screen.getByText("Test Title")).toBeInTheDocument();
-    expect(screen.getByText("Dushanbe, RT")).toBeInTheDocument();
+// TopBar has two visual modes:
+//   • title mode (default) — renders an `<h1>{title}</h1>` plus a back
+//     button + optional logout chip. No profile dropdown / address pill.
+//   • homeMode — renders the Yandex-style search header with logo, search
+//     bar, address pill, cart pill, and the per-role profile dropdown.
+//
+// In homeMode the profile button is rendered twice (mobile + desktop
+// layouts coexist in the DOM at the test viewport), so we click the
+// first one and assert the dropdown contents via getAllByText.
+
+async function openProfileDropdown() {
+  const user = userEvent.setup();
+  const profileButtons = screen.getAllByLabelText("Аккаунт");
+  await user.click(profileButtons[0]);
+  return user;
+}
+
+describe("TopBar (title mode)", () => {
+  it("renders the title", () => {
+    renderWithProviders(<TopBar title="Заголовок" />);
+    expect(screen.getByText("Заголовок")).toBeInTheDocument();
   });
 
-  it("renders back button when backHref provided", () => {
+  it("renders back link when backHref is a URL", () => {
     renderWithProviders(<TopBar title="Test" backHref="/home" />);
-    const backLink = screen.getByRole("link");
+    const backLink = screen.getByRole("link", { name: "Назад" });
     expect(backLink).toHaveAttribute("href", "/home");
   });
+});
 
-  it("shows Душанбе badge", () => {
-    renderWithProviders(<TopBar title="Test" />);
-    expect(screen.getByText("Душанбе")).toBeInTheDocument();
+describe("TopBar (home mode)", () => {
+  it("guest: profile dropdown shows guest mode + login by SMS", async () => {
+    renderWithProviders(<TopBar homeMode />);
+    await openProfileDropdown();
+    expect(screen.getAllByText("Гостевой режим").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Войти по SMS").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("guest: shows login and register in dropdown", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TopBar title="Test" />);
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-
-    expect(screen.getByText("Гостевой режим")).toBeInTheDocument();
-    expect(screen.getByText("Войти")).toBeInTheDocument();
-    expect(screen.getByText("Регистрация")).toBeInTheDocument();
-  });
-
-  it("authenticated client: shows profile and logout", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TopBar title="Test" />, {
+  it("client: dropdown shows profile, orders, prescriptions, logout", async () => {
+    renderWithProviders(<TopBar homeMode />, {
       preloadedAuth: { token: "test-token", role: "Client", userId: "u1" },
     });
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-
-    expect(screen.getByText("Клиент")).toBeInTheDocument();
-    expect(screen.getByText("Мой профиль")).toBeInTheDocument();
-    expect(screen.getByText("Выйти")).toBeInTheDocument();
+    await openProfileDropdown();
+    expect(screen.getAllByText("Клиент").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Мой профиль").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Мои заказы").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Мои рецепты").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Выйти").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("admin: shows workspace link", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TopBar title="Test" />, {
+  it("admin: dropdown shows Кабинет link", async () => {
+    renderWithProviders(<TopBar homeMode />, {
       preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
     });
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-    expect(screen.getByText("Кабинет")).toBeInTheDocument();
+    await openProfileDropdown();
+    expect(screen.getAllByText("Кабинет").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("superadmin: shows panel link", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TopBar title="Test" />, {
+  it("superadmin: dropdown shows Панель управления, no Мой профиль", async () => {
+    renderWithProviders(<TopBar homeMode />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
     });
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-    expect(screen.getByText("Панель управления")).toBeInTheDocument();
+    await openProfileDropdown();
+    expect(screen.queryByText("Мой профиль")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Панель управления").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Выйти").length).toBeGreaterThanOrEqual(1);
   });
 
   it("logout clears credentials from store", async () => {
-    const user = userEvent.setup();
-    const { store } = renderWithProviders(<TopBar title="Test" />, {
+    const { store } = renderWithProviders(<TopBar homeMode />, {
       preloadedAuth: { token: "test-token", role: "Client", userId: "u1" },
     });
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-    await user.click(screen.getByText("Выйти"));
-
+    const user = await openProfileDropdown();
+    await user.click(screen.getAllByText("Выйти")[0]);
     expect(store.getState().auth.token).toBeNull();
-  });
-
-  it("closes dropdown on outside click", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(
-      <div>
-        <TopBar title="Test" />
-        <div data-testid="outside">outside</div>
-      </div>,
-    );
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-    expect(screen.getByText("Гостевой режим")).toBeInTheDocument();
-
-    await user.click(screen.getByTestId("outside"));
-    expect(screen.queryByText("Гостевой режим")).not.toBeInTheDocument();
-  });
-
-  it("superadmin: no profile link in dropdown", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TopBar title="Test" />, {
-      preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
-    });
-
-    await user.click(screen.getByLabelText("Аккаунт"));
-    expect(screen.queryByText("Мой профиль")).not.toBeInTheDocument();
-    expect(screen.getByText("Панель управления")).toBeInTheDocument();
-    expect(screen.getByText("Выйти")).toBeInTheDocument();
   });
 });

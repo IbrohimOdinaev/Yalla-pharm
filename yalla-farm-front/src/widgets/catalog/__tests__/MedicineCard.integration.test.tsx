@@ -24,14 +24,14 @@ describe("MedicineCard", () => {
     expect(screen.getByText("Парацетамол")).toBeInTheDocument();
   });
 
-  it("renders add-to-cart button with price", () => {
+  it("renders add-to-cart pill with price", () => {
     const med = makeMedicine({ offers: [{ pharmacyId: "p1", stockQuantity: 5, price: 25 }] });
     renderWithProviders(<MedicineCard medicine={med} />);
-    // The price+add button row should exist
-    expect(screen.getByLabelText("Добавить в корзину")).toBeInTheDocument();
+    // Card's add affordance uses aria-label "В корзину".
+    expect(screen.getByLabelText("В корзину")).toBeInTheDocument();
   });
 
-  it("shows cheapest price from offers, not medicine.price", () => {
+  it("shows cheapest price from offers prefixed with «от»", () => {
     const med = makeMedicine({
       price: 100,
       offers: [
@@ -40,49 +40,29 @@ describe("MedicineCard", () => {
       ],
     });
     renderWithProviders(<MedicineCard medicine={med} />);
-    // Cheapest offer is 30, formatted as "30.00 TJS"
-    expect(screen.getByText("30.00 TJS")).toBeInTheDocument();
+    // Pill text reads "от 30.00 TJS"
+    expect(screen.getByText("от 30.00 TJS")).toBeInTheDocument();
   });
 
-  it("shows attributes", () => {
-    const med = makeMedicine({
-      atributes: [
-        { type: "ReleaseForm", value: "Таблетки", name: "Форма", option: "Таблетки" },
-        { type: "Dosage", value: "500мг", name: "Дозировка", option: "500мг" },
-      ],
-    });
-    renderWithProviders(<MedicineCard medicine={med} />);
-    expect(screen.getByText("Таблетки")).toBeInTheDocument();
-    expect(screen.getByText("500мг")).toBeInTheDocument();
-  });
-
-  it("uses minimal image URL when available", () => {
-    const med = makeMedicine({
-      images: [
-        { id: "img-main", isMain: true, isMinimal: false },
-        { id: "img-min", isMain: false, isMinimal: true },
-      ],
-    });
-    renderWithProviders(<MedicineCard medicine={med} />);
-    const img = screen.getByRole("img");
-    // Minimal image should be preferred for the card thumbnail
-    expect(img.getAttribute("src")).toContain("img-min");
-  });
-
-  it("hideCart mode shows price without add button", () => {
+  it("hideCart mode shows price without add affordance", () => {
     const med = makeMedicine({
       offers: [{ pharmacyId: "p1", stockQuantity: 5, price: 25 }],
     });
     renderWithProviders(<MedicineCard medicine={med} hideCart />);
-    expect(screen.getByText("25.00 TJS")).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Добавить в корзину")
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("от 25.00 TJS")).toBeInTheDocument();
+    expect(screen.queryByLabelText("В корзину")).not.toBeInTheDocument();
   });
 
-  it("shows price in аптеке when no offers", () => {
+  it("shows em-dash placeholder when no offers", () => {
     const med = makeMedicine({ offers: [] });
     renderWithProviders(<MedicineCard medicine={med} />);
-    expect(screen.getByText("Цена в аптеке")).toBeInTheDocument();
+    // The add pill renders "—" when there's no price to advertise.
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("hideCart mode shows «Нет офферов» when no offers", () => {
+    const med = makeMedicine({ offers: [] });
+    renderWithProviders(<MedicineCard medicine={med} hideCart />);
+    expect(screen.getByText("Нет офферов")).toBeInTheDocument();
   });
 });

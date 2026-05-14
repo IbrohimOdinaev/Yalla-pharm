@@ -847,7 +847,7 @@ function MedicinesTab({ token }: { token: string }) {
           {/* Panel */}
           <div className="relative mx-2 xs:mx-4 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-surface shadow-glass space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5">
             {/* Close */}
-            <button type="button" onClick={() => setSelected(null)} className="absolute top-2 right-2 xs:top-3 xs:right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition" aria-label="Закрыть">
+            <button type="button" onClick={() => setSelected(null)} className="absolute top-2 right-2 xs:top-3 xs:right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high active:scale-90 transition" aria-label="Закрыть">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
 
@@ -1442,7 +1442,7 @@ function OrdersTab({ token }: { token: string }) {
                   <Link
                     key={pos.positionId}
                     href={pos.medicineId ? `/product/${pos.medicineId}` : "#"}
-                    className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3 transition hover:bg-surface-container-high"
+                    className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3 transition active:scale-95 hover:bg-surface-container-high"
                   >
                     <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-image-backdrop flex items-center justify-center text-xs text-on-surface-variant font-bold">
                       {(pos.medicine?.title ?? "?")[0]}
@@ -1943,7 +1943,7 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                     type="button"
                     disabled={busyId === p.prescriptionId}
                     onClick={() => onConfirm(p.prescriptionId)}
-                    className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-white transition hover:bg-primary-container disabled:opacity-50"
+                    className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-white transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
                   >
                     {busyId === p.prescriptionId ? "..." : "Подтвердить оплату"}
                   </button>
@@ -2026,7 +2026,7 @@ function PharmacistsSection({ token }: { token: string }) {
               <button
                 type="button"
                 onClick={() => onDelete(ph.id)}
-                className="rounded-full px-3 py-1.5 text-xs font-bold text-secondary transition hover:bg-secondary-soft"
+                className="rounded-full px-3 py-1.5 text-xs font-bold text-secondary transition active:scale-95 hover:bg-secondary-soft"
               >
                 Удалить
               </button>
@@ -2096,7 +2096,7 @@ function RegisterPharmacistForm({
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-white transition hover:bg-primary-container disabled:opacity-50"
+        className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-white transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
       >
         {submitting ? "..." : "Зарегистрировать"}
       </button>

@@ -201,7 +201,7 @@ export function DatePicker({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="flex flex-shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-low"
+          className="flex flex-shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition active:scale-95 hover:bg-surface-container-low"
           aria-label="Открыть календарь"
           aria-haspopup="dialog"
           aria-expanded={open}
@@ -225,7 +225,7 @@ export function DatePicker({
                 <button
                   type="button"
                   onClick={() => shiftMonth(-1)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-low"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition active:scale-95 hover:bg-surface-container-low"
                   aria-label="Прошлый месяц"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -233,7 +233,7 @@ export function DatePicker({
                 <button
                   type="button"
                   onClick={() => setMode("years")}
-                  className="rounded-lg px-2 py-1 text-sm font-bold transition hover:bg-surface-container-low"
+                  className="rounded-lg px-2 py-1 text-sm font-bold transition active:scale-95 hover:bg-surface-container-low"
                   title="Сменить год"
                 >
                   {MONTHS_RU[month]} {year}
@@ -241,7 +241,7 @@ export function DatePicker({
                 <button
                   type="button"
                   onClick={() => shiftMonth(1)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-low"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition active:scale-95 hover:bg-surface-container-low"
                   aria-label="Следующий месяц"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -283,14 +283,14 @@ export function DatePicker({
                 <button
                   type="button"
                   onClick={() => { onChange(""); setDraft(""); setOpen(false); }}
-                  className="text-xs font-semibold text-on-surface-variant transition hover:text-red-600"
+                  className="text-xs font-semibold text-on-surface-variant transition active:scale-95 hover:text-red-600"
                 >
                   Очистить
                 </button>
                 <button
                   type="button"
                   onClick={() => selectDay(todayIso)}
-                  className="text-xs font-semibold text-primary transition hover:text-primary-container"
+                  className="text-xs font-semibold text-primary transition active:scale-95 hover:text-primary-container"
                 >
                   Сегодня
                 </button>
@@ -303,7 +303,7 @@ export function DatePicker({
                 <button
                   type="button"
                   onClick={() => setView(new Date(year - 12, month, 1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-low"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition active:scale-95 hover:bg-surface-container-low"
                   aria-label="Назад на 12 лет"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -311,14 +311,14 @@ export function DatePicker({
                 <button
                   type="button"
                   onClick={() => setMode("days")}
-                  className="rounded-lg px-2 py-1 text-sm font-bold transition hover:bg-surface-container-low"
+                  className="rounded-lg px-2 py-1 text-sm font-bold transition active:scale-95 hover:bg-surface-container-low"
                 >
                   {yearPageBase} – {yearPageBase + 11}
                 </button>
                 <button
                   type="button"
                   onClick={() => setView(new Date(year + 12, month, 1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition hover:bg-surface-container-low"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition active:scale-95 hover:bg-surface-container-low"
                   aria-label="Вперёд на 12 лет"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>

@@ -349,7 +349,7 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={() => setShowAddressModal(true)}
-              className="flex w-full items-center gap-3 rounded-2xl bg-surface-container-low p-3 text-left transition hover:bg-surface-container-high"
+              className="flex w-full items-center gap-3 rounded-2xl bg-surface-container-low p-3 text-left transition active:scale-95 hover:bg-surface-container-high"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <Icon name="pin" size={18} />

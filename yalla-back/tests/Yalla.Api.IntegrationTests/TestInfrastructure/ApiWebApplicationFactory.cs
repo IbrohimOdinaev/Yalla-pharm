@@ -38,6 +38,28 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
     SetIfUnset("Jura__Login", "");
     SetIfUnset("Jura__Password", "");
     SetIfUnset("Elasticsearch__Url", "");
+    // EnvironmentValidator (Api/Startup/EnvironmentValidator.cs) checks for
+    // these required keys before the host comes up. They have to be set to
+    // *something* even though the factory swaps DbContext/IMedicineImageStorage
+    // for SQLite + an in-memory store afterwards.
+    SetIfUnset("ConnectionStrings__Default", "Host=ignored;Database=ignored;Username=ignored;Password=ignored");
+    SetIfUnset("MinIo__Endpoint", "localhost:9000");
+    SetIfUnset("MinIo__AccessKey", "test-access");
+    SetIfUnset("MinIo__SecretKey", "test-secret");
+    SetIfUnset("MinIo__BucketName", "test-bucket");
+    // WooCommerce hosted service binds Guid-typed options; supply a valid
+    // placeholder so the options binder doesn't crash on construction.
+    SetIfUnset("WooCommerce__PharmacyId", "00000000-0000-0000-0000-000000000000");
+    SetIfUnset("WooCommerce__BaseUrl", "");
+    SetIfUnset("WooCommerce__ConsumerKey", "");
+    SetIfUnset("WooCommerce__ConsumerSecret", "");
+    // Stub payment provider needs a base URL containing the `?A=` query
+    // parameter so it can extract the receiver-account number that the
+    // PaymentIntent constructor requires (non-empty). Production keeps
+    // this in DC_PAYMENT_BASE_URL; tests reuse the same canonical value.
+    SetIfUnset(
+      "DushanbeCityPayment__BaseUrl",
+      "http://pay.expresspay.tj/?A=9762000087892609&s=&c=&f1=133&FIELD2=&FIELD3=");
   }
 
   private readonly string _connectionString;

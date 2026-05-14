@@ -64,7 +64,7 @@ export function Select({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between rounded-2xl border border-outline/70 bg-surface-container-lowest px-3.5 py-3 text-left text-sm text-on-surface outline-none transition hover:bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20"
+        className="flex w-full items-center justify-between rounded-2xl border border-outline/70 bg-surface-container-lowest px-3.5 py-3 text-left text-sm text-on-surface outline-none transition hover:bg-surface-container-low active:scale-[0.99] focus:border-primary focus:ring-2 focus:ring-primary/20"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -100,7 +100,7 @@ export function Select({
                   onChange(opt.value);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition ${
+                className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition active:scale-[0.98] ${
                   isSelected
                     ? "bg-primary text-white font-bold"
                     : "text-on-surface hover:bg-surface-container-low"

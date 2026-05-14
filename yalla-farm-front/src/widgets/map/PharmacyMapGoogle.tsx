@@ -46,6 +46,11 @@ export type PharmacyMapHandle = {
    *  pharmacies + user location are visible at once. Used by the
    *  "fit-to-city" button on the map. */
   fitDushanbe: () => void;
+  /** Briefly animate the given pharmacy's marker so the user can spot
+   *  it among neighbours. Called from the side panel's per-card
+   *  "show on map" chip in addition to a `panTo`. No-op if the
+   *  marker doesn't exist (yet). */
+  highlightPharmacy: (id: string) => void;
 };
 
 export type PharmacyMapProps = {
@@ -288,6 +293,23 @@ export function PharmacyMapGoogle({
             fitDushanbe: () => {
               m.panTo({ lat: DUSHANBE_CENTER.lat, lng: DUSHANBE_CENTER.lng });
               m.setZoom(initialZoom);
+            },
+            highlightPharmacy: (id) => {
+              const marker = markersRef.current.get(id);
+              const root = marker?.content as HTMLElement | undefined;
+              if (!root) return;
+              // Restart the keyframe by toggling the class off and on
+              // again — running animation must be re-triggered each call
+              // or rapid taps on the chip would only fire once.
+              root.classList.remove("pharmacy-marker-pulse");
+              // Force reflow so the browser registers the class removal
+              // before re-adding it (otherwise the animation is treated
+              // as continuing and doesn't restart).
+              void root.offsetWidth;
+              root.classList.add("pharmacy-marker-pulse");
+              window.setTimeout(() => {
+                root.classList.remove("pharmacy-marker-pulse");
+              }, 1000);
             },
           });
         }}

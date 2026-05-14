@@ -136,7 +136,7 @@ function CameraCaptureModal({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+          className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition active:scale-95 hover:bg-black/80"
           aria-label="Закрыть"
         >
           <Icon name="close" size={18} />
@@ -370,7 +370,7 @@ export default function NewPrescriptionPage() {
                 <button
                   type="button"
                   onClick={() => onRemovePhoto(idx)}
-                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-surface/90 text-on-surface shadow-card transition hover:bg-secondary-soft hover:text-secondary"
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-surface/90 text-on-surface shadow-card transition active:scale-95 hover:bg-secondary-soft hover:text-secondary"
                   aria-label="Удалить фото"
                 >
                   <Icon name="close" size={14} />
@@ -389,12 +389,12 @@ export default function NewPrescriptionPage() {
                 <button
                   type="button"
                   onClick={() => setCameraOpen(true)}
-                  className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-xl text-on-surface-variant transition hover:bg-primary/10 hover:text-primary"
+                  className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-xl text-on-surface-variant transition active:scale-95 hover:bg-primary/10 hover:text-primary"
                 >
                   <CameraIcon className="h-7 w-7" />
                   <span className="text-[11px] font-semibold leading-tight">Сфотографировать</span>
                 </button>
-                <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl text-on-surface-variant transition hover:bg-primary/10 hover:text-primary">
+                <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl text-on-surface-variant transition active:scale-95 hover:bg-primary/10 hover:text-primary">
                   <Icon name="plus" size={26} />
                   <span className="text-[11px] font-semibold leading-tight">Из файлов</span>
                   <input

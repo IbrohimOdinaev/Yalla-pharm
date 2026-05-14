@@ -43,7 +43,30 @@ function loginErrorMessage(err: unknown): string {
 }
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist" };
-type StaffRole = "Admin" | "SuperAdmin" | "Pharmacist";
+
+// Single staff-login form. One phone number can only belong to one staff
+// role, so we no longer ask the user to pick — instead we probe each
+// role-specific endpoint in sequence and accept whichever succeeds. Wrong
+// password / non-existent account → every endpoint returns 4xx and we
+// surface the standard "wrong number or password" message.
+async function tryStaffLogin(phone: string, password: string) {
+  const attempts = [adminLogin, superAdminLogin, pharmacistLogin];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    try {
+      return await attempt(phone, password);
+    } catch (err) {
+      lastErr = err;
+      // Try the next role only on credential-style failures (401/404).
+      // Real outages (5xx, 429, network) propagate immediately.
+      if (err instanceof ApiError) {
+        if (err.status === 401 || err.status === 404 || err.status === 400) continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 
 export default function AdminLoginPage() {
   return (
@@ -59,7 +82,6 @@ function AdminLoginContent() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect");
 
-  const [staffRole, setStaffRole] = useState<StaffRole>("Admin");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -73,13 +95,10 @@ function AdminLoginContent() {
 
     try {
       const normalizedPhone = formatPhone(phoneNumber);
-      const response =
-        staffRole === "Admin" ? await adminLogin(normalizedPhone, password)
-        : staffRole === "SuperAdmin" ? await superAdminLogin(normalizedPhone, password)
-        : await pharmacistLogin(normalizedPhone, password);
+      const response = await tryStaffLogin(normalizedPhone, password);
 
       const role = typeof response.role === "number"
-        ? (ROLE_MAP[response.role] ?? staffRole)
+        ? (ROLE_MAP[response.role] ?? "Client")
         : String(response.role);
 
       // Pull pharmacy_id from the JWT — admin tokens always carry it.
@@ -124,43 +143,6 @@ function AdminLoginContent() {
           className="space-y-4 rounded-3xl bg-surface-container-lowest p-5 shadow-card"
           onSubmit={onSubmit}
         >
-          {/* Role tabs */}
-          <div className="flex items-center gap-1 rounded-full bg-surface-container-low p-1">
-            <button
-              type="button"
-              onClick={() => { setStaffRole("Admin"); setError(null); }}
-              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-bold transition xs:text-xs ${
-                staffRole === "Admin"
-                  ? "bg-primary text-white shadow-card"
-                  : "text-on-surface-variant"
-              }`}
-            >
-              Админ
-            </button>
-            <button
-              type="button"
-              onClick={() => { setStaffRole("SuperAdmin"); setError(null); }}
-              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-bold transition xs:text-xs ${
-                staffRole === "SuperAdmin"
-                  ? "bg-primary text-white shadow-card"
-                  : "text-on-surface-variant"
-              }`}
-            >
-              Суперадмин
-            </button>
-            <button
-              type="button"
-              onClick={() => { setStaffRole("Pharmacist"); setError(null); }}
-              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-bold transition xs:text-xs ${
-                staffRole === "Pharmacist"
-                  ? "bg-primary text-white shadow-card"
-                  : "text-on-surface-variant"
-              }`}
-            >
-              Фармацевт
-            </button>
-          </div>
-
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">
               Номер телефона
@@ -212,11 +194,7 @@ function AdminLoginContent() {
           ) : null}
 
           <Button type="submit" size="lg" fullWidth rightIcon="arrow-right" loading={isSubmitting}>
-            {staffRole === "Admin"
-              ? "Войти как администратор"
-              : staffRole === "SuperAdmin"
-                ? "Войти как суперадмин"
-                : "Войти как фармацевт"}
+            Войти
           </Button>
         </form>
       </div>

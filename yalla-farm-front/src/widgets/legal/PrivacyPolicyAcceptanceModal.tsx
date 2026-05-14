@@ -58,7 +58,7 @@ export function PrivacyPolicyAcceptanceModal({ open, token, version, onAccepted,
             type="button"
             onClick={onClose}
             aria-label="Закрыть"
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition hover:bg-surface-container-low"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant transition active:scale-95 hover:bg-surface-container-low"
           >
             <Icon name="close" size={16} />
           </button>

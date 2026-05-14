@@ -63,22 +63,40 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   addItem: async (token, medicineId, quantity = 1) => {
-    // Chain calls sequentially to prevent duplicate positions
+    // Optimistic write: bump or insert the position in state synchronously so
+    // the UI reacts on click (pill morphs, badge appears, total recomputes).
+    // The actual network call below reconciles state with the server but is
+    // serialized through addItemQueue to avoid duplicate POSTs when the user
+    // mashes + rapidly on a still-fresh item.
+    set((state) => {
+      const positions = Array.isArray(state.basket.positions) ? state.basket.positions : [];
+      const existing = positions.find((p) => String(p.medicineId) === String(medicineId));
+      const nextPositions: ApiBasketPosition[] = existing
+        ? positions.map((p) =>
+            String(p.medicineId) === String(medicineId)
+              ? { ...p, quantity: Math.max(1, Number(p.quantity || 0) + quantity) }
+              : p,
+          )
+        : [...positions, { id: `pending:${medicineId}`, medicineId, quantity }];
+      return { basket: { ...state.basket, positions: nextPositions }, error: null };
+    });
+
     const work = addItemQueue.then(async () => {
-      set({ isLoading: true, error: null });
       try {
-        // Re-read state after awaiting queue — previous call may have added this item
-        const current = get().basket;
-        const positions = Array.isArray(current.positions) ? current.positions : [];
-        const existing = positions.find((item) => String(item.medicineId) === String(medicineId));
+        // Re-read state at run time: rapid clicks before the network resolved
+        // have accumulated into the local quantity, and we sync that to the
+        // server in one call (subsequent queued works become PATCH no-ops).
+        const positions = Array.isArray(get().basket.positions) ? get().basket.positions! : [];
+        const local = positions.find((p) => String(p.medicineId) === String(medicineId));
+        const hasRealId = !!local && !String(local.id).startsWith("pending:");
 
-        const basket = existing
-          ? await updateBasketQuantity(token, existing.id, Math.max(1, Number(existing.quantity || 0) + quantity))
-          : await addToBasket(token, medicineId, quantity);
+        const basket = hasRealId
+          ? await updateBasketQuantity(token, local!.id, local!.quantity)
+          : await addToBasket(token, medicineId, local?.quantity ?? quantity);
 
-        set({ basket: normalizeBasket(basket), isLoading: false });
+        set({ basket: normalizeBasket(basket) });
       } catch {
-        set({ error: "Не удалось добавить товар. Попробуйте снова.", isLoading: false });
+        set({ error: "Не удалось добавить товар. Попробуйте снова." });
       }
     });
     addItemQueue = work.catch(() => undefined);

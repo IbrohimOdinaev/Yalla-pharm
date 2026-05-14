@@ -165,7 +165,13 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
     var secondJson = await ReadJsonAsync(secondResponse);
 
-    Assert.Equal(firstJson.GetProperty("paymentIntentId").GetGuid(), secondJson.GetProperty("paymentIntentId").GetGuid());
+    // The implementation persists BOTH a PaymentIntent and a pending-payment
+    // Order on the first call (they share an id via PaymentIntent.ReservedOrderId
+    // == Order.Id). On the idempotent retry the service short-circuits at the
+    // Order lookup (line 673 of ClientService.CheckoutBasketAsync) and returns
+    // the Order-shaped response — which intentionally zeroes out PaymentIntentId
+    // because the caller already has the order id. So the stable identifier
+    // across retries is reservedOrderId, not paymentIntentId.
     Assert.Equal(firstJson.GetProperty("reservedOrderId").GetGuid(), secondJson.GetProperty("reservedOrderId").GetGuid());
 
     using var scope = Factory.CreateScope();

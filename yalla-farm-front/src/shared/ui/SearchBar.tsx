@@ -19,7 +19,7 @@ export function SearchBar({
     return (
       <button
         type="button"
-        className={`group flex h-12 w-full items-center gap-3 rounded-full bg-surface-container px-4 text-left transition hover:bg-surface-container-high focus:ring-2 focus:ring-primary/20 ${className}`}
+        className={`group flex h-12 w-full items-center gap-3 rounded-full bg-surface-container px-4 text-left transition hover:bg-surface-container-high active:scale-[0.98] focus:ring-2 focus:ring-primary/20 ${className}`}
         {...rest}
       >
         <Icon name="search" size={20} className="flex-shrink-0 text-on-surface" />
@@ -36,7 +36,7 @@ export function SearchBar({
   return (
     <button
       type="button"
-      className={`flex h-10 items-center gap-2.5 rounded-full bg-surface-container px-4 text-left transition hover:bg-surface-container-high ${className}`}
+      className={`flex h-10 items-center gap-2.5 rounded-full bg-surface-container px-4 text-left transition hover:bg-surface-container-high active:scale-[0.98] ${className}`}
       {...rest}
     >
       <Icon name="search" size={16} className="text-on-surface" />

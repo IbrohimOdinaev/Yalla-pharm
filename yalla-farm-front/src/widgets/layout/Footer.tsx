@@ -82,7 +82,7 @@ export function Footer() {
                 href="https://t.me/yalla_tj"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 hover:scale-105"
                 aria-label="Telegram @yalla_tj"
                 title="Telegram-канал поддержки"
               >
@@ -92,7 +92,7 @@ export function Footer() {
                 href="https://www.instagram.com/yalla.tj?igsh=dThsNHhtMHY1YXlt"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 hover:scale-105"
                 aria-label="Instagram"
                 title="Instagram"
               >
@@ -102,7 +102,7 @@ export function Footer() {
                 href="https://www.linkedin.com/company/yalla-1?trk=public_profile_topcard-current-company"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 hover:scale-105"
                 aria-label="LinkedIn"
                 title="LinkedIn"
               >
@@ -110,7 +110,7 @@ export function Footer() {
               </a>
               <a
                 href="mailto:info@yalla.tj"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 hover:scale-105"
                 aria-label="Email info@yalla.tj"
                 title="info@yalla.tj"
               >
@@ -140,7 +140,7 @@ export function Footer() {
             <li>
               <a
                 href="mailto:info@yalla.tj"
-                className="text-sm text-on-surface-variant transition hover:text-primary"
+                className="text-sm text-on-surface-variant transition active:scale-95 hover:text-primary"
               >
                 info@yalla.tj
               </a>
@@ -150,7 +150,7 @@ export function Footer() {
                 href="https://t.me/yalla_tj"
                 target="_blank"
                 rel="noreferrer"
-                className="text-sm text-on-surface-variant transition hover:text-primary"
+                className="text-sm text-on-surface-variant transition active:scale-95 hover:text-primary"
               >
                 Telegram: @yalla_tj
               </a>
@@ -179,7 +179,7 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <li>
-      <Link href={href} className="text-sm text-on-surface-variant transition hover:text-primary">
+      <Link href={href} className="text-sm text-on-surface-variant transition active:scale-95 hover:text-primary">
         {children}
       </Link>
     </li>

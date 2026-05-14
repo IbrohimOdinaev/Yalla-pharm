@@ -126,8 +126,19 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
       updateDraftItem(activePrescriptionId, cartState.positionId, { quantity: cartState.quantity + 1 });
       return;
     }
-    if (token) addItem(token, medicine.id).catch(() => undefined);
-    else addGuestItem(medicine.id);
+    if (token) {
+      // If we already have a real server positionId, take the fast path:
+      // setQuantity is fully optimistic and uses a latest-wins reconciler, so
+      // rapid clicks stay responsive without queue serialization. Pending or
+      // not-yet-added positions go through addItem (also optimistic) where the
+      // POST→PATCH ordering matters.
+      const hasRealId = cartState.positionId && !cartState.positionId.startsWith("pending:");
+      if (hasRealId) {
+        setServerQty(token, cartState.positionId, cartState.quantity + 1).catch(() => undefined);
+      } else {
+        addItem(token, medicine.id).catch(() => undefined);
+      }
+    } else addGuestItem(medicine.id);
   }
 
   function onDecrement(e: React.MouseEvent) {
@@ -193,7 +204,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
       {/* Frame moved from inner image to outer card: a thin border outlines
           the whole card, and the image area now sits flush with the card
           body (no grey contrast block behind the photo). */}
-      <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition hover:border-on-surface/30 hover:shadow-card">
+      {/* Tactile feedback: when any inner button (the +/− stepper or the
+          blue add pill) is pressed, the whole card briefly grows by ~2 %
+          via `has-[button:active]`. The stepper/pill buttons themselves
+          stay fixed in size — the user sees the card expand around the
+          control without the price/qty text reflowing under their finger. */}
+      <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition has-[button:active]:scale-[1.02] hover:border-on-surface/30 hover:shadow-card">
         {/* Image */}
         <div
           className="relative aspect-square overflow-hidden bg-image-backdrop"
@@ -303,7 +319,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
                 <button
                   type="button"
                   onClick={onDecrement}
-                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 ${
+                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 ${
                     compact ? "h-6 w-6 xs:h-7 xs:w-7" : "h-7 w-7 xs:h-8 xs:w-8"
                   }`}
                   aria-label="Уменьшить"
@@ -317,12 +333,12 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
                       : "text-[11px] xs:text-xs sm:text-sm"
                   }`}
                 >
-                  {price ? `${formatMoney(price)}` : `×${cartState.quantity}`}
+                  {price ? `от ${formatMoney(price)}` : `×${cartState.quantity}`}
                 </span>
                 <button
                   type="button"
                   onClick={onIncrement}
-                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 active:scale-95 ${
+                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 ${
                     compact ? "h-6 w-6 xs:h-7 xs:w-7" : "h-7 w-7 xs:h-8 xs:w-8"
                   }`}
                   aria-label="Увеличить"
@@ -334,7 +350,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
               <button
                 type="button"
                 onClick={onAdd}
-                className={`flex w-full items-center justify-between gap-0.5 rounded-full bg-[#4FB8DD] px-2 font-display text-white shadow-card transition hover:bg-[#3FA5CE] active:scale-[0.98] xs:gap-1 xs:px-3 ${
+                className={`flex w-full items-center justify-center gap-1.5 rounded-full bg-[#4FB8DD] px-2 font-display text-white shadow-card transition hover:bg-[#3FA5CE] xs:gap-2 xs:px-3 ${
                   compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
                 }`}
                 aria-label="В корзину"
@@ -346,7 +362,7 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
                       : "text-[10px] xs:text-[11px] sm:text-xs md:text-sm"
                   }`}
                 >
-                  {price ? formatMoney(price) : "—"}
+                  {price ? `от ${formatMoney(price)}` : "—"}
                 </span>
                 <Icon name="plus" size={14} strokeWidth={2.4} />
               </button>

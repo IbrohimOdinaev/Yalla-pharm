@@ -14,8 +14,8 @@ function mockSuperAdminFetch() {
             JSON.stringify({
               admins: [{ adminId: "a1", name: "Admin1", phoneNumber: "901010101" }],
             }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
         );
       }
       if (url.includes("/api/pharmacies")) {
@@ -24,16 +24,16 @@ function mockSuperAdminFetch() {
             JSON.stringify({
               pharmacies: [{ id: "p1", title: "Pharmacy1", address: "Addr1", isActive: true }],
             }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
         );
       }
       if (url.includes("/api/medicines")) {
         return Promise.resolve(
           new Response(
             JSON.stringify({ medicines: [{ id: "m1", title: "Med1" }], totalCount: 1 }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
         );
       }
       if (url.includes("/api/clients")) {
@@ -42,29 +42,34 @@ function mockSuperAdminFetch() {
             JSON.stringify({
               clients: [{ clientId: "c1", name: "Client1", phoneNumber: "900111222" }],
             }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
         );
       }
       return Promise.resolve(
-        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })
+        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
       );
-    })
+    }),
   );
 }
 
+// /superadmin is now a hard auth-gated screen: when role !== SuperAdmin
+// the component returns `null` so the auth-redirect side-effect can move
+// the user without flashing an "Access denied" stub. Tests reflect that.
 describe("SuperAdminPage", () => {
-  it("non-superadmin: shows access denied", () => {
-    renderWithProviders(<SuperAdminPage />);
-    expect(screen.getByText(/Доступ только для суперадминистраторов/)).toBeInTheDocument();
+  it("guest: renders nothing (auth guard)", () => {
+    const { container } = renderWithProviders(<SuperAdminPage />);
+    expect(container.firstChild).toBeNull();
   });
 
-  it("admin role: shows access denied", () => {
-    renderWithProviders(<SuperAdminPage />, { preloadedAuth: { token: "t", role: "Admin" } });
-    expect(screen.getByText(/Доступ только для суперадминистраторов/)).toBeInTheDocument();
+  it("admin role: renders nothing (auth guard)", () => {
+    const { container } = renderWithProviders(<SuperAdminPage />, {
+      preloadedAuth: { token: "t", role: "Admin" },
+    });
+    expect(container.firstChild).toBeNull();
   });
 
-  it("superadmin: shows hero", async () => {
+  it("superadmin: renders the hero", async () => {
     mockSuperAdminFetch();
     renderWithProviders(<SuperAdminPage />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
@@ -73,23 +78,24 @@ describe("SuperAdminPage", () => {
     expect(screen.getByText("Глобальное управление системой")).toBeInTheDocument();
   });
 
-  it("superadmin: shows stats dashboard", async () => {
+  it("superadmin: renders the stats dashboard labels", async () => {
     mockSuperAdminFetch();
     renderWithProviders(<SuperAdminPage />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
     });
     expect(await screen.findByText("Админы")).toBeInTheDocument();
-    // "Аптеки" and "Лекарства" also appear in BottomNav, so use getAllByText
     expect(screen.getAllByText("Аптеки").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Лекарства").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Клиенты").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("superadmin: pharmacies tab shows by default", async () => {
+  it("superadmin: pharmacies tab heading shows by default", async () => {
     mockSuperAdminFetch();
     renderWithProviders(<SuperAdminPage />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
     });
-    expect(await screen.findByText("Управление аптеками и администраторами")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Управление аптеками и администраторами"),
+    ).toBeInTheDocument();
   });
 });

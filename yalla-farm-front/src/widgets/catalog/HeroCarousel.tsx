@@ -50,7 +50,7 @@ export function HeroCarousel() {
 
             <button
               type="button"
-              className="inline-flex w-fit items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-extrabold text-on-surface transition hover:bg-white"
+              className="inline-flex w-fit items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-extrabold text-on-surface transition hover:bg-white active:scale-95"
             >
               Подробнее →
             </button>

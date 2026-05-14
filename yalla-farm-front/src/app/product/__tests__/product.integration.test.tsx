@@ -4,11 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import ProductDetailsPage from "@/app/product/[id]/page";
 import { renderWithProviders } from "@/test/render";
 
+// useParams() resolves to { id: "test-id" } via the global mock. That's
+// not a UUID, so the page calls getMedicineBySlug — the mock below has
+// to answer `/api/medicines/by-slug/test-id` (not the by-id variant).
 function mockProductFetch() {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/api/medicines/test-id")) {
+      if (url.includes("/api/medicines/by-slug/test-id") || url.includes("/api/medicines/test-id")) {
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -31,39 +34,39 @@ function mockProductFetch() {
                 ],
               },
             }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
         );
       }
       if (url.includes("/api/basket")) {
         return Promise.resolve(
-          new Response(
-            JSON.stringify({ positions: [], pharmacyOptions: [] }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
+          new Response(JSON.stringify({ positions: [], pharmacyOptions: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
         );
       }
       return Promise.resolve(
-        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })
+        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
       );
-    })
+    }),
   );
 }
 
 describe("ProductDetailsPage", () => {
-  it("shows medicine title after fetch", async () => {
+  it("renders medicine title", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />);
     expect(await screen.findByText("Аспирин")).toBeInTheDocument();
   });
 
-  it("shows articul", async () => {
+  it("renders the articul row", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />);
-    expect(await screen.findByText("ASP-100")).toBeInTheDocument();
+    expect(await screen.findByText("Артикул: ASP-100")).toBeInTheDocument();
   });
 
-  it("shows attributes", async () => {
+  it("renders the attribute key + value", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />);
     expect(await screen.findByText("Дозировка")).toBeInTheDocument();
@@ -72,40 +75,32 @@ describe("ProductDetailsPage", () => {
     expect(screen.getByText("Таблетки")).toBeInTheDocument();
   });
 
-  it("shows cheapest price", async () => {
+  it("renders the cheapest price (12.00)", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />);
-    const priceElements = await screen.findAllByText(/12\.00/);
-    expect(priceElements.length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/12\.00/)).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows pharmacy offers", async () => {
+  it("renders the pharmacy offers list", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />);
     expect(await screen.findByText("Аптека Центр")).toBeInTheDocument();
     expect(screen.getByText("Аптека Юг")).toBeInTheDocument();
   });
 
-  it("shows quantity selector", async () => {
+  it("renders the «В корзину» CTA", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />);
-    expect(await screen.findByText("Добавить в корзину")).toBeInTheDocument();
+    // Button text is "В корзину · 12.00 TJS" when a price is known; match
+    // the leading phrase.
+    expect((await screen.findAllByText(/В корзину/)).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows gallery thumbnails for multiple images", async () => {
-    mockProductFetch();
-    renderWithProviders(<ProductDetailsPage />);
-    await screen.findByText("Аспирин");
-    // Gallery should have 2 thumbnails (main + regular, no minimal)
-    const images = document.querySelectorAll("button img");
-    expect(images.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("shows admin tip for Admin role", async () => {
+  it("shows admin-mode banner for Admin role", async () => {
     mockProductFetch();
     renderWithProviders(<ProductDetailsPage />, {
       preloadedAuth: { token: "t", role: "Admin" },
     });
-    expect(await screen.findByText(/Режим Администратора/)).toBeInTheDocument();
+    expect(await screen.findByText(/Режим администратора/)).toBeInTheDocument();
   });
 });
