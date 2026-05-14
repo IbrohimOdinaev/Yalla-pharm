@@ -41,17 +41,23 @@ type Tab = "pharmacies" | "medicines" | "orders" | "prescriptions";
 export default function SuperAdminPage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
+  const hydrated = useAppSelector((state) => state.auth.hydrated);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("pharmacies");
 
   // Auth gate — bounce unauthenticated/non-super visitors to the home page.
-  // `replace` swaps the current entry so Back can't return them to /superadmin.
-  // Triggers on logout (state goes null) and on direct hits by users without a session.
+  // Gated on `hydrated`: token/role are null until StoreProvider rehydrates
+  // the persisted JWT, so without this guard a reload at
+  // /superadmin#prescriptions would race-redirect to / (losing the hash)
+  // before the global role-based redirect bounced us back to /superadmin
+  // (also without the hash). Net result before the fix: every refresh
+  // stranded the superadmin on the default tab.
   useEffect(() => {
+    if (!hydrated) return;
     if (!token || role !== "SuperAdmin") {
       router.replace("/");
     }
-  }, [token, role, router]);
+  }, [hydrated, token, role, router]);
 
   // Sync activeTab from URL hash — poll because hashchange is unreliable with SPA
   useEffect(() => {

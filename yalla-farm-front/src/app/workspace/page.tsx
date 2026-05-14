@@ -40,17 +40,23 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WorkspacePage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
+  const hydrated = useAppSelector((state) => state.auth.hydrated);
   const router = useRouter();
 
   // Auth gate — bounce unauthenticated/non-admin visitors to the home page.
   // `replace` swaps the current entry so Back doesn't return them here.
-  // Triggers on logout (state goes null) and on direct hits to /workspace
-  // by users who never logged in.
+  // Critically gated on `hydrated`: before the persisted JWT has been
+  // rehydrated into the store both `token` and `role` are null, so without
+  // this check a page reload at /workspace#orders would race-redirect to /
+  // (losing the hash) before the StoreProvider's role-based redirect kicked
+  // us back to /workspace (also without the hash). Net result: every
+  // refresh stranded the admin on the default tab.
   useEffect(() => {
+    if (!hydrated) return;
     if (!token || role !== "Admin") {
       router.replace("/");
     }
-  }, [token, role, router]);
+  }, [hydrated, token, role, router]);
   // Each admin is bound to exactly one pharmacy. We rely on this to pick
   // their own pharmacy out of the active list (the backend doesn't ship a
   // "/me/pharmacy" endpoint yet — the JWT claim is the source of truth).
