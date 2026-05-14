@@ -37,14 +37,14 @@ describe("TopBar (title mode)", () => {
 
 describe("TopBar (home mode)", () => {
   it("guest: profile dropdown shows guest mode + login by SMS", async () => {
-    renderWithProviders(<TopBar homeMode />);
+    renderWithProviders(<TopBar title="" homeMode />);
     await openProfileDropdown();
     expect(screen.getAllByText("Гостевой режим").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Войти по SMS").length).toBeGreaterThanOrEqual(1);
   });
 
   it("client: dropdown shows profile, orders, prescriptions, logout", async () => {
-    renderWithProviders(<TopBar homeMode />, {
+    renderWithProviders(<TopBar title="" homeMode />, {
       preloadedAuth: { token: "test-token", role: "Client", userId: "u1" },
     });
     await openProfileDropdown();
@@ -56,7 +56,7 @@ describe("TopBar (home mode)", () => {
   });
 
   it("admin: dropdown shows Кабинет link", async () => {
-    renderWithProviders(<TopBar homeMode />, {
+    renderWithProviders(<TopBar title="" homeMode />, {
       preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
     });
     await openProfileDropdown();
@@ -64,7 +64,7 @@ describe("TopBar (home mode)", () => {
   });
 
   it("superadmin: dropdown shows Панель управления, no Мой профиль", async () => {
-    renderWithProviders(<TopBar homeMode />, {
+    renderWithProviders(<TopBar title="" homeMode />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
     });
     await openProfileDropdown();
@@ -74,7 +74,7 @@ describe("TopBar (home mode)", () => {
   });
 
   it("logout clears credentials from store", async () => {
-    const { store } = renderWithProviders(<TopBar homeMode />, {
+    const { store } = renderWithProviders(<TopBar title="" homeMode />, {
       preloadedAuth: { token: "test-token", role: "Client", userId: "u1" },
     });
     const user = await openProfileDropdown();

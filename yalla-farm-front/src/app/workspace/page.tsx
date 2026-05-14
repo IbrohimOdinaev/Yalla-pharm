@@ -623,6 +623,7 @@ function OrderCard({
           <span className="font-bold text-sm">{formatMoney(computeOriginalPaid(order), order.currency)}</span>
         </div>
       </div>
+      <p className="font-mono text-[10px] text-on-surface-variant/50 break-all">{order.orderId}</p>
       {order.clientName ? <p className="text-xs font-semibold text-on-surface">{order.clientName}</p> : null}
       {phoneDisplay ? <p className="text-xs font-mono text-on-surface-variant">{phoneDisplay}</p> : null}
       {telegramHandle ? <p className="text-xs font-mono text-tertiary">{telegramHandle}</p> : null}

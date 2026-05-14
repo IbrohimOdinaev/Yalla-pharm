@@ -1246,6 +1246,7 @@ function OrdersTab({ token }: { token: string }) {
                           <span className="text-[10px] text-on-surface-variant font-mono">#{order.orderId.slice(0, 8)}</span>
                           <DeliveryBadge isPickup={!!order.isPickup} iconOnly />
                         </div>
+                        <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{order.orderId}</p>
                         <div className="flex items-center justify-between text-sm mt-1 gap-2">
                           {order.pharmacyTitle ? (
                             <span className="truncate max-w-[140px]">{order.pharmacyTitle}</span>
@@ -1327,10 +1328,11 @@ function OrdersTab({ token }: { token: string }) {
         <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-16 overflow-y-auto" onClick={closeOverlay}>
           <div className="stitch-card w-full max-w-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs font-mono text-on-surface-variant">#{selectedOrder.orderId.slice(0, 8)}</p>
                 <h2 className="text-xl font-extrabold">Заказ</h2>
+                <p className="mt-0.5 text-[10px] font-mono text-on-surface-variant/50 break-all">{selectedOrder.orderId}</p>
               </div>
               <button type="button" onClick={closeOverlay} className="rounded-xl bg-surface-container-low p-2 hover:bg-surface-container-high">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1716,9 +1718,12 @@ function RefundKanbanCard({
       {/* Order context — order id + status chip. Helps connect the refund back to the
           order that triggered it without opening anything. */}
       {refund.orderId ? (
-        <p className="text-[10px] text-on-surface-variant/80 truncate">
-          Заказ #{refund.orderId.slice(0, 8)}{refund.orderStatus ? ` · ${refund.orderStatus}` : ""}
-        </p>
+        <>
+          <p className="text-[10px] text-on-surface-variant/80 truncate">
+            Заказ #{refund.orderId.slice(0, 8)}{refund.orderStatus ? ` · ${refund.orderStatus}` : ""}
+          </p>
+          <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{refund.orderId}</p>
+        </>
       ) : null}
       {refund.status === "Completed" && refund.updatedAtUtc ? (
         <p className="text-[10px] text-emerald-700 font-semibold">
@@ -1769,9 +1774,15 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
       </div>
       {intent.clientPhone ? <p className="text-xs text-on-surface-variant">Клиент: {intent.clientPhone}</p> : null}
       {intent.reservedOrderId ? (
-        <p className="text-[10px] font-mono text-on-surface-variant">Заказ: {intent.reservedOrderId.slice(0, 8)}</p>
+        <div>
+          <p className="text-[10px] font-mono text-on-surface-variant">Заказ: #{intent.reservedOrderId.slice(0, 8)}</p>
+          <p className="text-[9px] font-mono text-on-surface-variant/50 break-all">{intent.reservedOrderId}</p>
+        </div>
       ) : null}
-      <p className="text-[10px] font-mono text-on-surface-variant/50 break-all">{intent.paymentIntentId}</p>
+      <div>
+        <p className="text-[10px] font-mono text-on-surface-variant">Платёж: #{intent.paymentIntentId.slice(0, 8)}</p>
+        <p className="text-[9px] font-mono text-on-surface-variant/50 break-all">{intent.paymentIntentId}</p>
+      </div>
 
       {actionError ? <div className="rounded-lg bg-red-100 px-3 py-2 text-xs text-red-700">{actionError}</div> : null}
 
@@ -1937,7 +1948,32 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                       </p>
                     ) : null}
                     <p className="text-[11px] text-on-surface-variant">{created}</p>
-                    <p className="text-[11px] font-mono text-on-surface-variant/70">{p.prescriptionId}</p>
+                    {/* IDs block — same convention as orders / payment intents:
+                        short prefix in bold + full GUID in tiny grey, so the
+                        admin can recognise a request at a glance AND copy the
+                        canonical id when liaising with support or DB tools. */}
+                    <div className="space-y-0.5 pt-0.5">
+                      <p className="text-[11px] font-mono text-on-surface-variant/70">
+                        <span className="font-semibold">Рецепт: </span>#{p.prescriptionId.slice(0, 8)}
+                      </p>
+                      <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{p.prescriptionId}</p>
+                      {p.paymentIntentId ? (
+                        <>
+                          <p className="text-[11px] font-mono text-on-surface-variant/70">
+                            <span className="font-semibold">Платёж: </span>#{p.paymentIntentId.slice(0, 8)}
+                          </p>
+                          <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{p.paymentIntentId}</p>
+                        </>
+                      ) : null}
+                      {p.orderId ? (
+                        <>
+                          <p className="text-[11px] font-mono text-on-surface-variant/70">
+                            <span className="font-semibold">Заказ: </span>#{p.orderId.slice(0, 8)}
+                          </p>
+                          <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{p.orderId}</p>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                   <button
                     type="button"

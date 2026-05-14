@@ -203,10 +203,11 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
       <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-8 overflow-y-auto" onClick={onClose}>
         <div className="stitch-card w-full max-w-2xl p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-xs font-mono text-on-surface-variant">#{orderId.slice(0, 8)}</p>
               <h2 className="text-xl font-extrabold">Заказ</h2>
+              <p className="mt-0.5 text-[10px] font-mono text-on-surface-variant/50 break-all">{orderId}</p>
             </div>
             <button
               type="button"
