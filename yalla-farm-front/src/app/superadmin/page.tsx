@@ -1502,9 +1502,13 @@ function OrdersTab({ token }: { token: string }) {
                   className="w-full rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 transition"
                   onClick={() => {
                     setReturnMode(true);
+                    // Form represents NEW units to return on top of what was
+                    // already returned in previous refund requests — always
+                    // start at 0 so the admin doesn't accidentally count old
+                    // returns as new ones.
                     const initial: Record<string, number> = {};
                     for (const p of selectedOrder.positions ?? []) {
-                      if (!p.isRejected) initial[p.positionId] = p.returnedQuantity ?? 0;
+                      if (!p.isRejected) initial[p.positionId] = 0;
                     }
                     setReturnQty(initial);
                   }}
@@ -1515,38 +1519,61 @@ function OrdersTab({ token }: { token: string }) {
                 <div className="rounded-xl border border-red-200 bg-red-50/50 p-3 space-y-3">
                   <div>
                     <p className="text-sm font-bold text-red-900">Возврат позиций</p>
-                    <p className="text-[11px] text-red-700">Укажите сколько единиц клиент вернул по каждой позиции. 0 — не возвращал.</p>
+                    <p className="text-[11px] text-red-700">Укажите сколько новых единиц клиент возвращает. 0 — без новых возвратов.</p>
                   </div>
                   <div className="space-y-2">
                     {(selectedOrder.positions ?? []).filter(p => !p.isRejected).map((pos) => {
-                      const current = returnQty[pos.positionId] ?? 0;
+                      const alreadyReturned = pos.returnedQuantity ?? 0;
+                      const available = Math.max(0, pos.quantity - alreadyReturned);
+                      const isFullyReturned = available === 0;
+                      const current = Math.min(returnQty[pos.positionId] ?? 0, available);
+                      const setQty = (next: number) => {
+                        const clamped = Math.max(0, Math.min(available, next));
+                        setReturnQty(q => ({ ...q, [pos.positionId]: clamped }));
+                      };
                       return (
                         <div key={pos.positionId} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-red-100">
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold truncate">{pos.medicine?.title ?? pos.medicineId.slice(0, 8)}</p>
-                            <p className="text-[10px] text-on-surface-variant">Заказано: {pos.quantity} · Цена: {formatMoney(pos.price)}</p>
+                            <p className="text-[10px] text-on-surface-variant">
+                              Заказано: {pos.quantity}
+                              {alreadyReturned > 0 ? ` · Уже возвращено: ${alreadyReturned}` : ""}
+                              {" · Доступно к возврату: "}<span className={isFullyReturned ? "text-on-surface-variant/60" : "font-semibold text-red-700"}>{available}</span>
+                              {" · Цена: "}{formatMoney(pos.price)}
+                            </p>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
-                            <button type="button" className="w-6 h-6 rounded bg-surface-container-low text-sm font-bold" onClick={() => setReturnQty(q => ({ ...q, [pos.positionId]: Math.max(0, (q[pos.positionId] ?? 0) - 1) }))}>−</button>
+                            <button
+                              type="button"
+                              disabled={isFullyReturned}
+                              className="w-6 h-6 rounded bg-surface-container-low text-sm font-bold disabled:opacity-30"
+                              onClick={() => setQty(current - 1)}
+                            >−</button>
                             <input
                               type="number"
                               min={0}
-                              max={pos.quantity}
+                              max={available}
                               value={current}
-                              onChange={(e) => {
-                                const v = Math.max(0, Math.min(pos.quantity, Number(e.target.value) || 0));
-                                setReturnQty(q => ({ ...q, [pos.positionId]: v }));
-                              }}
-                              className="w-12 text-center rounded bg-surface-container-low py-0.5 text-sm font-mono"
+                              disabled={isFullyReturned}
+                              onChange={(e) => setQty(Number(e.target.value) || 0)}
+                              className="w-12 text-center rounded bg-surface-container-low py-0.5 text-sm font-mono disabled:opacity-30"
                             />
-                            <span className="text-[10px] text-on-surface-variant">/{pos.quantity}</span>
-                            <button type="button" className="w-6 h-6 rounded bg-surface-container-low text-sm font-bold" onClick={() => setReturnQty(q => ({ ...q, [pos.positionId]: Math.min(pos.quantity, (q[pos.positionId] ?? 0) + 1) }))}>+</button>
+                            <span className="text-[10px] text-on-surface-variant">/{available}</span>
+                            <button
+                              type="button"
+                              disabled={isFullyReturned}
+                              className="w-6 h-6 rounded bg-surface-container-low text-sm font-bold disabled:opacity-30"
+                              onClick={() => setQty(current + 1)}
+                            >+</button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                   {(() => {
+                    // The form value represents NEW units only, so the refund
+                    // total reflects what's being added in this request — not
+                    // the all-time refund for the order.
                     const totalRefund = (selectedOrder.positions ?? [])
                       .filter(p => !p.isRejected)
                       .reduce((sum, p) => sum + (p.price ?? 0) * (returnQty[p.positionId] ?? 0), 0);
@@ -1554,7 +1581,7 @@ function OrdersTab({ token }: { token: string }) {
                     return (
                       <div className="flex items-center justify-between gap-2 pt-2 border-t border-red-200">
                         <div>
-                          <p className="text-[10px] text-red-700 uppercase font-semibold">К возврату</p>
+                          <p className="text-[10px] text-red-700 uppercase font-semibold">К возврату (новые)</p>
                           <p className="text-sm font-bold text-red-900">{formatMoney(totalRefund, selectedOrder.currency)}</p>
                         </div>
                         <div className="flex gap-2">
@@ -1566,9 +1593,22 @@ function OrdersTab({ token }: { token: string }) {
                             disabled={!hasAny}
                             className="rounded-lg px-3 py-2 text-xs font-bold bg-red-600 text-white disabled:opacity-50"
                             onClick={async () => {
+                              // Backend's contract: `quantity` is the TOTAL
+                              // returned to date for this position (the call
+                              // is idempotent). We submit the new addition
+                              // PLUS what was already returned so the total
+                              // ends up correct.
+                              const byId = new Map(
+                                (selectedOrder.positions ?? [])
+                                  .filter(p => !p.isRejected)
+                                  .map(p => [p.positionId, p.returnedQuantity ?? 0]),
+                              );
                               const positions = Object.entries(returnQty)
-                                .filter(([, q]) => q > 0)
-                                .map(([positionId, quantity]) => ({ positionId, quantity }));
+                                .filter(([, addQty]) => addQty > 0)
+                                .map(([positionId, addQty]) => ({
+                                  positionId,
+                                  quantity: addQty + (byId.get(positionId) ?? 0),
+                                }));
                               if (positions.length === 0) return;
                               try {
                                 await superAdminReturnPositions(token, selectedOrder.orderId, positions);
