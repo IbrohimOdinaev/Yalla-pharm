@@ -8,7 +8,7 @@ using Yalla.Infrastructure;
 
 #nullable disable
 
-namespace Yalla.Infrastructure.Migrations
+namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot

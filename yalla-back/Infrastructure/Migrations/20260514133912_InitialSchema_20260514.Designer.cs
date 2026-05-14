@@ -12,8 +12,8 @@ using Yalla.Infrastructure;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260512111043_AddAuditLogAndPaymentIntentFields")]
-    partial class AddAuditLogAndPaymentIntentFields
+    [Migration("20260514133912_InitialSchema_20260514")]
+    partial class InitialSchema_20260514
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -301,6 +301,51 @@ namespace Infrastructure.Migrations
                         .HasFilter("title IS NOT NULL");
 
                     b.ToTable("client_addresses", (string)null);
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ClientConsentHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("AcceptedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("accepted_at_utc");
+
+                    b.Property<string>("AcceptedFromIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("accepted_from_ip");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("policy_version");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcceptedAtUtc")
+                        .IsDescending()
+                        .HasDatabaseName("ix_client_consent_history_accepted_at_utc_desc");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_client_consent_history_client_id");
+
+                    b.HasIndex("PolicyVersion")
+                        .HasDatabaseName("ix_client_consent_history_policy_version");
+
+                    b.ToTable("client_consent_history", (string)null);
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.DeliveryData", b =>
@@ -1254,6 +1299,69 @@ namespace Infrastructure.Migrations
                     b.ToTable("payment_settings", (string)null);
                 });
 
+            modelBuilder.Entity("Yalla.Domain.Entities.PendingRefund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("PrescriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prescription_id");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("processed_at_utc");
+
+                    b.Property<Guid?>("ProcessedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processed_by_user_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("SuperAdminComment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("super_admin_comment");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .HasDatabaseName("ix_pending_refunds_client_id");
+
+                    b.HasIndex("PrescriptionId")
+                        .HasDatabaseName("ix_pending_refunds_prescription_id");
+
+                    b.HasIndex("ProcessedAtUtc")
+                        .HasDatabaseName("ix_pending_refunds_unprocessed")
+                        .HasFilter("processed_at_utc IS NULL");
+
+                    b.ToTable("pending_refunds", (string)null);
+                });
+
             modelBuilder.Entity("Yalla.Domain.Entities.Pharmacy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1325,6 +1433,14 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assigned_pharmacist_id");
 
+                    b.Property<int?>("CancellationReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancellation_reason");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("cancelled_at_utc");
+
                     b.Property<string>("ClientComment")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -1337,6 +1453,23 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp")
                         .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime?>("DecodeFailedAtUtc")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("decode_failed_at_utc");
+
+                    b.Property<Guid?>("DecodeFailedByPharmacistId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decode_failed_by_pharmacist_id");
+
+                    b.Property<string>("DecodeFailureComment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("decode_failure_comment");
+
+                    b.Property<int?>("DecodeFailureReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("decode_failure_reason");
 
                     b.Property<DateTime?>("DecodedAtUtc")
                         .HasColumnType("timestamp")
@@ -2035,9 +2168,28 @@ namespace Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("date_of_birth");
 
+                    b.Property<DateTime?>("DeactivatedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("deactivated_at_utc");
+
+                    b.Property<Guid?>("DeactivatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deactivated_by_user_id");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("deactivation_reason");
+
                     b.Property<int?>("Gender")
                         .HasColumnType("integer")
                         .HasColumnName("gender");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2109,6 +2261,26 @@ namespace Infrastructure.Migrations
                 {
                     b.HasBaseType("Yalla.Domain.Entities.User");
 
+                    b.Property<bool>("HasFreePrescriptionCredit")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("has_free_prescription_credit");
+
+                    b.Property<DateTime?>("PrivacyPolicyAcceptedAtUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("privacy_policy_accepted_at_utc");
+
+                    b.Property<string>("PrivacyPolicyAcceptedFromIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("privacy_policy_accepted_from_ip");
+
+                    b.Property<string>("PrivacyPolicyVersionAccepted")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("privacy_policy_version_accepted");
+
                     b.HasDiscriminator().HasValue("client");
                 });
 
@@ -2175,6 +2347,15 @@ namespace Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Yalla.Domain.Entities.ClientAddress", b =>
+                {
+                    b.HasOne("Yalla.Domain.Entities.Client", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Yalla.Domain.Entities.ClientConsentHistory", b =>
                 {
                     b.HasOne("Yalla.Domain.Entities.Client", null)
                         .WithMany()
