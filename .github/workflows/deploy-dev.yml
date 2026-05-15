@@ -30,11 +30,17 @@ jobs:
       name: staging
       url: ${{ vars.STAGING_URL }}
     steps:
-      # Preflight — fail with a clear message if the deploy secrets
-      # aren't configured yet, instead of the SSH action's terse
-      # "missing server host". The first push after wiring the
-      # workflows will trip this until repo secrets are set.
+      # Preflight — checks that all three deploy secrets are populated.
+      # If they are, downstream steps run; if not, the SSH step is
+      # skipped and the workflow finishes green with a ::notice::
+      # annotation. Deliberately not a hard failure: until the staging
+      # VPS exists there's nothing to deploy to, and a red X on every
+      # push to develop would just train people to ignore the run page.
+      # Once any of `DEPLOY_DEV_HOST` / `DEPLOY_DEV_USER` /
+      # `DEPLOY_DEV_SSH_KEY` is added under Settings → Secrets and
+      # variables → Actions, the next workflow_run picks them up.
       - name: Check deploy secrets
+        id: preflight
         env:
           HOST: ${{ secrets.DEPLOY_DEV_HOST }}
           USER: ${{ secrets.DEPLOY_DEV_USER }}
@@ -45,11 +51,13 @@ jobs:
           [ -z "$USER" ] && missing+=("DEPLOY_DEV_USER")
           [ -z "$KEY"  ] && missing+=("DEPLOY_DEV_SSH_KEY")
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing required repo secrets: ${missing[*]}"
-            echo "Add them under Settings → Secrets and variables → Actions."
-            exit 1
+            echo "::notice::Staging deploy skipped — missing secrets: ${missing[*]}. Add them under Settings → Secrets and variables → Actions to enable."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true"  >> "$GITHUB_OUTPUT"
           fi
-      - uses: appleboy/ssh-action@v1
+      - if: steps.preflight.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_DEV_HOST }}
           username: ${{ secrets.DEPLOY_DEV_USER }}

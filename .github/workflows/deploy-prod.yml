@@ -26,11 +26,17 @@ jobs:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     steps:
-      # Preflight — fail with a clear message if the deploy secrets
-      # aren't configured yet, instead of the SSH action's terse
-      # "missing server host". The first push after wiring the
-      # workflows will trip this until repo secrets are set.
+      # Preflight — checks that all three deploy secrets are populated.
+      # If they are, downstream steps run; if not, the SSH step is
+      # skipped and the workflow finishes green with a ::notice::
+      # annotation. This deliberately does NOT fail the run: until the
+      # VPS is set up there's nothing to deploy to, and a red X on
+      # every push to master would only train people to ignore it.
+      # Once any of `DEPLOY_PROD_HOST` / `DEPLOY_PROD_USER` /
+      # `DEPLOY_PROD_SSH_KEY` is added under Settings → Secrets and
+      # variables → Actions, the next workflow_run picks them up.
       - name: Check deploy secrets
+        id: preflight
         env:
           HOST: ${{ secrets.DEPLOY_PROD_HOST }}
           USER: ${{ secrets.DEPLOY_PROD_USER }}
@@ -41,11 +47,13 @@ jobs:
           [ -z "$USER" ] && missing+=("DEPLOY_PROD_USER")
           [ -z "$KEY"  ] && missing+=("DEPLOY_PROD_SSH_KEY")
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing required repo secrets: ${missing[*]}"
-            echo "Add them under Settings → Secrets and variables → Actions."
-            exit 1
+            echo "::notice::Production deploy skipped — missing secrets: ${missing[*]}. Add them under Settings → Secrets and variables → Actions to enable."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true"  >> "$GITHUB_OUTPUT"
           fi
-      - uses: appleboy/ssh-action@v1
+      - if: steps.preflight.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_PROD_HOST }}
           username: ${{ secrets.DEPLOY_PROD_USER }}
