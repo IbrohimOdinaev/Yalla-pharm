@@ -86,8 +86,16 @@ jobs:
           # would race for the same gha cache key and each push would
           # poison the cache for the other, forcing both to do cold
           # builds every time.
+          #
+          # ignore-error=true on cache-to: GitHub Actions Cache has
+          # occasional 502s (their "Unicorn" page) that fail the
+          # whole job AFTER the image has already pushed to GHCR.
+          # That broke deploy-prod (gated on workflow_run.conclusion
+          # == 'success') even though the image was up in registry.
+          # With ignore-error, a failed cache export becomes a
+          # warning instead — image push still gates success.
           cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }},ignore-error=true
           # Front bake-time vars — Next.js reads NEXT_PUBLIC_* at build
           # time and bakes them into the JS bundle. The runtime env in
           # the prod compose can't override these any more, so they
