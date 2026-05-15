@@ -1,0 +1,97 @@
+name: CI
+
+# Linting + tests on every PR and every push to develop / master.
+# Per the playbook: only run the jobs whose folders actually changed —
+# the monorepo has both a .NET backend and a Next.js frontend, and we
+# do not want to spin up the dotnet SDK on a frontend-only PR.
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop]
+
+permissions:
+  contents: read
+
+# Cancel in-flight CI runs for the same branch / PR when a new push
+# arrives. Keeps the queue short without losing the most-recent result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Path filter decides which language jobs need to run. Each downstream
+  # job is gated on its own output, so a frontend-only PR runs ~30s
+  # instead of ~6 min for both stacks.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'yalla-back/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'yalla-farm-front/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci.yml'
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: yalla-back
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      # NuGet cache — keyed off every csproj so a dependency bump
+      # invalidates it, while normal code changes reuse it.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('yalla-back/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - run: dotnet restore
+      - run: dotnet build --configuration Release --no-restore
+      - run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: yalla-back/**/TestResults/*.trx
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: yalla-farm-front
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: yalla-farm-front/package-lock.json
+      - run: npm ci
+      # Validation env vars are sufficient to satisfy scripts/validate-env.mjs
+      # at build time. None of these touch real infra — they're dummies that
+      # only need to satisfy the env schema.
+      - env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:5000
+          NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ci-dummy-key
+          INTERNAL_API_URL: http://api:8080
+        run: npm run build
+      - run: npm test --if-present

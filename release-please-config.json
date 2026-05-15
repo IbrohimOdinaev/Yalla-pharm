@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": true,
+  "separate-pull-requests": true,
+  "packages": {
+    "yalla-back": {
+      "package-name": "backend",
+      "component": "backend",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": []
+    },
+    "yalla-farm-front": {
+      "package-name": "frontend",
+      "component": "frontend",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["package.json"]
+    }
+  }
+}

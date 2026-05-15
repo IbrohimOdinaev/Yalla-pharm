@@ -1,0 +1,68 @@
+name: Deploy Dev
+
+# Triggers after Build & Push Images succeeds on develop.
+# SSH-deploys onto the staging VPS, pulls the freshly-pushed
+# `develop`-tagged images and rolls the stack.
+
+on:
+  workflow_run:
+    workflows: ["Build & Push Images"]
+    types: [completed]
+    branches: [develop]
+
+permissions:
+  contents: read
+
+# Deploys MUST queue, not cancel — interrupting a rolling deploy leaves
+# the VPS in a half-pulled state with mixed image versions across
+# services. New deploys wait for the previous one to finish.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Don't deploy a failed build — workflow_run fires on success AND
+    # failure of the upstream, so we gate explicitly.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_DEV_HOST }}
+          username: ${{ secrets.DEPLOY_DEV_USER }}
+          key: ${{ secrets.DEPLOY_DEV_SSH_KEY }}
+          # script_stop bubbles any non-zero exit up to the workflow,
+          # so a failed pull / failed health-check fails the deploy
+          # instead of silently leaving an old image running.
+          script_stop: true
+          script: |
+            set -e
+            cd /srv/yalla-farm
+
+            # Sync to the exact commit the build was made from. Using
+            # workflow_run.head_sha (not HEAD) closes the race where a
+            # second push lands on develop between build and deploy —
+            # we'd otherwise checkout a newer commit whose compose
+            # files might reference images we haven't built yet.
+            git fetch origin develop
+            git checkout ${{ github.event.workflow_run.head_sha }}
+
+            # Idempotent network bootstrap so a fresh VPS doesn't need
+            # a manual `docker network create` before the first deploy.
+            docker network inspect yalla-net-dev >/dev/null 2>&1 \
+              || docker network create yalla-net-dev
+
+            export TAG=develop
+            export IMAGE_OWNER=${{ github.repository_owner }}
+
+            docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env pull
+            docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env up -d --remove-orphans
+
+            # Sweep dangling images so the VPS disk doesn't bloat over
+            # weeks — without this each deploy leaves the previous
+            # image's layers around, and a t3.small fills up in months.
+            docker image prune -f

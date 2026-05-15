@@ -477,6 +477,42 @@ app.MapHub<UpdatesHub>("/hubs/updates");
 app.MapHub<TelegramAuthHub>("/hubs/telegram-auth");
 // app.MapFallbackToFile("index.html");
 
+// Dedicated liveness/readiness probe — replaces the previous habit of
+// using /api/categories as the docker healthcheck. The old endpoint
+// hit the controller layer (model binding, auth pipeline, DB index
+// scan), which is more than what a healthcheck needs and conflated
+// "process responds" with "feature works". This one does the minimum:
+// a SELECT 1 against the existing connection pool with a 2-second
+// budget. If that fails, the process is alive but the DB pool is
+// dead — exactly the case the playbook flags as needing a real
+// readiness check.
+//
+// Returns 200 / `{status:"ok"}` on success, 503 / `{status:"degraded"}`
+// on DB error or timeout. Anonymous + rate-limit-exempt so external
+// monitoring (Pingdom, Grafana, docker healthcheck) can poll freely.
+app.MapGet("/api/health", async (
+    Yalla.Infrastructure.AppDbContext db,
+    CancellationToken requestAborted) =>
+{
+    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(requestAborted, timeoutCts.Token);
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("SELECT 1", linkedCts.Token);
+        return Results.Ok(new { status = "ok", db = "ok" });
+    }
+    catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+    {
+        return Results.Json(new { status = "degraded", db = "timeout" }, statusCode: 503);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { status = "degraded", db = "fail", error = ex.GetType().Name }, statusCode: 503);
+    }
+})
+.AllowAnonymous()
+.DisableRateLimiting();
+
 app.Run();
 
 static string BuildRateLimitPartitionKey(HttpContext context, string policyName)

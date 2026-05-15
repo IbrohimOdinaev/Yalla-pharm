@@ -1,36 +1,24 @@
 # ============================================
-# BASE compose — front + api, shared by dev and prod.
+# BASE compose — service graph + healthchecks + env wiring.
 #
-# Defaults to DEV when you run plain `docker compose ...` because the
-# adjacent docker-compose.override.yml is auto-loaded and adds the
-# local-stack services (postgres / minio / opensearch) on top.
+# Per the DevOps playbook this file is intentionally NOT self-runnable: it
+# declares services, dependencies, healthchecks and env, but leaves the
+# `image:` / `build:` / `ports:` / `restart:` and the network NAME to be
+# filled in by exactly one of the three overrides:
 #
-#   Dev (default, picks up override.yml automatically):
-#     docker compose --env-file .env.dev up -d --build
+#   override.yml  → local dev (auto-merged by `docker compose up`)
+#   dev.yml       → staging   (-f docker-compose.yml -f docker-compose.dev.yml)
+#   prod.yml      → production (-f docker-compose.yml -f docker-compose.prod.yml)
 #
-#   Prod (explicit overrides, ignores override.yml):
-#     docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-#       --env-file .env.prod up -d --build
-#
-# Pre-req: `docker network create yalla-net` (once per host).
+# Usage:
+#   Local:    docker compose --env-file .env.dev up -d --build
+#   Staging:  docker compose -f docker-compose.yml -f docker-compose.dev.yml  --env-file .env up -d
+#   Prod:     docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d
 # ============================================
 
 services:
 
   front:
-    build:
-      context: ./yalla-farm-front
-      dockerfile: Dockerfile
-      args:
-        - INTERNAL_API_URL=${INTERNAL_API_URL:-http://api:8080}
-        - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
-    container_name: yalla-front
-    restart: unless-stopped
-    # No host port mapping here — the dev override binds 3000:3000 for
-    # local browsers; in prod the front is reached through the reverse
-    # proxy on the same docker network.
-    expose:
-      - "3000"
     depends_on:
       api:
         condition: service_healthy
@@ -38,14 +26,16 @@ services:
       - yalla-net
 
   api:
-    build: ./yalla-back
-    container_name: yalla-api
-    restart: unless-stopped
-    # Same as front — host port binding lives in the dev override only.
-    expose:
-      - "8080"
+    # No depends_on here — postgres / minio / opensearch live only in
+    # the dev override (the local stack); on staging / prod the api
+    # talks to managed externals configured through .env. The dev
+    # override re-adds the local-service health-gates on top.
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/categories || exit 1"]
+      # Hits the dedicated /api/health endpoint (lightweight DB ping
+      # with a 2s budget). 503 from the endpoint propagates as a
+      # non-zero exit code → docker marks the container unhealthy and
+      # depends_on:service_healthy gates downstream rolls.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -100,7 +90,11 @@ services:
     networks:
       - yalla-net
 
+# Network is declared external in every layer so `docker compose down`
+# never deletes it. The actual network *name* is filled in by each
+# override (yalla-net for local, yalla-net-dev for staging,
+# yalla-net-prod for production) so the same compose file can run in
+# parallel against different docker networks on the same host.
 networks:
   yalla-net:
-    name: yalla-net
     external: true

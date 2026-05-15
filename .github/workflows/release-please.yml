@@ -1,0 +1,37 @@
+name: Release Please
+
+# Watches commits on master and maintains an open "Release PR" with an
+# auto-generated CHANGELOG entry derived from Conventional Commit
+# messages. Merging that PR cuts a GitHub Release with a semver tag
+# (e.g. `backend-v1.4.2`), which in turn triggers publish-images.yml
+# to re-tag the already-built images with that semver.
+#
+# Why a manifest config instead of single-package mode: the monorepo
+# has two independently-versioned shippables — the .NET API and the
+# Next.js frontend. Each one's CHANGELOG / version bumps live under
+# its own folder so a frontend-only fix doesn't roll the backend
+# version (and vice versa).
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  # release-please opens PRs and tags releases on this repo — both need
+  # write access to contents + pull-requests.
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # Drives everything from the manifest below. The files this
+          # action expects in the repo root are:
+          #   release-please-config.json — declares the two packages
+          #   .release-please-manifest.json — current versions
+          # Both files are created on first run if missing.
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

@@ -1,0 +1,55 @@
+# ============================================
+# STAGING override — explicit. Pass with `-f` to skip the auto-merged
+# docker-compose.override.yml (the local stack).
+#
+# Logically identical to prod.yml — only the image tag (:develop), the
+# network suffix (-dev), the container_name suffix (-dev) and the
+# environment marker differ. Secrets here use defaults (`${VAR:-...}`),
+# unlike prod where they're guarded by `${VAR:?msg}` and required.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     --env-file .env up -d
+#
+# Pre-req (one-off on the staging VPS):
+#   docker network create yalla-net-dev
+#   docker login ghcr.io -u <user> --password-stdin   # PAT with read:packages
+# ============================================
+
+services:
+
+  front:
+    image: ghcr.io/${IMAGE_OWNER:-yalla-pharm}/yalla-front:${TAG:-develop}
+    container_name: yalla-front-dev
+    restart: unless-stopped
+    # Snake-case env that next.config or the runtime reads. Front is
+    # purely a Next.js renderer — the JWT, DB, SMS and so on never
+    # surface here, only the public NEXT_PUBLIC_* vars from .env.
+    env_file:
+      - .env
+    expose:
+      - "3000"
+
+  api:
+    image: ghcr.io/${IMAGE_OWNER:-yalla-pharm}/yalla-api:${TAG:-develop}
+    container_name: yalla-api-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      # Dev-friendly fallbacks so the stand still boots even when .env
+      # is incomplete — never use these values for anything real.
+      Jwt__Key: ${JWT_KEY:-staging-jwt-key-not-for-production-32chars!}
+      ConnectionStrings__Default: ${DB_CONNECTION_STRING:-Host=postgres-staging;Username=postgres;Password=staging}
+    expose:
+      - "8080"
+
+# Same external network pattern as base, but a unique name so this
+# stack can co-exist with the prod stack on the same host without
+# accidentally sharing the database or any other service. Set up once:
+#   docker network create yalla-net-dev
+networks:
+  yalla-net:
+    external: true
+    name: yalla-net-dev

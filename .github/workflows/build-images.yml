@@ -1,0 +1,98 @@
+name: Build & Push Images
+
+# Builds both Docker images (front + api) in parallel and pushes them
+# to GHCR with two tags each: a rolling tag (`develop` / `latest`) that
+# the deploy workflows pull from, and a sha-pinned tag for rollback.
+
+on:
+  push:
+    branches: [master, develop]
+
+permissions:
+  contents: read
+  packages: write
+
+# Cancel an in-flight build if a newer push to the same branch arrives.
+# Saves both CI minutes and avoids racing tags in GHCR — the older
+# build would otherwise be the one to win the rolling tag.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Resolve the tag pair (rolling + sha-pinned) for this branch in one
+  # place so the matrix job stays branch-agnostic.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_primary: ${{ steps.calc.outputs.tag_primary }}
+      tag_sha: ${{ steps.calc.outputs.tag_sha }}
+    steps:
+      - id: calc
+        run: |
+          SHA="${GITHUB_SHA::7}"
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            echo "tag_primary=latest"    >> "$GITHUB_OUTPUT"
+            echo "tag_sha=master-${SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_primary=develop"        >> "$GITHUB_OUTPUT"
+            echo "tag_sha=develop-${SHA}"     >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: meta
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: yalla-api
+            context: yalla-back
+            dockerfile: yalla-back/Dockerfile
+          - image: yalla-front
+            context: yalla-farm-front
+            dockerfile: yalla-farm-front/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # `docker/metadata-action` builds the full image-ref list — both
+      # the rolling tag and the sha-pinned one — plus the standard OCI
+      # labels (source repo URL, revision, created timestamp). Adding
+      # the labels means the GHCR package page actually links back to
+      # the repo instead of showing "no description".
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=${{ needs.meta.outputs.tag_primary }}
+            type=raw,value=${{ needs.meta.outputs.tag_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Yalla Pharm ${{ matrix.image }} (built from ${{ github.sha }})
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Per-image cache scope — without it, the front and api jobs
+          # would race for the same gha cache key and each push would
+          # poison the cache for the other, forcing both to do cold
+          # builds every time.
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          # Front bake-time vars — Next.js reads NEXT_PUBLIC_* at build
+          # time and bakes them into the JS bundle. The runtime env in
+          # the prod compose can't override these any more, so they
+          # have to come from CI secrets here.
+          build-args: |
+            INTERNAL_API_URL=http://api:8080
+            NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_YANDEX_MAPS_API_KEY }}
+            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}

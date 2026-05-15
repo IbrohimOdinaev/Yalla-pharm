@@ -1,0 +1,88 @@
+name: Publish Images
+
+# When release-please publishes a GitHub Release (e.g. `backend-v1.4.2`
+# or `frontend-v0.5.0`), pin that semver tag onto the already-built
+# image in GHCR. We deliberately do NOT rebuild — the image we promote
+# is byte-identical to the one that ran on staging.
+#
+# How: docker buildx imagetools tags `<image>:master-<sha>` with the
+# semver, where <sha> is the master commit the release was cut from.
+# The component prefix on the GitHub Release tag (e.g. "backend-v1.4.2")
+# tells us which image to re-tag — that's why release-please is
+# configured with include-component-in-tag.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Parse the release tag into <component>-v<semver>. The component
+      # picks the image; the semver becomes the new GHCR tag. The source
+      # tag we promote *from* is master-<sha-7>, derived from the
+      # release's target commit. If the release was cut from a commit
+      # the build pipeline never saw (e.g. someone added a release tag
+      # by hand), this step bails out with a clear message.
+      - id: parse
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_SHA: ${{ github.event.release.target_commitish }}
+        run: |
+          set -e
+
+          # Expected shapes: backend-v1.4.2 | frontend-v0.5.0
+          case "$RELEASE_TAG" in
+            backend-v*)
+              IMAGE="yalla-api"
+              SEMVER="${RELEASE_TAG#backend-v}"
+              ;;
+            frontend-v*)
+              IMAGE="yalla-front"
+              SEMVER="${RELEASE_TAG#frontend-v}"
+              ;;
+            *)
+              echo "::error::Release tag '$RELEASE_TAG' does not match <backend|frontend>-vX.Y.Z. Skipping."
+              exit 1
+              ;;
+          esac
+
+          # release.target_commitish can be either a branch name or a
+          # full sha. Normalise to the first 7 chars of the resolved sha.
+          if [ ${#RELEASE_SHA} -eq 40 ]; then
+            SHORT="${RELEASE_SHA::7}"
+          else
+            SHORT=$(git rev-parse --short=7 "$RELEASE_SHA")
+          fi
+
+          OWNER="${{ github.repository_owner }}"
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+
+          echo "image=$IMAGE"             >> "$GITHUB_OUTPUT"
+          echo "semver=$SEMVER"           >> "$GITHUB_OUTPUT"
+          echo "src=ghcr.io/$OWNER_LOWER/$IMAGE:master-$SHORT" >> "$GITHUB_OUTPUT"
+          echo "dst=ghcr.io/$OWNER_LOWER/$IMAGE:$SEMVER"       >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # imagetools rewrites the manifest pointer in the registry — no
+      # actual layer pull happens, so this step is < 5 seconds even
+      # for a 500 MB image.
+      - name: Re-tag image with semver
+        run: |
+          set -e
+          echo "Promoting ${{ steps.parse.outputs.src }} → ${{ steps.parse.outputs.dst }}"
+          docker buildx imagetools create \
+            --tag "${{ steps.parse.outputs.dst }}" \
+            "${{ steps.parse.outputs.src }}"

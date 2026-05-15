@@ -1,21 +1,59 @@
 # ============================================
-# PROD override — explicit. Pass with `-f` to skip the auto-merged
-# docker-compose.override.yml (the dev local stack).
+# PRODUCTION override — explicit. Pass with `-f` to skip the auto-merged
+# docker-compose.override.yml (the local stack).
+#
+# Same shape as docker-compose.dev.yml, but stricter:
+#   - image tag :latest (or pin to a specific :main-<sha> for rollback)
+#   - secrets MUST be set in .env — compose fails-fast at parse time
+#     thanks to `${VAR:?message}` guards, instead of starting the
+#     container with an empty value and failing 30 seconds later
+#   - container_name suffix -prod, network yalla-net-prod
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-#     --env-file .env.prod up -d --build
+#     --env-file .env up -d
 #
-# Most of the prod config lives in docker-compose.yml already (no host
-# port bindings, env wiring from .env). This override just pins the
-# image tags so deploy artefacts don't share the dev tag — handy when
-# pushing to a registry per-environment.
+# Pre-req (one-off on the production VPS):
+#   docker network create yalla-net-prod
+#   docker login ghcr.io -u <user> --password-stdin   # PAT with read:packages
 # ============================================
 
 services:
 
   front:
-    image: yalla/front:latest
+    image: ghcr.io/${IMAGE_OWNER:-yalla-pharm}/yalla-front:${TAG:-latest}
+    container_name: yalla-front-prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "3000"
 
   api:
-    image: yalla/api:latest
+    image: ghcr.io/${IMAGE_OWNER:-yalla-pharm}/yalla-api:${TAG:-latest}
+    container_name: yalla-api-prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Required-or-die. Compose refuses to start if any of these is
+      # empty or unset, with a human-readable message right at parse
+      # time. Catches the "deployed prod with a stale .env that's
+      # missing the new var I added in the latest release" footgun
+      # before the container ever boots.
+      Jwt__Key: ${JWT_KEY:?JWT_KEY is required for production}
+      ConnectionStrings__Default: ${DB_CONNECTION_STRING:?DB_CONNECTION_STRING is required for production}
+      MinIo__Endpoint: ${MINIO_ENDPOINT:?MINIO_ENDPOINT is required for production}
+      MinIo__AccessKey: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required for production}
+      MinIo__SecretKey: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required for production}
+      MinIo__BucketName: ${MINIO_BUCKET:?MINIO_BUCKET is required for production}
+    expose:
+      - "8080"
+
+# Production network. Distinct name from staging guarantees the stacks
+# never see each other, even if they end up on the same physical host.
+networks:
+  yalla-net:
+    external: true
+    name: yalla-net-prod

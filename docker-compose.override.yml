@@ -6,6 +6,15 @@
 #
 # Usage: docker compose --env-file .env.dev up -d --build
 #
+# Differences from dev.yml (staging) and prod.yml:
+#   - builds images locally instead of pulling from ghcr.io
+#   - binds host ports (3000, 5000, 5433, 9000/9001, 9200) for direct
+#     browser / curl access
+#   - bundles the local stack (postgres + minio + opensearch) as
+#     additional services and adds them to the api's depends_on list
+#   - NO `restart:` — if something dies in local dev you want to see it
+#     fall over, not auto-recover and hide the bug
+#
 # Heads up: never `down -v` here — the postgres-data + minio-data
 # volumes hold real local dev state (catalog, prescriptions, MinIO
 # objects). They're declared `external: true` on purpose so a stray
@@ -16,13 +25,27 @@ services:
 
   front:
     image: yalla/front:dev
+    build:
+      context: ./yalla-farm-front
+      dockerfile: Dockerfile
+      args:
+        - INTERNAL_API_URL=${INTERNAL_API_URL:-http://api:8080}
+        - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+    container_name: yalla-front
     ports:
       - "3000:3000"
 
   api:
     image: yalla/api:dev
+    build: ./yalla-back
+    container_name: yalla-api
     ports:
       - "5000:8080"
+    # Local-stack health gates — the base file already lists `front →
+    # api` only. Add postgres/minio/opensearch here because they only
+    # exist in this override; on staging/prod the api connects to
+    # managed externals and these services aren't part of the compose
+    # project at all.
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,7 +57,6 @@ services:
   postgres:
     image: postgres:16
     container_name: yalla-postgres
-    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -55,7 +77,6 @@ services:
   minio:
     image: minio/minio
     container_name: yalla-minio
-    restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
       # 9000 — S3 API, 9001 — admin console (login: minioadmin/minioadmin).
@@ -82,7 +103,6 @@ services:
   opensearch:
     image: opensearchproject/opensearch:2.13.0
     container_name: yalla-opensearch
-    restart: unless-stopped
     environment:
       - cluster.name=yalla-search
       - node.name=os-node-1
@@ -114,6 +134,14 @@ services:
       start_period: 30s
     networks:
       - yalla-net
+
+# Local network name — kept without an environment suffix because the
+# playbook explicitly carves out local dev as the one allowed to do so.
+# Create once on the host: `docker network create yalla-net`.
+networks:
+  yalla-net:
+    external: true
+    name: yalla-net
 
 volumes:
   # Declared external so a stray `docker compose down -v` can't wipe
