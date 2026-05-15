@@ -78,9 +78,14 @@ export default function ProductDetailsPage() {
       ) : null}
 
       {medicine ? (
-        <div className="mx-auto max-w-3xl space-y-3 pb-6 xs:space-y-4">
-          {/* Gallery */}
-          <div className="space-y-3">
+        // Two-column on desktop so the whole "above the fold" gives the
+        // user the gallery AND the buy controls + key facts at once,
+        // instead of an aspect-square hero that eats the entire viewport.
+        // Mobile keeps the single-column stack — gallery sits on top.
+        <div className="mx-auto max-w-6xl pb-6 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start lg:gap-6">
+          {/* Gallery — sticky on desktop so the info column can scroll past
+              long descriptions while the image stays in view. */}
+          <div className="space-y-2.5 lg:sticky lg:top-20">
             <div
               className="relative aspect-square overflow-hidden rounded-2xl bg-image-backdrop shadow-card xs:rounded-3xl"
               onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
@@ -98,7 +103,7 @@ export default function ProductDetailsPage() {
                 <img
                   src={activeImage}
                   alt={getMedicineDisplayName(medicine)}
-                  className="h-full w-full object-contain p-3 mix-blend-multiply xs:p-6"
+                  className="h-full w-full object-contain p-3 mix-blend-multiply xs:p-4 lg:p-3"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-primary/40">
@@ -146,13 +151,13 @@ export default function ProductDetailsPage() {
             </div>
 
             {gallery.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 pb-1">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 py-2 lg:-mx-2 lg:px-2">
                 {gallery.map((url, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => setActiveImageIdx(idx)}
-                    className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-image-backdrop transition ${
+                    className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop transition xs:h-16 xs:w-16 xs:rounded-2xl ${
                       idx === activeImageIdx
                         ? "ring-2 ring-primary ring-offset-2 ring-offset-surface"
                         : "opacity-70 hover:opacity-100"
@@ -165,6 +170,11 @@ export default function ProductDetailsPage() {
               </div>
             ) : null}
           </div>
+
+          {/* Right column — actions + info + attributes + offers. On
+              mobile this stacks below the gallery; on lg+ it sits next
+              to it so the buy button is visible without scrolling. */}
+          <div className="space-y-3 mt-3 xs:space-y-3.5 lg:mt-0">
 
           {/* Inline add-to-cart — sits directly under the gallery so the
               primary action is in the user's eye-line, no sticky bar at the
@@ -324,6 +334,7 @@ export default function ProductDetailsPage() {
               </Link>
             </div>
           ) : null}
+          </div>
         </div>
       ) : null}
 

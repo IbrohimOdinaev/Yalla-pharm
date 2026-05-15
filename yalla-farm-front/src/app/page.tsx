@@ -198,6 +198,20 @@ function HomeContent() {
   // independently. Keyed map makes it trivial to skip already-fetched rails on
   // re-render and to blow the whole cache when the pharmacy filter changes.
   const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>({});
+  // Tracks rails that already have a fetch in-flight OR have completed
+  // successfully, so re-renders inside the rail-fetch effect don't
+  // double-dispatch. Lives in a ref (not state) because we only need
+  // it to coordinate side-effects, not drive rendering. The previous
+  // version used `railMeds[spec.id]` as the in-flight signal which had
+  // a nasty failure mode: ONE transient .catch() would freeze the rail
+  // as an empty array forever, since `[]` is truthy. We now leave the
+  // entry undefined on error and let a single retry tick re-attempt.
+  const railFetchedRef = useRef<Set<string>>(new Set());
+  // Bumping this triggers the rail-fetch effect to re-run after a
+  // failed attempt. Combined with the ref-based de-duplication, we get
+  // "fetch once, retry once on failure, then stop" semantics — instead
+  // of the old "fetch once, on failure die silently" path.
+  const [railRetryTick, setRailRetryTick] = useState(0);
   // Resolves RailSpec.keywords → concrete category (id + slug) using the
   // loaded categories tree. `null` keyword list stays null (the "Popular" rail).
   type RailCatRef = { id: string | null; slug: string | null } | undefined;
@@ -223,29 +237,41 @@ function HomeContent() {
   }, [railCategoryRefs]);
 
   // Reset the rail cache whenever the user switches pharmacy — stock differs.
+  // Also wipes the in-flight ref so the new pharmacy's rails actually
+  // refetch (without the clear they'd see the rail as already-fetched).
   useEffect(() => {
     setRailMeds({});
+    railFetchedRef.current.clear();
   }, [selectedPharmacy?.id]);
 
   // Fire a parallel fetch for every rail that has a resolved categoryId (or
   // null for "any category"). Rails whose category wasn't found are silently
-  // skipped — they simply won't render.
+  // skipped — they simply won't render. The ref-based gate + a one-shot
+  // retry on .catch() is the cure for the old "popular rail disappears on
+  // refresh when a transient network/cold-start blip hits" bug.
   useEffect(() => {
     if (categories.length === 0) return;
     for (const spec of HOME_RAILS) {
-      if (railMeds[spec.id]) continue;
+      if (railFetchedRef.current.has(spec.id)) continue;
       const catId = railCategoryIds[spec.id];
       if (catId === undefined) continue;
+      railFetchedRef.current.add(spec.id);
       getCatalogMedicinesPaginated(1, 10, catId || undefined, selectedPharmacy?.id)
         .then((data) => {
           setRailMeds((prev) => ({ ...prev, [spec.id]: Array.isArray(data?.medicines) ? data.medicines : [] }));
         })
         .catch(() => {
-          // Mark rail as "fetched empty" so we stop retrying on every render.
-          setRailMeds((prev) => ({ ...prev, [spec.id]: [] }));
+          // Transient blip — drop the rail from "fetched" so it picks
+          // up again on the next effect run, and schedule that run for
+          // 2s from now. Bumping railRetryTick is what actually
+          // reschedules — the effect's dep array reads it. We don't
+          // mark the cache as `[]` here: doing so would freeze the rail
+          // empty forever (`[]` is truthy, our old guard let it pass).
+          railFetchedRef.current.delete(spec.id);
+          setTimeout(() => setRailRetryTick((t) => t + 1), 2000);
         });
     }
-  }, [categories.length, railCategoryIds, selectedPharmacy?.id, railMeds]);
+  }, [categories.length, railCategoryIds, selectedPharmacy?.id, railRetryTick]);
 
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 

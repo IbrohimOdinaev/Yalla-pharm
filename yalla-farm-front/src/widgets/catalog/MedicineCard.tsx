@@ -169,17 +169,32 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   const productHref = `/product/${productKey}`;
 
   function onCardClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    // Modifier-click → let the anchor's default behavior open
-    // /product/{slug} in a new tab. Plain left-click intercepts and
-    // pushes ?product={slug} into the current URL so the global
-    // ProductModal opens in place. Implementation detail: we use
-    // router.replace when a product modal is ALREADY open (replacing
-    // one product with another shouldn't add a history entry per click,
-    // otherwise back-button would step through every product viewed
-    // before closing the modal). On first open we use router.push so
-    // browser-back closes the modal naturally.
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    // Unconditionally suppress the anchor's native navigation. We had a
+    // bug where some Android Chrome builds report `event.button === -1`
+    // for tap-derived clicks, which under the old `button !== 0` early
+    // return slipped past the preventDefault and let the anchor open
+    // /product/{slug} as a full page — instead of the in-place modal.
+    // Middle-click / right-click "open in new tab" via the browser's
+    // own gestures still works, because those don't fire `click` in
+    // modern browsers (they emit `auxclick` / `contextmenu`) and skip
+    // this handler entirely.
     e.preventDefault();
+
+    // Modifier-click (Cmd / Ctrl / Shift / legacy middle-button click)
+    // → open the standalone product page in a new tab. window.open
+    // during a user gesture is exempt from popup blockers, and noopener
+    // keeps the new context isolated from this page.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+      window.open(productHref, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    // Plain click → push ?product={slug} so the global ProductModal
+    // opens over the current page. Use router.replace when a modal is
+    // already open (browsing from one product modal to another) so
+    // back-button doesn't step through every product viewed before
+    // closing — on first open use router.push so back closes the modal
+    // naturally.
     const params = new URLSearchParams(searchParams.toString());
     const wasOpen = params.has("product");
     if (params.get("product") === productKey) return; // same product → no-op
