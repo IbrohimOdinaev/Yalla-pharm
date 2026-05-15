@@ -88,11 +88,32 @@ function RoleBasedRedirect() {
   return null;
 }
 
+/** Kicks off the Yandex Maps SDK download in the background once the app
+ *  is idle. By the time the user opens the address picker, the bundle is
+ *  usually cached — the modal then mounts in under a frame instead of
+ *  waiting on a fresh script + TLS handshake. Wrapped in requestIdleCallback
+ *  so it doesn't compete with hydration / first paint on slow devices. */
+function MapPrewarm() {
+  useEffect(() => {
+    const kick = () => {
+      void import("@/shared/lib/map/yandex-loader").then((m) => m.loadYmaps()).catch(() => undefined);
+    };
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
+    if (typeof w.requestIdleCallback === "function") {
+      w.requestIdleCallback(kick, { timeout: 4000 });
+    } else {
+      setTimeout(kick, 1500);
+    }
+  }, []);
+  return null;
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   return (
     <Provider store={store}>
       <AuthPersistenceBridge />
       <RoleBasedRedirect />
+      <MapPrewarm />
       {children}
     </Provider>
   );
