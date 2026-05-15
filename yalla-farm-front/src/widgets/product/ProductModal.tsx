@@ -16,6 +16,7 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { useAppSelector } from "@/shared/lib/redux";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 import { Skeleton } from "@/shared/ui";
 
 /**
@@ -108,12 +109,9 @@ function ProductModalInner() {
     return () => document.removeEventListener("keydown", onKey);
   }, [productIdOrSlug, close]);
 
-  // Lock body scroll while open.
-  useEffect(() => {
-    if (!productIdOrSlug) return;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, [productIdOrSlug]);
+  // Lock body scroll while open — centralized hook handles iOS Safari's
+  // `position: fixed` workaround + scrollbar gutter compensation.
+  useBodyScrollLock(Boolean(productIdOrSlug));
 
   const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 1200), [medicine]);
   const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 1200);
@@ -150,13 +148,13 @@ function ProductModalInner() {
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={close} />
 
       {/* Modal box: outer wrapper does NOT scroll — it stays fixed at
-          max-h-[90vh] and the X button lives on it (absolute) so it
-          stays anchored to the modal's top-right regardless of
-          scroll position inside. The inner div below is the actual
-          scrollable surface. min-h-0 lets the flex child shrink so
-          overflow-y-auto kicks in. */}
+          max-h-modal (90vh fallback → 90dvh on modern browsers) and the
+          X button lives on it (absolute) so it stays anchored to the
+          modal's top-right regardless of scroll position inside. The
+          inner div below is the actual scrollable surface. min-h-0 lets
+          the flex child shrink so overflow-y-auto kicks in. */}
       <div
-        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-surface rounded-2xl shadow-2xl"
+        className="relative w-full max-w-4xl max-h-modal flex flex-col bg-surface rounded-2xl shadow-2xl overscroll-contain"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

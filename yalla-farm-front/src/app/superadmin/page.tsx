@@ -851,7 +851,7 @@ function MedicinesTab({ token }: { token: string }) {
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} />
           {/* Panel */}
-          <div className="relative mx-2 xs:mx-4 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-surface shadow-glass space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5">
+          <div className="relative mx-2 xs:mx-4 w-full max-w-2xl max-h-modal-cosy overflow-y-auto overscroll-contain rounded-2xl bg-surface shadow-glass space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5">
             {/* Close */}
             <button type="button" onClick={() => setSelected(null)} className="absolute top-2 right-2 xs:top-3 xs:right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high active:scale-90 transition" aria-label="Закрыть">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

@@ -108,7 +108,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
-      <div className="bg-surface w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="bg-surface w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-xl max-h-modal-flush overflow-y-auto overscroll-contain">
         <div className="flex items-center justify-between border-b border-surface-container-high p-4">
           <h2 className="text-lg font-bold">Вызвать доставку</h2>
           <button

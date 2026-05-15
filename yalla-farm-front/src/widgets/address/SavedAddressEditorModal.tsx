@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
-import { getBrowserGeolocation, type GeoResult, type GeoPoint } from "@/shared/lib/map";
+import { getBrowserGeolocation, GeolocationFailure, type GeoResult, type GeoPoint } from "@/shared/lib/map";
 import type { PharmacyMapHandle } from "@/widgets/map/PharmacyMap";
 import { upsertMyAddress, updateMyAddress, type ClientAddress } from "@/entities/client/api";
 import { Button } from "@/shared/ui";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
@@ -36,12 +37,7 @@ export function SavedAddressEditorModal({ open, token, initial, onClose, onSaved
     }
   }, [open, initial]);
 
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
-  }, [open]);
+  useBodyScrollLock(open);
 
   const panMapTo = useCallback((point: GeoPoint) => {
     mapHandleRef.current?.panTo(point);
@@ -65,7 +61,13 @@ export function SavedAddressEditorModal({ open, token, initial, onClose, onSaved
         panMapTo({ lat: result.lat, lng: result.lng });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось определить местоположение");
+      if (err instanceof GeolocationFailure && err.kind === "permission-denied") {
+        setError(
+          "Доступ к геолокации заблокирован. Нажмите на значок замка слева от адреса сайта, разрешите местоположение и попробуйте снова — или укажите точку на карте вручную.",
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Не удалось определить местоположение");
+      }
     }
     setGeoLoading(false);
   }
@@ -109,7 +111,7 @@ export function SavedAddressEditorModal({ open, token, initial, onClose, onSaved
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl mx-4 max-h-modal overflow-y-auto overscroll-contain bg-surface rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-surface-container-high">
           <h2 className="text-base sm:text-lg font-bold text-on-surface">
             {initial ? "Изменить адрес" : "Новый адрес"}

@@ -8,6 +8,7 @@ import {
   type ApiPrescription,
 } from "@/entities/prescription/api";
 import { AuthedImage, Button, Icon } from "@/shared/ui";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 
 type Props = {
   prescription: ApiPrescription | null;
@@ -23,15 +24,12 @@ type Props = {
  */
 export function PrescriptionDetailsModal({ prescription, onClose }: Props) {
   // Body scroll lock + ESC to close — same UX rules as the product modal.
+  useBodyScrollLock(Boolean(prescription));
   useEffect(() => {
     if (!prescription) return;
-    document.body.style.overflow = "hidden";
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = "";
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [prescription, onClose]);
 
   if (!prescription) return null;
@@ -54,7 +52,7 @@ export function PrescriptionDetailsModal({ prescription, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-t-3xl bg-surface-container-lowest p-5 pb-safe-5 shadow-float sm:rounded-3xl sm:pb-5"
+        className="flex max-h-modal w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-t-3xl bg-surface-container-lowest p-5 pb-safe-5 shadow-float sm:rounded-3xl sm:pb-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">

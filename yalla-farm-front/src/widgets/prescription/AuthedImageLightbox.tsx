@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AuthedImage } from "@/shared/ui";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 
 /**
  * Full-screen viewer for an authed image (prescription scan / etc). Reuses
@@ -18,17 +19,14 @@ export function AuthedImageLightbox({
   src: string | null;
   onClose: () => void;
 }) {
+  useBodyScrollLock(Boolean(src));
   useEffect(() => {
     if (!src) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [src, onClose]);
 
   if (!src) return null;
@@ -56,7 +54,7 @@ export function AuthedImageLightbox({
         <AuthedImage
           src={src}
           alt=""
-          className="block max-h-[90vh] max-w-full object-contain"
+          className="block max-h-modal max-w-full object-contain"
           fallback={
             <div className="flex h-40 w-40 items-center justify-center text-white/70">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/30 border-t-white" />

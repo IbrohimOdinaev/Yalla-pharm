@@ -76,7 +76,7 @@ export function PrescriptionPickerModal() {
       onClick={closePicker}
     >
       <div
-        className="flex w-full max-w-2xl flex-col rounded-t-3xl bg-surface-container-lowest shadow-float sm:rounded-3xl max-h-[90vh]"
+        className="flex w-full max-w-2xl flex-col rounded-t-3xl bg-surface-container-lowest shadow-float sm:rounded-3xl max-h-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b border-outline/40 p-4">

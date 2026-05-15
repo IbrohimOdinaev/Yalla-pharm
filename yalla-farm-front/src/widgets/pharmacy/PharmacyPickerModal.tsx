@@ -48,7 +48,7 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div
-        className="relative w-full max-w-lg max-h-[80vh] overflow-y-auto bg-surface rounded-2xl shadow-2xl"
+        className="relative w-full max-w-lg max-h-modal-tight overflow-y-auto overscroll-contain bg-surface rounded-2xl shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

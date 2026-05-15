@@ -5,7 +5,8 @@ import { useDeliveryAddressStore, type SavedAddress } from "@/features/delivery/
 import { useAppSelector } from "@/shared/lib/redux";
 import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
 import { SavedAddressEditorModal } from "@/widgets/address/SavedAddressEditorModal";
-import { getBrowserGeolocation, type GeoResult, type GeoPoint } from "@/shared/lib/map";
+import { getBrowserGeolocation, GeolocationFailure, type GeoResult, type GeoPoint } from "@/shared/lib/map";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 import type { PharmacyMapHandle } from "@/widgets/map/PharmacyMap";
 import {
   getMyAddresses,
@@ -43,6 +44,12 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
   const [localCoords, setLocalCoords] = useState<GeoPoint | null>(coords);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  // Browser-level permission denial is a special case: once the user
+  // clicks "Never allow", `getCurrentPosition` is silently rejected on
+  // every subsequent call and the browser refuses to re-show the native
+  // prompt. We surface that as a dedicated hint with manual fallbacks
+  // instead of a generic red error line — see GeoBlockedHint below.
+  const [geoBlocked, setGeoBlocked] = useState(false);
   const autoGeoTriggered = useRef(false);
   const mapHandleRef = useRef<PharmacyMapHandle | null>(null);
 
@@ -73,6 +80,7 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
       setLocalAddress(address);
       setLocalCoords(coords);
       setGeoError(null);
+      setGeoBlocked(false);
       if (token) {
         reloadRemote();
       } else if (userId) {
@@ -88,12 +96,7 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, address, coords, userId, token]);
 
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
-  }, [open]);
+  useBodyScrollLock(open);
 
   // Server-side: split named / history.
   // History excludes only named duplicates (by lowercased address). Currently
@@ -214,6 +217,7 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
   async function doGeolocation() {
     setGeoLoading(true);
     setGeoError(null);
+    setGeoBlocked(false);
     try {
       const point = await getBrowserGeolocation();
       const { getMapProvider } = await import("@/shared/lib/map");
@@ -227,7 +231,15 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
         setTimeout(() => panMapTo({ lat: result.lat, lng: result.lng }), 50);
       }
     } catch (err) {
-      setGeoError(err instanceof Error ? err.message : "Не удалось определить местоположение");
+      if (err instanceof GeolocationFailure && err.kind === "permission-denied") {
+        // Special-case: the browser will not re-prompt for permission
+        // once denied. Show the how-to-unblock panel and nudge the user
+        // toward the manual entry / map controls instead of a vague
+        // red line they can't act on.
+        setGeoBlocked(true);
+      } else {
+        setGeoError(err instanceof Error ? err.message : "Не удалось определить местоположение");
+      }
     }
     setGeoLoading(false);
   }
@@ -238,7 +250,7 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl mx-4 max-h-modal overflow-y-auto overscroll-contain bg-surface rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-surface-container-high">
           <div className="flex items-center gap-2 min-w-0">
             {view === "map" && hasAny ? (
@@ -407,6 +419,15 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
                 </button>
                 {geoError ? <span className="text-xs text-red-500">{geoError}</span> : null}
               </div>
+
+              {geoBlocked ? (
+                <GeoBlockedHint
+                  onRetry={doGeolocation}
+                  onSwitchToMap={() => setForcedView("map")}
+                  retrying={geoLoading}
+                  mode="list"
+                />
+              ) : null}
             </>
           ) : (
             <>
@@ -463,6 +484,14 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
                 {geoError ? <span className="text-xs text-red-500">{geoError}</span> : null}
               </div>
 
+              {geoBlocked ? (
+                <GeoBlockedHint
+                  onRetry={doGeolocation}
+                  retrying={geoLoading}
+                  mode="map"
+                />
+              ) : null}
+
               <p className="text-xs text-on-surface-variant">
                 Передвигайте карту для выбора точки доставки или введите адрес выше
               </p>
@@ -493,6 +522,95 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** Detailed how-to-unblock card shown after the browser silently rejects
+ *  geolocation with PERMISSION_DENIED. The native popup cannot be
+ *  re-triggered from JS once the user has clicked "Never allow", so we
+ *  explain exactly where the toggle lives in the URL bar and offer two
+ *  immediate fallbacks: try again (in case the user already fixed it in
+ *  another tab) and switch to the map for manual point selection.
+ *  `mode="list"` adds the "switch to map" CTA; `mode="map"` skips it
+ *  since the map is already visible right below. */
+function GeoBlockedHint({
+  onRetry,
+  onSwitchToMap,
+  retrying,
+  mode,
+}: {
+  onRetry: () => void;
+  onSwitchToMap?: () => void;
+  retrying: boolean;
+  mode: "list" | "map";
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2.5">
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="11" width="16" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-amber-900">Геолокация заблокирована</p>
+          <p className="text-xs text-amber-800/90 mt-0.5">
+            Браузер не разрешает повторно спрашивать. Чтобы вернуть запрос:
+          </p>
+        </div>
+      </div>
+
+      <ol className="space-y-1 pl-9 text-xs text-amber-900 list-decimal marker:font-bold marker:text-amber-700">
+        <li>
+          Нажмите на иконку{" "}
+          <span className="inline-flex items-center gap-0.5 align-middle">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline">
+              <rect x="4" y="11" width="16" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          </span>{" "}
+          слева от адреса сайта в браузере
+        </li>
+        <li>Выберите «Местоположение» → «Разрешить»</li>
+        <li>Вернитесь сюда и нажмите кнопку ниже</li>
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className="inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 active:scale-95 transition disabled:opacity-50"
+        >
+          {retrying ? (
+            <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          )}
+          Я разрешил, повторить
+        </button>
+        {mode === "list" && onSwitchToMap ? (
+          <button
+            type="button"
+            onClick={onSwitchToMap}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-900 border border-amber-300 hover:bg-amber-100 active:scale-95 transition"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+            </svg>
+            Указать на карте
+          </button>
+        ) : null}
+      </div>
+
+      <p className="text-[11px] text-amber-800/80 pt-0.5">
+        Или просто {mode === "list" ? 'нажмите «Выбрать адрес на карте» сверху и введите' : "введите"} адрес вручную.
+      </p>
     </div>
   );
 }
