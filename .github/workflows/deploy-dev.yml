@@ -30,15 +30,34 @@ jobs:
       name: staging
       url: ${{ vars.STAGING_URL }}
     steps:
+      # Preflight — fail with a clear message if the deploy secrets
+      # aren't configured yet, instead of the SSH action's terse
+      # "missing server host". The first push after wiring the
+      # workflows will trip this until repo secrets are set.
+      - name: Check deploy secrets
+        env:
+          HOST: ${{ secrets.DEPLOY_DEV_HOST }}
+          USER: ${{ secrets.DEPLOY_DEV_USER }}
+          KEY:  ${{ secrets.DEPLOY_DEV_SSH_KEY }}
+        run: |
+          missing=()
+          [ -z "$HOST" ] && missing+=("DEPLOY_DEV_HOST")
+          [ -z "$USER" ] && missing+=("DEPLOY_DEV_USER")
+          [ -z "$KEY"  ] && missing+=("DEPLOY_DEV_SSH_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required repo secrets: ${missing[*]}"
+            echo "Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_DEV_HOST }}
           username: ${{ secrets.DEPLOY_DEV_USER }}
           key: ${{ secrets.DEPLOY_DEV_SSH_KEY }}
-          # script_stop bubbles any non-zero exit up to the workflow,
-          # so a failed pull / failed health-check fails the deploy
-          # instead of silently leaving an old image running.
-          script_stop: true
+          # `set -e` at the top of the script body bubbles any
+          # non-zero exit up to the workflow — replaces what
+          # appleboy/ssh-action@v0's `script_stop` input used to do
+          # (the input was dropped in v1).
           script: |
             set -e
             cd /srv/yalla-farm
