@@ -19,19 +19,21 @@
 services:
 
   front:
-    image: ghcr.io/${IMAGE_OWNER:-yalla-pharm}/yalla-front:${TAG:-develop}
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/yalla-front:${TAG:-develop}
     container_name: yalla-front-dev
     restart: unless-stopped
-    # Snake-case env that next.config or the runtime reads. Front is
-    # purely a Next.js renderer — the JWT, DB, SMS and so on never
-    # surface here, only the public NEXT_PUBLIC_* vars from .env.
-    env_file:
-      - .env
+    # Front is a Next.js renderer. Only public/runtime-safe variables
+    # belong here; DB/JWT/MinIO/SMS/Telegram secrets stay on the api.
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+      NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: ${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
+      NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL: ${NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL:-/hubs/telegram-auth}
+      NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
     expose:
       - "3000"
 
   api:
-    image: ghcr.io/${IMAGE_OWNER:-yalla-pharm}/yalla-api:${TAG:-develop}
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/yalla-api:${TAG:-develop}
     container_name: yalla-api-dev
     restart: unless-stopped
     env_file:

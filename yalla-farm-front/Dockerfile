@@ -8,8 +8,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG INTERNAL_API_URL=http://localhost:5000
+ARG NEXT_PUBLIC_API_BASE_URL=
+ARG NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=
+ARG NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL=
 ARG NEXT_PUBLIC_YANDEX_MAPS_API_KEY=
 ENV INTERNAL_API_URL=$INTERNAL_API_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=$NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL
+ENV NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL=$NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL
 ENV NEXT_PUBLIC_YANDEX_MAPS_API_KEY=$NEXT_PUBLIC_YANDEX_MAPS_API_KEY
 RUN npm run build
 
@@ -34,8 +40,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json ./package-lock.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --chown=nextjs:nodejs entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 USER nextjs
 
 EXPOSE 3000
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["npm", "run", "start", "--", "-p", "3000"]

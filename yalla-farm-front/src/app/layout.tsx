@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { StoreProvider } from "@/app/providers/StoreProvider";
 
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ru">
       <head>
+        <Script src="/runtime-env.js" strategy="beforeInteractive" />
         {/* Warm up the TCP+TLS connection to Yandex Maps' CDNs while the
             user is still reading the page. The SDK loader, the tile
             servers and the static assets each live on a separate host;
