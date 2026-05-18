@@ -107,6 +107,7 @@ function AdminLoginContent() {
         token: response.accessToken,
         role,
         userId: response.userId,
+        name: response.name || claims.name,
         pharmacyId: claims.pharmacyId,
       }));
 

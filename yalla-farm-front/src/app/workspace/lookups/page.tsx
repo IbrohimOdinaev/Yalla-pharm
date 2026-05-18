@@ -4,8 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
-import { AppShell } from "@/widgets/layout/AppShell";
-import { TopBar } from "@/widgets/layout/TopBar";
+import { StaffShell } from "@/widgets/layout/StaffShell";
 import { Button, Icon } from "@/shared/ui";
 import {
   getActiveManualLookups,
@@ -92,9 +91,17 @@ export default function AdminLookupsPage() {
   const list = tab === "active" ? active : history;
 
   return (
-    <AppShell>
-      <TopBar title="Запросы на ручной поиск" />
-      <div className="mx-auto max-w-3xl space-y-3 p-4">
+    <StaffShell title="Запросы" subtitle="Ручной поиск">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div className="rounded-xl bg-gradient-to-br from-primary to-primary-container px-4 py-3 text-white sm:px-5 sm:py-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider opacity-75">Manual Lookup</p>
+          <h1 className="mt-1 text-lg font-extrabold sm:text-xl">Запросы</h1>
+          <p className="mt-1 max-w-3xl text-xs opacity-85 sm:text-sm">
+            Оффлайн-поиск лекарств, которые запрашивает фармацевт для оформления рецептов.
+          </p>
+        </div>
+
+        <div className="mx-auto max-w-3xl space-y-3">
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -189,8 +196,9 @@ export default function AdminLookupsPage() {
             );
           })}
         </ul>
+        </div>
       </div>
-    </AppShell>
+    </StaffShell>
   );
 }
 

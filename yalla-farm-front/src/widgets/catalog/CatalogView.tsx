@@ -16,6 +16,7 @@ export type CatalogFetcher = (
   pageSize: number,
   categoryId?: string,
   pharmacyId?: string,
+  query?: string,
 ) => Promise<ApiPaginated<ApiMedicine>>;
 
 type Props = {

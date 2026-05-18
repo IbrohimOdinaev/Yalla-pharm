@@ -6,8 +6,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
 import { DatePicker, Select } from "@/shared/ui";
-import { AppShell } from "@/widgets/layout/AppShell";
-import { TopBar } from "@/widgets/layout/TopBar";
+import { StaffShell } from "@/widgets/layout/StaffShell";
 
 import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, type ApiAdmin } from "@/entities/admin/api";
 import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon } from "@/entities/pharmacy/admin-api";
@@ -19,7 +18,7 @@ import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/sha
 import { getClients, deleteClient } from "@/entities/client/admin-api";
 import type { ApiClient } from "@/shared/types/api";
 import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
-import { computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
+import { computeItemsTotal, computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
 import { getAwaitingConfirmation as getAwaitingPrescriptions, confirmPrescriptionPayment } from "@/entities/prescription/admin-api";
 import { type ApiPrescription } from "@/entities/prescription/api";
@@ -37,6 +36,19 @@ import dynamic from "next/dynamic";
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
 type Tab = "pharmacies" | "medicines" | "orders" | "prescriptions";
+
+const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+function getDushanbeTodayWindow(now = new Date()): { startUtcMs: number; endUtcMs: number; label: string } {
+  const shifted = new Date(now.getTime() + DUSHANBE_OFFSET_MS);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const startUtcMs = Date.UTC(year, month, day) - DUSHANBE_OFFSET_MS;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+  const label = `${String(day).padStart(2, "0")}.${String(month + 1).padStart(2, "0")}.${year}`;
+  return { startUtcMs, endUtcMs, label };
+}
 
 export default function SuperAdminPage() {
   const token = useAppSelector((state) => state.auth.token);
@@ -79,7 +91,7 @@ export default function SuperAdminPage() {
   }
 
   return (
-    <AppShell top={<TopBar title="SuperAdmin" showLogout />} hideGlobalNav>
+    <StaffShell title="SuperAdmin" subtitle="Системная панель">
       <div className="space-y-4">
         {/* Hero */}
         <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-container p-6 text-white space-y-2">
@@ -99,41 +111,192 @@ export default function SuperAdminPage() {
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
         {activeTab === "prescriptions" ? <PrescriptionsTab token={token} /> : null}
       </div>
-    </AppShell>
+    </StaffShell>
   );
 }
 
 /* ── Stats Dashboard ── */
 
-function StatsDashboard({ token }: { token: string }) {
-  const [stats, setStats] = useState({ admins: 0, pharmacies: 0, medicines: 0, clients: 0 });
+type SuperAdminPharmacyDailyStat = {
+  pharmacyId: string;
+  title: string;
+  orders: number;
+  successful: number;
+  turnover: number;
+  deliveryCost: number;
+};
 
-  // Independent fetches — each tile fills in as soon as its endpoint replies,
-  // instead of all four waiting on the slowest. The original Promise.all was
-  // a "all or nothing" wait that made the dashboard feel frozen for several
-  // seconds while a single slow endpoint dragged the rest down.
-  useEffect(() => {
-    getAdmins(token).then((a) => setStats((s) => ({ ...s, admins: a.length }))).catch(() => undefined);
-    getAllPharmacies(token).then((p) => setStats((s) => ({ ...s, pharmacies: p.length }))).catch(() => undefined);
-    getAllMedicines(token, "", 1, 1).then((r) => setStats((s) => ({ ...s, medicines: r.totalCount }))).catch(() => undefined);
-    getClients(token).then((c) => setStats((s) => ({ ...s, clients: c.length }))).catch(() => undefined);
+type SuperAdminDailyStats = {
+  totalOrders: number;
+  successful: number;
+  cancelled: number;
+  returned: number;
+  refundedCount: number;
+  refundedAmount: number;
+  turnover: number;
+  deliveryCost: number;
+  dayLabel: string;
+  pharmacies: SuperAdminPharmacyDailyStat[];
+};
+
+const EMPTY_SUPERADMIN_DAILY_STATS: SuperAdminDailyStats = {
+  totalOrders: 0,
+  successful: 0,
+  cancelled: 0,
+  returned: 0,
+  refundedCount: 0,
+  refundedAmount: 0,
+  turnover: 0,
+  deliveryCost: 0,
+  dayLabel: "",
+  pharmacies: [],
+};
+
+function isWithinWindow(value: string | undefined | null, startUtcMs: number, endUtcMs: number): boolean {
+  if (!value) return false;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) && ms >= startUtcMs && ms < endUtcMs;
+}
+
+function StatsDashboard({ token }: { token: string }) {
+  const [stats, setStats] = useState<SuperAdminDailyStats>(EMPTY_SUPERADMIN_DAILY_STATS);
+  const [loading, setLoading] = useState(false);
+  const [expandedPharmacies, setExpandedPharmacies] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      getAllOrders(token, "", 1, 1000),
+      getRefundRequests(token, 1, 1000),
+      getAllPharmacies(token, "", 1, 1000),
+    ])
+      .then(([orders, refunds, pharmacies]) => {
+        const { startUtcMs, endUtcMs, label } = getDushanbeTodayWindow();
+        const todayOrders = orders.filter((order) => isWithinWindow(order.createdAtUtc, startUtcMs, endUtcMs));
+        const completedTodayRefunds = refunds.filter((refund) => (
+          refund.status === "Completed"
+          && isWithinWindow(refund.updatedAtUtc ?? refund.createdAtUtc, startUtcMs, endUtcMs)
+        ));
+        const pharmacyTitles = new Map(pharmacies.map((pharmacy) => [pharmacy.id, pharmacy.title]));
+        const pharmacyStats = new Map<string, SuperAdminPharmacyDailyStat>();
+
+        for (const order of todayOrders) {
+          const pharmacyId = order.pharmacyId ?? "__unknown__";
+          const existing = pharmacyStats.get(pharmacyId) ?? {
+            pharmacyId,
+            title: order.pharmacyTitle ?? pharmacyTitles.get(pharmacyId) ?? "Без аптеки",
+            orders: 0,
+            successful: 0,
+            turnover: 0,
+            deliveryCost: 0,
+          };
+          existing.orders += 1;
+          if (order.status === "Delivered" || order.status === "PickedUp") existing.successful += 1;
+          existing.turnover += computeItemsTotal(order);
+          existing.deliveryCost += order.isPickup ? 0 : (order.deliveryCost ?? 0);
+          pharmacyStats.set(pharmacyId, existing);
+        }
+
+        setStats({
+          totalOrders: todayOrders.length,
+          successful: todayOrders.filter((order) => order.status === "Delivered" || order.status === "PickedUp").length,
+          cancelled: todayOrders.filter((order) => order.status === "Cancelled").length,
+          returned: todayOrders.filter((order) => order.status === "Returned").length,
+          refundedCount: completedTodayRefunds.length,
+          refundedAmount: completedTodayRefunds.reduce((sum, refund) => sum + (refund.amount ?? 0), 0),
+          turnover: todayOrders.reduce((sum, order) => sum + computeItemsTotal(order), 0),
+          deliveryCost: todayOrders.reduce((sum, order) => sum + (order.isPickup ? 0 : (order.deliveryCost ?? 0)), 0),
+          dayLabel: label,
+          pharmacies: Array.from(pharmacyStats.values()).sort((a, b) => (
+            b.turnover - a.turnover || b.orders - a.orders || a.title.localeCompare(b.title, "ru")
+          )),
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, [token]);
 
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => clearInterval(interval);
+  }, [load]);
+
   const items = [
-    { label: "Админы", value: stats.admins },
-    { label: "Аптеки", value: stats.pharmacies },
-    { label: "Лекарства", value: stats.medicines },
-    { label: "Клиенты", value: stats.clients }
+    { label: "Заказы сегодня", value: stats.totalOrders, sub: stats.dayLabel ? `UTC+5 · ${stats.dayLabel}` : "UTC+5" },
+    { label: "Успешные", value: stats.successful, sub: "Доставлен / забран" },
+    { label: "Отменённые", value: stats.cancelled, sub: "Сброс в 00:00 UTC+5" },
+    { label: "Возвраты", value: stats.returned, sub: "Статус Returned" },
+    { label: "Возвращено", value: stats.refundedCount, sub: formatMoney(stats.refundedAmount, "TJS") },
+    { label: "Оборот", value: formatMoney(stats.turnover, "TJS"), sub: "Без стоимости доставки" },
+    { label: "Расход доставки", value: formatMoney(stats.deliveryCost, "TJS"), sub: "Сумма Jura доставок" },
   ];
+  const visiblePharmacies = expandedPharmacies ? stats.pharmacies : stats.pharmacies.slice(0, 4);
 
   return (
-    <div className="grid grid-cols-2 gap-1 xs:gap-2 sm:gap-3 md:grid-cols-4">
-      {items.map((item) => (
-        <div key={item.label} className="stitch-card p-1.5 xs:p-2 sm:p-4 text-center">
-          <p className="text-base xs:text-lg sm:text-2xl font-black text-primary">{item.value}</p>
-          <p className="text-[8px] xs:text-[10px] sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">{item.label}</p>
+    <div className="space-y-2">
+      <div className="relative grid grid-cols-2 gap-1 xs:gap-2 sm:gap-3 md:grid-cols-4">
+        {loading ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-surface/90 px-3 py-1 text-[10px] font-semibold text-on-surface-variant shadow-sm">
+            Обновляем...
+          </div>
+        ) : null}
+        {items.map((item) => (
+          <div key={item.label} className="stitch-card p-1.5 xs:p-2 sm:p-4 text-center">
+            <p className="text-base xs:text-lg sm:text-2xl font-black text-primary">{item.value}</p>
+            <p className="text-[8px] xs:text-[10px] sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">{item.label}</p>
+            <p className="mt-0.5 text-[8px] xs:text-[9px] sm:text-[11px] text-on-surface-variant">{item.sub}</p>
+          </div>
+        ))}
+        <div className="stitch-card col-span-2 p-3 sm:p-4 md:col-span-4">
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold">Аптеки по обороту сегодня</p>
+              <p className="text-[11px] text-on-surface-variant">Показаны заказы и оборот без доставки за UTC+5 день.</p>
+            </div>
+            {stats.pharmacies.length > 4 ? (
+              <button
+                type="button"
+                className="rounded-full bg-surface-container-high px-3 py-1 text-[11px] font-bold text-on-surface"
+                onClick={() => setExpandedPharmacies((value) => !value)}
+              >
+                {expandedPharmacies ? "Свернуть" : "Все аптеки"}
+              </button>
+            ) : null}
+          </div>
+          {visiblePharmacies.length ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {visiblePharmacies.map((pharmacy) => (
+                <div key={pharmacy.pharmacyId} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+                  <p className="line-clamp-1 text-sm font-bold">{pharmacy.title}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-on-surface-variant">
+                    <div>
+                      <p className="text-base font-black text-primary">{formatMoney(pharmacy.turnover, "TJS")}</p>
+                      <p>оборот</p>
+                    </div>
+                    <div>
+                      <p className="text-base font-black text-primary">{pharmacy.orders}</p>
+                      <p>заказов</p>
+                    </div>
+                    <div>
+                      <p className="font-bold text-on-surface">{pharmacy.successful}</p>
+                      <p>успешных</p>
+                    </div>
+                    <div>
+                      <p className="font-bold text-on-surface">{formatMoney(pharmacy.deliveryCost, "TJS")}</p>
+                      <p>доставка</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl bg-surface-container-low p-4 text-center text-sm text-on-surface-variant">
+              За сегодня заказов по аптекам пока нет.
+            </div>
+          )}
         </div>
-      ))}
+      </div>
     </div>
   );
 }

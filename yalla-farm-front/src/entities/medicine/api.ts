@@ -2,9 +2,28 @@ import { apiFetch } from "@/shared/api/http-client";
 import { env } from "@/shared/config/env";
 import type { ApiMedicine, ApiPaginated, ApiSearchByPharmacyResponse } from "@/shared/types/api";
 
+const medicineCache = new Map<string, ApiMedicine>();
+
+function putMedicineInCache(medicine: ApiMedicine): void {
+  if (!medicine?.id) return;
+  medicineCache.set(medicine.id, medicine);
+  if (medicine.slug) medicineCache.set(medicine.slug, medicine);
+}
+
+export function primeMedicineCache(medicine: ApiMedicine | null | undefined): void {
+  if (!medicine) return;
+  putMedicineInCache(medicine);
+}
+
+export function getCachedMedicineByIdOrSlug(idOrSlug: string): ApiMedicine | null {
+  return medicineCache.get(idOrSlug) ?? null;
+}
+
 export async function getCatalogMedicines(page = 1, pageSize = 24): Promise<ApiMedicine[]> {
   const response = await apiFetch<ApiPaginated<ApiMedicine>>(`/api/medicines?page=${page}&pageSize=${pageSize}`);
-  return Array.isArray(response?.medicines) ? response.medicines : [];
+  const medicines = Array.isArray(response?.medicines) ? response.medicines : [];
+  medicines.forEach(putMedicineInCache);
+  return medicines;
 }
 
 export async function getMedicineById(id: string): Promise<ApiMedicine> {
@@ -13,6 +32,7 @@ export async function getMedicineById(id: string): Promise<ApiMedicine> {
     throw new Error("Товар не найден.");
   }
 
+  putMedicineInCache(response.medicine);
   return response.medicine;
 }
 
@@ -29,7 +49,9 @@ export async function getMedicinesByIds(ids: string[]): Promise<ApiMedicine[]> {
     "/api/medicines/by-ids",
     { method: "POST", body: { ids: filtered } },
   );
-  return Array.isArray(response?.medicines) ? response.medicines : [];
+  const medicines = Array.isArray(response?.medicines) ? response.medicines : [];
+  medicines.forEach(putMedicineInCache);
+  return medicines;
 }
 
 export async function getMedicineBySlug(slug: string): Promise<ApiMedicine> {
@@ -38,6 +60,7 @@ export async function getMedicineBySlug(slug: string): Promise<ApiMedicine> {
     throw new Error("Товар не найден.");
   }
 
+  putMedicineInCache(response.medicine);
   return response.medicine;
 }
 
@@ -123,11 +146,21 @@ export function getMedicineDisplayName(medicine: ApiMedicine): string {
   return medicine.title || medicine.name || "Без названия";
 }
 
-export async function getCatalogMedicinesPaginated(page = 1, pageSize = 24, categoryId?: string, pharmacyId?: string): Promise<ApiPaginated<ApiMedicine>> {
+export async function getCatalogMedicinesPaginated(
+  page = 1,
+  pageSize = 24,
+  categoryId?: string,
+  pharmacyId?: string,
+  query?: string,
+): Promise<ApiPaginated<ApiMedicine>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (categoryId) params.set("categoryId", categoryId);
   if (pharmacyId) params.set("pharmacyId", pharmacyId);
-  return apiFetch<ApiPaginated<ApiMedicine>>(`/api/medicines?${params}`);
+  if (query?.trim()) params.set("query", query.trim());
+  const response = await apiFetch<ApiPaginated<ApiMedicine>>(`/api/medicines?${params}`);
+  const medicines = Array.isArray(response?.medicines) ? response.medicines : [];
+  medicines.forEach(putMedicineInCache);
+  return response;
 }
 
 export async function searchMedicines(query: string, limit = 24): Promise<ApiMedicine[]> {
@@ -135,7 +168,9 @@ export async function searchMedicines(query: string, limit = 24): Promise<ApiMed
     method: "POST",
     body: { query, limit }
   });
-  return Array.isArray(response?.medicines) ? response.medicines : [];
+  const medicines = Array.isArray(response?.medicines) ? response.medicines : [];
+  medicines.forEach(putMedicineInCache);
+  return medicines;
 }
 
 export type LiveSearchSuggestion = {
@@ -159,4 +194,3 @@ export async function searchByPharmacy(query: string, limit = 20): Promise<ApiSe
   });
   return response ?? { query, totalCount: 0, pharmacies: [] };
 }
-

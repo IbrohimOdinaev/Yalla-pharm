@@ -367,8 +367,8 @@ public sealed class PrescriptionService : IPrescriptionService
 
     /// <summary>
     /// Pharmacist's full visible workspace: every InQueue request (anyone
-    /// can grab) plus their own InReview / Decoded ones. Powers the
-    /// "switch active prescription" picker and the status-tabs view.
+    /// can grab) plus every prescription already assigned to this pharmacist.
+    /// Powers the picker, history, and daily dashboard.
     /// </summary>
     public async Task<IReadOnlyList<PrescriptionResponse>> GetPharmacistAllAsync(
       Guid pharmacistId,
@@ -381,8 +381,7 @@ public sealed class PrescriptionService : IPrescriptionService
           .AsNoTracking()
           .Where(x =>
             x.Status == PrescriptionStatus.InQueue
-            || ((x.Status == PrescriptionStatus.InReview || x.Status == PrescriptionStatus.Decoded)
-                && x.AssignedPharmacistId == pharmacistId))
+            || x.AssignedPharmacistId == pharmacistId)
           .OrderByDescending(x => x.CreatedAtUtc)
           .Include(x => x.Images)
           .Include(x => x.Items)

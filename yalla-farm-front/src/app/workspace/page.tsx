@@ -1,27 +1,53 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { useAppSelector } from "@/shared/lib/redux";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { clearCredentials } from "@/features/auth/model/authSlice";
+import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
 import { formatMoney, formatPhone } from "@/shared/lib/format";
 import { DatePicker } from "@/shared/ui";
-import { AppShell } from "@/widgets/layout/AppShell";
-import { TopBar } from "@/widgets/layout/TopBar";
+import { StaffShell } from "@/widgets/layout/StaffShell";
 
 import { updateAdminMe, getAdminMe } from "@/entities/admin/api";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { updatePharmacy } from "@/entities/pharmacy/admin-api";
-import { searchMedicines, resolveMedicineImageUrl } from "@/entities/medicine/api";
-import type { ApiMedicine, ApiOrder } from "@/shared/types/api";
+import { getCatalogMedicinesPaginated, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
+import { getCategories } from "@/entities/category/api";
+import type { ApiCategory, ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
 import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions, adminCancelOrder } from "@/entities/order/admin-api";
 import { AdminOrderDetailModal } from "@/widgets/order/AdminOrderDetailModal";
-import { computeOriginalPaid, isOrderDataLost } from "@/entities/order/totals";
+import { computeItemsTotal, computeOriginalPaid, isOrderDataLost } from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
+import { MedicineCard } from "@/widgets/catalog/MedicineCard";
+import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 
-type Tab = "pharmacy" | "offers" | "orders";
+type Tab = "dashboard" | "profile" | "offers" | "orders";
+
+const TAB_META: Record<Tab, { eyebrow: string; title: string; description: string }> = {
+  dashboard: {
+    eyebrow: "Admin Dashboard",
+    title: "Dashboard",
+    description: "Краткая статистика аптеки за текущий день по UTC+5.",
+  },
+  profile: {
+    eyebrow: "Admin Profile",
+    title: "Профиль",
+    description: "Профиль администратора, данные аптеки, адрес, статус и время работы.",
+  },
+  offers: {
+    eyebrow: "Offer Management",
+    title: "Предложения",
+    description: "Каталог товаров вашей аптеки: цены, остатки и скрытие предложений.",
+  },
+  orders: {
+    eyebrow: "Order Board",
+    title: "Заказы",
+    description: "Операционная доска заказов по статусам с действиями для сборки и доставки.",
+  },
+};
 
 const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "DriverArrived", "Delivered", "PickedUp", "Cancelled", "Returned"];
 const STATUS_LABELS: Record<string, string> = {
@@ -37,10 +63,24 @@ const STATUS_COLORS: Record<string, string> = {
   PickedUp: "bg-primary", Cancelled: "bg-secondary", Returned: "bg-on-surface-variant"
 };
 
+const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+function getDushanbeTodayWindow(now = new Date()): { startUtcMs: number; endUtcMs: number; label: string } {
+  const shifted = new Date(now.getTime() + DUSHANBE_OFFSET_MS);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const startUtcMs = Date.UTC(year, month, day) - DUSHANBE_OFFSET_MS;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+  const label = `${String(day).padStart(2, "0")}.${String(month + 1).padStart(2, "0")}.${year}`;
+  return { startUtcMs, endUtcMs, label };
+}
+
 export default function WorkspacePage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
+  const dispatch = useAppDispatch();
   const router = useRouter();
 
   // Auth gate — bounce unauthenticated/non-admin visitors to the home page.
@@ -61,14 +101,16 @@ export default function WorkspacePage() {
   // their own pharmacy out of the active list (the backend doesn't ship a
   // "/me/pharmacy" endpoint yet — the JWT claim is the source of truth).
   const adminPharmacyId = useAppSelector((state) => state.auth.pharmacyId);
-  const [activeTab, setActiveTab] = useState<Tab>("pharmacy");
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "offers") setActiveTab("offers");
+      if (h === "dashboard") setActiveTab("dashboard");
+      else if (h === "offers") setActiveTab("offers");
       else if (h === "orders") setActiveTab("orders");
-      else setActiveTab("pharmacy");
+      else if (h === "profile" || h === "pharmacy") setActiveTab("profile");
+      else setActiveTab("dashboard");
     }
     syncHash();
     window.addEventListener("hashchange", syncHash);
@@ -77,15 +119,35 @@ export default function WorkspacePage() {
   }, []);
 
   /* Feature 14: stat cards data */
-  const [orderCount, setOrderCount] = useState(0);
+  const [dailyStats, setDailyStats] = useState({ totalOrders: 0, cancelled: 0, returned: 0, turnover: 0, dayLabel: "" });
   const [pharmacyName, setPharmacyName] = useState("");
-  const [adminIdentity, setAdminIdentity] = useState<{name: string; phoneNumber: string} | null>(null);
-  const [pharmacyActive, setPharmacyActive] = useState(true);
+  const [adminName, setAdminName] = useState("");
+
+  const refreshDailyStats = useCallback(() => {
+    if (!token || role !== "Admin") return;
+    getAdminOrders(token, "", 1, 1000)
+      .then((data) => {
+        const { startUtcMs, endUtcMs, label } = getDushanbeTodayWindow();
+        const todayOrders = data.filter((order) => {
+          const createdMs = order.createdAtUtc ? new Date(order.createdAtUtc).getTime() : 0;
+          return createdMs >= startUtcMs && createdMs < endUtcMs;
+        });
+        setDailyStats({
+          totalOrders: todayOrders.length,
+          cancelled: todayOrders.filter((order) => order.status === "Cancelled").length,
+          returned: todayOrders.filter((order) => order.status === "Returned").length,
+          turnover: todayOrders.reduce((sum, order) => sum + computeItemsTotal(order), 0),
+          dayLabel: label,
+        });
+      })
+      .catch(() => undefined);
+  }, [token, role]);
 
   useEffect(() => {
     if (!token || role !== "Admin") return;
-    getAdminOrders(token, "", 1, 1000)
-      .then((data) => setOrderCount(data.length))
+    refreshDailyStats();
+    getAdminMe(token)
+      .then((admin) => setAdminName(admin.name))
       .catch(() => undefined);
     getActivePharmacies(token)
       .then((pharmacies) => {
@@ -99,60 +161,117 @@ export default function WorkspacePage() {
         const own = mine ?? pharmacies[0];
         if (own) {
           setPharmacyName(own.title);
-          setPharmacyActive(own.isActive ?? true);
         }
       })
       .catch(() => undefined);
-    getAdminMe(token).then(setAdminIdentity).catch(() => undefined);
-  }, [token, role, adminPharmacyId]);
+  }, [token, role, adminPharmacyId, refreshDailyStats]);
+
+  useEffect(() => {
+    if (!token || role !== "Admin") return;
+    const interval = setInterval(refreshDailyStats, 60_000);
+    return () => clearInterval(interval);
+  }, [token, role, refreshDailyStats]);
 
   // Render nothing while the auth-gate effect above performs the redirect —
   // avoids a flash of the "Access denied" stub on logout / direct hits.
   if (!token || role !== "Admin") {
     return null;
   }
+  const activeMeta = TAB_META[activeTab];
+
+  function onLogout() {
+    dispatch(clearCredentials());
+    router.replace("/");
+  }
 
   return (
-    <AppShell top={<TopBar title="Workspace" showLogout />} hideGlobalNav>
+    <StaffShell
+      title="Workspace"
+      subtitle={pharmacyName ? `Admin: ${pharmacyName}` : "Кабинет аптеки"}
+      userDisplayName={adminName}
+      showLogoutInSidebar={false}
+    >
       <div className="space-y-4">
-        {/* Feature 14: Admin hero */}
-        <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-container p-6 text-white space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wider opacity-80">Admin Dashboard</p>
-          <h1 className="text-2xl font-extrabold">
-            Кабинет аптеки{pharmacyName ? `: ${pharmacyName}` : ""}
-          </h1>
-          <p className="text-sm opacity-80">Управляйте аптекой, предложениями и заказами</p>
+        <div className="rounded-xl bg-gradient-to-br from-primary to-primary-container px-4 py-3 text-white sm:px-5 sm:py-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider opacity-75">{activeMeta.eyebrow}</p>
+          <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <h1 className="text-lg font-extrabold sm:text-xl">{activeMeta.title}</h1>
+            {pharmacyName ? (
+              <p className="text-[11px] font-semibold opacity-80 sm:text-xs">{pharmacyName}</p>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs opacity-85 sm:text-sm">{activeMeta.description}</p>
         </div>
 
-        {/* Feature 14: Stat cards */}
-        <div className="grid grid-cols-2 gap-1.5 xs:gap-2 sm:grid-cols-3 sm:gap-3">
-          <div className="stitch-card p-1.5 xs:p-2 sm:p-4 flex sm:block items-center sm:text-center gap-1.5 xs:gap-2 sm:gap-0">
-            <p className="text-base xs:text-lg sm:text-2xl font-black text-primary">{orderCount}</p>
-            <p className="text-[9px] xs:text-[10px] sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Заказы</p>
-          </div>
-          <div className="stitch-card p-1.5 xs:p-2 sm:p-4 flex sm:block items-center sm:text-center gap-1.5 xs:gap-2 sm:gap-0">
-            <p className={`text-base xs:text-lg sm:text-2xl font-black ${pharmacyActive ? "text-emerald-600" : "text-red-600"}`}>
-              {pharmacyActive ? "Активна" : "Отключена"}
-            </p>
-            <p className="text-[10px] xs:text-xs sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Статус аптеки</p>
-          </div>
-          <div className="stitch-card p-2 xs:p-3 sm:p-4 flex sm:block items-center sm:text-center gap-2 xs:gap-3 sm:gap-0">
-            <p className="text-lg xs:text-xl sm:text-2xl font-black text-primary truncate">{adminIdentity?.name || "Admin"}</p>
-            <p className="text-[10px] xs:text-xs sm:text-sm font-bold uppercase tracking-wider text-on-surface-variant">Администратор</p>
-          </div>
-        </div>
-
-        {activeTab === "pharmacy" ? <PharmacyTab token={token} /> : null}
+        {activeTab === "dashboard" ? <DashboardTab dailyStats={dailyStats} pharmacyName={pharmacyName} /> : null}
+        {activeTab === "profile" ? <PharmacyTab token={token} onLogout={onLogout} /> : null}
         {activeTab === "offers" ? <OffersTab token={token} /> : null}
-        {activeTab === "orders" ? <OrdersTab token={token} /> : null}
+        {activeTab === "orders" ? <OrdersTab token={token} onStatsRefresh={refreshDailyStats} /> : null}
       </div>
-    </AppShell>
+    </StaffShell>
+  );
+}
+
+function DashboardTab({
+  dailyStats,
+  pharmacyName,
+}: {
+  dailyStats: { totalOrders: number; cancelled: number; returned: number; turnover: number; dayLabel: string };
+  pharmacyName: string;
+}) {
+  const cards = [
+    {
+      label: "Заказы сегодня",
+      value: dailyStats.totalOrders,
+      hint: `UTC+5 · ${dailyStats.dayLabel || "сегодня"}`,
+      tone: "text-primary",
+    },
+    {
+      label: "Отменённые",
+      value: dailyStats.cancelled,
+      hint: "Сброс в 00:00 UTC+5",
+      tone: "text-red-600",
+    },
+    {
+      label: "Возвраты",
+      value: dailyStats.returned,
+      hint: "За текущий день",
+      tone: "text-on-surface-variant",
+    },
+    {
+      label: "Оборот",
+      value: formatMoney(dailyStats.turnover),
+      hint: "Без стоимости доставки",
+      tone: "text-primary",
+    },
+  ];
+
+  return (
+    <section className="space-y-4">
+      <div className="stitch-card p-4 sm:p-5">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Сегодня</p>
+        <h2 className="mt-1 text-lg font-extrabold">Статистика аптеки{pharmacyName ? `: ${pharmacyName}` : ""}</h2>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Отдельные показатели по заказам, возвратам и обороту за день. День считается по часовому поясу UTC+5.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => (
+          <div key={card.label} className="stitch-card min-h-[132px] p-4 sm:p-5">
+            <p className={`text-3xl font-black ${card.tone}`}>{card.value}</p>
+            <p className="mt-3 text-sm font-black uppercase tracking-wider text-on-surface-variant">{card.label}</p>
+            <p className="mt-1 text-xs text-on-surface-variant">{card.hint}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
 /* ── Pharmacy Tab ── */
 
-function PharmacyTab({ token }: { token: string }) {
+function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void }) {
   const adminPharmacyId = useAppSelector((state) => state.auth.pharmacyId);
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [adminName, setAdminName] = useState("");
@@ -233,7 +352,24 @@ function PharmacyTab({ token }: { token: string }) {
   }
 
   return (
-    <div className="grid gap-5 md:grid-cols-2">
+    <div className="space-y-5">
+      <section className="stitch-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <h2 className="text-base font-black">Аккаунт</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Данные пользователя, аптеки и выход из кабинета администратора.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="inline-flex items-center justify-center rounded-2xl bg-secondary px-5 py-3 text-sm font-black text-white transition hover:bg-secondary/90"
+        >
+          Выйти
+        </button>
+      </section>
+
+      <div className="grid gap-5 md:grid-cols-2">
       <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSaveAdmin}>
         <div>
           <h2 className="text-sm xs:text-base sm:text-lg font-bold">Профиль администратора</h2>
@@ -329,6 +465,7 @@ function PharmacyTab({ token }: { token: string }) {
           <button type="submit" className="stitch-button w-full">Обновить аптеку</button>
         </form>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -336,99 +473,351 @@ function PharmacyTab({ token }: { token: string }) {
 /* ── Offers Tab ── */
 
 function OffersTab({ token }: { token: string }) {
+  const adminPharmacyId = useAppSelector((state) => state.auth.pharmacyId);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ApiMedicine[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [expandedCategoryId, setExpandedCategoryId] = useState("");
+  const [showCategoryBrowser, setShowCategoryBrowser] = useState(false);
+  const [medicines, setMedicines] = useState<ApiMedicine[]>([]);
+  const [suggestions, setSuggestions] = useState<LiveSearchSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hidingIds, setHidingIds] = useState<Record<string, boolean>>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const doSearch = useCallback((q: string) => {
-    if (!q.trim()) { setResults([]); return; }
-    setIsSearching(true);
-    searchMedicines(q.trim(), 80)
-      .then(setResults)
-      .catch(() => undefined)
-      .finally(() => setIsSearching(false));
+  useEffect(() => {
+    getCategories().then(setCategories).catch(() => undefined);
   }, []);
+
+  const flatCategories = useMemo(
+    () => [...categories, ...categories.flatMap((category) => category.children ?? [])],
+    [categories],
+  );
+  const selectedCategory = useMemo(
+    () => flatCategories.find((category) => category.id === selectedCategoryId),
+    [flatCategories, selectedCategoryId],
+  );
+
+  const loadPage = useCallback((targetPage: number, mode: "replace" | "append", q = debouncedQuery, categoryId = selectedCategoryId) => {
+    if (!adminPharmacyId) {
+      setMedicines([]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (mode === "replace") setIsLoading(true);
+    else setIsLoadingMore(true);
+    setError(null);
+
+    getCatalogMedicinesPaginated(targetPage, 24, categoryId || undefined, adminPharmacyId, q)
+      .then((data) => {
+        const items = Array.isArray(data.medicines) ? data.medicines : [];
+        setMedicines((prev) => (mode === "append" ? [...prev, ...items] : items));
+        const size = data.pageSize ?? 24;
+        const total = data.totalCount ?? 0;
+        setPage(data.page ?? targetPage);
+        setTotalPages(Math.max(1, Math.ceil(total / size)));
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить каталог."))
+      .finally(() => {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      });
+  }, [adminPharmacyId, debouncedQuery, selectedCategoryId]);
+
+  useEffect(() => {
+    loadPage(1, "replace", debouncedQuery, selectedCategoryId);
+  }, [debouncedQuery, selectedCategoryId, loadPage]);
+
+  const hasMore = page < totalPages;
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || isLoading || isLoadingMore || !hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadPage(page + 1, "append", debouncedQuery, selectedCategoryId);
+        }
+      },
+      { rootMargin: "700px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [debouncedQuery, hasMore, isLoading, isLoadingMore, loadPage, page, selectedCategoryId]);
 
   function onQueryChange(value: string) {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(value), 300);
-  }
+    debounceRef.current = setTimeout(() => setDebouncedQuery(value.trim()), 300);
 
-  return (
-    <div className="space-y-2 xs:space-y-3 sm:space-y-4">
-      <div>
-        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление предложениями</h2>
-        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Найдите лекарство и задайте цену и остаток для вашей аптеки.</p>
-      </div>
-
-      <input
-        className="stitch-input w-full"
-        placeholder="Поиск лекарств для добавления предложения..."
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-      />
-
-      {isSearching ? <div className="text-sm text-on-surface-variant">Поиск...</div> : null}
-
-      {results.length > 0 && !isSearching ? (
-        <p className="text-xs text-on-surface-variant">{results.length} товаров найдено</p>
-      ) : null}
-
-      {results.map((medicine) => (
-        <OfferCard key={medicine.id} token={token} medicine={medicine} />
-      ))}
-    </div>
-  );
-}
-
-function OfferCard({ token, medicine }: { token: string; medicine: ApiMedicine }) {
-  const [stock, setStock] = useState("");
-  const [price, setPrice] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
-  const imageUrl = resolveMedicineImageUrl(medicine);
-
-  async function onSave(e: FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    try {
-      await upsertOffer(token, { medicineId: medicine.id, stockQuantity: Number(stock), price: Number(price) });
-      setMsg("Сохранено.");
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    if (liveDebounceRef.current) clearTimeout(liveDebounceRef.current);
+    if (value.trim().length >= 2) {
+      liveDebounceRef.current = setTimeout(() => {
+        liveSearch(value.trim(), 8).then(setSuggestions).catch(() => setSuggestions([]));
+      }, 150);
+    } else {
+      setSuggestions([]);
     }
   }
 
+  function onSuggestionClick(title: string) {
+    setQuery(title);
+    setDebouncedQuery(title);
+    setSuggestions([]);
+  }
+
+  function selectCategory(categoryId: string) {
+    setSelectedCategoryId(categoryId);
+    setShowCategoryBrowser(true);
+    setSuggestions([]);
+  }
+
+  function closeCategoryBrowser() {
+    setSelectedCategoryId("");
+    setExpandedCategoryId("");
+    setShowCategoryBrowser(false);
+    setSuggestions([]);
+  }
+
+  async function onHide(medicine: ApiMedicine) {
+    if (!adminPharmacyId) return;
+    if (!confirm(`Скрыть товар «${medicine.title || medicine.name || medicine.id.slice(0, 8)}» для вашей аптеки?`)) return;
+
+    setHidingIds((prev) => ({ ...prev, [medicine.id]: true }));
+    try {
+      await upsertOffer(token, { medicineId: medicine.id, stockQuantity: 0, price: 0 });
+      setMedicines((prev) => prev.filter((item) => item.id !== medicine.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось скрыть товар.");
+    } finally {
+      setHidingIds((prev) => {
+        const next = { ...prev };
+        delete next[medicine.id];
+        return next;
+      });
+    }
+  }
+
+  function renderMedicineGrid(inCategoryMode = false) {
+    const gridClassName = inCategoryMode
+      ? "grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      : "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
+
+    if (isLoading) {
+      return (
+        <div className={gridClassName}>
+          {Array.from({ length: 10 }).map((_, i) => <MedicineCardSkeleton key={i} />)}
+        </div>
+      );
+    }
+
+    if (medicines.length === 0) {
+      return (
+        <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
+          {debouncedQuery ? "По этому запросу активных товаров вашей аптеки не найдено." : "В вашей аптеке нет активных товаров."}
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className={gridClassName}>
+          {medicines.map((medicine) => {
+            const ownOffer = (medicine.offers ?? []).find((offer) => offer.pharmacyId === adminPharmacyId && offer.price > 0);
+            const ownPrice = ownOffer?.price ?? medicine.minPrice ?? medicine.price ?? null;
+            return (
+              <MedicineCard
+                key={medicine.id}
+                medicine={medicine}
+                hideCart
+                readOnlyPrice={ownPrice}
+                readOnlyPricePrefix=""
+                footerAction={
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onHide(medicine);
+                    }}
+                    disabled={Boolean(hidingIds[medicine.id])}
+                    className="flex h-9 w-full items-center justify-center rounded-full bg-secondary-soft px-3 text-xs font-bold text-secondary transition hover:bg-secondary/15 disabled:opacity-60"
+                  >
+                    {hidingIds[medicine.id] ? "Скрываем..." : "Скрыть"}
+                  </button>
+                }
+              />
+            );
+          })}
+          {isLoadingMore
+            ? Array.from({ length: 5 }).map((_, i) => <MedicineCardSkeleton key={`more-${i}`} />)
+            : null}
+        </div>
+
+        {hasMore ? <div ref={loadMoreSentinelRef} aria-hidden className="h-6" /> : null}
+      </>
+    );
+  }
+
   return (
-    <form className="stitch-card overflow-hidden" onSubmit={onSave}>
-      <div className="flex gap-4 p-4">
-        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop">
-          {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt={medicine.title || ""} className="h-full w-full object-contain mix-blend-multiply" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">Фото</div>
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-bold truncate">{medicine.title || medicine.name || medicine.id.slice(0, 8)}</p>
-          {medicine.articul ? <p className="text-[10px] font-mono text-on-surface-variant">{medicine.articul}</p> : null}
-        </div>
+    <div className="space-y-3 sm:space-y-4">
+      <div>
+        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление предложениями</h2>
+        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Каталог товаров вашей аптеки. Скрытые товары исчезают из выдачи этой аптеки.</p>
       </div>
-      <div className="flex gap-2 px-4 pb-4">
-        <input className="stitch-input flex-1" type="number" min="0" placeholder="Остаток" value={stock} onChange={(e) => setStock(e.target.value)} required />
-        <input className="stitch-input flex-1" type="number" min="0" step="0.01" placeholder="Цена" value={price} onChange={(e) => setPrice(e.target.value)} required />
-        <button type="submit" className="stitch-button">OK</button>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <input
+            className="stitch-input w-full"
+            placeholder="Поиск по каталогу вашей аптеки..."
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+          />
+          {suggestions.length > 0 ? (
+            <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-2xl border border-outline/60 bg-surface-container-lowest shadow-card">
+              {suggestions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSuggestionClick(item.title)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-container-low"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{item.title}</span>
+                    {item.categoryName ? <span className="block truncate text-[11px] text-on-surface-variant">{item.categoryName}</span> : null}
+                  </span>
+                  {item.minPrice ? <span className="shrink-0 text-xs font-bold text-primary">от {item.minPrice} TJS</span> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="stitch-button-secondary h-11 shrink-0 px-4"
+          onClick={() => {
+            setShowCategoryBrowser(true);
+            setSelectedCategoryId("");
+          }}
+        >
+          Все категории
+        </button>
       </div>
-      {msg ? <div className={`px-4 pb-3 text-xs ${msg === "Сохранено." ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
-    </form>
+
+      {showCategoryBrowser ? (
+        <div className="rounded-2xl border border-outline/50 bg-surface-container-lowest p-3">
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <aside className="sm:w-[240px] sm:shrink-0">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold">Каталог</h3>
+                <button type="button" className="text-xs font-semibold text-on-surface-variant hover:text-on-surface" onClick={closeCategoryBrowser}>
+                  Свернуть
+                </button>
+              </div>
+              <nav className="max-h-[55vh] space-y-0.5 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => selectCategory("")}
+                  className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                    !selectedCategoryId ? "bg-primary text-white" : "text-on-surface hover:bg-surface-container-low"
+                  }`}
+                >
+                  Все товары
+                </button>
+                {categories.length === 0
+                  ? Array.from({ length: 8 }).map((_, index) => (
+                      <div key={index} className="my-1 h-8 animate-pulse rounded-lg bg-surface-container-high" />
+                    ))
+                  : categories.map((category) => {
+                      const isActive = selectedCategoryId === category.id;
+                      const hasActiveChild = category.children?.some((child) => child.id === selectedCategoryId);
+                      const isExpanded = expandedCategoryId === category.id;
+                      return (
+                        <div key={category.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (category.children?.length) {
+                                setExpandedCategoryId(isExpanded ? "" : category.id);
+                                return;
+                              }
+                              selectCategory(category.id);
+                            }}
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                              isActive || hasActiveChild ? "bg-primary text-white" : "text-on-surface hover:bg-surface-container-low"
+                            }`}
+                          >
+                            <span className="truncate">{category.name}</span>
+                            {category.children?.length ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`ml-1 shrink-0 transition ${isExpanded ? "rotate-180" : ""}`}>
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            ) : null}
+                          </button>
+                          {isExpanded && category.children?.length ? (
+                            <div className="ml-3 mt-0.5 space-y-0.5 border-l-2 border-surface-container-high pl-2">
+                              {category.children.map((child) => (
+                                <button
+                                  key={child.id}
+                                  type="button"
+                                  onClick={() => selectCategory(child.id)}
+                                  className={`block w-full rounded-lg px-3 py-1.5 text-left text-sm transition ${
+                                    selectedCategoryId === child.id
+                                      ? "bg-primary/80 font-semibold text-white"
+                                      : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
+                                  }`}
+                                >
+                                  {child.name}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+              </nav>
+            </aside>
+            <div className="min-w-0 flex-1">
+              <div className="mb-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeCategoryBrowser}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-low text-primary transition hover:bg-surface-container-high"
+                  aria-label="Назад к каталогу предложений"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                </button>
+                <h3 className="text-lg font-extrabold">{selectedCategory?.name || "Все товары"}</h3>
+              </div>
+              {renderMedicineGrid(true)}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
+
+      {!showCategoryBrowser ? renderMedicineGrid() : null}
+    </div>
   );
 }
 
 /* ── Orders Tab (Kanban) ── */
 
-function OrdersTab({ token }: { token: string }) {
+function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: () => void }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -446,9 +835,9 @@ function OrdersTab({ token }: { token: string }) {
   const refresh = useCallback(() => {
     setIsLoading(true);
     getAdminOrders(token, "")
-      .then((data) => { setOrders(data); setIsLoading(false); })
+      .then((data) => { setOrders(data); setIsLoading(false); onStatsRefresh?.(); })
       .catch((err) => { setError(err instanceof Error ? err.message : "Ошибка."); setIsLoading(false); });
-  }, [token]);
+  }, [token, onStatsRefresh]);
 
   useOrderStatusLive(useCallback(() => { refresh(); }, [refresh]));
   useSignalREvent("PaymentIntentUpdated", useCallback(() => { refresh(); }, [refresh]), token);
@@ -510,6 +899,9 @@ function OrdersTab({ token }: { token: string }) {
           <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Доска заказов по всем статусам{dateFilter ? ` · ${dateFilter}` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
+          <span className="hidden min-w-[82px] text-right text-xs text-on-surface-variant sm:inline">
+            {isLoading ? "Обновляем..." : ""}
+          </span>
           <DatePicker
             value={dateFilter}
             onChange={setDateFilter}
@@ -523,10 +915,9 @@ function OrdersTab({ token }: { token: string }) {
         </div>
       </div>
 
-      {isLoading ? <div className="text-sm text-on-surface-variant">Загрузка...</div> : null}
       {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
-      <div className="flex gap-4 overflow-x-auto pb-4 snap-x md:grid md:grid-cols-2 md:overflow-x-visible xl:grid-cols-4">
+      <div className="-mx-1 flex flex-nowrap gap-4 overflow-x-auto px-1 pb-4 snap-x snap-mandatory">
         {ALL_STATUSES.map((status) => {
           const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] => {
             const a: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] = [];
@@ -540,7 +931,7 @@ function OrdersTab({ token }: { token: string }) {
           };
 
           return (
-            <div key={status} className="min-w-[220px] xs:min-w-[250px] sm:min-w-[280px] flex-shrink-0 snap-start rounded-2xl bg-surface-container-low p-3 space-y-3 md:min-w-0">
+            <div key={status} className="w-[82vw] min-w-[260px] max-w-[340px] flex-shrink-0 snap-start rounded-2xl bg-surface-container-low p-3 space-y-3 sm:w-[320px]">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[status]}`} />

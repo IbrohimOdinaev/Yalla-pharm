@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useAppSelector } from "@/shared/lib/redux";
 import { Icon } from "@/shared/ui";
 
 /* Brand-coloured social glyphs. Inline SVGs (no external sprite) so the
@@ -59,6 +63,14 @@ function MailGlyph() {
 }
 
 export function Footer() {
+  const pathname = usePathname();
+  const role = useAppSelector((state) => state.auth.role);
+  const isStaffRole = role === "Admin" || role === "SuperAdmin" || role === "Pharmacist";
+  const isStaffArea =
+    pathname.startsWith("/workspace") || pathname.startsWith("/superadmin") || pathname.startsWith("/pharmacist");
+
+  if (isStaffRole || isStaffArea) return null;
+
   return (
     <footer className="mt-12 border-t border-outline/70 bg-surface-container-low">
       <div className="mx-auto w-[90%] py-10">

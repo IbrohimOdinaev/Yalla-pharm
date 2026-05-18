@@ -77,7 +77,7 @@ describe("WorkspacePage", () => {
     renderWithProviders(<WorkspacePage />, {
       preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
     });
-    expect(await screen.findByText(/Аптека Тест/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Аптека Тест/)).length).toBeGreaterThanOrEqual(1);
   });
 
   it("admin: shows the stat-card labels", async () => {
@@ -85,9 +85,9 @@ describe("WorkspacePage", () => {
     renderWithProviders(<WorkspacePage />, {
       preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
     });
-    // "Заказы" also appears in the BottomNav strip — pick any.
-    expect((await screen.findAllByText("Заказы")).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Статус аптеки")).toBeInTheDocument();
-    expect(screen.getByText("Администратор")).toBeInTheDocument();
+    expect(await screen.findByText("Заказы сегодня")).toBeInTheDocument();
+    expect(screen.getByText("Отменённые")).toBeInTheDocument();
+    expect(screen.getByText("Возвраты")).toBeInTheDocument();
+    expect(screen.getByText("Оборот")).toBeInTheDocument();
   });
 });

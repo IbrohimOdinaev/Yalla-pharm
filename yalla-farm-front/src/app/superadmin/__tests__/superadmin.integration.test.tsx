@@ -83,10 +83,10 @@ describe("SuperAdminPage", () => {
     renderWithProviders(<SuperAdminPage />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
     });
-    expect(await screen.findByText("Админы")).toBeInTheDocument();
-    expect(screen.getAllByText("Аптеки").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Лекарства").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Клиенты").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("Заказы сегодня")).toBeInTheDocument();
+    expect(screen.getByText("Успешные")).toBeInTheDocument();
+    expect(screen.getByText("Расход доставки")).toBeInTheDocument();
+    expect(screen.getByText("Аптеки по обороту сегодня")).toBeInTheDocument();
   });
 
   it("superadmin: pharmacies tab heading shows by default", async () => {

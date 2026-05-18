@@ -51,26 +51,15 @@ export function useBodyScrollLock(active: boolean) {
     // restore it after unlock, and the scrollbar width so we can pad
     // <body> if scrollbar-gutter:stable isn't supported.
     const scrollY = window.scrollY;
-    const scrollbarWidth = window.innerWidth - html.clientWidth;
-
     const prevPosition = body.style.position;
     const prevTop = body.style.top;
     const prevWidth = body.style.width;
-    const prevPaddingRight = body.style.paddingRight;
     const prevOverflow = body.style.overflow;
     const prevHtmlOverflow = html.style.overflow;
 
     body.style.position = "fixed";
     body.style.top = `-${scrollY}px`;
     body.style.width = "100%";
-    // Belt-and-braces: scrollbar-gutter handles the normal case in
-    // modern browsers, but legacy WebViews (some Android in-app browsers)
-    // ignore it, so we pad manually too — combined with `box-sizing:
-    // border-box` everywhere this is a no-op when the gutter already
-    // reserved the space.
-    if (scrollbarWidth > 0) {
-      body.style.paddingRight = `${scrollbarWidth}px`;
-    }
     body.style.overflow = "hidden";
     html.style.overflow = "hidden";
 
@@ -78,7 +67,6 @@ export function useBodyScrollLock(active: boolean) {
       body.style.position = prevPosition;
       body.style.top = prevTop;
       body.style.width = prevWidth;
-      body.style.paddingRight = prevPaddingRight;
       body.style.overflow = prevOverflow;
       html.style.overflow = prevHtmlOverflow;
       // Restore the original scroll position. Use "instant" so we don't

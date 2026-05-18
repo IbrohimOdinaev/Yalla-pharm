@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
@@ -14,17 +14,20 @@ import type { ApiMedicine } from "@/shared/types/api";
 // render and burn a "Maximum update depth exceeded" loop.
 const EMPTY_DRAFT_ITEMS: DraftItem[] = [];
 import { formatMoney } from "@/shared/lib/format";
-import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet } from "@/entities/medicine/api";
+import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet, primeMedicineCache } from "@/entities/medicine/api";
 import { Icon } from "@/shared/ui";
 
 type MedicineCardProps = {
   medicine: ApiMedicine;
   hideCart?: boolean;
   compact?: boolean;
+  footerAction?: React.ReactNode;
+  readOnlyPrice?: number | null;
+  readOnlyPricePrefix?: string;
 };
 
 // Yandex-Apteka style: flat white card, thin border, red cart button.
-export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps) {
+export function MedicineCard({ medicine, hideCart, compact, footerAction, readOnlyPrice, readOnlyPricePrefix }: MedicineCardProps) {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
   const addItem = useCartStore((state) => state.addItem);
@@ -67,8 +70,15 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
   // density once `mix-blend-multiply` filter ran.
   const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 800)).filter(Boolean), [imageRefs]);
   const price = getCheapestPrice(medicine);
+  const hasReadOnlyPriceOverride = readOnlyPrice !== undefined;
+  const displayReadOnlyPrice = hasReadOnlyPriceOverride ? (readOnlyPrice ?? undefined) : price;
+  const displayReadOnlyPrefix = readOnlyPricePrefix ?? "от ";
   const offersCount = medicine.offers?.length ?? 0;
   const [imgIndex, setImgIndex] = useState(0);
+
+  useEffect(() => {
+    primeMedicineCache(medicine);
+  }, [medicine]);
 
   const onSwipe = useCallback((e: React.TouchEvent) => {
     const touch = e.changedTouches[0];
@@ -199,7 +209,8 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
     const wasOpen = params.has("product");
     if (params.get("product") === productKey) return; // same product → no-op
     params.set("product", productKey);
-    const url = `${pathname}?${params.toString()}`;
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const url = `${pathname}?${params.toString()}${hash}`;
     if (wasOpen) router.replace(url, { scroll: false });
     else router.push(url, { scroll: false });
   }
@@ -315,10 +326,13 @@ export function MedicineCard({ medicine, hideCart, compact }: MedicineCardProps)
               read-only price strip. */}
           <div className="mt-auto">
             {hideCart ? (
-              <div className="flex items-center justify-center rounded-full bg-surface-container py-2">
-                <span className="text-xs font-bold text-on-surface">
-                  {price ? `от ${formatMoney(price)}` : "Нет офферов"}
-                </span>
+              <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-center rounded-full bg-surface-container py-2">
+                  <span className="text-xs font-bold text-on-surface">
+                    {displayReadOnlyPrice ? `${displayReadOnlyPrefix}${formatMoney(displayReadOnlyPrice)}` : "Нет офферов"}
+                  </span>
+                </div>
+                {footerAction}
               </div>
             ) : cartState.inCart ? (
               // Yellow in-cart pill — kept the same height + full-width as

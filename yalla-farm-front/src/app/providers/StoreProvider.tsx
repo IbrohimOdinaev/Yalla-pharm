@@ -30,6 +30,7 @@ function AuthPersistenceBridge() {
         token: fromStorage,
         role: claims.role,
         userId: claims.userId,
+        name: claims.name,
         pharmacyId: claims.pharmacyId,
       }));
     } else {

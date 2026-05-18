@@ -25,6 +25,11 @@ const SUPERADMIN_ITEMS: Item[] = [
   { label: "Возвраты", href: "/superadmin", hash: "refunds", icon: "warning" },
 ];
 
+function normalizePath(path: string): string {
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path;
+}
+
 export function AdminSidebar() {
   const pathname = usePathname();
   const role = useAppSelector((s) => s.auth.role);
@@ -33,11 +38,21 @@ export function AdminSidebar() {
   const [hash, setHash] = useState("");
 
   useEffect(() => {
-    setHash(window.location.hash.replace("#", ""));
-    const onHash = () => setHash(window.location.hash.replace("#", ""));
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+    const syncHash = () => {
+      const next = window.location.hash.replace("#", "");
+      setHash((prev) => (prev === next ? prev : next));
+    };
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    window.addEventListener("popstate", syncHash);
+    // Next.js can change hash via History API without hashchange.
+    const interval = window.setInterval(syncHash, 120);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("hashchange", syncHash);
+      window.removeEventListener("popstate", syncHash);
+    };
+  }, [pathname]);
 
   const items = role === "SuperAdmin" ? SUPERADMIN_ITEMS : ADMIN_ITEMS;
 
@@ -64,11 +79,14 @@ export function AdminSidebar() {
 
       <nav className="flex-1 space-y-1 px-3">
         {items.map((it) => {
-          const active = pathname.startsWith(it.href) && (it.hash ? hash === it.hash : true) && (it.hash || hash === "");
+          const currentPath = normalizePath(pathname);
+          const itemPath = normalizePath(it.href);
+          const active = currentPath === itemPath && (it.hash ? hash === it.hash : hash === "");
           return (
             <Link
               key={it.label}
               href={it.hash ? `${it.href}#${it.hash}` : it.href}
+              onClick={() => setHash(it.hash ?? "")}
               className={`group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
                 active
                   ? "bg-primary text-white shadow-card"

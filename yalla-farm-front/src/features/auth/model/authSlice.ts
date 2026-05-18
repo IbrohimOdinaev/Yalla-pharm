@@ -4,6 +4,7 @@ type AuthState = {
   token: string | null;
   role: string | null;
   userId: string | null;
+  name: string | null;
   pharmacyId: string | null;
   /** Becomes true after StoreProvider has read the persisted token (or
    *  confirmed there isn't one). Pages that gate on auth must wait for this
@@ -16,6 +17,7 @@ const initialState: AuthState = {
   token: null,
   role: null,
   userId: null,
+  name: null,
   pharmacyId: null,
   hydrated: false
 };
@@ -26,11 +28,12 @@ const authSlice = createSlice({
   reducers: {
     setCredentials: (
       state,
-      action: PayloadAction<{ token: string; role?: string | null; userId?: string | null; pharmacyId?: string | null }>
+      action: PayloadAction<{ token: string; role?: string | null; userId?: string | null; name?: string | null; pharmacyId?: string | null }>
     ) => {
       state.token = action.payload.token;
       state.role = action.payload.role ?? state.role;
       state.userId = action.payload.userId ?? state.userId;
+      state.name = action.payload.name ?? state.name;
       state.pharmacyId = action.payload.pharmacyId ?? state.pharmacyId;
       state.hydrated = true;
     },
@@ -38,6 +41,7 @@ const authSlice = createSlice({
       state.token = null;
       state.role = null;
       state.userId = null;
+      state.name = null;
       state.pharmacyId = null;
       state.hydrated = true;
     },

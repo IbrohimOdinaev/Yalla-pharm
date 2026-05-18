@@ -11,10 +11,12 @@ const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdm
 
 const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
 const NAMEID_CLAIM = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
+const NAME_CLAIM = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name";
 
 export type JwtClaims = {
   role: string | undefined;
   userId: string | undefined;
+  name: string | undefined;
   pharmacyId: string | undefined;
 };
 
@@ -27,9 +29,10 @@ export function decodeJwt(token: string): JwtClaims {
       : typeof rawRole === "string" ? rawRole
       : undefined;
     const userId = (payload.sub as string | undefined) ?? (payload[NAMEID_CLAIM] as string | undefined);
+    const name = (payload.name as string | undefined) ?? (payload[NAME_CLAIM] as string | undefined);
     const pharmacyId = (payload.pharmacy_id as string | undefined) || undefined;
-    return { role, userId, pharmacyId };
+    return { role, userId, name, pharmacyId };
   } catch {
-    return { role: undefined, userId: undefined, pharmacyId: undefined };
+    return { role: undefined, userId: undefined, name: undefined, pharmacyId: undefined };
   }
 }

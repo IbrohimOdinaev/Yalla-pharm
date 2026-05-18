@@ -1,79 +1,35 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
-import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
-import { clearCredentials } from "@/features/auth/model/authSlice";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore } from "@/features/pharmacist/model/prescriptionDraftStore";
 import { CurrentPrescriptionPill } from "@/widgets/pharmacist/CurrentPrescriptionPill";
 import { PrescriptionPickerModal } from "@/widgets/pharmacist/PrescriptionPickerModal";
-import { BottomNav } from "@/widgets/layout/BottomNav";
-import { ProductModal } from "@/widgets/product/ProductModal";
-import { Icon } from "@/shared/ui";
+import { StaffShell } from "@/widgets/layout/StaffShell";
 
 /**
- * Layout chrome for every Pharmacist page. Renders:
- *   • a sticky header with the active-prescription pill + logout
- *   • the prescription-picker modal (toggled from the pill)
- *   • the page body
- *   • the BottomNav (Pharmacist variant: Очередь / Корзина / Каталог)
+ * Layout chrome for every Pharmacist page. StaffShell renders the shared
+ * role sidebar; the active-prescription pill lives in that sidebar.
  *
  * Lazy-loads the persisted active id and per-prescription drafts on mount
  * so a refresh doesn't lose the in-progress checklist.
  */
 export function PharmacistShell({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const dispatch = useAppDispatch();
-  const role = useAppSelector((s) => s.auth.role);
-
   const loadActive = useActivePrescriptionStore((s) => s.load);
   const loadDrafts = usePrescriptionDraftStore((s) => s.load);
 
   useEffect(() => { loadActive(); loadDrafts(); }, [loadActive, loadDrafts]);
 
-  function onLogout() {
-    dispatch(clearCredentials());
-    router.replace("/login/admin");
-  }
-
   return (
-    <div className="flex min-h-screen min-h-svh flex-col bg-surface text-on-surface">
-      <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center gap-3 px-3 sm:px-6 lg:px-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-icon.png" alt="Yalla" className="h-8 w-8 flex-shrink-0" />
-
-          <CurrentPrescriptionPill />
-
-          <span className="flex-1" />
-
-          {role === "Pharmacist" ? (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary transition active:scale-95 hover:bg-secondary-soft"
-              aria-label="Выйти"
-            >
-              <Icon name="logout" size={14} />
-              <span className="hidden xs:inline">Выйти</span>
-            </button>
-          ) : null}
-        </div>
-        <div className="hair-divider" />
-      </header>
-
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-3 pb-24 pt-4 sm:px-6 lg:px-8">
-        {children}
-      </main>
-
-      <BottomNav />
+    <StaffShell
+      title="Pharmacist"
+      subtitle="Работа с рецептами"
+      sideSlot={<CurrentPrescriptionPill />}
+    >
+      {children}
       <PrescriptionPickerModal />
-      {/* ProductModal opens via `?product={key}` (set by MedicineCard click)
-          so the pharmacist's catalog tab can pop the same product modal as
-          the client side. The modal itself detects role=Pharmacist and
-          adds to the active prescription draft instead of the buyer cart. */}
-      <ProductModal />
-    </div>
+      {/* StaffShell owns ProductModal. For Pharmacist role it adds selected
+          medicines to the active prescription draft instead of buyer cart. */}
+    </StaffShell>
   );
 }

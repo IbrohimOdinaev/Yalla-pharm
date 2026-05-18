@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
+  getCachedMedicineByIdOrSlug,
   getMedicineByIdOrSlug,
   getMedicineDisplayName,
   getMainImageUrl,
@@ -51,6 +52,7 @@ function ProductModalInner() {
 
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
+  const currentPharmacyId = useAppSelector((s) => s.auth.pharmacyId);
   const addItem = useCartStore((s) => s.addItem);
   const addGuestItem = useGuestCartStore((s) => s.addItem);
   const activePrescriptionId = useActivePrescriptionStore((s) => s.activeId);
@@ -58,6 +60,7 @@ function ProductModalInner() {
   const addToDraft = usePrescriptionDraftStore((s) => s.addItem);
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
@@ -71,16 +74,36 @@ function ProductModalInner() {
       setError(null);
       setQuantity(1);
       setActiveImageIdx(0);
+      setIsRefreshingData(false);
       return;
     }
-    setIsLoading(true);
+    const cached = getCachedMedicineByIdOrSlug(productIdOrSlug);
+    if (cached) {
+      setMedicine(cached);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+    setIsRefreshingData(true);
     setError(null);
     setQuantity(1);
     setActiveImageIdx(0);
     let cancelled = false;
     getMedicineByIdOrSlug(productIdOrSlug)
-      .then((m) => { if (!cancelled) { setMedicine(m); setIsLoading(false); } })
-      .catch((err) => { if (!cancelled) { setError(err instanceof Error ? err.message : "Ошибка загрузки"); setIsLoading(false); } });
+      .then((m) => {
+        if (!cancelled) {
+          setMedicine(m);
+          setIsLoading(false);
+          setIsRefreshingData(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Ошибка загрузки");
+          setIsLoading(false);
+          setIsRefreshingData(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [productIdOrSlug]);
 
@@ -116,6 +139,16 @@ function ProductModalInner() {
   const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 1200), [medicine]);
   const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 1200);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
+  const currentPharmacyOffer = useMemo(
+    () => (currentPharmacyId ? (medicine?.offers ?? []).find((offer) => offer.pharmacyId === currentPharmacyId) : undefined),
+    [currentPharmacyId, medicine?.offers],
+  );
+  const canAddToBasket = role !== "Admin" && role !== "SuperAdmin";
+  const showOfferBreakdown = role !== "Admin" && role !== "SuperAdmin";
+  const displayedPrice = role === "Admin" && currentPharmacyId
+    ? (currentPharmacyOffer?.price ?? medicine?.minPrice ?? medicine?.price)
+    : cheapestPrice;
+  const displayedPricePrefix = role === "Admin" && currentPharmacyId ? "" : "от ";
 
   const handleAdd = useCallback(() => {
     if (!medicine) return;
@@ -145,7 +178,7 @@ function ProductModalInner() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={close} />
+      <div className="absolute inset-0 bg-black/50" onClick={close} />
 
       {/* Modal box: outer wrapper does NOT scroll — it stays fixed at
           max-h-modal (90vh fallback → 90dvh on modern browsers) and the
@@ -222,25 +255,27 @@ function ProductModalInner() {
                 {medicine.categoryName ? <p className="text-xs text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{medicine.categoryName}</span></p> : null}
 
                 <p className="text-xl sm:text-2xl font-black text-primary">
-                  {cheapestPrice ? `от ${formatMoney(cheapestPrice)}` : "Цена в аптеке"}
+                  {displayedPrice ? `${displayedPricePrefix}${formatMoney(displayedPrice)}` : "Цена в аптеке"}
                 </p>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 rounded-full bg-surface-container-low px-1 py-1">
-                    <button type="button" onClick={() => setQuantity((q) => Math.max(1, q - 1))} className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-surface-container-high active:scale-90 transition text-on-surface-variant">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    </button>
-                    <span className="min-w-6 text-center font-bold text-sm">{quantity}</span>
-                    <button type="button" onClick={() => setQuantity((q) => q + 1)} className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-surface-container-high active:scale-90 transition text-on-surface-variant">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                {canAddToBasket ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 rounded-full bg-surface-container-low px-1 py-1">
+                      <button type="button" onClick={() => setQuantity((q) => Math.max(1, q - 1))} className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-surface-container-high active:scale-90 transition text-on-surface-variant">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      </button>
+                      <span className="min-w-6 text-center font-bold text-sm">{quantity}</span>
+                      <button type="button" onClick={() => setQuantity((q) => q + 1)} className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-surface-container-high active:scale-90 transition text-on-surface-variant">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      </button>
+                    </div>
+                    <button type="button" onClick={handleAdd} className="stitch-button px-6 py-2.5 text-sm">
+                      {role === "Pharmacist" ? "В корзину рецепта" : "Добавить"}
                     </button>
                   </div>
-                  <button type="button" onClick={handleAdd} className="stitch-button px-6 py-2.5 text-sm">
-                    {role === "Pharmacist" ? "В корзину рецепта" : "Добавить"}
-                  </button>
-                </div>
+                ) : null}
 
-                {(medicine.offers ?? []).length > 0 ? (
+                {showOfferBreakdown && (medicine.offers ?? []).length > 0 ? (
                   <div className="space-y-1.5 pt-1">
                     <h4 className="text-xs font-bold text-on-surface-variant">Цены в аптеках</h4>
                     {medicine.offers!.map((offer) => (
@@ -252,6 +287,13 @@ function ProductModalInner() {
                         <p className="font-bold text-primary">{formatMoney(offer.price)}</p>
                       </div>
                     ))}
+                  </div>
+                ) : showOfferBreakdown && isRefreshingData ? (
+                  <div className="space-y-2 pt-1">
+                    <h4 className="text-xs font-bold text-on-surface-variant">Цены в аптеках</h4>
+                    <Skeleton className="h-12 w-full" rounded="xl" />
+                    <Skeleton className="h-12 w-full" rounded="xl" />
+                    <Skeleton className="h-12 w-full" rounded="xl" />
                   </div>
                 ) : null}
               </div>
@@ -279,6 +321,23 @@ function ProductModalInner() {
                       </div>
                     </div>
                   ) : null}
+                </div>
+              </div>
+            ) : isRefreshingData ? (
+              <div className="mt-5 pt-5 border-t border-surface-container-high">
+                <div className="flex flex-col sm:flex-row gap-5">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <Skeleton className="h-5 w-28" rounded="lg" />
+                    <Skeleton className="h-3 w-full" rounded="md" />
+                    <Skeleton className="h-3 w-11/12" rounded="md" />
+                    <Skeleton className="h-3 w-10/12" rounded="md" />
+                  </div>
+                  <div className="flex-shrink-0 sm:w-[280px] lg:w-[320px] space-y-2">
+                    <Skeleton className="h-4 w-full" rounded="md" />
+                    <Skeleton className="h-4 w-full" rounded="md" />
+                    <Skeleton className="h-4 w-full" rounded="md" />
+                    <Skeleton className="h-4 w-full" rounded="md" />
+                  </div>
                 </div>
               </div>
             ) : null}

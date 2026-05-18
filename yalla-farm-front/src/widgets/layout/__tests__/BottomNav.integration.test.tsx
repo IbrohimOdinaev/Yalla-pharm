@@ -1,6 +1,7 @@
 import React from "react";
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as navigation from "next/navigation";
 import { BottomNav } from "@/widgets/layout/BottomNav";
 import { renderWithProviders } from "@/test/render";
 
@@ -19,14 +20,15 @@ describe("BottomNav", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("admin: shows workspace nav (Аптека / Предложения / Заказы / Запросы)", () => {
+  it("admin: shows workspace nav (Dashboard / Предложения / Заказы / Запросы)", () => {
     renderWithProviders(<BottomNav />, {
       preloadedAuth: { token: "t", role: "Admin" },
     });
-    expect(screen.getByText("Аптека")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Предложения")).toBeInTheDocument();
     expect(screen.getByText("Заказы")).toBeInTheDocument();
     expect(screen.getByText("Запросы")).toBeInTheDocument();
+    expect(screen.queryByText("Аптека")).not.toBeInTheDocument();
     expect(screen.queryByText("Каталог")).not.toBeInTheDocument();
     expect(screen.queryByText("Корзина")).not.toBeInTheDocument();
     expect(screen.queryByText("Профиль")).not.toBeInTheDocument();
@@ -44,13 +46,29 @@ describe("BottomNav", () => {
     expect(screen.queryByText("Профиль")).not.toBeInTheDocument();
   });
 
-  it("pharmacist: shows Очередь / Корзина / Каталог / История", () => {
+  it("pharmacist: shows Dashboard / Очередь / Корзина / Каталог / История", () => {
     renderWithProviders(<BottomNav />, {
       preloadedAuth: { token: "t", role: "Pharmacist" },
     });
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Очередь")).toBeInTheDocument();
     expect(screen.getByText("Корзина")).toBeInTheDocument();
     expect(screen.getByText("Каталог")).toBeInTheDocument();
     expect(screen.getByText("История")).toBeInTheDocument();
+  });
+
+  it("admin: at /workspace/lookups only Запросы is active", () => {
+    vi.spyOn(navigation, "usePathname").mockReturnValue("/workspace/lookups");
+    window.history.replaceState({}, "", "/workspace/lookups");
+
+    renderWithProviders(<BottomNav />, {
+      preloadedAuth: { token: "t", role: "Admin" },
+    });
+
+    const dashboardTab = screen.getByRole("link", { name: "Dashboard" });
+    const lookupsTab = screen.getByRole("link", { name: "Запросы" });
+
+    expect(dashboardTab).not.toHaveClass("text-primary");
+    expect(lookupsTab).toHaveClass("text-primary");
   });
 });
