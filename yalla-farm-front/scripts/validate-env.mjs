@@ -49,7 +49,7 @@ if (!publicApiBaseUrl && !internalApiUrl) {
 
 if (!process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY) {
   warnings.push(
-    "NEXT_PUBLIC_YANDEX_MAPS_API_KEY is empty at build time. Docker deploys may still provide it through /runtime-env.js.",
+    "NEXT_PUBLIC_YANDEX_MAPS_API_KEY is empty at build time. Runtime deploys must provide it before serving pages.",
   );
 }
 

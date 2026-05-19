@@ -1,1 +1,0 @@
-window.__YALLA_PHARM_RUNTIME_CONFIG__ = window.__YALLA_PHARM_RUNTIME_CONFIG__ || {};
