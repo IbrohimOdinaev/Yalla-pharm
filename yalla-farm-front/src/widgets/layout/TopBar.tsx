@@ -527,8 +527,10 @@ export function TopBar({
 
       {/* Floating cart — phone only (sm:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
-          Sized ~60% larger than the original h-10 pill so the price stays
-          readable at thumb-distance. */}
+          Keep the pill itself fixed-width and position its label from the
+          pill center. iOS Chrome changes the visual viewport when its bottom
+          toolbar collapses; centering via normal flex + icon gap made the
+          price appear to drift relative to the button. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
           href="/cart"
@@ -537,16 +539,13 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 flex h-12 max-w-[calc(100vw-1.5rem)] items-center justify-center gap-1.5 rounded-full bg-[#3FC5C4] px-3 text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
+          className="fixed right-3 z-40 h-14 w-[268px] max-w-[calc(100vw-1.5rem)] rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
           style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
         >
-          <Icon name="bag" size={22} strokeWidth={2.4} className="flex-shrink-0" />
-          {/* Fixed-width text container so different price strings (3 vs 6
-              digits) don't shift the icon left/right and the pill itself
-              never resizes. whitespace-nowrap keeps the price on a single
-              line; tabular-nums gives every digit the same advance so the
-              text-content footprint stays stable as the price changes. */}
-          <span className="block max-w-[104px] overflow-hidden whitespace-nowrap text-center font-display text-sm font-black tabular-nums">
+          <span className="absolute left-8 top-1/2 flex -translate-y-1/2 items-center justify-center">
+            <Icon name="bag" size={26} strokeWidth={2.4} />
+          </span>
+          <span className="absolute left-1/2 top-1/2 block max-w-[160px] -translate-x-1/2 -translate-y-1/2 overflow-hidden whitespace-nowrap text-center font-display text-base font-black tabular-nums">
             {bestPrice
               ? `от ${formatMoney(bestPrice.price)}`
               : `${cartCount}`}
