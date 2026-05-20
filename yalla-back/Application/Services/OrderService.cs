@@ -63,6 +63,7 @@ public sealed class OrderService : IOrderService
     var orders = await query
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Images)
       .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Skip((page - 1) * pageSize)
@@ -246,6 +247,7 @@ public sealed class OrderService : IOrderService
     var orders = await query
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Images)
       .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Skip((page - 1) * pageSize)
@@ -286,6 +288,7 @@ public sealed class OrderService : IOrderService
             || x.Status == Status.Ready))
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Images)
       .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Take(take)
@@ -361,6 +364,7 @@ public sealed class OrderService : IOrderService
         .Where(x => x.Id == request.OrderId)
         .Include(x => x.Positions)
         .ThenInclude(x => x.Medicine)
+          .ThenInclude(m => m!.Images)
         .Include(x => x.DeliveryData)
         .FirstOrDefaultAsync(cancellationToken)
         ?? throw new InvalidOperationException($"Order '{request.OrderId}' was not found.");
