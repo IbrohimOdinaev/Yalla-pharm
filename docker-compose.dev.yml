@@ -29,6 +29,9 @@ services:
       NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: ${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
       NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL: ${NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL:-/hubs/telegram-auth}
       NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+      ONE_C_EXCHANGE_DIR: /data/1c-exchange
+    volumes:
+      - one-c-exchange-dev:/data/1c-exchange
     expose:
       - "3000"
 
@@ -38,14 +41,53 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    depends_on:
+      opensearch:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
       # Dev-friendly fallbacks so the stand still boots even when .env
       # is incomplete — never use these values for anything real.
       Jwt__Key: ${JWT_KEY:-staging-jwt-key-not-for-production-32chars!}
       ConnectionStrings__Default: ${DB_CONNECTION_STRING:-Host=postgres-staging;Username=postgres;Password=staging}
+      Elasticsearch__Url: ${ELASTICSEARCH_URL:-http://opensearch:9200}
+      Elasticsearch__MedicineIndex: ${ELASTICSEARCH_INDEX:-medicines}
+    volumes:
+      - one-c-exchange-dev:/data/1c-exchange:ro
     expose:
       - "8080"
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: yalla-opensearch-dev
+    restart: unless-stopped
+    environment:
+      - cluster.name=yalla-search-dev
+      - node.name=os-dev-1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx512m
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    expose:
+      - "9200"
+    volumes:
+      - opensearch-dev-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - yalla-net
 
 # Same external network pattern as base, but a unique name so this
 # stack can co-exist with the prod stack on the same host without
@@ -55,3 +97,7 @@ networks:
   yalla-net:
     external: true
     name: yalla-net-dev
+
+volumes:
+  opensearch-dev-data:
+  one-c-exchange-dev:

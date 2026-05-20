@@ -52,6 +52,35 @@ public sealed class MedicinesController : ControllerBase
     return Ok(response);
   }
 
+  [HttpGet("popular")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GetHomePopular(
+    [FromQuery] Guid? pharmacyId,
+    [FromQuery] int limit = 10,
+    CancellationToken cancellationToken = default)
+  {
+    var response = await _medicineService.GetHomePopularMedicinesAsync(pharmacyId, limit, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpGet("popular/admin")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> GetHomePopularForAdmin(CancellationToken cancellationToken)
+  {
+    var response = await _medicineService.GetHomePopularMedicinesForAdminAsync(cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPut("popular")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> UpdateHomePopular(
+    [FromBody] UpdateHomePopularMedicinesRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _medicineService.UpdateHomePopularMedicinesAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
   [HttpGet("all")]
   [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.Pharmacist)}")]
   public async Task<IActionResult> GetAll(

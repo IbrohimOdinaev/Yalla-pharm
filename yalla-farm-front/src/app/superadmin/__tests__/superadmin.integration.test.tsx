@@ -89,7 +89,8 @@ describe("SuperAdminPage", () => {
     expect(screen.getByText("Аптеки по обороту сегодня")).toBeInTheDocument();
   });
 
-  it("superadmin: pharmacies tab heading shows by default", async () => {
+  it("superadmin: pharmacies tab heading shows when hash is pharmacies", async () => {
+    window.history.replaceState({}, "", "/superadmin#pharmacies");
     mockSuperAdminFetch();
     renderWithProviders(<SuperAdminPage />, {
       preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },

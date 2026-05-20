@@ -40,8 +40,11 @@ services:
       NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: ${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
       NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL: ${NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL:-/hubs/telegram-auth}
       NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+      ONE_C_EXCHANGE_DIR: /data/1c-exchange
     ports:
       - "3000:3000"
+    volumes:
+      - ./yalla-farm-front/.data/1c-exchange:/data/1c-exchange
 
   api:
     image: yalla/api:dev
@@ -49,6 +52,8 @@ services:
     container_name: yalla-api
     ports:
       - "5000:8080"
+    volumes:
+      - ./yalla-farm-front/.data/1c-exchange:/data/1c-exchange:ro
     # Local-stack health gates — the base file already lists `front →
     # api` only. Add postgres/minio/opensearch here because they only
     # exist in this override; on staging/prod the api connects to

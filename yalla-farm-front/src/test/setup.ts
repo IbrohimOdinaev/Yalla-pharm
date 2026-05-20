@@ -2,6 +2,14 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+process.env.NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL = "http://localhost/hubs/updates";
+process.env.NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL = "http://localhost/hubs/telegram-auth";
+
+Object.defineProperty(window, "scrollTo", {
+  configurable: true,
+  value: vi.fn()
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

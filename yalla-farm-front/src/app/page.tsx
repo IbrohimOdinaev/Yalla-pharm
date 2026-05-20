@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
-import { getCatalogMedicinesPaginated, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
+import { getCatalogMedicinesPaginated, getHomePopularMedicines, getMedicinesByIds, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiPharmacyMedicinesGroup } from "@/shared/types/api";
 import { HeroCarousel } from "@/widgets/catalog/HeroCarousel";
@@ -57,6 +57,113 @@ const HOME_RAILS: RailSpec[] = [
   { id: "heart", title: "Сердце и давление", accent: "secondary", keywords: ["серд", "сосуд", "кардио", "давлен", "гиперт"] },
   { id: "baby", title: "Мама и малыш", accent: "primary", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
 ];
+
+const POPULAR_FALLBACK_MEDICINE_IDS = [
+  "9f257e18-86bb-57b6-8cca-39418b1a39c4",
+  "2c19af14-3397-5938-8bb6-272e654b5712",
+  "9079d7f1-2e1b-5adf-a66d-c5b6affa80da",
+  "78a66ef1-fca0-53c4-a0ba-efffcc2413aa",
+  "5cb0439c-5817-5666-8674-75a903adb648",
+  "8d0824c7-7b4e-5276-afee-f9300d68e5d3",
+];
+
+const POPULAR_SEED_MEDICINES: ApiMedicine[] = [
+  {
+    id: "9f257e18-86bb-57b6-8cca-39418b1a39c4",
+    title: "911 Крем детс под подгузник от опрелостей 150мл",
+    articul: "1-005383",
+    slug: "911-krem-dets-pod-podguznik-ot-opreloste",
+    isActive: true,
+    minPrice: 27,
+    categoryName: "Лекарственные средства",
+    images: [{ id: "057db9d4-bac0-4dc7-8c6c-6e3d2aa86dec", isMain: true, isMinimal: true }],
+  },
+  {
+    id: "2c19af14-3397-5938-8bb6-272e654b5712",
+    title: "911 Луковый шампунь от выпадения волос и облысения 150мл",
+    articul: "1-005382",
+    slug: "911-lukovyj-shampun-ot-vypadeniya-volos-i",
+    isActive: true,
+    minPrice: 27,
+    categoryName: "Уход за волосами",
+    images: [{ id: "f5c6f2dd-4fad-4f2a-b1c5-abbcbf187af4", isMain: true, isMinimal: true }],
+  },
+  {
+    id: "9079d7f1-2e1b-5adf-a66d-c5b6affa80da",
+    title: "911 Намозоль крем от сухих мозолей и натоптышей 100мл",
+    articul: "1-005381",
+    slug: "911-namozol-krem-ot-suhih-mozolej-i-nato",
+    isActive: true,
+    minPrice: 18,
+    categoryName: "Кожа",
+    images: [{ id: "afa1d0bb-fd67-4f7c-8e49-3c748a54f892", isMain: true, isMinimal: true }],
+  },
+  {
+    id: "78a66ef1-fca0-53c4-a0ba-efffcc2413aa",
+    title: "911 Сабельник гель-бальзам д/суставов туба 100мл",
+    articul: "1-005369",
+    slug: "911-sabelnik-gel-balzam-d-sustavov-tu",
+    isActive: true,
+    minPrice: 103.5,
+    categoryName: "Болезни суставов",
+    images: [{ id: "cce27115-a20b-4493-9e37-7e426c158e1d", isMain: true, isMinimal: true }],
+  },
+  {
+    id: "5cb0439c-5817-5666-8674-75a903adb648",
+    title: "911 с Хондроитином гель-бальзам д/суставов 100мл",
+    articul: "1-005370",
+    slug: "911-s-hondroitinom-gel-balzam-d-sustav",
+    isActive: true,
+    minPrice: 19,
+    categoryName: "Лекарственные средства",
+    images: [{ id: "45e2e477-5d2e-4470-b340-751395347acb", isMain: true, isMinimal: true }],
+  },
+  {
+    id: "8d0824c7-7b4e-5276-afee-f9300d68e5d3",
+    title: "911 Угрисепт гель-бальзам д/лица туба 100мл",
+    articul: "1-005367",
+    slug: "911-ugrisept-gel-balzam-d-licza-tuba-100ml",
+    isActive: true,
+    minPrice: 15,
+    categoryName: "Кожа",
+    images: [{ id: "30dfeee3-783f-4642-856a-aa00e54c86e2", isMain: true, isMinimal: true }],
+  },
+];
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Request timed out")), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function getFastPopularMedicines(pharmacyId?: string) {
+  try {
+    return await withTimeout(getHomePopularMedicines(10, pharmacyId), 900);
+  } catch {
+    const medicines = await getMedicinesByIds(POPULAR_FALLBACK_MEDICINE_IDS);
+    const byId = new Map(medicines.map((medicine) => [medicine.id, medicine]));
+    const ordered = POPULAR_FALLBACK_MEDICINE_IDS
+      .map((id) => byId.get(id))
+      .filter((medicine): medicine is ApiMedicine => Boolean(medicine));
+
+    return {
+      page: 1,
+      pageSize: ordered.length,
+      totalCount: ordered.length,
+      medicines: ordered,
+    };
+  }
+}
 
 const QUICK_CATEGORIES: QuickCategory[] = [
   // "Все категории" first — anchors the rail with the catch-all so users
@@ -197,7 +304,9 @@ function HomeContent() {
   // responses arrive so each rail can flip from skeleton → content
   // independently. Keyed map makes it trivial to skip already-fetched rails on
   // re-render and to blow the whole cache when the pharmacy filter changes.
-  const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>({});
+  const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>(() => ({
+    popular: POPULAR_SEED_MEDICINES,
+  }));
   // Tracks rails that already have a fetch in-flight OR have completed
   // successfully, so re-renders inside the rail-fetch effect don't
   // double-dispatch. Lives in a ref (not state) because we only need
@@ -240,7 +349,7 @@ function HomeContent() {
   // Also wipes the in-flight ref so the new pharmacy's rails actually
   // refetch (without the clear they'd see the rail as already-fetched).
   useEffect(() => {
-    setRailMeds({});
+    setRailMeds({ popular: POPULAR_SEED_MEDICINES });
     railFetchedRef.current.clear();
   }, [selectedPharmacy?.id]);
 
@@ -250,13 +359,15 @@ function HomeContent() {
   // retry on .catch() is the cure for the old "popular rail disappears on
   // refresh when a transient network/cold-start blip hits" bug.
   useEffect(() => {
-    if (categories.length === 0) return;
     for (const spec of HOME_RAILS) {
       if (railFetchedRef.current.has(spec.id)) continue;
       const catId = railCategoryIds[spec.id];
       if (catId === undefined) continue;
       railFetchedRef.current.add(spec.id);
-      getCatalogMedicinesPaginated(1, 10, catId || undefined, selectedPharmacy?.id)
+      const request = spec.id === "popular"
+        ? getFastPopularMedicines(selectedPharmacy?.id)
+        : getCatalogMedicinesPaginated(1, 10, catId || undefined, selectedPharmacy?.id);
+      request
         .then((data) => {
           setRailMeds((prev) => ({ ...prev, [spec.id]: Array.isArray(data?.medicines) ? data.medicines : [] }));
         })
@@ -271,7 +382,7 @@ function HomeContent() {
           setTimeout(() => setRailRetryTick((t) => t + 1), 2000);
         });
     }
-  }, [categories.length, railCategoryIds, selectedPharmacy?.id, railRetryTick]);
+  }, [railCategoryIds, selectedPharmacy?.id, railRetryTick]);
 
   useEffect(() => { loadDeliveryAddress(); }, [loadDeliveryAddress]);
 
@@ -809,7 +920,9 @@ function HomeContent() {
               const ref = railCategoryRefs[spec.id];
               // Keyword-defined rail that found no matching category → drop it.
               if (spec.keywords !== null && (ref === undefined || !ref.id)) return null;
-              const meds = railMeds[spec.id];
+              const meds = spec.id === "popular"
+                ? (railMeds[spec.id] ?? POPULAR_SEED_MEDICINES)
+                : railMeds[spec.id];
               const target = ref?.slug ? `/catalog/${ref.slug}` : "/catalog";
               return (
                 <MedicineRail
@@ -817,7 +930,7 @@ function HomeContent() {
                   title={spec.title}
                   accent={spec.accent}
                   medicines={meds ?? []}
-                  isLoading={meds === undefined}
+                  isLoading={spec.id !== "popular" && meds === undefined}
                   onViewAll={() => navRouter.push(target)}
                 />
               );

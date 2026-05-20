@@ -8,6 +8,16 @@ export type AllMedicinesResponse = {
   pageSize: number;
 };
 
+export type HomePopularMedicineItem = {
+  medicineId: string;
+  position: number;
+  medicine: ApiMedicine;
+};
+
+export type HomePopularMedicinesResponse = {
+  items: HomePopularMedicineItem[];
+};
+
 export async function getAllMedicines(
   token: string,
   query = "",
@@ -42,6 +52,20 @@ export async function updateMedicine(token: string, data: { medicineId: string; 
 
 export async function deleteMedicine(token: string, medicineId: string, permanently = false): Promise<void> {
   await apiFetch<unknown>("/api/medicines", { method: "DELETE", token, body: { medicineId, permanently } });
+}
+
+export async function getHomePopularMedicinesForAdmin(token: string): Promise<HomePopularMedicinesResponse> {
+  const response = await apiFetch<{ items?: HomePopularMedicineItem[] }>("/api/medicines/popular/admin", { token });
+  return { items: Array.isArray(response?.items) ? response.items : [] };
+}
+
+export async function updateHomePopularMedicines(token: string, medicineIds: string[]): Promise<HomePopularMedicinesResponse> {
+  const response = await apiFetch<{ items?: HomePopularMedicineItem[] }>("/api/medicines/popular", {
+    method: "PUT",
+    token,
+    body: { medicineIds },
+  });
+  return { items: Array.isArray(response?.items) ? response.items : [] };
 }
 
 export async function uploadMedicineImage(token: string, medicineId: string, file: File, isMain = false, isMinimal = false): Promise<void> {

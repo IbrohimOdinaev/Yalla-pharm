@@ -22,6 +22,18 @@ public interface IMedicineService
     GetMedicinesCatalogRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<GetMedicinesCatalogResponse> GetHomePopularMedicinesAsync(
+    Guid? pharmacyId = null,
+    int limit = 10,
+    CancellationToken cancellationToken = default);
+
+  Task<HomePopularMedicinesResponse> GetHomePopularMedicinesForAdminAsync(
+    CancellationToken cancellationToken = default);
+
+  Task<HomePopularMedicinesResponse> UpdateHomePopularMedicinesAsync(
+    UpdateHomePopularMedicinesRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<GetAllMedicinesResponse> GetAllMedicinesAsync(
     GetAllMedicinesRequest request,
     CancellationToken cancellationToken = default);

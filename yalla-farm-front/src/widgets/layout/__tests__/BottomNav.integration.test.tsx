@@ -34,10 +34,11 @@ describe("BottomNav", () => {
     expect(screen.queryByText("Профиль")).not.toBeInTheDocument();
   });
 
-  it("superadmin: shows Аптеки / Лекарства / Заказы / Рецепты", () => {
+  it("superadmin: shows Dashboard / Аптеки / Лекарства / Заказы / Рецепты", () => {
     renderWithProviders(<BottomNav />, {
       preloadedAuth: { token: "t", role: "SuperAdmin" },
     });
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Аптеки")).toBeInTheDocument();
     expect(screen.getByText("Лекарства")).toBeInTheDocument();
     expect(screen.getByText("Заказы")).toBeInTheDocument();

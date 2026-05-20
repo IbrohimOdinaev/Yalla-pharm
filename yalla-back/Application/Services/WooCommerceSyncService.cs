@@ -322,12 +322,18 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
     /// </summary>
     private static void ApplyMetadata(Medicine medicine, WooCommerceWebhookPayload product)
     {
-        if (!string.IsNullOrWhiteSpace(product.Name))
+        var name = CleanWooCommerceText(product.Name);
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            medicine.SetTitle(product.Name.Trim());
+            medicine.SetTitle(name.Trim());
         }
         // Slug column is nullable; empty string from WC is treated as "clear".
-        medicine.SetSlug(product.Slug);
+        medicine.SetSlug(CleanWooCommerceText(product.Slug));
+    }
+
+    private static string? CleanWooCommerceText(string? value)
+    {
+        return value?.Replace("\0", string.Empty);
     }
 
     private async Task UpsertOfferAsync(Guid medicineId, decimal price, int stock, CancellationToken ct)

@@ -32,6 +32,12 @@ public sealed class WebhooksController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> WooCommerceWebhook(CancellationToken cancellationToken)
     {
+        if (!_options.Enabled)
+        {
+            _logger.LogInformation("WooCommerce webhook ignored: Enabled=false");
+            return Ok(new { status = "disabled" });
+        }
+
         // Read raw body for signature verification
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
         var body = await reader.ReadToEndAsync(cancellationToken);

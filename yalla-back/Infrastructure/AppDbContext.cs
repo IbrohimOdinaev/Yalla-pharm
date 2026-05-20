@@ -44,6 +44,11 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
   public DbSet<ClientConsentHistory> ClientConsentHistory => Set<ClientConsentHistory>();
   public DbSet<PendingRefund> PendingRefunds => Set<PendingRefund>();
+  public DbSet<HomePopularMedicine> HomePopularMedicines => Set<HomePopularMedicine>();
+  public DbSet<IntegrationSource> IntegrationSources => Set<IntegrationSource>();
+  public DbSet<MedicineBarcode> MedicineBarcodes => Set<MedicineBarcode>();
+  public DbSet<ExternalProductLink> ExternalProductLinks => Set<ExternalProductLink>();
+  public DbSet<OneCImportRun> OneCImportRuns => Set<OneCImportRun>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {

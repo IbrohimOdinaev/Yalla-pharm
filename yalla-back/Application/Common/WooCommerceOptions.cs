@@ -4,6 +4,7 @@ public sealed class WooCommerceOptions
 {
     public const string SectionName = "WooCommerce";
 
+    public bool Enabled { get; set; } = true;
     public string BaseUrl { get; set; } = string.Empty;
     public string ConsumerKey { get; set; } = string.Empty;
     public string ConsumerSecret { get; set; } = string.Empty;

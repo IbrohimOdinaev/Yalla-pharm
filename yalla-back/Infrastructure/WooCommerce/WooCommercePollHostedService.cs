@@ -25,6 +25,12 @@ public sealed class WooCommercePollHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_options.Enabled)
+        {
+            _logger.LogInformation("WooCommerce polling disabled: Enabled=false");
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_options.BaseUrl))
         {
             _logger.LogInformation("WooCommerce polling disabled: BaseUrl not configured");
