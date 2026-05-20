@@ -539,16 +539,21 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 h-14 w-[268px] max-w-[calc(100vw-1.5rem)] rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
-          style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+          className="fixed right-3 z-40 grid h-14 w-[268px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
+          style={{
+            top: "calc(100dvh - 4.5rem - env(safe-area-inset-bottom))",
+            transform: "translate3d(0,0,0)",
+          }}
         >
-          <span className="absolute left-8 top-1/2 flex -translate-y-1/2 items-center justify-center">
+          <span className="pointer-events-none absolute left-8 top-1/2 flex -translate-y-1/2 items-center justify-center">
             <Icon name="bag" size={26} strokeWidth={2.4} />
           </span>
-          <span className="absolute left-1/2 top-1/2 block max-w-[160px] -translate-x-1/2 -translate-y-1/2 overflow-hidden whitespace-nowrap text-center font-display text-base font-black tabular-nums">
-            {bestPrice
-              ? `от ${formatMoney(bestPrice.price)}`
-              : `${cartCount}`}
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="block max-w-[160px] overflow-hidden whitespace-nowrap text-center font-display text-base font-black tabular-nums">
+              {bestPrice
+                ? `от ${formatMoney(bestPrice.price)}`
+                : `${cartCount}`}
+            </span>
           </span>
         </Link>
       ) : null}
