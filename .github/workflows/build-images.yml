@@ -96,11 +96,11 @@ jobs:
           # warning instead — image push still gates success.
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }},ignore-error=true
-          # Front bake-time vars — Next.js reads NEXT_PUBLIC_* at build
-          # time and bakes them into the JS bundle. The runtime env in
-          # the prod compose can't override these any more, so they
-          # have to come from CI secrets here.
+          # Front bake-time fallbacks. Docker deploys override public
+          # browser config through /runtime-env.js at container start.
           build-args: |
             INTERNAL_API_URL=http://api:8080
             NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_YANDEX_MAPS_API_KEY }}
             NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+            NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=/hubs/updates
+            NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL=/hubs/telegram-auth

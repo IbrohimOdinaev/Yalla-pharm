@@ -13,6 +13,7 @@ using Yalla.Infrastructure.Sms;
 using Yalla.Infrastructure.Storage;
 using Yalla.Infrastructure.WooCommerce;
 using Yalla.Infrastructure.Jura;
+using Yalla.Infrastructure.OneC;
 using Yalla.Infrastructure.Search;
 using Yalla.Infrastructure.Telegram;
 using Yalla.Application.Services;
@@ -272,6 +273,9 @@ public static class DependencyInjection
       }
     });
     services.AddHostedService<WooCommercePollHostedService>();
+
+    services.Configure<OneCImportOptions>(config.GetSection(OneCImportOptions.SectionName));
+    services.AddHostedService<OneCImportHostedService>();
 
     // Jura delivery service
     services.Configure<JuraOptions>(options =>

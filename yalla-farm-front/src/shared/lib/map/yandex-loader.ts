@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { env } from "@/shared/config/env";
+import { getRuntimeConfigValue } from "@/shared/config/runtime-config";
 
 /**
  * Singleton loader for Yandex Maps API v2.1 (the legacy `ymaps` global,
@@ -18,12 +18,21 @@ import { env } from "@/shared/config/env";
  */
 let loadPromise: Promise<any> | null = null;
 
+function getYandexMapsApiKey(): string {
+  return getRuntimeConfigValue("NEXT_PUBLIC_YANDEX_MAPS_API_KEY");
+}
+
+function rejectWithReason(reject: (reason?: unknown) => void, reason: string, message: string) {
+  console.error(`[map:yandex] ${reason}`);
+  reject(new Error(message));
+}
+
 export function loadYmaps(): Promise<any> {
   if (loadPromise) return loadPromise;
 
   loadPromise = new Promise((resolve, reject) => {
     if (typeof window === "undefined") {
-      reject(new Error("Cannot load Yandex Maps on server"));
+      rejectWithReason(reject, "server-side-load", "Cannot load Yandex Maps on server");
       return;
     }
 
@@ -33,9 +42,13 @@ export function loadYmaps(): Promise<any> {
       return;
     }
 
-    const apiKey = env.yandexMapsApiKey;
+    const apiKey = getYandexMapsApiKey();
     if (!apiKey) {
-      reject(new Error("NEXT_PUBLIC_YANDEX_MAPS_API_KEY is not configured."));
+      rejectWithReason(
+        reject,
+        "missing-api-key",
+        "NEXT_PUBLIC_YANDEX_MAPS_API_KEY is not configured.",
+      );
       return;
     }
 
@@ -62,7 +75,11 @@ export function loadYmaps(): Promise<any> {
       if (ymaps) {
         ymaps.ready(() => resolve(ymaps));
       } else {
-        reject(new Error("ymaps not available after script load"));
+        rejectWithReason(
+          reject,
+          "ymaps-global-missing",
+          "ymaps not available after script load",
+        );
       }
     };
 
@@ -74,9 +91,17 @@ export function loadYmaps(): Promise<any> {
     script.addEventListener("load", onLoad, { once: true });
     script.addEventListener(
       "error",
-      () => reject(new Error("Failed to load Yandex Maps script")),
+      () =>
+        rejectWithReason(
+          reject,
+          "script-load-failed",
+          "Failed to load Yandex Maps script",
+        ),
       { once: true },
     );
+  }).catch((error) => {
+    loadPromise = null;
+    throw error;
   });
 
   return loadPromise;

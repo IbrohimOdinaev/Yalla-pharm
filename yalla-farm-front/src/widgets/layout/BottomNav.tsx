@@ -14,6 +14,7 @@ const ADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
 ];
 
 const SUPERADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
+  { href: "/superadmin#dashboard", label: "Dashboard", icon: "grid" },
   { href: "/superadmin#pharmacies", label: "Аптеки", icon: "pharmacy" },
   { href: "/superadmin#medicines", label: "Лекарства", icon: "bag" },
   { href: "/superadmin#orders", label: "Заказы", icon: "orders" },

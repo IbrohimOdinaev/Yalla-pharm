@@ -2,6 +2,26 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/app/providers/StoreProvider";
 
+export const dynamic = "force-dynamic";
+
+const runtimeConfigKeys = [
+  "NEXT_PUBLIC_API_BASE_URL",
+  "NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL",
+  "NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL",
+  "NEXT_PUBLIC_YANDEX_MAPS_API_KEY",
+] as const;
+
+function getRuntimeConfigScript() {
+  const runtimeConfig = Object.fromEntries(
+    runtimeConfigKeys.map((key) => [key, process.env[key] ?? ""]),
+  );
+
+  return `window.__YALLA_PHARM_RUNTIME_CONFIG__ = ${JSON.stringify(runtimeConfig).replace(
+    /</g,
+    "\\u003c",
+  )};`;
+}
+
 export const metadata: Metadata = {
   title: "Yalla Pharm | Pharmacy Dushanbe",
   description: "Онлайн-аптека Душанбе: доставка лекарств",
@@ -26,6 +46,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ru">
       <head>
+        <script
+          id="yalla-runtime-config"
+          dangerouslySetInnerHTML={{ __html: getRuntimeConfigScript() }}
+        />
         {/* Warm up the TCP+TLS connection to Yandex Maps' CDNs while the
             user is still reading the page. The SDK loader, the tile
             servers and the static assets each live on a separate host;

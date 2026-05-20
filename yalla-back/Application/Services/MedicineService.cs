@@ -247,6 +247,150 @@ public sealed class MedicineService : IMedicineService
         };
     }
 
+    public async Task<GetMedicinesCatalogResponse> GetHomePopularMedicinesAsync(
+      Guid? pharmacyId = null,
+      int limit = 10,
+      CancellationToken cancellationToken = default)
+    {
+        var safeLimit = limit <= 0 ? 6 : Math.Min(limit, 24);
+        var query = from popular in _dbContext.HomePopularMedicines.AsNoTracking()
+                    join medicine in _dbContext.Medicines.AsNoTracking()
+                      on popular.MedicineId equals medicine.Id
+                    where medicine.IsActive && medicine.IsCatalogMedicine
+                    where pharmacyId.HasValue
+                      ? medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0)
+                      : medicine.Offers.Any(o => o.StockQuantity > 0)
+                    orderby popular.Position
+                    select new { popular.Position, Medicine = medicine };
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var medicines = await query
+          .Take(safeLimit)
+          .Select(x => new MedicineSearchItemResponse
+          {
+              Id = x.Medicine.Id,
+              Title = x.Medicine.Title,
+              Articul = x.Medicine.Articul,
+              Slug = x.Medicine.Slug,
+              IsActive = x.Medicine.IsActive,
+              CategoryName = x.Medicine.Category != null ? x.Medicine.Category.Name : null,
+              MinPrice = pharmacyId.HasValue
+                ? (x.Medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.Price > 0)
+                    ? x.Medicine.Offers.Where(o => o.PharmacyId == pharmacyId.Value && o.Price > 0).Min(o => o.Price)
+                    : (decimal?)null)
+                : (x.Medicine.Offers.Any(o => o.Price > 0)
+                    ? x.Medicine.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                    : (decimal?)null),
+              Images = x.Medicine.Images
+                .OrderByDescending(i => i.IsMain)
+                .ThenByDescending(i => i.IsMinimal)
+                .Select(i => new MedicineImageResponse
+                {
+                    Id = i.Id,
+                    Key = i.Key,
+                    IsMain = i.IsMain,
+                    IsMinimal = i.IsMinimal
+                })
+                .ToList()
+          })
+          .ToListAsync(cancellationToken);
+
+        return new GetMedicinesCatalogResponse
+        {
+            Page = 1,
+            PageSize = safeLimit,
+            TotalCount = totalCount,
+            Medicines = medicines
+        };
+    }
+
+    public async Task<HomePopularMedicinesResponse> GetHomePopularMedicinesForAdminAsync(
+      CancellationToken cancellationToken = default)
+    {
+        var items = await (from popular in _dbContext.HomePopularMedicines.AsNoTracking()
+                           join medicine in _dbContext.Medicines.AsNoTracking()
+                             on popular.MedicineId equals medicine.Id
+                           where medicine.IsCatalogMedicine
+                           orderby popular.Position
+                           select new HomePopularMedicineItemResponse
+                           {
+                               MedicineId = medicine.Id,
+                               Position = popular.Position,
+                               Medicine = new MedicineSearchItemResponse
+                               {
+                                   Id = medicine.Id,
+                                   Title = medicine.Title,
+                                   Articul = medicine.Articul,
+                                   Slug = medicine.Slug,
+                                   IsActive = medicine.IsActive,
+                                   CategoryName = medicine.Category != null ? medicine.Category.Name : null,
+                                   MinPrice = medicine.Offers.Any(o => o.Price > 0)
+                                     ? medicine.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                                     : null,
+                                   Images = medicine.Images
+                                     .OrderByDescending(i => i.IsMain)
+                                     .ThenByDescending(i => i.IsMinimal)
+                                     .Select(i => new MedicineImageResponse
+                                     {
+                                         Id = i.Id,
+                                         Key = i.Key,
+                                         IsMain = i.IsMain,
+                                         IsMinimal = i.IsMinimal
+                                     })
+                                     .ToList()
+                               }
+                           }).ToListAsync(cancellationToken);
+
+        return new HomePopularMedicinesResponse { Items = items };
+    }
+
+    public async Task<HomePopularMedicinesResponse> UpdateHomePopularMedicinesAsync(
+      UpdateHomePopularMedicinesRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var medicineIds = (request.MedicineIds ?? Array.Empty<Guid>())
+          .Where(id => id != Guid.Empty)
+          .Distinct()
+          .Take(24)
+          .ToList();
+
+        var existingMedicineIds = await _dbContext.Medicines
+          .AsNoTracking()
+          .Where(x => medicineIds.Contains(x.Id) && x.IsCatalogMedicine)
+          .Select(x => x.Id)
+          .ToListAsync(cancellationToken);
+
+        var missingIds = medicineIds.Except(existingMedicineIds).ToList();
+        if (missingIds.Count > 0)
+            throw new InvalidOperationException($"Catalog medicines were not found: {string.Join(", ", missingIds)}.");
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        var existingRows = await _dbContext.HomePopularMedicines
+          .AsTracking()
+          .ToListAsync(cancellationToken);
+
+        if (existingRows.Count > 0)
+        {
+            _dbContext.HomePopularMedicines.RemoveRange(existingRows);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var position = 1;
+        foreach (var medicineId in medicineIds)
+        {
+            _dbContext.HomePopularMedicines.Add(new HomePopularMedicine(medicineId, position));
+            position += 1;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return await GetHomePopularMedicinesForAdminAsync(cancellationToken);
+    }
+
     public async Task<GetAllMedicinesResponse> GetAllMedicinesAsync(
       GetAllMedicinesRequest request,
       CancellationToken cancellationToken = default)

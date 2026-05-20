@@ -163,6 +163,18 @@ export async function getCatalogMedicinesPaginated(
   return response;
 }
 
+export async function getHomePopularMedicines(
+  limit = 10,
+  pharmacyId?: string,
+): Promise<ApiPaginated<ApiMedicine>> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (pharmacyId) params.set("pharmacyId", pharmacyId);
+  const response = await apiFetch<ApiPaginated<ApiMedicine>>(`/api/medicines/popular?${params}`);
+  const medicines = Array.isArray(response?.medicines) ? response.medicines : [];
+  medicines.forEach(putMedicineInCache);
+  return response;
+}
+
 export async function searchMedicines(query: string, limit = 24): Promise<ApiMedicine[]> {
   const response = await apiFetch<{ medicines?: ApiMedicine[] }>("/api/medicines/search", {
     method: "POST",

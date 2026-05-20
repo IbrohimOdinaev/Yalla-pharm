@@ -1,30 +1,70 @@
-import { test, expect } from "@playwright/test";
+import { expect, test, type ConsoleMessage, type Page } from "@playwright/test";
 import { resetSession } from "./fixtures/auth";
 
+const criticalMapErrorReasons = [
+  "missing-api-key",
+  "script-load-failed",
+  "ymaps-global-missing",
+  "server-side-load",
+];
+
+function collectYandexMapErrors(page: Page) {
+  const messages: string[] = [];
+
+  page.on("console", (message: ConsoleMessage) => {
+    if (message.type() === "error" && message.text().includes("[map:yandex]")) {
+      messages.push(message.text());
+    }
+  });
+
+  return messages;
+}
+
+async function hasRuntimeYandexKey(page: Page) {
+  return page.evaluate(() => {
+    const win = window as unknown as {
+      __YALLA_PHARM_RUNTIME_CONFIG__?: Record<string, string>;
+    };
+
+    return Boolean(win.__YALLA_PHARM_RUNTIME_CONFIG__?.NEXT_PUBLIC_YANDEX_MAPS_API_KEY);
+  });
+}
+
+async function hasYmapsGlobal(page: Page) {
+  return page.evaluate(() => Boolean((window as unknown as { ymaps?: unknown }).ymaps));
+}
+
+async function expectYandexMapBoots(page: Page) {
+  const mapErrors = collectYandexMapErrors(page);
+
+  await resetSession(page);
+  await page.goto("/pharmacies/map");
+
+  await expect(page.getByText("Не удалось загрузить карту")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect.poll(() => hasRuntimeYandexKey(page), { timeout: 10_000 }).toBe(true);
+  await expect
+    .poll(
+      () =>
+        page
+          .locator('script[data-yandex-maps="v2"][src*="api-maps.yandex.ru/2.1/"]')
+          .count(),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
+  await expect.poll(() => hasYmapsGlobal(page), { timeout: 20_000 }).toBe(true);
+
+  const criticalErrors = mapErrors.filter((message) =>
+    criticalMapErrorReasons.some((reason) => message.includes(reason)),
+  );
+  expect(criticalErrors).toEqual([]);
+}
+
 test.describe("Pharmacies map", () => {
-  test.beforeEach(async ({ page }) => {
-    await resetSession(page);
-    await page.goto("/pharmacies/map");
-    await page.waitForLoadState("networkidle").catch(() => undefined);
-  });
-
-  test("map canvas loads", async ({ page }) => {
-    // Google Maps injects iframes / canvases with attributes we can query.
-    const mapRoot = page.locator("div").filter({ has: page.locator('[role="region"]') }).first();
-    await expect(mapRoot.first()).toBeVisible({ timeout: 15_000 });
-  });
-
-  test("pharmacy list below map is scrollable", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /аптек в Душанбе/i }).or(
-      page.getByText(/Нет аптек/i),
-    ).first()).toBeVisible();
-  });
-
-  test("custom advanced-markers load (no default red pins)", async ({ page }) => {
-    // Advanced markers wrap our custom HTML in a specific Google class name.
-    // We check that native <img[src="...red_pin..."]> is not used by our overlays.
-    await page.waitForTimeout(3_000); // give map a moment to render markers
-    const defaultRedPins = page.locator('img[src*="red_pin"], img[src*="red-dot"]');
-    expect(await defaultRedPins.count()).toBe(0);
-  });
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    test(`Yandex map boots on fresh load #${attempt}`, async ({ page }) => {
+      await expectYandexMapBoots(page);
+    });
+  }
 });

@@ -92,7 +92,7 @@ export default function AdminLookupsPage() {
 
   return (
     <StaffShell title="Запросы" subtitle="Ручной поиск">
-      <div className="mx-auto max-w-5xl space-y-4">
+      <div className="space-y-4">
         <div className="rounded-xl bg-gradient-to-br from-primary to-primary-container px-4 py-3 text-white sm:px-5 sm:py-4">
           <p className="text-[10px] font-bold uppercase tracking-wider opacity-75">Manual Lookup</p>
           <h1 className="mt-1 text-lg font-extrabold sm:text-xl">Запросы</h1>

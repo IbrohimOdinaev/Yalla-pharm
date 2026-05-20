@@ -11,7 +11,7 @@ import { StaffShell } from "@/widgets/layout/StaffShell";
 import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, type ApiAdmin } from "@/entities/admin/api";
 import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon } from "@/entities/pharmacy/admin-api";
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
-import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage } from "@/entities/medicine/admin-api";
+import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage, getHomePopularMedicinesForAdmin, updateHomePopularMedicines, type HomePopularMedicineItem } from "@/entities/medicine/admin-api";
 import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import { getCategories, flattenCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
@@ -35,7 +35,7 @@ import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
-type Tab = "pharmacies" | "medicines" | "orders" | "prescriptions";
+type Tab = "dashboard" | "pharmacies" | "medicines" | "orders" | "prescriptions";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 
@@ -55,7 +55,7 @@ export default function SuperAdminPage() {
   const role = useAppSelector((state) => state.auth.role);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>("pharmacies");
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
   // Auth gate — bounce unauthenticated/non-super visitors to the home page.
   // Gated on `hydrated`: token/role are null until StoreProvider rehydrates
@@ -75,8 +75,8 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "medicines" || h === "orders" || h === "prescriptions") setActiveTab(h);
-      else setActiveTab("pharmacies");
+      if (h === "pharmacies" || h === "medicines" || h === "orders" || h === "prescriptions") setActiveTab(h);
+      else setActiveTab("dashboard");
     }
     syncHash();
     window.addEventListener("hashchange", syncHash);
@@ -100,11 +100,12 @@ export default function SuperAdminPage() {
           <p className="text-sm opacity-80">Управление аптеками, каталогом, клиентами и заказами.</p>
         </div>
 
-        {/* Stats */}
-        <StatsDashboard token={token} />
-
-        {/* Payment BaseUrl settings */}
-        <PaymentSettingsCard token={token} />
+        {activeTab === "dashboard" ? (
+          <>
+            <StatsDashboard token={token} />
+            <PaymentSettingsCard token={token} />
+          </>
+        ) : null}
 
         {activeTab === "pharmacies" ? <PharmaciesTab token={token} /> : null}
         {activeTab === "medicines" ? <MedicinesTab token={token} /> : null}
@@ -779,18 +780,19 @@ function MedicinesTab({ token }: { token: string }) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
   const [categoryId, setCategoryId] = useState<string>("");
-  const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [flatCats, setFlatCats] = useState<ApiCategory[]>([]);
   const [selected, setSelected] = useState<ApiMedicine | null>(null);
   const [selectedDetails, setSelectedDetails] = useState<ApiMedicine | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [popularItems, setPopularItems] = useState<HomePopularMedicineItem[]>([]);
+  const [popularSaving, setPopularSaving] = useState(false);
+  const [popularMsg, setPopularMsg] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageSize = 50;
 
   useEffect(() => {
     getCategories().then((cats) => {
-      setCategories(cats);
       setFlatCats(flattenCategories(cats));
     }).catch(() => undefined);
   }, []);
@@ -803,7 +805,14 @@ function MedicinesTab({ token }: { token: string }) {
     }).catch(() => undefined);
   }, [token]);
 
+  const loadPopular = useCallback(() => {
+    getHomePopularMedicinesForAdmin(token)
+      .then((response) => setPopularItems(response.items.sort((a, b) => a.position - b.position)))
+      .catch(() => undefined);
+  }, [token]);
+
   useEffect(() => { load(query, page, activeFilter, categoryId); }, [load, page, activeFilter, categoryId]);
+  useEffect(() => { loadPopular(); }, [loadPopular]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
@@ -831,6 +840,39 @@ function MedicinesTab({ token }: { token: string }) {
   function onCategoryChange(catId: string) {
     setCategoryId(catId);
     setPage(1);
+  }
+
+  async function savePopularIds(ids: string[]) {
+    setPopularSaving(true);
+    setPopularMsg(null);
+    try {
+      const response = await updateHomePopularMedicines(token, ids);
+      setPopularItems(response.items.sort((a, b) => a.position - b.position));
+      setPopularMsg("Популярные товары обновлены.");
+    } catch (err) {
+      setPopularMsg(err instanceof Error ? err.message : "Не удалось обновить популярные товары.");
+    } finally {
+      setPopularSaving(false);
+    }
+  }
+
+  function addPopular(medicine: ApiMedicine) {
+    if (popularItems.some((item) => item.medicineId === medicine.id)) return;
+    void savePopularIds([...popularItems.map((item) => item.medicineId), medicine.id]);
+  }
+
+  function removePopular(medicineId: string) {
+    void savePopularIds(popularItems.map((item) => item.medicineId).filter((id) => id !== medicineId));
+  }
+
+  function movePopular(medicineId: string, direction: -1 | 1) {
+    const ids = popularItems.map((item) => item.medicineId);
+    const index = ids.indexOf(medicineId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return;
+    const next = [...ids];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    void savePopularIds(next);
   }
 
   /* Create medicine */
@@ -898,6 +940,52 @@ function MedicinesTab({ token }: { token: string }) {
           <button type="submit" className="stitch-button">Создать</button>
         </form>
 
+        <div className="stitch-card space-y-3 p-3 xs:p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm xs:text-base sm:text-lg font-bold">Популярные товары главной</h3>
+              <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">
+                Фиксированный список для блока “Популярные товары”. Порядок здесь равен порядку на главной.
+              </p>
+            </div>
+            <span className="rounded-full bg-surface-container-low px-3 py-1 text-xs font-bold text-on-surface-variant">
+              {popularItems.length}/24
+            </span>
+          </div>
+          {popularItems.length === 0 ? (
+            <div className="rounded-xl bg-surface-container-low p-3 text-sm text-on-surface-variant">
+              Список пуст. Добавьте товар кнопкой “В популярные” в каталоге ниже.
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {popularItems.map((item, index) => (
+                <div key={item.medicineId} className="flex items-center gap-3 rounded-xl border border-outline/60 p-2">
+                  <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop">
+                    {resolveMedicineImageUrl(item.medicine) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={resolveMedicineImageUrl(item.medicine)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">&mdash;</div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{index + 1}. {getMedicineDisplayName(item.medicine)}</p>
+                    <p className="text-[10px] text-on-surface-variant">{item.medicine.minPrice ? formatMoney(item.medicine.minPrice) : "Цена не задана"}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button type="button" disabled={index === 0 || popularSaving} className="rounded-lg bg-surface-container-low px-2 py-1 text-[10px] font-bold disabled:opacity-30" onClick={() => movePopular(item.medicineId, -1)}>↑</button>
+                    <button type="button" disabled={index === popularItems.length - 1 || popularSaving} className="rounded-lg bg-surface-container-low px-2 py-1 text-[10px] font-bold disabled:opacity-30" onClick={() => movePopular(item.medicineId, 1)}>↓</button>
+                    <button type="button" disabled={popularSaving} className="rounded-lg bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700 disabled:opacity-30" onClick={() => removePopular(item.medicineId)}>Убрать</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {popularMsg ? (
+            <div className={`text-sm ${popularMsg.includes("обновлены") ? "text-emerald-700" : "text-red-700"}`}>{popularMsg}</div>
+          ) : null}
+        </div>
+
         {/* Search */}
         <input className="stitch-input w-full" placeholder="Поиск лекарств..." value={query} onChange={(e) => onSearchChange(e.target.value)} />
 
@@ -938,32 +1026,54 @@ function MedicinesTab({ token }: { token: string }) {
 
         {/* List */}
         <div className="grid grid-cols-2 gap-2 xs:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {medicines.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`stitch-card overflow-hidden text-left transition ${selected?.id === m.id ? "ring-2 ring-primary" : ""}`}
-              onClick={() => setSelected(m)}
-            >
-              <div className="flex gap-3 p-3">
-                <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop">
-                  {resolveMedicineImageUrl(m) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={resolveMedicineImageUrl(m)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">&mdash;</div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm truncate">{getMedicineDisplayName(m)}</p>
-                  {m.articul ? <p className="text-[10px] font-mono text-on-surface-variant">{m.articul}</p> : null}
-                  <span className={`inline-block mt-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${m.isActive === false ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>
-                    {m.isActive === false ? "Скрыт" : "В каталоге"}
-                  </span>
+          {medicines.map((m) => {
+            const isPopular = popularItems.some((item) => item.medicineId === m.id);
+            return (
+              <div
+                key={m.id}
+                role="button"
+                tabIndex={0}
+                className={`stitch-card overflow-hidden text-left transition ${selected?.id === m.id ? "ring-2 ring-primary" : ""}`}
+                onClick={() => setSelected(m)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") setSelected(m);
+                }}
+              >
+                <div className="flex gap-3 p-3">
+                  <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop">
+                    {resolveMedicineImageUrl(m) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={resolveMedicineImageUrl(m)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">&mdash;</div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm truncate">{getMedicineDisplayName(m)}</p>
+                    {m.articul ? <p className="text-[10px] font-mono text-on-surface-variant">{m.articul}</p> : null}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold ${m.isActive === false ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>
+                        {m.isActive === false ? "Скрыт" : "В каталоге"}
+                      </span>
+                      {isPopular ? <span className="inline-block rounded-full bg-yellow-100 px-1.5 py-0.5 text-[9px] font-bold text-yellow-800">Популярный</span> : null}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={popularSaving}
+                      className={`mt-2 w-full rounded-lg px-2 py-1 text-[10px] font-bold transition disabled:opacity-40 ${isPopular ? "bg-red-100 text-red-700" : "bg-primary-container text-primary"}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (isPopular) removePopular(m.id);
+                        else addPopular(m);
+                      }}
+                    >
+                      {isPopular ? "Убрать из популярных" : "В популярные"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* Pagination */}
