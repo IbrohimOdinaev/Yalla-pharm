@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatMoney } from "@/shared/lib/format";
+import { getMinimalImageUrl, imageSrcSet } from "@/entities/medicine/api";
 import {
   getAdminOrders,
   startAssembly,
@@ -21,6 +22,7 @@ import {
   computeNetCost,
   isOrderDataLost,
 } from "@/entities/order/totals";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 import type { ApiOrder } from "@/shared/types/api";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -57,6 +59,9 @@ type Props = {
 };
 
 export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [order, setOrder] = useState<ApiOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +87,8 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  useBodyScrollLock(true);
 
   // Refresh when tab regains focus + light polling to catch JURA auto-transitions.
   useEffect(() => {
@@ -171,18 +178,28 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
     });
   }
 
+  function openProduct(medicineId: string) {
+    if (!medicineId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("product", medicineId);
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    router.push(`${pathname}?${params.toString()}${hash}`, { scroll: false });
+  }
+
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-16 overflow-y-auto" onClick={onClose}>
-        <div className="stitch-card w-full max-w-2xl p-6 text-sm" onClick={(e) => e.stopPropagation()}>Загрузка...</div>
+      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 pt-16" onClick={onClose}>
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="stitch-card relative z-10 w-full max-w-2xl p-6 text-sm" onClick={(e) => e.stopPropagation()}>Загрузка...</div>
       </div>
     );
   }
 
   if (!order) {
     return (
-      <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-16 overflow-y-auto" onClick={onClose}>
-        <div className="stitch-card w-full max-w-2xl p-6 text-sm text-on-surface-variant" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 pt-16" onClick={onClose}>
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="stitch-card relative z-10 w-full max-w-2xl p-6 text-sm text-on-surface-variant" onClick={(e) => e.stopPropagation()}>
           {error ?? "Заказ не найден."}
         </div>
       </div>
@@ -200,8 +217,9 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-start justify-center p-4 pt-8 overflow-y-auto" onClick={onClose}>
-        <div className="stitch-card w-full max-w-2xl p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 pt-8" onClick={onClose}>
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="stitch-card relative z-10 w-full max-w-2xl p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -353,37 +371,60 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
             ) : (
               positions.map((pos) => {
                 const medicineName = pos.medicine?.title || pos.medicine?.name || pos.medicineId.slice(0, 8);
+                const coverImage = getMinimalImageUrl(pos.medicine, 120);
+                const coverImageRef = pos.medicine?.images?.find((img) => img.isMinimal)
+                  ?? pos.medicine?.images?.find((img) => img.isMain)
+                  ?? pos.medicine?.images?.[0];
                 const isRejected = pos.isRejected === true;
                 const canSelect = status === "Preparing" && !isRejected;
 
                 return (
                   <div
                     key={pos.positionId}
-                    className={`flex items-center gap-3 rounded-xl p-3 transition ${isRejected ? "bg-red-50 opacity-60" : "bg-surface-container-low"}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openProduct(pos.medicineId)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openProduct(pos.medicineId);
+                      }
+                    }}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition hover:bg-surface-container ${isRejected ? "bg-red-50 opacity-60" : "bg-surface-container-low"}`}
                   >
                     {canSelect && (
                       <input
                         type="checkbox"
                         checked={selectedPositions.has(pos.positionId)}
+                        onClick={(event) => event.stopPropagation()}
                         onChange={() => togglePosition(pos.positionId)}
                         className="h-4 w-4 rounded"
                       />
                     )}
-                    <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-image-backdrop flex items-center justify-center text-xs text-on-surface-variant font-bold">
-                      {medicineName[0]}
+                    <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop flex items-center justify-center text-xs text-on-surface-variant font-bold">
+                      {coverImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={coverImage}
+                          srcSet={imageSrcSet(coverImageRef, 120, 240) || undefined}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-contain p-1 mix-blend-multiply"
+                        />
+                      ) : (
+                        medicineName[0]
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/product/${pos.medicineId}`}
-                        className="text-sm font-bold truncate block hover:text-primary"
-                      >
+                      <p className="text-sm font-bold truncate block hover:text-primary">
                         {medicineName}
                         {pos.useUnitMode && pos.unitTotalPrice != null ? (
                           <span className="ml-1.5 rounded-full bg-accent-sun/30 px-1.5 py-0.5 align-middle text-[9px] font-bold text-accent-sun-ink">
                             поштучно
                           </span>
                         ) : null}
-                      </Link>
+                      </p>
                       {pos.useUnitMode && pos.unitTotalPrice != null ? (
                         <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                           <span className="font-bold text-on-surface">{pos.unitCount ?? 0} шт.</span>
