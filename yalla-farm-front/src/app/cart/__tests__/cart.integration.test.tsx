@@ -28,8 +28,8 @@ describe("CartPage", () => {
     expect(await screen.findByText(/Корзина пустая/)).toBeInTheDocument();
   });
 
-  it("renders the «Корзина» heading from TopBar", () => {
+  it("does not render the extra cart top bar", () => {
     renderWithProviders(<CartPage />);
-    expect(screen.getByRole("heading", { name: "Корзина" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Корзина" })).not.toBeInTheDocument();
   });
 });

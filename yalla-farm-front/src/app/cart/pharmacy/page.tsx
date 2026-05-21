@@ -605,17 +605,11 @@ function PharmacySelectPageInner() {
             <button
               type="button"
               onClick={() => setIsPanelCollapsed(true)}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-card transition hover:bg-surface-container-high active:scale-95"
-              aria-label="Скрыть список аптек"
-              title="Скрыть список"
+              className="flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-full bg-surface-container-lowest px-3 font-display text-xs font-extrabold text-on-surface shadow-card transition hover:bg-surface-container-high active:scale-95"
+              aria-label="Показать карту"
+              title="Показать карту"
             >
-              {/* Chevron points in the direction the panel will move on
-                  click — down on phones (panel slides down to reveal the
-                  map) and left on desktop (panel slides off-screen left).
-                  The previous "up" arrow read as "expand panel" which is
-                  the opposite of what the click does. */}
-              <Icon name="chevron-down" size={16} className="md:hidden" />
-              <Icon name="chevron-left" size={16} className="hidden md:block" />
+              <span>Карта ^</span>
             </button>
           </div>
 

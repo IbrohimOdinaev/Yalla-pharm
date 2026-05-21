@@ -117,7 +117,7 @@ public static class DependencyInjection
         && allowBypass;
       options.CodeLength = int.TryParse(config[$"{SmsVerificationOptions.SectionName}:CodeLength"], out var codeLength)
         ? codeLength
-        : 6;
+        : 4;
       options.CodeTtlMinutes = int.TryParse(config[$"{SmsVerificationOptions.SectionName}:CodeTtlMinutes"], out var codeTtlMinutes)
         ? codeTtlMinutes
         : 10;

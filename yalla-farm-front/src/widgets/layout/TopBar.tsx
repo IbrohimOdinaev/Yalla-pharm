@@ -126,6 +126,7 @@ export function TopBar({
     const viewport: VisualViewport = currentViewport;
 
     let frame = 0;
+    const isIosChrome = /\bCriOS\//i.test(navigator.userAgent);
     const safeAreaProbe = document.createElement("div");
     safeAreaProbe.style.cssText =
       "position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom);";
@@ -139,8 +140,9 @@ export function TopBar({
     function updatePosition() {
       frame = 0;
       const safeAreaBottom = readSafeAreaBottom();
+      const floatingGap = isIosChrome ? 72 : 88;
       const nextTop =
-        viewport.offsetTop + viewport.height - 88 - safeAreaBottom;
+        viewport.offsetTop + viewport.height - floatingGap - safeAreaBottom;
 
       buttonElement.style.setProperty("--floating-cart-top", `${nextTop}px`);
       buttonElement.style.setProperty("--floating-cart-duration", "0ms");
@@ -357,16 +359,6 @@ export function TopBar({
       )
     ) : null;
 
-    // Inline cart button — single morphing element so the empty↔filled
-    // transition doesn't shift any sibling buttons.
-    //
-    // The container has a *fixed* width (180px desktop / 164px below),
-    // matching the wider "filled" state. When the cart is empty we
-    // collapse the visible pill inside via inline left+width clamp so
-    // it reads as a compact round capsule, while the outer footprint
-    // keeps the surrounding header layout still. Going empty → filled
-    // animates the inner pill outward without nudging the search bar,
-    // address, profile, etc.
     const cartFilled = cartCount > 0;
     const CartButton = (
       <Link
@@ -378,37 +370,19 @@ export function TopBar({
                 : `Корзина, ${cartCount} товаров`)
             : "Корзина"
         }
-        // Outer slot: fixed size, always reserved. Hides below `sm` so
-        // phones use the floating pill instead.
-        className="relative hidden h-11 w-[210px] flex-shrink-0 sm:block sm:h-12 sm:w-[230px]"
+        className={`hidden h-11 flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-[#35B7B6] active:scale-[0.98] sm:inline-flex sm:h-12 ${
+          cartFilled
+            ? "w-auto gap-2 px-5 sm:gap-2.5 sm:px-6"
+            : "w-11 gap-0 px-0 sm:w-12"
+        }`}
       >
-        {/* Morphing pill — absolutely positioned inside the slot.
-            Empty state: collapses to a round 44×44 (sm: 48×48) circle
-            docked to the right edge, so the bag icon sits in a true
-            square and reads as a circle, not a stretched oval. Math:
-            slot width − pill width = left offset. Mobile 164−44=120;
-            sm 180−48=132. Filled state: expands to fill the whole
-            slot. left + padding + text opacity all transition together
-            for a smooth morph; nothing outside the slot moves. */}
+        <Icon name="bag" size={20} strokeWidth={cartFilled ? 2.4 : 2.2} className="flex-shrink-0" />
         <span
-          // `gap` must be 0 in the empty state — otherwise the (collapsed,
-          // max-w-0 / opacity-0) price span still contributes its sibling
-          // gap to the flex layout and pushes the icon a few pixels to the
-          // left of true centre. Gap only kicks in once the pill is filled.
-          className={`absolute inset-y-0 right-0 flex items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-all duration-150 hover:bg-[#35B7B6] active:scale-[0.98]
-            ${cartFilled ? "left-0 gap-2 px-5 sm:gap-2.5 sm:px-6" : "left-[166px] gap-0 px-0 sm:left-[182px]"}`}
+          className={`overflow-hidden whitespace-nowrap font-display text-sm font-black tabular-nums transition-[max-width,opacity] duration-150 sm:text-[15px] ${
+            cartFilled ? "max-w-[190px] opacity-100" : "max-w-0 opacity-0"
+          }`}
         >
-          <Icon name="bag" size={20} strokeWidth={cartFilled ? 2.4 : 2.2} className="flex-shrink-0" />
-          {/* Price label — slides in / out on the right. opacity +
-              max-width carry the animation; the actual text only
-              renders when cartFilled is true so an empty cart never
-              has a screen-reader-spoofable hidden "от 0 TJS". */}
-          <span
-            className={`overflow-hidden whitespace-nowrap font-display text-sm font-black tabular-nums transition-all duration-150 sm:text-[15px]
-              ${cartFilled ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"}`}
-          >
-            {cartFilled ? (bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`) : ""}
-          </span>
+          {cartFilled ? (bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`) : ""}
         </span>
       </Link>
     );

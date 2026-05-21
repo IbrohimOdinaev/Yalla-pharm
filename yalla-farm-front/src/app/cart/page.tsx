@@ -15,7 +15,6 @@ import {
   computeBestPriceFromPharmacyOptions,
 } from "@/features/cart/model/bestPharmacyPrice";
 import { AppShell } from "@/widgets/layout/AppShell";
-import { TopBar } from "@/widgets/layout/TopBar";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 import { CartItemSkeleton } from "@/widgets/cart/CartItemSkeleton";
@@ -198,7 +197,7 @@ export default function CartPage() {
 
   if (cartItems.length === 0 && !isLoading) {
     return (
-      <AppShell top={<TopBar title="Корзина" backHref="back" />}>
+      <AppShell>
         <EmptyState
           icon="cart"
           title="Корзина пустая"
@@ -214,7 +213,7 @@ export default function CartPage() {
   }
 
   return (
-    <AppShell top={<TopBar title="Корзина" backHref="back" />}>
+    <AppShell>
       {showClearConfirm ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -429,14 +428,6 @@ export default function CartPage() {
 
             <dl className="mt-4 space-y-2 text-sm xl:mt-5 xl:space-y-3 xl:text-base">
               <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-on-surface-variant">Товаров</dt>
-                <dd className="font-semibold tabular-nums">
-                  {isInitialLoading
-                    ? <Skeleton className="inline-block h-4 w-16 align-middle xl:h-5 xl:w-20" rounded="md" />
-                    : <>{totalUnits} {itemsLabel}</>}
-                </dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
                 <dt className="text-on-surface-variant">Стоимость</dt>
                 <dd className="font-semibold tabular-nums">
                   {isInitialLoading
@@ -522,14 +513,9 @@ export default function CartPage() {
                 <Skeleton className="h-6 w-24 xs:h-7 xs:w-28" rounded="md" />
               </>
             ) : (
-              <>
-                <p className="text-[10px] text-on-surface-variant xs:text-xs">
-                  {totalUnits} {itemsLabel}
-                </p>
-                <p className="font-display text-lg font-extrabold tabular-nums xs:text-xl">
-                  от {formatMoney(cartMinTotal)}
-                </p>
-              </>
+              <p className="font-display text-lg font-extrabold tabular-nums xs:text-xl">
+                от {formatMoney(cartMinTotal)}
+              </p>
             )}
           </div>
           <Button
