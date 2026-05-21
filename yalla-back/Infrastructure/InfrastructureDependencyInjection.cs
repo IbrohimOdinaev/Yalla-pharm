@@ -24,7 +24,7 @@ public static class DependencyInjection
 {
   public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
   {
-    var connectionString = NormalizeConnectionStringForContainer(config.GetConnectionString("Default"), config);
+    var connectionString = NormalizeConnectionString(config.GetConnectionString("Default"), config);
 
     services.AddDbContext<AppDbContext>(options =>
     {
@@ -370,14 +370,21 @@ public static class DependencyInjection
     return (cleanUrl, user, pass);
   }
 
-  private static string? NormalizeConnectionStringForContainer(string? connectionString, IConfiguration config)
+  private static string? NormalizeConnectionString(string? connectionString, IConfiguration config)
   {
-    if (!IsRunningInContainer() || string.IsNullOrWhiteSpace(connectionString))
+    if (string.IsNullOrWhiteSpace(connectionString))
       return connectionString;
 
     var builder = new NpgsqlConnectionStringBuilder(connectionString);
-    if (IsLocalHost(builder.Host))
+    if (IsRunningInContainer() && IsLocalHost(builder.Host))
       builder.Host = config["Database:ContainerHost"] ?? "yalla-postgres";
+
+    // Some managed Postgres restores leave the role/database with no
+    // effective search_path inside app connections. EF creates/reads
+    // __EFMigrationsHistory without a schema qualifier, so force the
+    // project's default schema unless the operator explicitly chose one.
+    if (string.IsNullOrWhiteSpace(builder.SearchPath))
+      builder.SearchPath = "public";
 
     return builder.ConnectionString;
   }
