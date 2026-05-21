@@ -291,6 +291,9 @@ public static class DependencyInjection
       options.DefaultTariffId = int.TryParse(config[$"{JuraOptions.SectionName}:DefaultTariffId"], out var tariffId)
         ? tariffId
         : 37;
+      options.DefaultPayTypeId = long.TryParse(config[$"{JuraOptions.SectionName}:DefaultPayTypeId"], out var payTypeId)
+        ? payTypeId
+        : 243115;
     });
     services.AddSingleton<IJuraHealthState, JuraHealthState>();
     services.AddHttpClient<JuraService>((provider, client) =>
