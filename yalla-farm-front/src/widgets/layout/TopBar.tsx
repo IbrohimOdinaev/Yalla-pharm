@@ -121,25 +121,11 @@ export function TopBar({
 
     const button = floatingCartRef.current;
     const currentViewport = window.visualViewport;
-    if (!button) return;
+    if (!button || !currentViewport) return;
     const buttonElement: HTMLAnchorElement = button;
-    const isIosChrome = /\bCriOS\b/.test(window.navigator.userAgent);
-
-    if (isIosChrome) {
-      buttonElement.style.setProperty(
-        "--floating-cart-top",
-        "calc(100svh - 8.75rem - env(safe-area-inset-bottom))",
-      );
-      buttonElement.style.setProperty("--floating-cart-duration", "0ms");
-      return;
-    }
-
-    if (!currentViewport) return;
     const viewport: VisualViewport = currentViewport;
 
     let frame = 0;
-    let lastTop = 0;
-    let lastTime = performance.now();
     const safeAreaProbe = document.createElement("div");
     safeAreaProbe.style.cssText =
       "position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom);";
@@ -150,28 +136,14 @@ export function TopBar({
       return Number.isFinite(value) ? value : 0;
     }
 
-    function clamp(value: number, min: number, max: number) {
-      return Math.min(max, Math.max(min, value));
-    }
-
     function updatePosition() {
       frame = 0;
-      const now = performance.now();
       const safeAreaBottom = readSafeAreaBottom();
       const nextTop =
-        viewport.offsetTop + viewport.height - 72 - safeAreaBottom;
-      const distance = Math.abs(nextTop - lastTop);
-      const elapsed = Math.max(16, now - lastTime);
-      const speed = distance / elapsed;
-      const duration =
-        lastTop === 0 || distance < 1
-          ? 0
-          : clamp(Math.round(distance / Math.max(speed, 0.35)), 70, 260);
+        viewport.offsetTop + viewport.height - 88 - safeAreaBottom;
 
       buttonElement.style.setProperty("--floating-cart-top", `${nextTop}px`);
-      buttonElement.style.setProperty("--floating-cart-duration", `${duration}ms`);
-      lastTop = nextTop;
-      lastTime = now;
+      buttonElement.style.setProperty("--floating-cart-duration", "0ms");
     }
 
     function scheduleUpdate() {
@@ -609,8 +581,8 @@ export function TopBar({
       {/* Floating cart — phone only (sm:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
           Size the pill from the icon+label group and keep that whole group
-          centered. iOS browsers expose toolbar movement through
-          visualViewport, so JS tracks the real viewport animation speed. */}
+          centered. iOS browser toolbars move the visual viewport, so JS keeps
+          a constant gap from the visible viewport bottom. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
           ref={floatingCartRef}
@@ -622,7 +594,7 @@ export function TopBar({
           }
           className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] px-7 py-0 text-on-surface shadow-card transition-[top,width,background-color,transform] ease-out will-change-[top,transform] hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
           style={{
-            top: "var(--floating-cart-top, calc(100dvh - 4.5rem - env(safe-area-inset-bottom)))",
+            top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
             transitionDuration: "var(--floating-cart-duration, 220ms)",
             transform: "translate3d(0,0,0)",
           }}
