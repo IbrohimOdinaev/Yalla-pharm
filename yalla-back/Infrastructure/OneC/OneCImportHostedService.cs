@@ -373,12 +373,13 @@ public sealed class OneCImportHostedService : BackgroundService
 
       if (existingOffers.TryGetValue(medicineId, out var offer))
       {
-        offer.SetPrice(incoming.Price);
+        if (incoming.Price.HasValue)
+          offer.SetPrice(incoming.Price.Value);
         offer.SetStockQuantity(incoming.Stock);
       }
       else
       {
-        offer = new Offer(medicineId, source.PharmacyId, incoming.Stock, incoming.Price);
+        offer = new Offer(medicineId, source.PharmacyId, incoming.Stock, incoming.Price ?? 0m);
         db.Offers.Add(offer);
         existingOffers[medicineId] = offer;
       }
@@ -406,6 +407,8 @@ public sealed class OneCImportHostedService : BackgroundService
 
   private static IEnumerable<OneCOffer> ParseOffers(string filePath)
   {
+    var offersByProductId = new Dictionary<string, OneCOfferAccumulator>(StringComparer.Ordinal);
+
     foreach (var element in ReadElements(filePath, "Предложение"))
     {
       var rawId = CleanText(ChildValue(element, "Ид"));
@@ -421,12 +424,18 @@ public sealed class OneCImportHostedService : BackgroundService
         .Select(x => ChildValue(x, "ЦенаЗаЕдиницу"))
         .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
-      if (!TryParseDecimal(priceText, out var price))
-        continue;
-
       var stock = ParseStock(element);
-      yield return new OneCOffer(externalProductId, price, stock);
+      if (!offersByProductId.TryGetValue(externalProductId, out var accumulator))
+      {
+        accumulator = new OneCOfferAccumulator(externalProductId);
+        offersByProductId.Add(externalProductId, accumulator);
+      }
+
+      accumulator.Add(rawId, TryParseDecimal(priceText, out var price) ? price : null, stock);
     }
+
+    foreach (var offer in offersByProductId.Values)
+      yield return offer.ToOffer();
   }
 
   private static IEnumerable<XElement> ReadElements(string filePath, string elementName)
@@ -452,17 +461,20 @@ public sealed class OneCImportHostedService : BackgroundService
 
   private static int ParseStock(XElement element)
   {
-    var warehouseStock = ChildrenByLocalName(element, "Склад", "Склады")
+    var quantityText = ChildValue(element, "Количество");
+    if (TryParseDecimal(quantityText, out var stockFromQuantity))
+      return Math.Max(0, (int)Math.Floor(stockFromQuantity));
+
+    var warehouseStock = element
+      .Descendants()
+      .Where(x => string.Equals(x.Name.LocalName, "Склад", StringComparison.Ordinal)
+        || string.Equals(x.Name.LocalName, "Склады", StringComparison.Ordinal))
       .Select(x => AttributeValue(x, "КоличествоНаСкладе"))
       .Where(x => !string.IsNullOrWhiteSpace(x))
       .Aggregate(0m, (sum, raw) => TryParseDecimal(raw, out var stock) ? sum + stock : sum);
 
     if (warehouseStock > 0m)
       return Math.Max(0, (int)Math.Floor(warehouseStock));
-
-    var quantityText = ChildValue(element, "Количество");
-    if (TryParseDecimal(quantityText, out var stockFromQuantity))
-      return Math.Max(0, (int)Math.Floor(stockFromQuantity));
 
     return 0;
   }
@@ -513,7 +525,24 @@ public sealed class OneCImportHostedService : BackgroundService
   }
 
   private sealed record OneCProduct(string ExternalId, string? Barcode, string? Title);
-  private sealed record OneCOffer(string ExternalProductId, decimal Price, int Stock);
+  private sealed record OneCOffer(string ExternalProductId, decimal? Price, int Stock, IReadOnlyList<string> SourceOfferIds);
+  private sealed class OneCOfferAccumulator(string externalProductId)
+  {
+    private readonly List<string> _sourceOfferIds = [];
+    private decimal? _maxPrice;
+    private int _stock;
+
+    public void Add(string sourceOfferId, decimal? price, int stock)
+    {
+      _sourceOfferIds.Add(sourceOfferId);
+      _stock += Math.Max(0, stock);
+
+      if (price.HasValue && (!_maxPrice.HasValue || price.Value > _maxPrice.Value))
+        _maxPrice = price.Value;
+    }
+
+    public OneCOffer ToOffer() => new(externalProductId, _maxPrice, _stock, _sourceOfferIds);
+  }
   private sealed record SourceContext(IntegrationSource Source, DirectoryInfo Directory);
   private sealed record ImportResult(int Processed, int Linked, int Updated, int Unmatched)
   {
