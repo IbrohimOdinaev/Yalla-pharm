@@ -253,6 +253,8 @@ if (!skipMigrationManagement)
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await db.Database.OpenConnectionAsync();
+    await db.Database.ExecuteSqlRawAsync("SET search_path TO public");
     var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
     var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
     logger.LogInformation("EF migrations: {AppliedCount} applied, {PendingCount} pending. Pending: {Pending}",

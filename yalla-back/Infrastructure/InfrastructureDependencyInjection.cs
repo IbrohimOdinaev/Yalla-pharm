@@ -28,7 +28,9 @@ public static class DependencyInjection
 
     services.AddDbContext<AppDbContext>(options =>
     {
-        options.UseNpgsql(connectionString);
+        options.UseNpgsql(
+            connectionString,
+            npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "public"));
         // Hand-written migrations (e.g. AddPrescriptionTierAndChecklistKind)
         // skip the auto snapshot regeneration that `dotnet ef migrations add`
         // would normally do, so EF 9 flags the model as "out of sync" and
