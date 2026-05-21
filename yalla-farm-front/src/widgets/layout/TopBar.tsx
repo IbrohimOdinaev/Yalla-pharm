@@ -111,6 +111,75 @@ export function TopBar({
     pathname === "/login" ||
     pathname === "/login/admin" ||
     pathname === "/register";
+  const floatingCartRef = useRef<HTMLAnchorElement>(null);
+  const floatingCartLabel = bestPrice
+    ? `от ${formatMoney(bestPrice.price)}`
+    : `${cartCount}`;
+
+  useEffect(() => {
+    if (onCartRoute || cartCount <= 0) return;
+
+    const button = floatingCartRef.current;
+    const currentViewport = window.visualViewport;
+    if (!button || !currentViewport) return;
+    const buttonElement: HTMLAnchorElement = button;
+    const viewport: VisualViewport = currentViewport;
+
+    let frame = 0;
+    let lastTop = 0;
+    let lastTime = performance.now();
+    const safeAreaProbe = document.createElement("div");
+    safeAreaProbe.style.cssText =
+      "position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom);";
+    document.body.appendChild(safeAreaProbe);
+
+    function readSafeAreaBottom() {
+      const value = Number.parseFloat(getComputedStyle(safeAreaProbe).height);
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    function clamp(value: number, min: number, max: number) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function updatePosition() {
+      frame = 0;
+      const now = performance.now();
+      const safeAreaBottom = readSafeAreaBottom();
+      const nextTop =
+        viewport.offsetTop + viewport.height - 72 - safeAreaBottom;
+      const distance = Math.abs(nextTop - lastTop);
+      const elapsed = Math.max(16, now - lastTime);
+      const speed = distance / elapsed;
+      const duration =
+        lastTop === 0 || distance < 1
+          ? 0
+          : clamp(Math.round(distance / Math.max(speed, 0.35)), 70, 260);
+
+      buttonElement.style.setProperty("--floating-cart-top", `${nextTop}px`);
+      buttonElement.style.setProperty("--floating-cart-duration", `${duration}ms`);
+      lastTop = nextTop;
+      lastTime = now;
+    }
+
+    function scheduleUpdate() {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updatePosition);
+    }
+
+    updatePosition();
+    viewport.addEventListener("resize", scheduleUpdate);
+    viewport.addEventListener("scroll", scheduleUpdate);
+    window.addEventListener("orientationchange", scheduleUpdate);
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", scheduleUpdate);
+      viewport.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("orientationchange", scheduleUpdate);
+      safeAreaProbe.remove();
+    };
+  }, [onCartRoute, cartCount]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -527,39 +596,36 @@ export function TopBar({
 
       {/* Floating cart — phone only (sm:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
-          Size the pill from the label while painting the visible label from
-          the pill center. iOS Chrome changes the visual viewport when its
-          bottom toolbar collapses; animating top keeps that movement smooth. */}
+          Size the pill from the icon+label group and keep that whole group
+          centered. iOS browsers expose toolbar movement through
+          visualViewport, so JS tracks the real viewport animation speed. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
+          ref={floatingCartRef}
           href="/cart"
           aria-label={
             bestPrice
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 grid h-14 min-w-[184px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] py-0 pl-[5.25rem] pr-8 text-on-surface shadow-card transition-[top,width,background-color,transform] duration-300 ease-out will-change-[top,transform] hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
+          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] px-7 py-0 text-on-surface shadow-card transition-[top,width,background-color,transform] ease-out will-change-[top,transform] hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
           style={{
-            top: "calc(100dvh - 4.5rem - env(safe-area-inset-bottom))",
+            top: "var(--floating-cart-top, calc(100dvh - 4.5rem - env(safe-area-inset-bottom)))",
+            transitionDuration: "var(--floating-cart-duration, 220ms)",
             transform: "translate3d(0,0,0)",
           }}
         >
           <span
             aria-hidden="true"
-            className="invisible block whitespace-nowrap font-display text-base font-black tabular-nums"
+            className="invisible flex items-center gap-5 whitespace-nowrap font-display text-base font-black tabular-nums"
           >
-            {bestPrice
-              ? `от ${formatMoney(bestPrice.price)}`
-              : `${cartCount}`}
-          </span>
-          <span className="pointer-events-none absolute left-8 top-1/2 flex -translate-y-1/2 items-center justify-center">
             <Icon name="bag" size={26} strokeWidth={2.4} />
+            <span>{floatingCartLabel}</span>
           </span>
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="block max-w-[160px] overflow-hidden whitespace-nowrap text-center font-display text-base font-black tabular-nums">
-              {bestPrice
-                ? `от ${formatMoney(bestPrice.price)}`
-                : `${cartCount}`}
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-5 px-7">
+            <Icon name="bag" size={26} strokeWidth={2.4} className="flex-shrink-0" />
+            <span className="block max-w-[calc(100vw-8.5rem)] overflow-hidden whitespace-nowrap text-center font-display text-base font-black tabular-nums">
+              {floatingCartLabel}
             </span>
           </span>
         </Link>
