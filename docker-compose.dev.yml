@@ -9,7 +9,7 @@
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
-#     --env-file .env up -d
+#     --env-file .env.dev up -d
 #
 # Pre-req (one-off on the staging VPS):
 #   docker network create yalla-net-dev
@@ -19,8 +19,8 @@
 services:
 
   front:
-    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/yalla-front:${TAG:-develop}
-    container_name: yalla-front-dev
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-front:${TAG:-develop}
+    container_name: pharm-front-dev
     restart: unless-stopped
     # Front is a Next.js renderer. Only public/runtime-safe variables
     # belong here; DB/JWT/MinIO/SMS/Telegram secrets stay on the api.
@@ -36,11 +36,11 @@ services:
       - "3000"
 
   api:
-    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/yalla-api:${TAG:-develop}
-    container_name: yalla-api-dev
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-api:${TAG:-develop}
+    container_name: pharm-api-dev
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.dev
     depends_on:
       opensearch:
         condition: service_healthy

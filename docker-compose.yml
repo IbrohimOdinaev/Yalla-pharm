@@ -12,8 +12,8 @@
 #
 # Usage:
 #   Local:    docker compose --env-file .env.dev up -d --build
-#   Staging:  docker compose -f docker-compose.yml -f docker-compose.dev.yml  --env-file .env up -d
-#   Prod:     docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d
+#   Staging:  docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   Prod:     docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d
 # ============================================
 
 services:
@@ -28,7 +28,7 @@ services:
   api:
     # No depends_on here — postgres / minio / opensearch live only in
     # the dev override (the local stack); on staging / prod the api
-    # talks to managed externals configured through .env. The dev
+    # talks to managed externals configured through .env.dev / .env.prod. The dev
     # override re-adds the local-service health-gates on top.
     healthcheck:
       # Hits the dedicated /api/health endpoint (lightweight DB ping

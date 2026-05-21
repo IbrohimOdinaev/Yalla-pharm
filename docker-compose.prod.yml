@@ -3,15 +3,15 @@
 # docker-compose.override.yml (the local stack).
 #
 # Same shape as docker-compose.dev.yml, but stricter:
-#   - image tag :latest (or pin to a specific :main-<sha> for rollback)
-#   - secrets MUST be set in .env — compose fails-fast at parse time
+#   - image tag :latest (or pin to a specific :master-<sha> for rollback)
+#   - secrets MUST be set in .env.prod — compose fails-fast at parse time
 #     thanks to `${VAR:?message}` guards, instead of starting the
 #     container with an empty value and failing 30 seconds later
 #   - container_name suffix -prod, network yalla-net-prod
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-#     --env-file .env up -d
+#     --env-file .env.prod up -d
 #
 # Pre-req (one-off on the production VPS):
 #   docker network create yalla-net-prod
@@ -21,8 +21,8 @@
 services:
 
   front:
-    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/yalla-front:${TAG:-latest}
-    container_name: yalla-front-prod
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-front:${TAG:-latest}
+    container_name: pharm-front-prod
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
@@ -33,11 +33,11 @@ services:
       - "3000"
 
   api:
-    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/yalla-api:${TAG:-latest}
-    container_name: yalla-api-prod
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-api:${TAG:-latest}
+    container_name: pharm-api-prod
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.prod
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # Required-or-die. Compose refuses to start if any of these is

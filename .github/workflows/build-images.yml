@@ -46,10 +46,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: yalla-api
+          - image: pharm-api
             context: yalla-back
             dockerfile: yalla-back/Dockerfile
-          - image: yalla-front
+          - image: pharm-front
             context: yalla-farm-front
             dockerfile: yalla-farm-front/Dockerfile
     steps:
@@ -74,7 +74,7 @@ jobs:
             type=raw,value=${{ needs.meta.outputs.tag_sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=Yalla Pharm ${{ matrix.image }} (built from ${{ github.sha }})
+            org.opencontainers.image.description=Pharm ${{ matrix.image }} (built from ${{ github.sha }})
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
