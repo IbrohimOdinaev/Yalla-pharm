@@ -19,7 +19,7 @@ import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { Button, Icon, Input, Chip } from "@/shared/ui";
+import { Button, Icon, Chip } from "@/shared/ui";
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
 
@@ -40,13 +40,13 @@ function LoginContent() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [session, setSession] = useState<RequestClientOtpResponse | null>(null);
   const [code, setCode] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
   const codeInputRef = useRef<HTMLInputElement>(null);
+  const autoVerifyCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!session) { setResendSecondsLeft(0); return; }
@@ -83,9 +83,9 @@ function LoginContent() {
     try {
       const resp = await requestClientOtp(phoneNumber);
       setSession(resp);
-      setInfo(resp.isNewClient
-        ? "Код отправлен. Это первый вход — после кода нужно будет указать имя."
-        : "Код отправлен на ваш номер.");
+      setCode("");
+      autoVerifyCodeRef.current = null;
+      setInfo("Код отправлен на ваш номер.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить код.");
     } finally {
@@ -93,28 +93,43 @@ function LoginContent() {
     }
   }
 
-  async function onVerifyOtp(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function verifyOtpValue(nextCode: string) {
     if (!session) return;
     setError(null);
     setInfo(null);
-    if (code.length !== session.codeLength) {
+    if (nextCode.length !== session.codeLength) {
       setError(`Введите код из ${session.codeLength} цифр.`);
-      return;
-    }
-    if (session.isNewClient && !name.trim()) {
-      setError("Введите ваше имя.");
       return;
     }
     setIsSubmitting(true);
     try {
-      const resp = await verifyClientOtp(session.otpSessionId, code, session.isNewClient ? name.trim() : undefined);
+      const resp = await verifyClientOtp(session.otpSessionId, nextCode);
       const role = typeof resp.role === "number" ? (ROLE_MAP[resp.role] ?? "Client") : String(resp.role);
       applyCredentialsAndRedirect(resp.accessToken, role, resp.userId);
     } catch (err) {
+      autoVerifyCodeRef.current = null;
       setError(err instanceof Error ? err.message : "Неверный код подтверждения.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function onVerifyOtp(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await verifyOtpValue(code);
+  }
+
+  function onCodeChange(value: string) {
+    if (!session) return;
+    const nextCode = value.replace(/\D/g, "").slice(0, session.codeLength);
+    setCode(nextCode);
+    if (
+      nextCode.length === session.codeLength &&
+      !isSubmitting &&
+      autoVerifyCodeRef.current !== nextCode
+    ) {
+      autoVerifyCodeRef.current = nextCode;
+      void verifyOtpValue(nextCode);
     }
   }
 
@@ -128,6 +143,7 @@ function LoginContent() {
       setSession(resp);
       setInfo("Код отправлен повторно.");
       setCode("");
+      autoVerifyCodeRef.current = null;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось переотправить код.");
     } finally {
@@ -138,7 +154,7 @@ function LoginContent() {
   function onChangeNumber() {
     setSession(null);
     setCode("");
-    setName("");
+    autoVerifyCodeRef.current = null;
     setError(null);
     setInfo(null);
   }
@@ -354,24 +370,15 @@ function LoginContent() {
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
+                name="one-time-code"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, session.codeLength))}
+                onChange={(e) => onCodeChange(e.target.value)}
                 placeholder={"•".repeat(session.codeLength)}
                 required
               />
             </label>
-
-            {session.isNewClient ? (
-              <Input
-                label="Ваше имя"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Как к вам обращаться"
-                maxLength={64}
-                required
-              />
-            ) : null}
 
             {error ? (
               <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>

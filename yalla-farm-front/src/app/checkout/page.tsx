@@ -55,6 +55,7 @@ export default function CheckoutPage() {
   const [entrance, setEntrance] = useState("");
   const [floor, setFloor] = useState("");
   const [apartment, setApartment] = useState("");
+  const [showCourierDetails, setShowCourierDetails] = useState(false);
 
   useEffect(() => {
     if (!pharmacyId) { router.replace("/cart/pharmacy"); return; }
@@ -369,20 +370,35 @@ export default function CheckoutPage() {
               </span>
             </button>
 
-            {/* Уточнение адреса для курьера: подъезд / этаж / квартира.
-                Не валидируем — поля свободные, только числа. Все три
-                необязательны: заказ оформляется и без них. */}
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
-                Уточнение для курьера
-              </p>
-              <p className="text-[10px] text-on-surface-variant/70">необязательно</p>
-            </div>
-            <div className="mt-1.5 grid grid-cols-3 gap-2">
-              <NumericField label="Подъезд" value={entrance} onChange={setEntrance} />
-              <NumericField label="Этаж" value={floor} onChange={setFloor} />
-              <NumericField label="Квартира" value={apartment} onChange={setApartment} />
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowCourierDetails((value) => !value)}
+              className="mt-3 flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-3 py-2 text-left text-xs font-bold text-on-surface transition active:scale-95 hover:bg-surface-container-high"
+              aria-expanded={showCourierDetails}
+            >
+              <span>Детали для курьера</span>
+              <Icon
+                name="chevron-down"
+                size={16}
+                className={`transition-transform ${showCourierDetails ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {showCourierDetails ? (
+              <>
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                    Уточнение для курьера
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant/70">необязательно</p>
+                </div>
+                <div className="mt-1.5 grid grid-cols-3 gap-2">
+                  <NumericField label="Подъезд" value={entrance} onChange={setEntrance} />
+                  <NumericField label="Этаж" value={floor} onChange={setFloor} />
+                  <NumericField label="Квартира" value={apartment} onChange={setApartment} />
+                </div>
+              </>
+            ) : null}
           </section>
         ) : null}
 
