@@ -47,5 +47,13 @@ jobs:
           cd "$DEPLOY_DIR"
           docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d --remove-orphans
 
+      - name: Dump stack logs on failure
+        if: failure()
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev ps
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev logs --no-color --tail=250 api
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev logs --no-color --tail=120 front
+
       - name: Cleanup dangling images
         run: docker image prune -f
