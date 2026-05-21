@@ -94,7 +94,7 @@ public sealed class OneCImportHostedService : BackgroundService
       if (defaultSource != null)
         contexts.Add(new SourceContext(defaultSource, root));
       else
-        _logger.LogWarning("1C root import skipped: DefaultPharmacyId or DefaultSourceToken is not configured");
+        _logger.LogWarning("1C root import skipped: DefaultPharmacyId is invalid or DefaultSourceToken is not configured");
     }
 
     var activeSources = await db.IntegrationSources
@@ -118,10 +118,12 @@ public sealed class OneCImportHostedService : BackgroundService
 
   private async Task<IntegrationSource?> EnsureDefaultSourceAsync(AppDbContext db, bool warnWhenMissing, CancellationToken ct)
   {
-    if (_options.DefaultPharmacyId == Guid.Empty || string.IsNullOrWhiteSpace(_options.DefaultSourceToken))
+    if (!Guid.TryParse(_options.DefaultPharmacyId, out var defaultPharmacyId)
+      || defaultPharmacyId == Guid.Empty
+      || string.IsNullOrWhiteSpace(_options.DefaultSourceToken))
     {
       if (warnWhenMissing)
-        _logger.LogWarning("1C root import skipped: DefaultPharmacyId or DefaultSourceToken is not configured");
+        _logger.LogWarning("1C root import skipped: DefaultPharmacyId is invalid or DefaultSourceToken is not configured");
       return null;
     }
 
@@ -133,7 +135,7 @@ public sealed class OneCImportHostedService : BackgroundService
       return source;
 
     source = new IntegrationSource(
-      _options.DefaultPharmacyId,
+      defaultPharmacyId,
       SourceType,
       token,
       _options.DefaultSourceName,

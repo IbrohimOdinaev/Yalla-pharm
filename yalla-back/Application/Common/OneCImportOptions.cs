@@ -10,5 +10,5 @@ public sealed class OneCImportOptions
   public int StableFileSeconds { get; set; } = 30;
   public string DefaultSourceToken { get; set; } = string.Empty;
   public string DefaultSourceName { get; set; } = "1C";
-  public Guid DefaultPharmacyId { get; set; } = Guid.Empty;
+  public string DefaultPharmacyId { get; set; } = string.Empty;
 }
