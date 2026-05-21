@@ -53,12 +53,7 @@ public static class EnvironmentValidator
         WarnIfMissing(configuration, "WooCommerce:ConsumerKey",
           "WooCommerce sync (catalog import + price/stock webhook) will not work.", logger);
 
-        var osonStub = string.Equals(configuration["OsonSms:UseStub"], "true", StringComparison.OrdinalIgnoreCase);
-        if (!osonStub && string.IsNullOrWhiteSpace(configuration["OsonSms:Token"]))
-        {
-            logger.LogWarning(
-              "OsonSms:Token is empty and OsonSms:UseStub=false — OTP login + status SMS will fail at runtime. Either set OSON_SMS_TOKEN or flip OSON_SMS_USE_STUB=true.");
-        }
+        WarnIfOsonSmsMisconfigured(configuration, logger);
 
         WarnIfMissing(configuration, "Jura:BaseUrl",
           "JURA delivery integration disabled (live address search, delivery cost, courier tracking).", logger);
@@ -90,5 +85,42 @@ public static class EnvironmentValidator
     {
         if (string.IsNullOrWhiteSpace(configuration[key]))
             logger.LogWarning("{Key} is empty. {Consequence}", key, consequence);
+    }
+
+    private static void WarnIfOsonSmsMisconfigured(IConfiguration configuration, ILogger logger)
+    {
+        var useStub = string.Equals(configuration["OsonSms:UseStub"], "true", StringComparison.OrdinalIgnoreCase);
+        if (useStub)
+            return;
+
+        var authMode = configuration["OsonSms:AuthMode"];
+        if (string.IsNullOrWhiteSpace(authMode))
+            authMode = "Bearer";
+
+        if (string.Equals(authMode, "Hash", StringComparison.OrdinalIgnoreCase))
+        {
+            WarnIfMissing(configuration, "OsonSms:Login",
+              "OsonSMS hash mode needs OSON_SMS_LOGIN for OTP login + status SMS.", logger);
+            WarnIfMissing(configuration, "OsonSms:Sender",
+              "OsonSMS hash mode needs OSON_SMS_SENDER for OTP login + status SMS.", logger);
+            WarnIfMissing(configuration, "OsonSms:PassSaltHash",
+              "OsonSMS hash mode needs OSON_SMS_PASS_SALT_HASH for OTP login + status SMS.", logger);
+            return;
+        }
+
+        if (string.Equals(authMode, "Bearer", StringComparison.OrdinalIgnoreCase))
+        {
+            WarnIfMissing(configuration, "OsonSms:Login",
+              "OsonSMS bearer mode needs OSON_SMS_LOGIN for OTP login + status SMS.", logger);
+            WarnIfMissing(configuration, "OsonSms:Sender",
+              "OsonSMS bearer mode needs OSON_SMS_SENDER for OTP login + status SMS.", logger);
+            WarnIfMissing(configuration, "OsonSms:Token",
+              "OsonSMS bearer mode needs OSON_SMS_TOKEN for OTP login + status SMS.", logger);
+            return;
+        }
+
+        logger.LogWarning(
+          "OsonSms:AuthMode has unsupported value '{AuthMode}'. Allowed values: Bearer, Hash. OTP login + status SMS will fail at runtime.",
+          authMode);
     }
 }
