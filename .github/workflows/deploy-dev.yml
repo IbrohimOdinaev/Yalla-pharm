@@ -1,9 +1,5 @@
 name: Deploy Dev
 
-# Triggers after Build & Push Images succeeds on develop.
-# SSH-deploys onto the staging VPS, pulls the freshly-pushed
-# `develop`-tagged images and rolls the stack.
-
 on:
   workflow_run:
     workflows: ["Build & Push Images"]
@@ -13,83 +9,43 @@ on:
 permissions:
   contents: read
 
-# Deploys MUST queue, not cancel — interrupting a rolling deploy leaves
-# the VPS in a half-pulled state with mixed image versions across
-# services. New deploys wait for the previous one to finish.
 concurrency:
   group: deploy-dev
   cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    # Don't deploy a failed build — workflow_run fires on success AND
-    # failure of the upstream, so we gate explicitly.
+    runs-on: [self-hosted, foodadmin, deploy]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: staging
       url: ${{ vars.STAGING_URL }}
+    env:
+      DEPLOY_DIR: /home/foodadmin/yalla_projects/yalla-pharm-new
+      TAG: develop
+      IMAGE_OWNER: yalla-co
     steps:
-      # Preflight — checks that all three deploy secrets are populated.
-      # If they are, downstream steps run; if not, the SSH step is
-      # skipped and the workflow finishes green with a ::notice::
-      # annotation. Deliberately not a hard failure: until the staging
-      # VPS exists there's nothing to deploy to, and a red X on every
-      # push to develop would just train people to ignore the run page.
-      # Once any of `DEPLOY_DEV_HOST` / `DEPLOY_DEV_USER` /
-      # `DEPLOY_DEV_SSH_KEY` is added under Settings → Secrets and
-      # variables → Actions, the next workflow_run picks them up.
-      - name: Check deploy secrets
-        id: preflight
-        env:
-          HOST: ${{ secrets.DEPLOY_DEV_HOST }}
-          USER: ${{ secrets.DEPLOY_DEV_USER }}
-          KEY:  ${{ secrets.DEPLOY_DEV_SSH_KEY }}
+      - name: Sync compose files
         run: |
-          missing=()
-          [ -z "$HOST" ] && missing+=("DEPLOY_DEV_HOST")
-          [ -z "$USER" ] && missing+=("DEPLOY_DEV_USER")
-          [ -z "$KEY"  ] && missing+=("DEPLOY_DEV_SSH_KEY")
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::notice::Staging deploy skipped — missing secrets: ${missing[*]}. Add them under Settings → Secrets and variables → Actions to enable."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true"  >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.preflight.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_DEV_HOST }}
-          username: ${{ secrets.DEPLOY_DEV_USER }}
-          key: ${{ secrets.DEPLOY_DEV_SSH_KEY }}
-          # `set -e` at the top of the script body bubbles any
-          # non-zero exit up to the workflow — replaces what
-          # appleboy/ssh-action@v0's `script_stop` input used to do
-          # (the input was dropped in v1).
-          script: |
-            set -e
-            cd /srv/yalla-farm
+          set -e
+          cd "$DEPLOY_DIR"
+          git fetch origin develop
+          git checkout ${{ github.event.workflow_run.head_sha }}
 
-            # Sync to the exact commit the build was made from. Using
-            # workflow_run.head_sha (not HEAD) closes the race where a
-            # second push lands on develop between build and deploy —
-            # we'd otherwise checkout a newer commit whose compose
-            # files might reference images we haven't built yet.
-            git fetch origin develop
-            git checkout ${{ github.event.workflow_run.head_sha }}
+      - name: Ensure docker network
+        run: |
+          docker network inspect yalla-net-dev >/dev/null 2>&1 \
+            || docker network create yalla-net-dev
 
-            # Idempotent network bootstrap so a fresh VPS doesn't need
-            # a manual `docker network create` before the first deploy.
-            docker network inspect yalla-net-dev >/dev/null 2>&1 \
-              || docker network create yalla-net-dev
+      - name: Pull images
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev pull
 
-            export TAG=develop
-            export IMAGE_OWNER=${{ github.repository_owner }}
+      - name: Apply stack
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d --remove-orphans
 
-            docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env pull
-            docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env up -d --remove-orphans
-
-            # Sweep dangling images so the VPS disk doesn't bloat over
-            # weeks — without this each deploy leaves the previous
-            # image's layers around, and a t3.small fills up in months.
-            docker image prune -f
+      - name: Cleanup dangling images
+        run: docker image prune -f
