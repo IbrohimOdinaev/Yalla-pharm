@@ -527,10 +527,9 @@ export function TopBar({
 
       {/* Floating cart — phone only (sm:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
-          Keep the pill itself fixed-width and position its label from the
-          pill center. iOS Chrome changes the visual viewport when its bottom
-          toolbar collapses; centering via normal flex + icon gap made the
-          price appear to drift relative to the button. */}
+          Size the pill from the label while painting the visible label from
+          the pill center. iOS Chrome changes the visual viewport when its
+          bottom toolbar collapses; animating top keeps that movement smooth. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
           href="/cart"
@@ -539,12 +538,20 @@ export function TopBar({
               ? `Корзина, от ${formatMoney(bestPrice.price)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 grid h-14 w-[268px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
+          className="fixed right-3 z-40 grid h-14 min-w-[184px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] py-0 pl-[5.25rem] pr-8 text-on-surface shadow-card transition-[top,width,background-color,transform] duration-300 ease-out will-change-[top,transform] hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
           style={{
             top: "calc(100dvh - 4.5rem - env(safe-area-inset-bottom))",
             transform: "translate3d(0,0,0)",
           }}
         >
+          <span
+            aria-hidden="true"
+            className="invisible block whitespace-nowrap font-display text-base font-black tabular-nums"
+          >
+            {bestPrice
+              ? `от ${formatMoney(bestPrice.price)}`
+              : `${cartCount}`}
+          </span>
           <span className="pointer-events-none absolute left-8 top-1/2 flex -translate-y-1/2 items-center justify-center">
             <Icon name="bag" size={26} strokeWidth={2.4} />
           </span>
