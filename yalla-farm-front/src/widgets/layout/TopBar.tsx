@@ -121,8 +121,20 @@ export function TopBar({
 
     const button = floatingCartRef.current;
     const currentViewport = window.visualViewport;
-    if (!button || !currentViewport) return;
+    if (!button) return;
     const buttonElement: HTMLAnchorElement = button;
+    const isIosChrome = /\bCriOS\b/.test(window.navigator.userAgent);
+
+    if (isIosChrome) {
+      buttonElement.style.setProperty(
+        "--floating-cart-top",
+        "calc(100svh - 8.75rem - env(safe-area-inset-bottom))",
+      );
+      buttonElement.style.setProperty("--floating-cart-duration", "0ms");
+      return;
+    }
+
+    if (!currentViewport) return;
     const viewport: VisualViewport = currentViewport;
 
     let frame = 0;
