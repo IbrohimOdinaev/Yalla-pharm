@@ -605,11 +605,12 @@ function PharmacySelectPageInner() {
             <button
               type="button"
               onClick={() => setIsPanelCollapsed(true)}
-              className="flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-full bg-surface-container-lowest px-3 font-display text-xs font-extrabold text-on-surface shadow-card transition hover:bg-surface-container-high active:scale-95"
+              className="flex h-8 flex-shrink-0 items-center justify-center gap-1.5 rounded-full bg-surface-container-lowest px-3.5 font-display text-xs font-extrabold text-on-surface shadow-card transition hover:bg-surface-container-high active:scale-95"
               aria-label="Показать карту"
               title="Показать карту"
             >
-              <span>Карта ^</span>
+              <span>Карта</span>
+              <Icon name="chevron-up" size={14} strokeWidth={2.4} />
             </button>
           </div>
 

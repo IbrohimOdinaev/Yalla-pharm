@@ -22,6 +22,7 @@ import { Button, IconButton, Icon, EmptyState, Skeleton } from "@/shared/ui";
 
 export default function CartPage() {
   const token = useAppSelector((state) => state.auth.token);
+  const authHydrated = useAppSelector((state) => state.auth.hydrated);
   const router = useRouter();
   const { basket, loadBasket, removeItem, setQuantity, clearAll, isLoading, error } = useCartStore((state) => state);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -29,6 +30,8 @@ export default function CartPage() {
 
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
   const [recommendations, setRecommendations] = useState<ApiMedicine[]>([]);
+  const [clientReady, setClientReady] = useState(false);
+  const [isNavigatingToPharmacy, setIsNavigatingToPharmacy] = useState(false);
 
   useBasketLive();
 
@@ -37,6 +40,11 @@ export default function CartPage() {
   const loadGuestCart = useGuestCartStore((s) => s.load);
   const removeGuestItem = useGuestCartStore((s) => s.removeItem);
   const setGuestQuantity = useGuestCartStore((s) => s.setQuantity);
+
+  useEffect(() => {
+    setClientReady(true);
+    router.prefetch("/cart/pharmacy");
+  }, [router]);
 
   useEffect(() => {
     if (!token) { loadGuestCart(); return; }
@@ -192,8 +200,34 @@ export default function CartPage() {
   }, [isGuest, token, clearGuest, clearAll]);
 
   const onCheckout = useCallback(() => {
+    setIsNavigatingToPharmacy(true);
     router.push("/cart/pharmacy");
   }, [router]);
+
+  if (!clientReady || !authHydrated) {
+    return (
+      <AppShell>
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_440px] xl:gap-12">
+          <div className="min-w-0 lg:rounded-3xl lg:bg-surface-container/30 lg:p-5 lg:shadow-card xl:p-6">
+            <div className="mb-3 flex items-center justify-between gap-2 xs:mb-4">
+              <Skeleton className="h-7 w-48" rounded="md" />
+              <Skeleton className="h-10 w-10" rounded="full" />
+            </div>
+            <ul className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => <CartItemSkeleton key={i} />)}
+            </ul>
+          </div>
+          <aside className="mt-6 hidden lg:block">
+            <div className="rounded-3xl bg-surface-container-lowest p-4 shadow-card xl:p-7">
+              <Skeleton className="h-6 w-24" rounded="md" />
+              <Skeleton className="mt-5 h-5 w-full" rounded="md" />
+              <Skeleton className="mt-6 h-12 w-full" rounded="full" />
+            </div>
+          </aside>
+        </div>
+      </AppShell>
+    );
+  }
 
   if (cartItems.length === 0 && !isLoading) {
     return (
@@ -457,6 +491,7 @@ export default function CartPage() {
               rightIcon="arrow-right"
               onClick={onCheckout}
               disabled={cartItems.length === 0 || isInitialLoading}
+              loading={isNavigatingToPharmacy}
               className="mt-5 xl:mt-6"
             >
               Выбрать аптеку
@@ -524,6 +559,7 @@ export default function CartPage() {
             rightIcon="arrow-right"
             onClick={onCheckout}
             disabled={cartItems.length === 0 || isInitialLoading}
+            loading={isNavigatingToPharmacy}
           >
             <span className="xs:hidden">Оформить</span>
             <span className="hidden xs:inline">Выбрать аптеку</span>

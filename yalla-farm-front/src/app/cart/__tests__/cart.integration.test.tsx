@@ -9,9 +9,9 @@ vi.mock("@/shared/lib/useSignalR", () => ({
 }));
 
 describe("CartPage", () => {
-  it("guest with empty cart: shows the empty state", () => {
+  it("guest with empty cart: shows the empty state", async () => {
     renderWithProviders(<CartPage />);
-    expect(screen.getByText(/Корзина пустая/)).toBeInTheDocument();
+    expect(await screen.findByText(/Корзина пустая/)).toBeInTheDocument();
   });
 
   it("authenticated empty cart: shows the empty state (after fetch resolves to 0 positions)", async () => {
@@ -28,8 +28,9 @@ describe("CartPage", () => {
     expect(await screen.findByText(/Корзина пустая/)).toBeInTheDocument();
   });
 
-  it("does not render the extra cart top bar", () => {
+  it("does not render the extra cart top bar", async () => {
     renderWithProviders(<CartPage />);
+    await screen.findByText(/Корзина пустая/);
     expect(screen.queryByRole("heading", { name: "Корзина" })).not.toBeInTheDocument();
   });
 });
