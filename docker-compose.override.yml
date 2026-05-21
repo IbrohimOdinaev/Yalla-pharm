@@ -24,7 +24,7 @@
 services:
 
   front:
-    image: yalla/front:dev
+    image: pharm-front:dev
     build:
       context: ./yalla-farm-front
       dockerfile: Dockerfile
@@ -34,7 +34,7 @@ services:
         - NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL=${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
         - NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL=${NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL:-/hubs/telegram-auth}
         - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
-    container_name: yalla-front
+    container_name: pharm-front
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
       NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: ${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
@@ -47,9 +47,9 @@ services:
       - ./yalla-farm-front/.data/1c-exchange:/data/1c-exchange
 
   api:
-    image: yalla/api:dev
+    image: pharm-api:dev
     build: ./yalla-back
-    container_name: yalla-api
+    container_name: pharm-api
     ports:
       - "5000:8080"
     volumes:
@@ -69,7 +69,7 @@ services:
 
   postgres:
     image: postgres:16
-    container_name: yalla-postgres
+    container_name: pharm-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -89,7 +89,7 @@ services:
 
   minio:
     image: minio/minio
-    container_name: yalla-minio
+    container_name: pharm-minio
     command: server /data --console-address ":9001"
     ports:
       # 9000 — S3 API, 9001 — admin console (login: minioadmin/minioadmin).
@@ -115,7 +115,7 @@ services:
   # is disabled because this is local dev only; never do this in prod.
   opensearch:
     image: opensearchproject/opensearch:2.13.0
-    container_name: yalla-opensearch
+    container_name: pharm-opensearch
     environment:
       - cluster.name=yalla-search
       - node.name=os-node-1

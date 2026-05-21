@@ -5,16 +5,18 @@
   "separate-pull-requests": true,
   "packages": {
     "yalla-back": {
-      "package-name": "backend",
-      "component": "backend",
+      "package-name": "pharm-api",
+      "component": "pharm-api",
       "changelog-path": "CHANGELOG.md",
       "extra-files": []
     },
     "yalla-farm-front": {
-      "package-name": "frontend",
-      "component": "frontend",
+      "package-name": "pharm-front",
+      "component": "pharm-front",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": ["package.json"]
+      "extra-files": [
+        "package.json"
+      ]
     }
   }
 }

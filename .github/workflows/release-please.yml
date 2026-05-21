@@ -3,8 +3,8 @@ name: Release Please
 # Watches commits on master and maintains an open "Release PR" with an
 # auto-generated CHANGELOG entry derived from Conventional Commit
 # messages. Merging that PR cuts a GitHub Release with a semver tag
-# (e.g. `backend-v1.4.2`), which in turn triggers publish-images.yml
-# to re-tag the already-built images with that semver.
+# (e.g. `pharm-api-v1.4.2`), which in turn triggers publish-images.yml
+# to publish a semver-tagged GHCR image for that component.
 #
 # Why a manifest config instead of single-package mode: the monorepo
 # has two independently-versioned shippables — the .NET API and the
