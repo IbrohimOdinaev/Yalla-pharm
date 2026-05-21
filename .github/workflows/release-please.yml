@@ -1,6 +1,13 @@
 name: Release Please
 
-# Watches commits on master and maintains an open "Release PR" with an
+# Manual only. The repository currently has GitHub Actions PR creation
+# disabled, so automatic release-please runs fail when the action tries
+# to open/update release PRs. Build/deploy does not depend on this
+# workflow; keep releases opt-in until the repo setting is enabled:
+# Settings -> Actions -> General -> Workflow permissions ->
+# "Allow GitHub Actions to create and approve pull requests".
+#
+# Running this workflow manually maintains an open "Release PR" with an
 # auto-generated CHANGELOG entry derived from Conventional Commit
 # messages. Merging that PR cuts a GitHub Release with a semver tag
 # (e.g. `pharm-api-v1.4.2`), which in turn triggers publish-images.yml
@@ -13,8 +20,7 @@ name: Release Please
 # version (and vice versa).
 
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
 
 permissions:
   # release-please opens PRs and tags releases on this repo — both need
