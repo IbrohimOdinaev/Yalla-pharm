@@ -164,7 +164,8 @@ export function resolvePrescriptionImageUrl(url: string): string {
 }
 
 export async function getMyPrescriptions(token: string): Promise<ApiPrescription[]> {
-  return apiFetch<ApiPrescription[]>("/api/prescriptions/me", { token });
+  const response = await apiFetch<unknown>("/api/prescriptions/me", { token });
+  return Array.isArray(response) ? response as ApiPrescription[] : [];
 }
 
 export async function markPrescriptionPaid(

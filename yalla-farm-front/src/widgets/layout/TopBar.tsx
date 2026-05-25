@@ -808,8 +808,8 @@ function LatestClientActivityButton() {
     let cancelled = false;
     Promise.allSettled([getClientOrderHistory(token), getMyPrescriptions(token)]).then((results) => {
       if (cancelled) return;
-      const orders = results[0].status === "fulfilled" ? results[0].value : [];
-      const prescriptions = results[1].status === "fulfilled" ? results[1].value : [];
+      const orders = results[0].status === "fulfilled" && Array.isArray(results[0].value) ? results[0].value : [];
+      const prescriptions = results[1].status === "fulfilled" && Array.isArray(results[1].value) ? results[1].value : [];
       const orderActivities: LatestClientActivity[] = orders
         .filter((o: ApiOrder) => Boolean(o.orderId && (o.createdAtUtc || o.orderPlacedAt) && ACTIVE_ORDER_STATUSES.has(o.status)))
         .map((o: ApiOrder) => ({
