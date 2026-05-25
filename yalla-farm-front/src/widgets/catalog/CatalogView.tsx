@@ -166,7 +166,7 @@ export function CatalogView({
               href={basePath}
               prefetch={false}
               className={`block w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition ${
-                !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"
+                !selectedCategoryId ? "bg-primary text-on-primary" : "hover:bg-surface-container-low text-on-surface"
               }`}
             >
               Все товары
@@ -195,7 +195,7 @@ export function CatalogView({
                           router.push(`${basePath}/${cat.slug}`);
                         }}
                         className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition flex items-center justify-between ${
-                          isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low text-on-surface"
+                          isActive || hasActiveChild ? "bg-primary text-on-primary" : "hover:bg-surface-container-low text-on-surface"
                         }`}
                       >
                         <span className="truncate">{cat.name}</span>
@@ -223,7 +223,7 @@ export function CatalogView({
                               prefetch={false}
                               className={`block w-full text-left rounded-lg px-3 py-1.5 text-sm transition ${
                                 selectedCategoryId === sub.id
-                                  ? "bg-primary/80 text-white font-semibold"
+                                  ? "bg-primary/80 text-on-primary font-semibold"
                                   : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
                               }`}
                             >
@@ -278,7 +278,7 @@ export function CatalogView({
                 prefetch={false}
                 onClick={() => setShowMobileCategories(false)}
                 className={`block w-full text-left rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                  !selectedCategoryId ? "bg-primary text-white" : "hover:bg-surface-container-low"
+                  !selectedCategoryId ? "bg-primary text-on-primary" : "hover:bg-surface-container-low"
                 }`}
               >
                 Все товары
@@ -308,7 +308,7 @@ export function CatalogView({
                         setShowMobileCategories(false);
                       }}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                        isActive || hasActiveChild ? "bg-primary text-white" : "hover:bg-surface-container-low"
+                        isActive || hasActiveChild ? "bg-primary text-on-primary" : "hover:bg-surface-container-low"
                       }`}
                     >
                       <span className="truncate">{cat.name}</span>
@@ -337,7 +337,7 @@ export function CatalogView({
                             onClick={() => setShowMobileCategories(false)}
                             className={`block w-full text-left rounded-lg px-3 py-2 text-sm transition ${
                               selectedCategoryId === sub.id
-                                ? "bg-primary/80 text-white font-semibold"
+                                ? "bg-primary/80 text-on-primary font-semibold"
                                 : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
                             }`}
                           >
@@ -377,7 +377,7 @@ export function CatalogView({
                 prefetch={false}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                   selectedCategoryId === sub.id
-                    ? "bg-primary text-white border-primary"
+                    ? "bg-primary text-on-primary border-primary"
                     : "border-surface-container-high hover:bg-surface-container-low"
                 }`}
               >

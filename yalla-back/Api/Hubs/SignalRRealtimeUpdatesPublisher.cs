@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Yalla.Application.Abstractions;
+using Yalla.Application.DTO.Response;
 using Yalla.Domain.Enums;
 
 namespace Api.Hubs;
@@ -197,6 +198,22 @@ public sealed class SignalRRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
     catch (Exception ex)
     {
       _logger.LogWarning(ex, "Failed to publish ManualLookupRequestClosed for {RequestId}", requestId);
+    }
+  }
+
+  public async Task PublishOneCImportRunUpdatedAsync(
+    OneCImportRunLogResponse run,
+    CancellationToken cancellationToken = default)
+  {
+    try
+    {
+      await _hubContext.Clients
+        .Group(UpdatesHub.SuperAdminGroup)
+        .SendAsync("OneCImportRunUpdated", run, cancellationToken);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogWarning(ex, "Failed to publish OneCImportRunUpdated for run {RunId}", run.Id);
     }
   }
 }

@@ -139,9 +139,13 @@ function ProductModalInner() {
   const gallery = useMemo(() => getGalleryImages(medicine ?? undefined, 1200), [medicine]);
   const activeImage = gallery[activeImageIdx] || getMainImageUrl(medicine ?? undefined, 1200);
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
+  const availableOffers = useMemo(
+    () => (medicine?.offers ?? []).filter((offer) => offer.stockQuantity > 0),
+    [medicine?.offers],
+  );
   const currentPharmacyOffer = useMemo(
-    () => (currentPharmacyId ? (medicine?.offers ?? []).find((offer) => offer.pharmacyId === currentPharmacyId) : undefined),
-    [currentPharmacyId, medicine?.offers],
+    () => (currentPharmacyId ? availableOffers.find((offer) => offer.pharmacyId === currentPharmacyId) : undefined),
+    [availableOffers, currentPharmacyId],
   );
   const canAddToBasket = role !== "Admin" && role !== "SuperAdmin";
   const showOfferBreakdown = role !== "Admin" && role !== "SuperAdmin";
@@ -275,10 +279,10 @@ function ProductModalInner() {
                   </div>
                 ) : null}
 
-                {showOfferBreakdown && (medicine.offers ?? []).length > 0 ? (
+                {showOfferBreakdown && availableOffers.length > 0 ? (
                   <div className="space-y-1.5 pt-1">
                     <h4 className="text-xs font-bold text-on-surface-variant">Цены в аптеках</h4>
-                    {medicine.offers!.map((offer) => (
+                    {availableOffers.map((offer) => (
                       <div key={offer.pharmacyId} className="flex items-center justify-between rounded-lg bg-surface-container-low px-3 py-2 text-xs">
                         <div>
                           <p className="font-semibold">{offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}</p>

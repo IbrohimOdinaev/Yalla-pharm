@@ -265,7 +265,7 @@ export function DatePicker({
                       onClick={() => selectDay(c.iso)}
                       className={`aspect-square rounded-lg text-xs font-semibold transition ${
                         isSelected
-                          ? "bg-primary text-white"
+                          ? "bg-primary text-on-primary"
                           : !c.thisMonth
                             ? "text-on-surface-variant/40 hover:bg-surface-container-low"
                             : isToday
@@ -339,7 +339,7 @@ export function DatePicker({
                       }}
                       className={`rounded-lg px-2 py-3 text-sm font-semibold transition ${
                         isSelected
-                          ? "bg-primary text-white"
+                          ? "bg-primary text-on-primary"
                           : isCurrent
                             ? "bg-primary/10 text-primary hover:bg-primary/20"
                             : "text-on-surface hover:bg-surface-container-low"

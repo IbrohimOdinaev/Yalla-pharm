@@ -176,6 +176,7 @@ internal static class RequestDtoValidator
   {
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
     RequireOptionalNotWhiteSpace(request.Url, nameof(request.Url), errors);
+    RequireOptionalNotWhiteSpace(request.Barcode, nameof(request.Barcode), errors);
 
     if (request.Atributes is null)
     {
@@ -404,6 +405,7 @@ internal static class RequestDtoValidator
     RequireNotEmpty(request.MedicineId, nameof(request.MedicineId), errors);
     RequireNotWhiteSpace(request.Title, nameof(request.Title), errors);
     RequireOptionalNotWhiteSpace(request.Url, nameof(request.Url), errors);
+    RequireOptionalNotWhiteSpace(request.Barcode, nameof(request.Barcode), errors);
   }
 
   private static void ValidateUpdatePharmacy(

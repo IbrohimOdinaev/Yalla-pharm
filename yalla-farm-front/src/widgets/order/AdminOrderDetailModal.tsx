@@ -40,13 +40,13 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   New: "bg-blue-100 text-blue-800",
-  UnderReview: "bg-yellow-100 text-yellow-800",
-  Preparing: "bg-orange-100 text-orange-800",
-  Ready: "bg-emerald-100 text-emerald-800",
+  UnderReview: "bg-warning-soft text-warning",
+  Preparing: "bg-surface-container text-on-surface",
+  Ready: "bg-primary-soft text-primary",
   OnTheWay: "bg-purple-100 text-purple-800",
   DriverArrived: "bg-purple-200 text-purple-900",
-  Delivered: "bg-green-100 text-green-800",
-  PickedUp: "bg-green-100 text-green-800",
+  Delivered: "bg-primary-soft text-primary",
+  PickedUp: "bg-primary-soft text-primary",
   Returned: "bg-red-100 text-red-800",
   Cancelled: "bg-gray-100 text-gray-800",
 };
@@ -240,9 +240,9 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
           {error && <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div>}
 
           {isOrderDataLost(order) ? (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <div className="rounded-xl border border-warning-container bg-warning-soft p-3 text-sm text-warning">
               <p className="font-bold">⚠ Данные позиций утеряны</p>
-              <p className="mt-0.5 text-xs text-amber-800">
+              <p className="mt-0.5 text-xs text-warning">
                 Этот заказ — исторический: записи позиций отсутствуют в БД.
                 Сумма и состав показаны как 0 — данные восстановить нельзя.
               </p>
@@ -298,7 +298,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
             {order.paymentState ? (
               <div className="rounded-xl bg-surface-container-low p-3">
                 <p className="text-[10px] text-on-surface-variant uppercase">Оплата</p>
-                <p className={`font-bold ${order.paymentState === "Confirmed" ? "text-emerald-600" : order.paymentState === "Expired" ? "text-red-600" : "text-yellow-600"}`}>
+                <p className={`font-bold ${order.paymentState === "Confirmed" ? "text-primary" : order.paymentState === "Expired" ? "text-red-600" : "text-warning"}`}>
                   {order.paymentState === "Confirmed" ? "Подтверждена"
                     : order.paymentState === "PendingManualConfirmation" ? "Ожидает"
                     : order.paymentState === "Expired" ? "Истекла"
@@ -328,16 +328,16 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
           {/* Client comment */}
           {order.comment ? (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-1">
-              <p className="text-[10px] text-amber-700 uppercase tracking-wider font-semibold">Комментарий клиента</p>
-              <p className="text-sm text-amber-900 whitespace-pre-wrap">{order.comment}</p>
+            <div className="rounded-xl bg-surface-container border border-outline p-3 space-y-1">
+              <p className="text-[10px] text-warning uppercase tracking-wider font-semibold">Комментарий клиента</p>
+              <p className="text-sm text-on-surface whitespace-pre-wrap">{order.comment}</p>
             </div>
           ) : null}
 
           {/* JURA delivery card */}
           {!order.isPickup && order.juraOrderId != null ? (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-1.5">
-              <p className="text-[10px] text-emerald-700 uppercase tracking-wider font-semibold">Доставка JURA</p>
+            <div className="rounded-xl bg-primary-soft border border-primary/20 p-3 space-y-1.5">
+              <p className="text-[10px] text-primary uppercase tracking-wider font-semibold">Доставка JURA</p>
               <div className="flex justify-between text-sm">
                 <span className="text-on-surface-variant">JURA заказ</span>
                 <span className="font-mono">#{order.juraOrderId}</span>
@@ -466,9 +466,9 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
           {/* Refund */}
           {order.refundRequest && (
-            <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm">
-              <p className="font-bold text-yellow-800">Запрос на возврат</p>
-              <p className="text-yellow-700">
+            <div className="rounded-xl bg-warning-soft border border-warning-container p-3 text-sm">
+              <p className="font-bold text-warning">Запрос на возврат</p>
+              <p className="text-warning">
                 {order.refundRequest.amount != null ? `Сумма: ${formatMoney(order.refundRequest.amount, order.refundRequest.currency)} · ` : ""}
                 Статус: {order.refundRequest.status}
               </p>

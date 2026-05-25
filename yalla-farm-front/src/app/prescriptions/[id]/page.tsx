@@ -15,6 +15,7 @@ import {
 import { getMedicinesByIds, getMedicineDisplayName, getCheapestPrice, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
+import { openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
@@ -341,7 +342,7 @@ export default function PrescriptionDetailPage() {
                     href={prescription.paymentUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-card transition active:scale-95 hover:bg-primary-container"
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-card transition active:scale-95 hover:bg-primary-container"
                   >
                     <Icon name="bolt" size={14} />
                     Оплатить 3 TJS
@@ -377,6 +378,7 @@ export default function PrescriptionDetailPage() {
                   loading={resubmitting}
                   onClick={async () => {
                     if (!token) return;
+                    const paymentWindow = preparePaymentWindow();
                     setResubmitting(true);
                     setError(null);
                     try {
@@ -385,11 +387,13 @@ export default function PrescriptionDetailPage() {
                       // from the backend response) so the user lands on the live
                       // unpaid state instead of the cancelled-history view.
                       if (created.paymentUrl) {
-                        window.location.href = created.paymentUrl;
+                        openPaymentUrl(created.paymentUrl, paymentWindow);
                         return;
                       }
+                      paymentWindow?.close();
                       router.push(`/prescriptions/${created.prescriptionId}`);
                     } catch (err) {
+                      paymentWindow?.close();
                       setError(err instanceof Error ? err.message : "Не удалось переотправить рецепт.");
                     } finally {
                       setResubmitting(false);
@@ -762,7 +766,7 @@ function PairSideRow({
                   <button
                     type="button"
                     onClick={() => onSetQty(effective + 1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95"
                     aria-label="Больше"
                   >
                     <Icon name="plus" size={14} />
@@ -944,7 +948,7 @@ function SingletonRow({
                   <button
                     type="button"
                     onClick={() => onSetQty(effective + 1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95"
                     aria-label="Больше"
                   >
                     <Icon name="plus" size={14} />
@@ -1015,7 +1019,7 @@ function ItemRowFooter({
             onClick={onToggleComment}
             className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
               commentOpen
-                ? "bg-primary text-white"
+                ? "bg-primary text-on-primary"
                 : "bg-surface-container-low text-on-surface hover:bg-image-backdrop"
             }`}
           >

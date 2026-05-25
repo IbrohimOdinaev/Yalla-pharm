@@ -5,6 +5,7 @@ public sealed class MedicineSearchDocument
     public Guid Id { get; init; }
     public string Title { get; init; } = string.Empty;
     public string Articul { get; init; } = string.Empty;
+    public string Barcode { get; init; } = string.Empty;
     public string? CategoryName { get; init; }
     public string? Description { get; init; }
     public decimal? MinPrice { get; init; }
@@ -17,6 +18,7 @@ public sealed class MedicineSearchResult
     public Guid Id { get; init; }
     public string Title { get; init; } = string.Empty;
     public string Articul { get; init; } = string.Empty;
+    public string Barcode { get; init; } = string.Empty;
     public string? CategoryName { get; init; }
     public decimal? MinPrice { get; init; }
     public double Score { get; init; }

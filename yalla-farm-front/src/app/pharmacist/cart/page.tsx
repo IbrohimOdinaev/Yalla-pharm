@@ -618,7 +618,7 @@ function DraftRow({
           <button
             type="button"
             onClick={() => onUpdate(activeId, it.draftId, { quantity: it.quantity + 1 })}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95"
             aria-label="Больше"
           >
             <Icon name="plus" size={14} />

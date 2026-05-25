@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 import { PharmacyLogo } from "@/shared/ui";
 
 type Props = {
@@ -13,8 +15,15 @@ type Props = {
 export function PharmacyPickerModal({ open, onClose }: Props) {
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   const setPharmacy = usePharmacyStore((s) => s.setPharmacy);
+
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -32,7 +41,7 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   function onSelect(pharmacy: ActivePharmacy | null) {
     if (pharmacy) {
@@ -43,9 +52,9 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
     onClose();
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+  return createPortal(
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div
         className="relative w-full max-w-lg max-h-modal-tight overflow-y-auto overscroll-contain bg-surface rounded-2xl shadow-2xl"
@@ -140,6 +149,7 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

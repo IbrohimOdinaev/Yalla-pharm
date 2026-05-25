@@ -102,7 +102,7 @@ export function Select({
                 }}
                 className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition active:scale-[0.98] ${
                   isSelected
-                    ? "bg-primary text-white font-bold"
+                    ? "bg-primary text-on-primary font-bold"
                     : "text-on-surface hover:bg-surface-container-low"
                 }`}
                 style={opt.depth ? { paddingLeft: `${12 + opt.depth * 16}px` } : undefined}

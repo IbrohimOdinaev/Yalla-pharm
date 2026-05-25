@@ -8,6 +8,10 @@ public interface IPaymentSettingsService
   /// <summary>SuperAdmin-only. Pass null/empty to reset to config default.</summary>
   Task SetDcBaseUrlAsync(string? url, Guid updatedByUserId, CancellationToken cancellationToken = default);
 
+  Task SetAlifUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken cancellationToken = default);
+
+  Task SetEskhataUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken cancellationToken = default);
+
   Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default);
 }
 
@@ -15,6 +19,10 @@ public sealed class PaymentSettingsSnapshot
 {
   public string? DcBaseUrl { get; init; }
   public string DcBaseUrlEffective { get; init; } = string.Empty;
+  public string? AlifUrlTemplate { get; init; }
+  public string AlifUrlTemplateEffective { get; init; } = string.Empty;
+  public string? EskhataUrlTemplate { get; init; }
+  public string EskhataUrlTemplateEffective { get; init; } = string.Empty;
   public DateTime UpdatedAtUtc { get; init; }
   public Guid? UpdatedByUserId { get; init; }
 }

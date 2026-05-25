@@ -5,5 +5,6 @@ public enum SmsVerificationPurpose
   ClientRegistration = 0,
   CheckoutConfirmation = 1,
   ClientOtpLogin = 2,
-  ClientPhoneLink = 3
+  ClientPhoneLink = 3,
+  AdminProfileUpdate = 4
 }

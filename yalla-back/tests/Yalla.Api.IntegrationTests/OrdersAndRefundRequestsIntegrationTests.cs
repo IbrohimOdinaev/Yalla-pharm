@@ -270,7 +270,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     Assert.Equal(Status.UnderReview, updatedOrder.Status);
     Assert.Equal(OrderPaymentState.Confirmed, updatedOrder.PaymentState);
     Assert.NotNull(updatedOrder.PaymentConfirmedAtUtc);
-    Assert.True(updatedOrder.IsStockDeducted);
+    Assert.False(updatedOrder.IsStockDeducted);
 
     var paymentHistory = await dbContext.PaymentHistories
       .AsNoTracking()

@@ -25,6 +25,19 @@ public sealed class PaymentSettingsController : ControllerBase
     return Ok(snapshot);
   }
 
+  [HttpGet("public")]
+  [AllowAnonymous]
+  public async Task<IActionResult> GetPublic(CancellationToken cancellationToken)
+  {
+    var snapshot = await _service.GetSnapshotAsync(cancellationToken);
+    return Ok(new
+    {
+      dcBaseUrlEffective = snapshot.DcBaseUrlEffective,
+      alifUrlTemplateEffective = snapshot.AlifUrlTemplateEffective,
+      eskhataUrlTemplateEffective = snapshot.EskhataUrlTemplateEffective
+    });
+  }
+
   [HttpPut("dc-base-url")]
   public async Task<IActionResult> UpdateDcBaseUrl(
     [FromBody] UpdateDcBaseUrlRequest request,
@@ -39,5 +52,32 @@ public sealed class PaymentSettingsController : ControllerBase
   public sealed class UpdateDcBaseUrlRequest
   {
     public string? Url { get; init; }
+  }
+
+  [HttpPut("alif-url-template")]
+  public async Task<IActionResult> UpdateAlifUrlTemplate(
+    [FromBody] UpdatePaymentUrlTemplateRequest request,
+    CancellationToken cancellationToken)
+  {
+    var userId = User.GetRequiredUserId();
+    await _service.SetAlifUrlTemplateAsync(request.UrlTemplate, userId, cancellationToken);
+    var snapshot = await _service.GetSnapshotAsync(cancellationToken);
+    return Ok(snapshot);
+  }
+
+  [HttpPut("eskhata-url-template")]
+  public async Task<IActionResult> UpdateEskhataUrlTemplate(
+    [FromBody] UpdatePaymentUrlTemplateRequest request,
+    CancellationToken cancellationToken)
+  {
+    var userId = User.GetRequiredUserId();
+    await _service.SetEskhataUrlTemplateAsync(request.UrlTemplate, userId, cancellationToken);
+    var snapshot = await _service.GetSnapshotAsync(cancellationToken);
+    return Ok(snapshot);
+  }
+
+  public sealed class UpdatePaymentUrlTemplateRequest
+  {
+    public string? UrlTemplate { get; init; }
   }
 }

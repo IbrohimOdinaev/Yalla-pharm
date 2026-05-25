@@ -44,6 +44,9 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
     builder.HasIndex(x => x.PharmacyId)
       .HasDatabaseName("ix_offers_pharmacy_id");
 
+    builder.HasIndex(x => new { x.PharmacyId, x.MedicineId })
+      .HasDatabaseName("ix_offers_pharmacy_id_medicine_id");
+
     builder.HasIndex(x => new { x.MedicineId, x.PharmacyId })
       .IsUnique()
       .HasDatabaseName("ux_offers_medicine_id_pharmacy_id");

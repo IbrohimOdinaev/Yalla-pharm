@@ -256,29 +256,12 @@ public sealed class PaymentIntentService : IPaymentIntentService
         return BuildNeedsResolutionResponse(paymentIntent, reason);
       }
 
-      foreach (var entry in groupedByMedicine)
-      {
-        var affectedRows = await _dbContext.Offers
-          .Where(x =>
-            x.PharmacyId == paymentIntent.PharmacyId
-            && x.MedicineId == entry.Key
-            && x.StockQuantity >= entry.Value)
-          .ExecuteUpdateAsync(
-            setters => setters.SetProperty(
-              x => x.StockQuantity,
-              x => x.StockQuantity - entry.Value),
-            cancellationToken);
-
-        if (affectedRows == 0)
-        {
-          throw new ConcurrentStockUpdateException(entry.Key);
-        }
-      }
+      await CleanupTemporaryPrescriptionOfferRowsAsync(medicineIds, cancellationToken);
 
       if (existingOrder is not null)
       {
         existingOrder.ConfirmManualPayment(superAdmin.Id, nowUtc);
-        existingOrder.MarkStockDeducted();
+        existingOrder.MarkStockNotDeducted();
         existingOrder.NextStage(true);
       }
       else
@@ -306,6 +289,7 @@ public sealed class PaymentIntentService : IPaymentIntentService
           entrance: paymentIntent.Entrance,
           floor: paymentIntent.Floor,
           apartment: paymentIntent.Apartment);
+        existingOrder.MarkStockNotDeducted();
 
         existingOrder.MarkManualPaymentConfirmed(
           amount: paymentIntent.Amount,
@@ -504,6 +488,37 @@ public sealed class PaymentIntentService : IPaymentIntentService
 
       throw;
     }
+  }
+
+  private async Task CleanupTemporaryPrescriptionOfferRowsAsync(
+    IReadOnlyCollection<Guid> medicineIds,
+    CancellationToken cancellationToken)
+  {
+    if (medicineIds.Count == 0)
+      return;
+
+    var shadowMedicineIds = await _dbContext.Medicines
+      .AsNoTracking()
+      .Where(m => medicineIds.Contains(m.Id) && !m.IsCatalogMedicine)
+      .Select(m => m.Id)
+      .ToListAsync(cancellationToken);
+
+    if (shadowMedicineIds.Count == 0)
+      return;
+
+    await _dbContext.Offers
+      .Where(o => shadowMedicineIds.Contains(o.MedicineId))
+      .ExecuteDeleteAsync(cancellationToken);
+
+    await _dbContext.MedicineImages
+      .Where(i => shadowMedicineIds.Contains(i.MedicineId))
+      .ExecuteDeleteAsync(cancellationToken);
+
+    await _dbContext.Medicines
+      .Where(m => shadowMedicineIds.Contains(m.Id))
+      .ExecuteUpdateAsync(
+        setters => setters.SetProperty(m => m.IsActive, false),
+        cancellationToken);
   }
 
   public async Task<RejectPaymentIntentBySuperAdminResponse> RejectBySuperAdminAsync(

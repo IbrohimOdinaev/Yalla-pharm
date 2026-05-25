@@ -1,4 +1,4 @@
-import { appendFile, mkdir, open, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,7 +6,8 @@ const exchangeRoot = process.env.ONE_C_EXCHANGE_DIR ?? path.join(process.cwd(), 
 const sessionCookieName = "yalla_1c_exchange";
 const sessionCookieValue = "accepted";
 const maxOfferHistory = 3;
-const maxImportHistory = 1;
+const maxImportHistory = 3;
+const exchangeStatusFile = ".exchange-status.json";
 const receivedFilesInCurrentSession = new Map<string, string>();
 const storedFilenameLocks = new Map<string, Promise<string>>();
 const sessionStartedAt = new Map<string, number>();
@@ -107,6 +108,44 @@ async function startExchangeSession(sourceToken: string) {
     if (key.startsWith(prefix)) {
       receivedFilesInCurrentSession.delete(key);
     }
+  }
+}
+
+async function recordExchangeStatus(
+  sourceToken: string,
+  mode: string,
+  file?: { filename: string; size: number }
+) {
+  if (!sourceToken) {
+    return;
+  }
+
+  try {
+    await ensureExchangeDirectory(sourceToken);
+    const target = path.join(sourceDirectory(sourceToken), exchangeStatusFile);
+    const now = new Date().toISOString();
+    const previous = await readExchangeStatus(target);
+    const next = {
+      ...previous,
+      lastContactAtUtc: now,
+      lastMode: mode || "unknown",
+      lastCheckAuthAtUtc: mode === "checkauth" ? now : previous.lastCheckAuthAtUtc,
+      lastInitAtUtc: mode === "init" ? now : previous.lastInitAtUtc,
+      lastFileAtUtc: file ? now : previous.lastFileAtUtc,
+      lastFilename: file?.filename ?? previous.lastFilename,
+      lastFileSize: file?.size ?? previous.lastFileSize
+    };
+    await writeFile(target, JSON.stringify(next, null, 2));
+  } catch {
+    // Status is observability only; never break CommerceML exchange because of it.
+  }
+}
+
+async function readExchangeStatus(target: string): Promise<Record<string, string | number | undefined>> {
+  try {
+    return JSON.parse(await readFile(target, "utf8"));
+  } catch {
+    return {};
   }
 }
 
@@ -250,7 +289,7 @@ async function listReceivedFiles(sourceToken: string) {
   const directory = sourceDirectory(sourceToken);
   const files = await readdir(directory);
   const details = await Promise.all(
-    files.map(async (file) => {
+    files.filter((file) => !file.startsWith(".")).map(async (file) => {
       const fullPath = path.join(directory, file);
       const info = await stat(fullPath);
       if (!info.isFile()) {
@@ -271,6 +310,7 @@ export async function handleOneCGet(request: NextRequest, routeToken?: string) {
   const type = getExchangeType(request);
 
   if (mode === "checkauth") {
+    await recordExchangeStatus(sourceToken, "checkauth");
     const response = textResponse(`success\n${sessionCookieName}\n${sessionCookieValue}\n`);
     response.cookies.set(sessionCookieName, sessionCookieValue, {
       httpOnly: true,
@@ -282,11 +322,13 @@ export async function handleOneCGet(request: NextRequest, routeToken?: string) {
 
   if (mode === "init") {
     await startExchangeSession(sourceToken);
+    await recordExchangeStatus(sourceToken, "init");
     return textResponse("zip=no\nfile_limit=10485760\n");
   }
 
   if (mode === "import") {
     const filename = safeFilename(request.nextUrl.searchParams.get("filename"));
+    await recordExchangeStatus(sourceToken, "import", { filename, size: 0 });
     if (isOffersFilename(filename)) {
       await pruneOfferHistory(sourceToken);
     }
@@ -297,6 +339,7 @@ export async function handleOneCGet(request: NextRequest, routeToken?: string) {
   }
 
   if (mode === "query") {
+    await recordExchangeStatus(sourceToken, "query");
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?><${type}></${type}>`);
   }
 
@@ -320,6 +363,7 @@ export async function handleOneCPost(request: NextRequest, routeToken?: string) 
 
   if (mode === "file" || mode === "" || mode === "import") {
     const saved = await saveRequestBody(request, sourceToken, filename);
+    await recordExchangeStatus(sourceToken, "file", { filename, size: saved.totalSize });
     return textResponse(
       `success\nsaved=${path.basename(saved.target)}\nchunk_size=${saved.chunkSize}\ntotal_size=${saved.totalSize}\n`
     );

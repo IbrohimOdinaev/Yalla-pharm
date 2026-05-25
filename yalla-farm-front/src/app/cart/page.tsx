@@ -339,17 +339,12 @@ export default function CartPage() {
               return (
                 <li
                   key={item.id}
-                  className="flex items-center gap-2.5 rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:gap-3 xs:p-3.5 sm:gap-4 sm:p-4 md:gap-6 md:p-5 lg:gap-6"
+                  className="relative flex items-center gap-2.5 rounded-2xl bg-surface-container-lowest p-3 pr-10 shadow-card xs:gap-3 xs:p-3.5 xs:pr-11 sm:gap-4 sm:p-4 sm:pr-12 md:gap-6 md:p-5 md:pr-14 lg:gap-6"
                 >
-                  {/* Delete X — leftmost from md (≥768px). Below md the X moves
-                      into the qty-stepper cluster (rendered inline below) so the
-                      row stays tight and the X+stepper read as one block on
-                      narrow phones. At md+ there's enough horizontal room for a
-                      dedicated left column. */}
                   <button
                     type="button"
                     onClick={() => onRemove(item.id, item.medicineId)}
-                    className="hidden h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 md:flex"
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 sm:right-2.5 sm:top-2.5 md:right-3 md:top-3 md:h-8 md:w-8"
                     aria-label="Удалить"
                   >
                     <Icon name="close" size={14} />
@@ -404,11 +399,6 @@ export default function CartPage() {
                         {minPrice ? formatMoney(minPrice) : "—"}
                       </span>
                     </p>
-                    {/* Stepper cluster — below xl the X-button stacks BELOW the
-                        stepper inside this same flex column, vertically centred
-                        so the gap between them sits on the row's mid-line. At
-                        xl+ this collapses to just the stepper (the X lives back
-                        on the left). */}
                     <div className="flex flex-col items-center justify-center gap-2 xl:flex-row xl:gap-0">
                       <div className="flex items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
                         <button
@@ -425,20 +415,12 @@ export default function CartPage() {
                         <button
                           type="button"
                           onClick={() => onIncrement(item.id, item.medicineId, item.quantity)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95 disabled:opacity-40 md:h-8 md:w-8"
                           aria-label="Увеличить"
                         >
                           <Icon name="plus" size={14} />
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onRemove(item.id, item.medicineId)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95 md:hidden"
-                        aria-label="Удалить"
-                      >
-                        <Icon name="close" size={14} />
-                      </button>
                     </div>
                   </div>
                 </li>

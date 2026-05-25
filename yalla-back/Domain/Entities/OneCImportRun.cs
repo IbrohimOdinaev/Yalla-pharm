@@ -14,6 +14,8 @@ public class OneCImportRun
   public int ProcessedCount { get; private set; }
   public int LinkedCount { get; private set; }
   public int UpdatedCount { get; private set; }
+  public int InsertedCount { get; private set; }
+  public int UnchangedCount { get; private set; }
   public int UnmatchedCount { get; private set; }
   public string? Error { get; private set; }
   public DateTime StartedAtUtc { get; private set; }
@@ -41,15 +43,24 @@ public class OneCImportRun
     StartedAtUtc = startedAtUtc;
   }
 
-  public void Complete(int processed, int linked, int updated, int unmatched, DateTime finishedAtUtc)
+  public void Complete(int processed, int linked, int updated, int inserted, int unchanged, int unmatched, DateTime finishedAtUtc)
   {
     ProcessedCount = processed;
     LinkedCount = linked;
     UpdatedCount = updated;
+    InsertedCount = inserted;
+    UnchangedCount = unchanged;
     UnmatchedCount = unmatched;
     Status = "success";
     FinishedAtUtc = finishedAtUtc;
     Error = null;
+  }
+
+  public void Supersede(string reason, DateTime finishedAtUtc)
+  {
+    Status = "superseded";
+    Error = string.IsNullOrWhiteSpace(reason) ? "Superseded by newer snapshot" : reason.Trim();
+    FinishedAtUtc = finishedAtUtc;
   }
 
   public void Fail(string error, DateTime finishedAtUtc)

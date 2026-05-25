@@ -30,7 +30,7 @@ export function OrderTimeline({ steps, className = "" }: { steps: OrderTimelineS
                 <span
                   className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold ${
                     s.state === "done"
-                      ? "bg-primary text-white"
+                      ? "bg-primary text-on-primary"
                       : s.state === "active"
                         ? "bg-primary/15 text-primary ring-2 ring-primary animate-pulse"
                         : s.state === "skipped"

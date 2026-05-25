@@ -30,6 +30,26 @@ public class MedicineServiceTests
   }
 
   [Fact]
+  public async Task CreateMedicineAsync_NormalizesBarcodeAndRejectsDuplicate()
+  {
+    using var scope = TestDbFactory.Create();
+    var existing = TestDbFactory.CreateMedicine("M1", "BC-1", barcode: "460123456789");
+    scope.Db.Medicines.Add(existing);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new MedicineService(scope.Db);
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateMedicineAsync(new CreateMedicineRequest
+    {
+      Title = "M2",
+      Articul = "BC-2",
+      Barcode = " 460 123-456789 "
+    }));
+
+    Assert.Contains("barcode '460123456789'", ex.Message);
+  }
+
+  [Fact]
   public async Task CreateMedicineAsync_ThrowsForDuplicateArticul()
   {
     using var scope = TestDbFactory.Create();
@@ -203,17 +223,19 @@ public class MedicineServiceTests
   }
 
   [Fact]
-  public async Task GetMedicineByIdAsync_ReturnsOffersForClientAndSuperAdminViews()
+  public async Task GetMedicineByIdAsync_ReturnsOnlyActiveInStockOffers()
   {
     using var scope = TestDbFactory.Create();
 
     var medicine = TestDbFactory.CreateMedicine("Paracetamol", "P-1010");
     var activePharmacy = TestDbFactory.CreatePharmacy("B Active", "Addr 1", Guid.NewGuid(), isActive: true);
     var inactivePharmacy = TestDbFactory.CreatePharmacy("A Inactive", "Addr 2", Guid.NewGuid(), isActive: false);
+    var outOfStockPharmacy = TestDbFactory.CreatePharmacy("C Out", "Addr 3", Guid.NewGuid(), isActive: true);
     var activeOffer = TestDbFactory.CreateOffer(medicine.Id, activePharmacy.Id, stock: 7, price: 5.5m);
     var inactiveOffer = TestDbFactory.CreateOffer(medicine.Id, inactivePharmacy.Id, stock: 7, price: 4.5m);
+    var outOfStockOffer = TestDbFactory.CreateOffer(medicine.Id, outOfStockPharmacy.Id, stock: 0, price: 3.5m);
 
-    scope.Db.AddRange(medicine, activePharmacy, inactivePharmacy, activeOffer, inactiveOffer);
+    scope.Db.AddRange(medicine, activePharmacy, inactivePharmacy, outOfStockPharmacy, activeOffer, inactiveOffer, outOfStockOffer);
     await scope.Db.SaveChangesAsync();
 
     var service = new MedicineService(scope.Db);
@@ -222,13 +244,41 @@ public class MedicineServiceTests
       MedicineId = medicine.Id
     });
 
-    Assert.Equal(2, response.Medicine.Offers.Count);
-    var firstOffer = response.Medicine.Offers.First();
-    var secondOffer = response.Medicine.Offers.Skip(1).First();
-    Assert.Equal("A Inactive", firstOffer.PharmacyTitle);
-    Assert.False(firstOffer.IsAvailable);
-    Assert.Equal("B Active", secondOffer.PharmacyTitle);
-    Assert.True(secondOffer.IsAvailable);
+    var offer = Assert.Single(response.Medicine.Offers);
+    Assert.Equal("B Active", offer.PharmacyTitle);
+    Assert.True(offer.IsAvailable);
+    Assert.Equal(7, offer.StockQuantity);
+  }
+
+  [Fact]
+  public async Task SearchByPharmacyAsync_HidesManualLookupShadowMedicines()
+  {
+    using var scope = TestDbFactory.Create();
+
+    var pharmacy = TestDbFactory.CreatePharmacy("Pharmacy", "Addr", Guid.NewGuid(), isActive: true);
+    var catalogMedicine = TestDbFactory.CreateMedicine("Citramon", "CAT-1");
+    var shadowMedicine = Medicine.ForManualLookup(
+      "Citramon manual",
+      $"manual-{Guid.NewGuid():N}",
+      manualLookupRequestId: Guid.NewGuid(),
+      manualLookupResponseId: Guid.NewGuid());
+
+    var catalogOffer = TestDbFactory.CreateOffer(catalogMedicine.Id, pharmacy.Id, stock: 5, price: 12m);
+    var shadowOffer = TestDbFactory.CreateOffer(shadowMedicine.Id, pharmacy.Id, stock: 5, price: 57m);
+
+    scope.Db.AddRange(pharmacy, catalogMedicine, shadowMedicine, catalogOffer, shadowOffer);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new MedicineService(scope.Db);
+    var response = await service.SearchByPharmacyAsync(new SearchByPharmacyRequest
+    {
+      Query = "Citramon",
+      Limit = 10
+    });
+
+    var medicines = response.Pharmacies.SelectMany(x => x.Medicines).ToList();
+    Assert.Contains(medicines, x => x.Id == catalogMedicine.Id);
+    Assert.DoesNotContain(medicines, x => x.Id == shadowMedicine.Id);
   }
 
   [Fact]

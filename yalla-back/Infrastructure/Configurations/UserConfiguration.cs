@@ -71,6 +71,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
       .HasMaxLength(64)
       .IsRequired(false);
 
+    builder.Property(x => x.AvatarUrl)
+      .HasColumnName("avatar_url")
+      .HasColumnType("character varying(500)")
+      .HasMaxLength(500)
+      .IsRequired(false);
+
     // Account-activation state — see User.Deactivate / Activate.
     // Existing rows get IsActive=true via the SQL default.
     builder.Property(x => x.IsActive)

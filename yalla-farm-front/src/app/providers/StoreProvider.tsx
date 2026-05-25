@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Provider, useDispatch, useSelector } from "react-redux";
 import { store, type RootState } from "@/app/store";
@@ -10,6 +11,44 @@ import { getStoredToken, setStoredToken } from "@/shared/lib/auth-storage";
 import { stopSignalRConnection } from "@/shared/lib/signalr";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useCartStore } from "@/features/cart/model/cartStore";
+
+function getRoleHome(role: string | null): string | null {
+  if (role === "Admin") return "/workspace";
+  if (role === "SuperAdmin") return "/superadmin";
+  if (role === "Pharmacist") return "/pharmacist";
+  return null;
+}
+
+function AuthSplash() {
+  return (
+    <div className="fixed inset-0 z-[9999] flex min-h-dvh items-center justify-center bg-surface">
+      <div className="flex flex-col items-center gap-5">
+        <div className="relative flex h-24 w-24 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-4 border-accent-dark" />
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary border-r-accent-dark animate-spin" />
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-container-lowest shadow-card">
+            <Image src="/logo-icon.png" alt="Yalla" width={44} height={43} priority className="h-11 w-11 object-contain" />
+          </div>
+        </div>
+        <Image src="/logo-text.png" alt="Yalla Pharm" width={145} height={71} priority className="h-7 w-auto object-contain" />
+      </div>
+    </div>
+  );
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const role = useSelector((s: RootState) => s.auth.role);
+  const hydrated = useSelector((s: RootState) => s.auth.hydrated);
+  const pathname = usePathname();
+  const roleHome = getRoleHome(role);
+  const isResolvingStaffRoute = hydrated && roleHome !== null && !pathname.startsWith(roleHome);
+
+  if (!hydrated || isResolvingStaffRoute) {
+    return <AuthSplash />;
+  }
+
+  return <>{children}</>;
+}
 
 function AuthPersistenceBridge() {
   const dispatch = useDispatch();
@@ -77,35 +116,12 @@ function RoleBasedRedirect() {
 
   useEffect(() => {
     if (!hydrated || !role) return;
-    if (role === "Admin" && !pathname.startsWith("/workspace")) {
-      router.replace("/workspace");
-    } else if (role === "SuperAdmin" && !pathname.startsWith("/superadmin")) {
-      router.replace("/superadmin");
-    } else if (role === "Pharmacist" && !pathname.startsWith("/pharmacist")) {
-      router.replace("/pharmacist");
+    const roleHome = getRoleHome(role);
+    if (roleHome && !pathname.startsWith(roleHome)) {
+      router.replace(roleHome);
     }
   }, [hydrated, role, pathname, router]);
 
-  return null;
-}
-
-/** Kicks off the Yandex Maps SDK download in the background once the app
- *  is idle. By the time the user opens the address picker, the bundle is
- *  usually cached — the modal then mounts in under a frame instead of
- *  waiting on a fresh script + TLS handshake. Wrapped in requestIdleCallback
- *  so it doesn't compete with hydration / first paint on slow devices. */
-function MapPrewarm() {
-  useEffect(() => {
-    const kick = () => {
-      void import("@/shared/lib/map/yandex-loader").then((m) => m.loadYmaps()).catch(() => undefined);
-    };
-    const w = window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
-    if (typeof w.requestIdleCallback === "function") {
-      w.requestIdleCallback(kick, { timeout: 4000 });
-    } else {
-      setTimeout(kick, 1500);
-    }
-  }, []);
   return null;
 }
 
@@ -114,8 +130,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     <Provider store={store}>
       <AuthPersistenceBridge />
       <RoleBasedRedirect />
-      <MapPrewarm />
-      {children}
+      <AuthGate>{children}</AuthGate>
     </Provider>
   );
 }

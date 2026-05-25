@@ -19,7 +19,7 @@ export function StepProgress({ steps, current, className = "" }: Props) {
             <span
               className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold ${
                 done
-                  ? "bg-primary text-white"
+                  ? "bg-primary text-on-primary"
                   : active
                     ? "bg-primary/15 text-primary ring-2 ring-primary ring-offset-2 ring-offset-surface"
                     : "bg-surface-container-low text-on-surface-variant"

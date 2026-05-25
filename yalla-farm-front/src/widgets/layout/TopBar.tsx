@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useState, useRef, useEffect, useMemo, type RefObject } from "react";
+import { useCallback, useState, useRef, useEffect, useMemo, type RefObject } from "react";
 import { useAppSelector, useAppDispatch } from "@/shared/lib/redux";
 import { clearCredentials } from "@/features/auth/model/authSlice";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
@@ -10,7 +10,17 @@ import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useGuestPharmacyOptions } from "@/features/cart/model/useGuestPharmacyOptions";
 import { computeBestPriceFromPharmacyOptions } from "@/features/cart/model/bestPharmacyPrice";
+import { getCachedMedicineByIdOrSlug, getCheapestPrice } from "@/entities/medicine/api";
+import { getClientOrderHistory } from "@/entities/order/api";
+import {
+  getMyPrescriptions,
+  PRESCRIPTION_STATUS_LABEL_RU,
+  type ApiPrescription,
+  type PrescriptionStatus,
+} from "@/entities/prescription/api";
+import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { formatMoney } from "@/shared/lib/format";
+import type { ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { Icon } from "@/shared/ui";
 
 type TopBarProps = {
@@ -29,7 +39,9 @@ type TopBarProps = {
   showLogout?: boolean;
   /** Hide the search pill in homeMode (used when page itself shows a search UI). */
   hideSearch?: boolean;
-  /** Show the "Загрузите рецепт от врача" CTA in the desktop header next to
+  /** Hide only the mobile search row while keeping the desktop search visible. */
+  hideMobileSearch?: boolean;
+  /** Show the "Отправить рецепт" CTA in the desktop header next to
    *  the pharmacy pill. Hidden below xl (1280px) so the home page falls back
    *  to its own banner under the quick-categories rail at narrower widths. */
   showPrescriptionCta?: boolean;
@@ -46,6 +58,7 @@ export function TopBar({
   onLogoClick,
   showLogout,
   hideSearch,
+  hideMobileSearch,
   showPrescriptionCta,
 }: TopBarProps) {
   const token = useAppSelector((s) => s.auth.token);
@@ -91,6 +104,36 @@ export function TopBar({
     guestItems,
     guestCartCount,
   ]);
+  const cartPositionsForTotal = useMemo<ReadonlyArray<{
+    medicineId: string;
+    quantity: number;
+    price?: number;
+    medicine?: ApiMedicine;
+  }>>(
+    () => token
+      ? (serverBasket.positions ?? []).map((p) => ({
+          medicineId: p.medicineId,
+          quantity: p.quantity,
+          price: p.price,
+          medicine: p.medicine,
+        }))
+      : guestItems.map((p) => ({ medicineId: p.medicineId, quantity: p.quantity })),
+    [token, serverBasket.positions, guestItems],
+  );
+  const optimisticCartPrice = useMemo(() => {
+    if (cartPositionsForTotal.length === 0) return null;
+    let total = 0;
+    for (const position of cartPositionsForTotal) {
+      const medicine = position.medicine ?? getCachedMedicineByIdOrSlug(position.medicineId);
+      const price = (position.price && position.price > 0)
+        ? position.price
+        : getCheapestPrice(medicine ?? undefined);
+      if (!price || price <= 0) return null;
+      total += price * Math.max(1, position.quantity);
+    }
+    return total > 0 ? total : null;
+  }, [cartPositionsForTotal]);
+  const cartDisplayPrice = optimisticCartPrice ?? bestPrice?.price;
 
   const goBack = useGoBack();
 
@@ -113,7 +156,9 @@ export function TopBar({
     pathname === "/register";
   const floatingCartRef = useRef<HTMLAnchorElement>(null);
   const floatingCartLabel = bestPrice
-    ? `от ${formatMoney(bestPrice.price)}`
+    ? `от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
+    : cartDisplayPrice != null
+      ? `от ${formatMoney(cartDisplayPrice)}`
     : `${cartCount}`;
 
   useEffect(() => {
@@ -246,10 +291,10 @@ export function TopBar({
     const PrescriptionPill = showPrescriptionCta ? (
       <Link
         href="/prescriptions/new"
-        title="Загрузите рецепт от врача · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
+        title="Отправить рецепт · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
         className="hidden lg:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15"
       >
-        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white">
+        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
@@ -257,7 +302,7 @@ export function TopBar({
             <line x1="12" y1="11" x2="12" y2="17" />
           </svg>
         </span>
-        <span className="whitespace-nowrap">Загрузите рецепт</span>
+        <span className="whitespace-nowrap">Отправить рецепт</span>
       </Link>
     ) : null;
 
@@ -340,7 +385,7 @@ export function TopBar({
       )
     ) : null;
 
-    const MobileSearch = !hideSearch ? (
+    const MobileSearch = !hideSearch && !hideMobileSearch ? (
       onSearchClick ? (
         <button
           type="button"
@@ -366,11 +411,13 @@ export function TopBar({
         aria-label={
           cartFilled
             ? (bestPrice
-                ? `Корзина, от ${formatMoney(bestPrice.price)}`
+                ? `Корзина, от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
+                : cartDisplayPrice != null
+                  ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
                 : `Корзина, ${cartCount} товаров`)
             : "Корзина"
         }
-        className={`hidden h-11 flex-shrink-0 items-center justify-center rounded-full bg-[#3FC5C4] text-on-surface shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-[#35B7B6] active:scale-[0.98] sm:inline-flex sm:h-12 ${
+        className={`hidden h-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-primary-container active:scale-[0.98] sm:inline-flex sm:h-12 ${
           cartFilled
             ? "w-auto gap-2 px-5 sm:gap-2.5 sm:px-6"
             : "w-11 gap-0 px-0 sm:w-12"
@@ -382,10 +429,12 @@ export function TopBar({
             cartFilled ? "max-w-[190px] opacity-100" : "max-w-0 opacity-0"
           }`}
         >
-          {cartFilled ? (bestPrice ? `от ${formatMoney(bestPrice.price)}` : `${cartCount}`) : ""}
+          {cartFilled ? (cartDisplayPrice != null ? `от ${formatMoney(cartDisplayPrice)}` : `${cartCount}`) : ""}
         </span>
       </Link>
     );
+
+    const LatestActivity = <LatestClientActivityButton />;
 
     const renderProfileButton = (ref: RefObject<HTMLDivElement | null>) => (
       <div className="relative flex-shrink-0" ref={ref}>
@@ -528,6 +577,7 @@ export function TopBar({
               {PrescriptionPill}
             </div>
             <span className="flex-1" />
+            {LatestActivity}
             {!onCartRoute ? CartButton : null}
             {renderProfileButton(menuRefDesktop)}
           </div>
@@ -539,6 +589,7 @@ export function TopBar({
             <div className="flex items-center gap-3 px-3 py-2.5 sm:px-6 sm:py-3">
               {LogoLink}
               {MobileBrandAndAddress}
+              {LatestActivity}
               {!onCartRoute ? CartButton : null}
               {renderProfileButton(menuRefMobile)}
             </div>
@@ -563,10 +614,12 @@ export function TopBar({
           href="/cart"
           aria-label={
             bestPrice
-              ? `Корзина, от ${formatMoney(bestPrice.price)}`
+              ? `Корзина, от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
+              : cartDisplayPrice != null
+                ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#3FC5C4] px-7 py-0 text-on-surface shadow-card transition-[top,width,background-color,transform] ease-out will-change-[top,transform] hover:bg-[#35B7B6] active:scale-[0.98] sm:hidden"
+          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-primary px-7 py-0 text-on-primary shadow-card transition-[top,width,background-color,transform] ease-out will-change-[top,transform] hover:bg-primary-container active:scale-[0.98] sm:hidden"
           style={{
             top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
             transitionDuration: "var(--floating-cart-duration, 220ms)",
@@ -636,5 +689,194 @@ export function TopBar({
       </div>
       <div className="hair-divider" />
     </header>
+  );
+}
+
+type LatestClientActivity =
+  | {
+      kind: "order";
+      id: string;
+      status: string;
+      createdAtUtc: string;
+    }
+  | {
+      kind: "prescription";
+      id: string;
+      status: PrescriptionStatus;
+      createdAtUtc: string;
+    };
+
+const ORDER_STATUS_LABEL_RU: Record<string, string> = {
+  New: "Новый заказ",
+  UnderReview: "Проверяется",
+  Preparing: "Готовится",
+  Ready: "Готов",
+  OnTheWay: "В пути",
+  Delivered: "Доставлен",
+  Cancelled: "Отменён",
+  Returned: "Возврат",
+  PickedUp: "Получен",
+  DriverArrived: "Курьер на месте",
+};
+
+const ACTIVE_PRESCRIPTION_STATUSES: ReadonlySet<PrescriptionStatus> = new Set([
+  "Submitted",
+  "AwaitingConfirmation",
+  "InQueue",
+  "InReview",
+  "Decoded",
+]);
+
+const ACTIVE_ORDER_STATUSES: ReadonlySet<string> = new Set([
+  "New",
+  "UnderReview",
+  "Preparing",
+  "Ready",
+  "DriverArrived",
+  "OnTheWay",
+  "Delivered",
+  "PickedUp",
+]);
+
+const PRESCRIPTION_PROGRESS_STAGES: PrescriptionStatus[] = [
+  "Submitted",
+  "AwaitingConfirmation",
+  "InQueue",
+  "InReview",
+  "Decoded",
+];
+
+const ORDER_PROGRESS_STAGES = [
+  "New",
+  "UnderReview",
+  "Preparing",
+  "Ready",
+  "DriverArrived",
+  "OnTheWay",
+  "Delivered",
+] as const;
+
+function stageProgress<T extends string>(stages: readonly T[], status: T, aliases?: Partial<Record<T, T>>) {
+  const effectiveStatus = aliases?.[status] ?? status;
+  const idx = stages.indexOf(effectiveStatus);
+  return idx >= 0 ? (idx + 1) / stages.length : 1 / stages.length;
+}
+
+const ACTIVITY_PROGRESS_COLOR = "#2F80ED";
+const ACTIVITY_PROGRESS_TRACK = "#DDE7EA";
+
+function activityMeta(activity: LatestClientActivity) {
+  if (activity.kind === "prescription") {
+    const danger = activity.status === "Cancelled" || activity.status === "DecodeFailed";
+    const progress = stageProgress(PRESCRIPTION_PROGRESS_STAGES, activity.status);
+    const label = activity.status === "Decoded"
+      ? "Готов"
+      : PRESCRIPTION_STATUS_LABEL_RU[activity.status] ?? activity.status;
+    return {
+      href: `/prescriptions/${activity.id}`,
+      label,
+      progress,
+      color: danger ? "#EF4444" : ACTIVITY_PROGRESS_COLOR,
+      icon: "orders" as const,
+    };
+  }
+
+  const danger = activity.status === "Cancelled" || activity.status === "Returned";
+  const progress = stageProgress(ORDER_PROGRESS_STAGES, activity.status, {
+    PickedUp: "Delivered",
+  });
+  return {
+    href: "/orders",
+    label: ORDER_STATUS_LABEL_RU[activity.status] ?? activity.status,
+    progress,
+    color: danger ? "#EF4444" : ACTIVITY_PROGRESS_COLOR,
+    icon: "bag" as const,
+  };
+}
+
+function LatestClientActivityButton() {
+  const token = useAppSelector((s) => s.auth.token);
+  const role = useAppSelector((s) => s.auth.role);
+  const [activity, setActivity] = useState<LatestClientActivity | null>(null);
+
+  const load = useCallback(() => {
+    if (!token || role !== "Client") {
+      setActivity(null);
+      return;
+    }
+
+    let cancelled = false;
+    Promise.allSettled([getClientOrderHistory(token), getMyPrescriptions(token)]).then((results) => {
+      if (cancelled) return;
+      const orders = results[0].status === "fulfilled" ? results[0].value : [];
+      const prescriptions = results[1].status === "fulfilled" ? results[1].value : [];
+      const orderActivities: LatestClientActivity[] = orders
+        .filter((o: ApiOrder) => Boolean(o.orderId && (o.createdAtUtc || o.orderPlacedAt) && ACTIVE_ORDER_STATUSES.has(o.status)))
+        .map((o: ApiOrder) => ({
+          kind: "order",
+          id: o.orderId,
+          status: o.status,
+          createdAtUtc: o.createdAtUtc || o.orderPlacedAt || "",
+        }));
+      const prescriptionActivities: LatestClientActivity[] = prescriptions
+        .filter((p: ApiPrescription) => Boolean(p.prescriptionId && p.createdAtUtc && ACTIVE_PRESCRIPTION_STATUSES.has(p.status)))
+        .map((p: ApiPrescription) => ({
+          kind: "prescription",
+          id: p.prescriptionId,
+          status: p.status,
+          createdAtUtc: p.createdAtUtc,
+        }));
+      const latest = [...orderActivities, ...prescriptionActivities].sort(
+        (a, b) => new Date(b.createdAtUtc).getTime() - new Date(a.createdAtUtc).getTime(),
+      )[0] ?? null;
+      setActivity(latest);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role, token]);
+
+  useEffect(() => {
+    const cleanup = load();
+    return () => {
+      cleanup?.();
+    };
+  }, [load]);
+
+  useSignalREvent("OrderStatusChanged", load, token);
+  useSignalREvent("PrescriptionUpdated", load, token);
+
+  if (!token || role !== "Client" || !activity) return null;
+
+  const meta = activityMeta(activity);
+  const degrees = Math.max(0, Math.min(1, meta.progress)) * 360;
+
+  return (
+    <Link
+      href={meta.href}
+      title={`Последний статус: ${meta.label}`}
+      aria-label={`Последний статус: ${meta.label}`}
+      className="flex max-w-[74px] flex-shrink-0 flex-col items-center gap-0.5 transition active:scale-95"
+    >
+      <span
+        className="relative flex h-9 w-9 items-center justify-center rounded-full p-[2px] sm:h-10 sm:w-10"
+        style={{
+          background: `conic-gradient(${meta.color} ${degrees}deg, ${ACTIVITY_PROGRESS_TRACK} 0deg)`,
+        }}
+      >
+        <span className="flex h-full w-full items-center justify-center rounded-full bg-surface text-on-surface shadow-card">
+          <Icon name={meta.icon} size={17} strokeWidth={2.4} />
+        </span>
+        <span
+          className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full ring-2 ring-surface"
+          style={{ backgroundColor: meta.color }}
+          aria-hidden="true"
+        />
+      </span>
+      <span className="block max-w-full truncate text-center text-[10px] font-bold leading-none text-on-surface-variant">
+        {meta.label}
+      </span>
+    </Link>
   );
 }

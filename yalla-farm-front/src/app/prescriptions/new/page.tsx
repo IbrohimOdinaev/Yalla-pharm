@@ -1,17 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { createPrescription } from "@/entities/prescription/api";
 import { getPrivacyPolicyStatus } from "@/entities/legal/api";
+import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
+import { openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { PrivacyPolicyAcceptanceModal } from "@/widgets/legal/PrivacyPolicyAcceptanceModal";
+import {
+  buildPaymentUrlFromTemplate,
+  PaymentMethodModal,
+  type PaymentMethodOption,
+} from "@/widgets/payment/PaymentMethodModal";
 import { Button, Icon, Input } from "@/shared/ui";
 
 const MAX_PHOTOS = 2;
 const ACCEPTED = "image/png,image/jpeg,image/jpg,image/webp";
+const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
 
 // Guest-flow draft: stashed in localStorage when an unauthenticated user
 // hits "Отправить рецепт", so after they finish /login we can drop them
@@ -20,9 +29,10 @@ const DRAFT_KEY = "yalla.prescription.new.draft.v1";
 
 type DraftPhoto = { name: string; type: string; dataUrl: string };
 type Draft = {
-  age: string;
+  age?: string;
+  ageYears?: string;
+  ageMonths?: string;
   comment: string;
-  contacts: string;
   photos: DraftPhoto[];
 };
 
@@ -220,20 +230,20 @@ export default function NewPrescriptionPage() {
   const router = useRouter();
 
   const [photos, setPhotos] = useState<File[]>([]);
-  const [age, setAge] = useState<string>("");
+  const [ageYears, setAgeYears] = useState<string>("");
+  const [ageMonths, setAgeMonths] = useState<string>("");
+  const [showMonths, setShowMonths] = useState(false);
   const [comment, setComment] = useState<string>("");
-  const [contacts, setContacts] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  // Privacy-policy gate state. `policyAccepted` is null while we're
-  // waiting for the status round-trip; true/false once known. When the
-  // user hits submit before accepting, we pop the modal and pause the
-  // submit until they accept. `pendingSubmit` flags "submit was
-  // attempted, resume after acceptance".
+  // Privacy-policy gate state. The submit button opens the modal first;
+  // the modal's accept button is the trusted click that can open the
+  // Dushanbe City payment tab, then resume prescription creation.
   const [policyVersion, setPolicyVersion] = useState<string | null>(null);
-  const [policyAccepted, setPolicyAccepted] = useState<boolean | null>(null);
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
+  const [pendingPayment, setPendingPayment] = useState<{ amount: number; dcUrl: string } | null>(null);
   const pendingSubmitRef = useRef(false);
 
   // Auth gate — only staff roles are bounced. Guests are intentionally
@@ -260,9 +270,13 @@ export default function NewPrescriptionPage() {
       const raw = window.localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
       const draft = JSON.parse(raw) as Partial<Draft>;
-      if (typeof draft.age === "string") setAge(draft.age);
+      if (typeof draft.ageYears === "string") setAgeYears(draft.ageYears);
+      else if (typeof draft.age === "string") setAgeYears(draft.age);
+      if (typeof draft.ageMonths === "string") {
+        setAgeMonths(draft.ageMonths);
+        if (draft.ageMonths) setShowMonths(true);
+      }
       if (typeof draft.comment === "string") setComment(draft.comment);
-      if (typeof draft.contacts === "string") setContacts(draft.contacts);
       if (Array.isArray(draft.photos)) {
         const restored: File[] = [];
         for (const p of draft.photos) {
@@ -280,10 +294,8 @@ export default function NewPrescriptionPage() {
     }
   }, [hydrated, token]);
 
-  // Privacy-policy status — fire-and-forget on mount. The result
-  // gates the submit button below; while we're waiting we treat
-  // `policyAccepted` as null and let the button work — backend's 412
-  // is the source of truth and will pop the modal on failure too.
+  // Privacy-policy status — fire-and-forget on mount so the modal knows
+  // which version to show when submit is pressed.
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -291,7 +303,6 @@ export default function NewPrescriptionPage() {
       .then((status) => {
         if (cancelled) return;
         setPolicyVersion(status.currentVersion);
-        setPolicyAccepted(status.accepted);
       })
       .catch(() => {
         // Soft fail: leave both null so submit still works; if
@@ -301,20 +312,62 @@ export default function NewPrescriptionPage() {
     return () => { cancelled = true; };
   }, [token]);
 
-  const handlePolicyAccepted = useCallback(() => {
-    setPolicyAccepted(true);
-    setPolicyModalOpen(false);
-    // Resume the in-flight submit if the user had clicked submit first.
-    if (pendingSubmitRef.current) {
-      pendingSubmitRef.current = false;
-      // Use a microtask to let state flush before re-entering submit.
-      Promise.resolve().then(() => {
-        // Trigger a synthetic submit. The real handler reads state
-        // directly, so a no-op event is fine.
-        document.querySelector("form")?.requestSubmit();
+  useEffect(() => {
+    getPublicPaymentSettings().then(setPaymentSettings).catch(() => undefined);
+  }, []);
+
+  const paymentMethods = useMemo<PaymentMethodOption[]>(() => {
+    if (!pendingPayment) return [];
+    const amount = pendingPayment.amount;
+    const methods: PaymentMethodOption[] = [];
+
+    if (pendingPayment.dcUrl) {
+      methods.push({
+        id: "dc",
+        title: "Dushanbe City",
+        subtitle: "Оплата через Dushanbe City",
+        url: pendingPayment.dcUrl,
       });
     }
-  }, []);
+
+    const alifUrl = buildPaymentUrlFromTemplate(
+      paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
+      amount,
+    );
+    if (alifUrl) {
+      methods.push({
+        id: "alif",
+        title: "Alif Mobi",
+        subtitle: "Оплата через приложение Alif",
+        url: alifUrl,
+      });
+    }
+
+    const eskhataUrl = buildPaymentUrlFromTemplate(
+      paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
+      amount,
+    );
+    if (eskhataUrl) {
+      methods.push({
+        id: "eskhata",
+        title: "Эсхата",
+        subtitle: "Оплата через приложение Эсхата",
+        url: eskhataUrl,
+      });
+    }
+
+    return methods;
+  }, [paymentSettings, pendingPayment]);
+
+  function handlePolicyAccepted(paymentWindow: Window | null) {
+    setPolicyModalOpen(false);
+    if (pendingSubmitRef.current) {
+      pendingSubmitRef.current = false;
+      void submitAuthenticatedPrescription(paymentWindow);
+    } else {
+      paymentWindow?.close();
+    }
+  }
 
   // Object URLs for inline previews; revoke on photos[] change to avoid leaks.
   const previews = useMemo(
@@ -339,19 +392,94 @@ export default function NewPrescriptionPage() {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function onAgeYearsChange(value: string) {
+    const digits = value.replace(/\D/g, "").slice(0, 3);
+    if (!digits) {
+      setAgeYears("");
+      return;
+    }
+    setAgeYears(String(Math.min(110, Number(digits))));
+  }
+
+  function selectAgeMonth(month: string) {
+    setAgeMonths(month);
+    setShowMonths(false);
+  }
+
+  function validatePrescriptionForm() {
+    const years = ageYears === "" ? Number.NaN : Number(ageYears);
+    const months = ageMonths === "" ? null : Number(ageMonths);
+
+    if (!Number.isInteger(years) || years < 0 || years > 110) {
+      setError("Введите возраст пациента от 0 до 110 лет.");
+      return null;
+    }
+    if (months !== null && (!Number.isInteger(months) || months < 1 || months > 11)) {
+      setError("Выберите количество месяцев от 1 до 11.");
+      return null;
+    }
+    if (years === 0 && months === null) {
+      setError("Если пациенту 0 лет, укажите возраст в месяцах.");
+      return null;
+    }
+    if (photos.length === 0) {
+      setError("Добавьте хотя бы одно фото рецепта.");
+      return null;
+    }
+
+    return { years, months };
+  }
+
+  function buildClientComment(months: number | null) {
+    const ageLine = months === null
+      ? null
+      : `Возраст пациента: ${ageYears} лет ${months} мес.`;
+    const trimmedComment = comment.trim();
+    return [ageLine, trimmedComment || null].filter(Boolean).join("\n") || null;
+  }
+
+  async function submitAuthenticatedPrescription(_preparedWindow?: Window | null) {
+    if (!token) return;
+
+    const validated = validatePrescriptionForm();
+    if (!validated) return;
+
+    setSubmitting(true);
+    try {
+      const created = await createPrescription(token, {
+        patientAge: validated.years,
+        clientComment: buildClientComment(validated.months),
+        clientContacts: null,
+        photos,
+        preferenceTier: "AsPrescribed",
+      });
+      if (created.paymentUrl) {
+        setPendingPayment({
+          amount: Number(created.paymentAmount ?? 3),
+          dcUrl: created.paymentUrl,
+        });
+        return;
+      }
+      router.push(`/prescriptions/${created.prescriptionId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось отправить рецепт.";
+      if (message.includes("privacy_policy_acceptance_required")) {
+        pendingSubmitRef.current = true;
+        setPolicyModalOpen(true);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
 
-    const ageNum = Number(age);
-    if (!Number.isFinite(ageNum) || ageNum <= 0 || ageNum > 150) {
-      setError("Введите корректный возраст пациента.");
-      return;
-    }
-    if (photos.length === 0) {
-      setError("Добавьте хотя бы одно фото рецепта.");
-      return;
-    }
+    const validated = validatePrescriptionForm();
+    if (!validated) return;
 
     // Guest flow: serialize the form (including photo bytes) into
     // localStorage and bounce to /login. The `next` param brings them
@@ -368,9 +496,9 @@ export default function NewPrescriptionPage() {
           })),
         );
         const draft: Draft = {
-          age,
+          ageYears,
+          ageMonths,
           comment,
-          contacts,
           photos: draftPhotos,
         };
         window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -385,52 +513,24 @@ export default function NewPrescriptionPage() {
       return;
     }
 
-    // Privacy-policy gate. We do a client-side check first to avoid a
-    // round-trip when we already know acceptance is missing; backend
-    // still re-validates (returns 412) so a stale `policyAccepted`
-    // doesn't let anyone slip through.
-    if (policyAccepted === false) {
-      pendingSubmitRef.current = true;
-      setPolicyModalOpen(true);
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const created = await createPrescription(token, {
-        patientAge: ageNum,
-        clientComment: comment.trim() || null,
-        clientContacts: contacts.trim() || null,
-        photos,
-        preferenceTier: "AsPrescribed",
-      });
-      // Если бэк выдал DC payment URL — отправляем клиента на оплату 3 TJS.
-      // Перед редиректом подменяем текущий URL на /prescriptions, чтобы
-      // браузерный «Назад» с DC-страницы привёл клиента сразу в список
-      // «Мои рецепты», а не обратно на пустую форму загрузки.
-      // После возврата клиент нажмёт «Я оплатил» на странице деталей,
-      // что переведёт заявку в AwaitingConfirmation для SuperAdmin'а.
-      if (created.paymentUrl) {
-        window.history.replaceState({}, "", "/prescriptions");
-        window.location.href = created.paymentUrl;
+    // Privacy-policy gate. For prescription photos we require an
+    // explicit confirmation from this submit action: the accept button
+    // is also the browser-trusted gesture that opens the payment tab.
+    pendingSubmitRef.current = true;
+    if (!policyVersion) {
+      try {
+        setSubmitting(true);
+        const status = await getPrivacyPolicyStatus(token);
+        setPolicyVersion(status.currentVersion);
+      } catch {
+        setError("Не удалось загрузить политику конфиденциальности. Попробуйте ещё раз.");
+        pendingSubmitRef.current = false;
         return;
+      } finally {
+        setSubmitting(false);
       }
-      router.push(`/prescriptions/${created.prescriptionId}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Не удалось отправить рецепт.";
-      // Backend rejects unsupported privacy version with a
-      // 412/machine-readable code; surface the accept-modal instead
-      // of a raw error.
-      if (message.includes("privacy_policy_acceptance_required")) {
-        setPolicyAccepted(false);
-        pendingSubmitRef.current = true;
-        setPolicyModalOpen(true);
-      } else {
-        setError(message);
-      }
-    } finally {
-      setSubmitting(false);
     }
+    setPolicyModalOpen(true);
   }
 
   return (
@@ -511,15 +611,65 @@ export default function NewPrescriptionPage() {
 
         <section className="space-y-3">
           <h2 className="font-display text-base font-extrabold">Возраст пациента</h2>
-          <Input
-            type="number"
-            min={0}
-            max={150}
-            value={age}
-            onChange={(e) => setAge(e.target.value)}
-            placeholder="Например, 35"
-            required
-          />
+          <div className="max-w-sm space-y-3">
+            <Input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={3}
+              value={ageYears}
+              onChange={(e) => onAgeYearsChange(e.target.value)}
+              placeholder="Например, 35"
+              required
+              suffix="лет"
+              className="text-lg font-semibold tabular-nums"
+            />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface-container-low px-3.5 py-2.5">
+                <span className="text-xs font-semibold text-on-surface-variant">Месяцы</span>
+                <button
+                  type="button"
+                  onClick={() => setShowMonths((v) => !v)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-1.5 text-xs font-semibold text-on-surface transition active:scale-95"
+                >
+                  {ageMonths ? `${ageMonths} мес.` : "Не указывать"}
+                  <Icon name="chevron-down" size={12} className={showMonths ? "rotate-180 transition" : "transition"} />
+                </button>
+              </div>
+              {showMonths ? (
+                <div className="rounded-2xl bg-surface-container-low p-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAgeMonths("");
+                      setShowMonths(false);
+                    }}
+                    className={`mb-2 h-9 w-full rounded-full text-sm font-bold transition active:scale-95 ${
+                      ageMonths === "" ? "bg-surface-container-high text-on-surface" : "bg-surface text-on-surface"
+                    }`}
+                  >
+                    Не указывать
+                  </button>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {Array.from({ length: 11 }, (_, idx) => String(idx + 1)).map((month) => (
+                      <button
+                        key={month}
+                        type="button"
+                        onClick={() => selectAgeMonth(month)}
+                        className={`h-9 rounded-full text-sm font-bold tabular-nums transition active:scale-95 ${
+                          ageMonths === month
+                            ? "bg-primary text-on-primary"
+                            : "bg-surface text-on-surface"
+                        }`}
+                      >
+                        {month}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
           <p className="text-xs text-on-surface-variant">
             Нужен фармацевту для подбора дозировки.
           </p>
@@ -539,31 +689,13 @@ export default function NewPrescriptionPage() {
           />
         </section>
 
-        <section className="space-y-3">
-          <h2 className="font-display text-base font-extrabold">
-            Контакты для связи <span className="text-on-surface-variant/60">(необязательно)</span>
-          </h2>
-          <textarea
-            value={contacts}
-            onChange={(e) => setContacts(e.target.value)}
-            placeholder="Например: +992 ••• •• •• ••, @telegram, WhatsApp"
-            rows={2}
-            maxLength={256}
-            className="w-full rounded-2xl border border-outline bg-surface-container-lowest p-3 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none"
-          />
-          <p className="text-xs text-on-surface-variant">
-            Эти контакты нужны, чтобы фармацевт связался с вами в случае
-            необходимости или для уточнения данных о рецепте.
-          </p>
-        </section>
-
         {error ? (
           <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">
             {error}
           </div>
         ) : null}
 
-        <div className="rounded-2xl bg-accent-soft p-4 text-sm text-on-surface">
+        <div className="rounded-2xl bg-surface-container p-4 text-sm text-on-surface">
           <p className="font-bold">Услуга платная — 3 TJS</p>
           <p className="mt-1 text-xs text-on-surface-variant">
             После отправки система выставит счёт. Расшифровка начнётся, когда
@@ -592,6 +724,20 @@ export default function NewPrescriptionPage() {
           }}
         />
       ) : null}
+      <PaymentMethodModal
+        open={Boolean(pendingPayment)}
+        amount={pendingPayment?.amount ?? 0}
+        methods={paymentMethods}
+        onSelect={(method) => {
+          openPaymentUrl(method.url);
+          setPendingPayment(null);
+          router.replace("/prescriptions");
+        }}
+        onClose={() => {
+          setPendingPayment(null);
+          router.replace("/prescriptions");
+        }}
+      />
     </AppShell>
   );
 }

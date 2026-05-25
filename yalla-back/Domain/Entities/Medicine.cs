@@ -12,6 +12,8 @@ public class Medicine
 
     public string? Articul { get; private set; }
 
+    public string? Barcode { get; private set; }
+
     public string Description { get; private set; } = string.Empty;
 
     public bool IsActive { get; private set; } = true;
@@ -121,6 +123,11 @@ public class Medicine
     public void SetArticul(string? articul)
     {
         Articul = string.IsNullOrWhiteSpace(articul) ? null : articul;
+    }
+
+    public void SetBarcode(string? barcode)
+    {
+        Barcode = NormalizeBarcode(barcode);
     }
 
     public void SetDescription(string description)
@@ -255,5 +262,14 @@ public class Medicine
             ManualLookupRequestId = manualLookupRequestId,
             ManualLookupResponseId = manualLookupResponseId
         };
+    }
+
+    private static string? NormalizeBarcode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? null : digits;
     }
 }

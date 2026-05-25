@@ -89,7 +89,7 @@ export function AdminSidebar() {
               onClick={() => setHash(it.hash ?? "")}
               className={`group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
                 active
-                  ? "bg-primary text-white shadow-card"
+                  ? "bg-primary text-on-primary shadow-card"
                   : "text-on-surface hover:bg-surface-container-low"
               }`}
             >

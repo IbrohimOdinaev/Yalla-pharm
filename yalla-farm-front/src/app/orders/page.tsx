@@ -16,6 +16,7 @@ import { usePharmacyAddresses } from "@/features/pharmacy/model/usePharmacyAddre
 import { getPickupAvailability } from "@/features/pharmacy/model/pharmacyHours";
 import type { ApiOrder } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
+import { openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -195,6 +196,7 @@ export default function OrdersPage() {
   async function onRepeat(order: ApiOrder) {
     if (!token) return;
     if (!confirm("Повторить заказ? Будет создан новый заказ с теми же позициями. Корзина не изменится.")) return;
+    const paymentWindow = preparePaymentWindow();
     setRepeatingId(order.orderId);
     try {
       const response = await repeatOrder(token, order.orderId, {
@@ -205,8 +207,10 @@ export default function OrdersPage() {
       const updated = await getClientOrderHistory(token);
       setOrders(updated);
       const paymentUrl = String(response?.paymentUrl ?? "");
-      if (paymentUrl) window.location.assign(paymentUrl);
+      if (paymentUrl) openPaymentUrl(paymentUrl, paymentWindow);
+      else paymentWindow?.close();
     } catch (err) {
+      paymentWindow?.close();
       setError(err instanceof Error ? err.message : "Не удалось повторить заказ.");
     } finally {
       setRepeatingId(null);
@@ -254,7 +258,7 @@ export default function OrdersPage() {
               type="button"
               className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition active:scale-[0.97] ${
                 activeTab === "active"
-                  ? "bg-primary text-white shadow-card"
+                  ? "bg-primary text-on-primary shadow-card"
                   : "text-on-surface-variant hover:bg-surface-container-high"
               }`}
               onClick={() => setActiveTab("active")}
@@ -265,7 +269,7 @@ export default function OrdersPage() {
               type="button"
               className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition active:scale-[0.97] ${
                 activeTab === "history"
-                  ? "bg-primary text-white shadow-card"
+                  ? "bg-primary text-on-primary shadow-card"
                   : "text-on-surface-variant hover:bg-surface-container-high"
               }`}
               onClick={() => setActiveTab("history")}
@@ -437,10 +441,10 @@ export default function OrdersPage() {
                           <p className="text-[10px] text-on-surface-variant">Стоимость: {formatMoney(d.deliveryCost, d.currency)}</p>
                         ) : null}
                         {!order.isPickup && formatJuraDeliveryStatus(d.juraStatusId) ? (
-                          <p className="text-[10px] text-emerald-700 font-semibold">{formatJuraDeliveryStatus(d.juraStatusId)}</p>
+                          <p className="text-[10px] text-primary font-semibold">{formatJuraDeliveryStatus(d.juraStatusId)}</p>
                         ) : null}
                         {!order.isPickup && d.driverName ? (
-                          <p className="text-[10px] text-emerald-600">
+                          <p className="text-[10px] text-primary">
                             Водитель: {d.driverName}
                             {d.driverPhone ? (
                               <> (<a href={`tel:${d.driverPhone}`} className="underline">{d.driverPhone}</a>)</>
@@ -479,7 +483,7 @@ export default function OrdersPage() {
                       {(d.paymentState) ? (
                         <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
                           <p className="text-[10px] text-on-surface-variant uppercase">Оплата</p>
-                          <p className={`text-[10px] xs:text-xs sm:text-sm font-bold ${d.paymentState === "Confirmed" ? "text-emerald-600" : d.paymentState === "Expired" ? "text-red-600" : "text-yellow-600"}`}>
+                          <p className={`text-[10px] xs:text-xs sm:text-sm font-bold ${d.paymentState === "Confirmed" ? "text-primary" : d.paymentState === "Expired" ? "text-red-600" : "text-warning"}`}>
                             {d.paymentState === "Confirmed" ? "Подтверждена" : d.paymentState === "Expired" ? "Не оплачен" : "Ожидает"}
                           </p>
                         </div>
@@ -560,9 +564,9 @@ export default function OrdersPage() {
 
                     {/* Refund info */}
                     {order.refundRequest ? (
-                      <div className="rounded-xl bg-yellow-50 p-2 xs:p-3 text-[10px] xs:text-xs sm:text-sm">
-                        <p className="font-bold text-yellow-800">Запрос на возврат</p>
-                        <p className="text-yellow-700">
+                      <div className="rounded-xl bg-warning-soft p-2 xs:p-3 text-[10px] xs:text-xs sm:text-sm">
+                        <p className="font-bold text-warning">Запрос на возврат</p>
+                        <p className="text-warning">
                           Сумма: {formatMoney(order.refundRequest.amount, order.refundRequest.currency)} — Статус: {order.refundRequest.status}
                         </p>
                       </div>

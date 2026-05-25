@@ -278,7 +278,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
 
           {/* Quantity badge when in cart — light-blue pill, top-right. */}
           {cartState.inCart ? (
-            <span className="absolute right-2 top-2 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-[#4FB8DD] px-1.5 text-[11px] font-extrabold text-white shadow-card">
+            <span className="absolute right-2 top-2 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-extrabold text-on-primary shadow-card">
               {cartState.quantity}
             </span>
           ) : null}
@@ -335,12 +335,12 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
                 {footerAction}
               </div>
             ) : cartState.inCart ? (
-              // Yellow in-cart pill — kept the same height + full-width as
+              // Selected pill — kept the same height + full-width as
               // the blue add pill below so toggling between states doesn't
               // jiggle the card row. Heights / breakpoints mirror the blue
               // variant exactly.
               <div
-                className={`flex w-full items-center justify-between gap-0.5 rounded-full bg-accent px-1 text-on-surface shadow-card xs:gap-1 xs:px-1.5 ${
+                className={`flex w-full items-center justify-between gap-0.5 rounded-full bg-[#E9F1F3] px-1 text-on-surface shadow-card xs:gap-1 xs:px-1.5 ${
                   compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
                 }`}
                 onClick={(e) => e.stopPropagation()}
@@ -379,7 +379,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
               <button
                 type="button"
                 onClick={onAdd}
-                className={`flex w-full items-center justify-center gap-1.5 rounded-full bg-[#4FB8DD] px-2 font-display text-white shadow-card transition hover:bg-[#3FA5CE] xs:gap-2 xs:px-3 ${
+                className={`flex w-full items-center justify-center gap-1.5 rounded-full bg-primary px-2 font-display text-on-primary shadow-card transition hover:bg-primary-container xs:gap-2 xs:px-3 ${
                   compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
                 }`}
                 aria-label="В корзину"

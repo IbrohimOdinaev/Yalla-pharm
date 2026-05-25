@@ -47,6 +47,7 @@ export type ApiMedicine = {
   title?: string;
   name?: string;
   articul?: string;
+  barcode?: string;
   isActive?: boolean;
   description?: string;
   dosage?: string;

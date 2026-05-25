@@ -1,4 +1,5 @@
 using Yalla.Domain.Enums;
+using Yalla.Application.DTO.Response;
 
 namespace Yalla.Application.Abstractions;
 
@@ -66,5 +67,9 @@ public interface IRealtimeUpdatesPublisher
   /// </summary>
   Task PublishManualLookupRequestClosedAsync(
     Guid requestId,
+    CancellationToken cancellationToken = default);
+
+  Task PublishOneCImportRunUpdatedAsync(
+    OneCImportRunLogResponse run,
     CancellationToken cancellationToken = default);
 }

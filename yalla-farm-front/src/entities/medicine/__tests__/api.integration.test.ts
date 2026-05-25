@@ -117,6 +117,17 @@ describe("getCheapestPrice", () => {
     expect(getCheapestPrice(med)).toBe(10);
   });
 
+  it("ignores out-of-stock offers", () => {
+    const med: ApiMedicine = {
+      id: "m",
+      offers: [
+        { pharmacyId: "p1", stockQuantity: 0, price: 5 },
+        { pharmacyId: "p2", stockQuantity: 2, price: 10 },
+      ],
+    };
+    expect(getCheapestPrice(med)).toBe(10);
+  });
+
   it("prefers minPrice over offers", () => {
     const med: ApiMedicine = {
       id: "m1",

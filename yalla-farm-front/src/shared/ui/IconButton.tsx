@@ -16,7 +16,7 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<Variant, string> = {
   neutral: "bg-surface-container text-on-surface-variant hover:bg-surface-container-high",
-  primary: "bg-primary text-white hover:bg-primary-container",
+  primary: "bg-primary text-on-primary hover:bg-primary-container",
   floating: "bg-surface-container-lowest text-on-surface border border-outline/70 hover:bg-surface-container",
   ghost: "bg-transparent text-on-surface-variant hover:bg-surface-container",
   danger: "bg-secondary-soft text-secondary hover:bg-secondary/20",

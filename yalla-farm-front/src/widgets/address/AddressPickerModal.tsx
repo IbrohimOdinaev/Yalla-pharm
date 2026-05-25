@@ -285,7 +285,7 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
             <>
               {/* Pick on map — primary entry to map view */}
               <Button size="md" fullWidth leftIcon="pin" onClick={() => setForcedView("map")}>
-                Выбрать адрес на карте
+                Поменять адрес
               </Button>
 
               {/* Named addresses (server) */}
@@ -546,23 +546,23 @@ function GeoBlockedHint({
   mode: "list" | "map";
 }) {
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2.5">
+    <div className="rounded-2xl border border-warning-container bg-warning-soft p-3 space-y-2.5">
       <div className="flex items-start gap-2.5">
-        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-warning">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="11" width="16" height="10" rx="2" />
             <path d="M8 11V7a4 4 0 0 1 8 0v4" />
           </svg>
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-amber-900">Геолокация заблокирована</p>
-          <p className="text-xs text-amber-800/90 mt-0.5">
+          <p className="text-sm font-bold text-warning">Геолокация заблокирована</p>
+          <p className="text-xs text-warning mt-0.5">
             Браузер не разрешает повторно спрашивать. Чтобы вернуть запрос:
           </p>
         </div>
       </div>
 
-      <ol className="space-y-1 pl-9 text-xs text-amber-900 list-decimal marker:font-bold marker:text-amber-700">
+      <ol className="space-y-1 pl-9 text-xs text-warning list-decimal marker:font-bold marker:text-warning">
         <li>
           Нажмите на иконку{" "}
           <span className="inline-flex items-center gap-0.5 align-middle">
@@ -582,7 +582,7 @@ function GeoBlockedHint({
           type="button"
           onClick={onRetry}
           disabled={retrying}
-          className="inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 active:scale-95 transition disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-on-primary hover:bg-primary-container active:scale-95 transition disabled:opacity-50"
         >
           {retrying ? (
             <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -598,7 +598,7 @@ function GeoBlockedHint({
           <button
             type="button"
             onClick={onSwitchToMap}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-900 border border-amber-300 hover:bg-amber-100 active:scale-95 transition"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-warning border border-warning-container hover:bg-surface-container active:scale-95 transition"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
@@ -608,7 +608,7 @@ function GeoBlockedHint({
         ) : null}
       </div>
 
-      <p className="text-[11px] text-amber-800/80 pt-0.5">
+      <p className="text-[11px] text-warning pt-0.5">
         Или просто {mode === "list" ? 'нажмите «Выбрать адрес на карте» сверху и введите' : "введите"} адрес вручную.
       </p>
     </div>
@@ -649,7 +649,7 @@ function AddressRow({ item, isNamed, onSelect, onRemove, onRename, isRenaming, n
             if (e.key === "Escape") onCancelName();
           }}
         />
-        <button type="button" onClick={onSaveName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-50 active:scale-90 transition" aria-label="Сохранить">
+        <button type="button" onClick={onSaveName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary-soft active:scale-90 transition" aria-label="Сохранить">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
         <button type="button" onClick={onCancelName} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high active:scale-90 transition" aria-label="Отмена">
@@ -703,4 +703,3 @@ function AddressRow({ item, isNamed, onSelect, onRemove, onRename, isRenaming, n
     </div>
   );
 }
-

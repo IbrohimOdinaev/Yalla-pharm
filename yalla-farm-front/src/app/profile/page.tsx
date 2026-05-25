@@ -207,7 +207,7 @@ export default function ProfilePage() {
               </p>
             </Link>
             <div className="flex min-w-0 flex-col justify-center rounded-2xl bg-surface-container-lowest p-2 text-center shadow-card xs:p-3 sm:p-4 lg:p-5">
-              <p className="font-display text-lg font-extrabold text-emerald-600 xs:text-xl sm:text-2xl lg:text-3xl tabular-nums">
+              <p className="font-display text-lg font-extrabold text-primary xs:text-xl sm:text-2xl lg:text-3xl tabular-nums">
                 {stats.deliveredCount}
               </p>
               <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant xs:text-[10px] sm:text-xs">

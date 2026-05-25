@@ -132,7 +132,10 @@ export function getGalleryImages(medicine?: ApiMedicine, width?: number): string
 /** Cheapest price — uses minPrice from catalog API, falls back to offers, then medicine.price */
 export function getCheapestPrice(medicine?: ApiMedicine): number | undefined {
   if (medicine?.minPrice && medicine.minPrice > 0) return medicine.minPrice;
-  const prices = (medicine?.offers ?? []).map((o) => o.price).filter((p) => p > 0);
+  const prices = (medicine?.offers ?? [])
+    .filter((o) => o.stockQuantity > 0)
+    .map((o) => o.price)
+    .filter((p) => p > 0);
   if (prices.length === 0) return medicine?.price ?? undefined;
   return Math.min(...prices);
 }

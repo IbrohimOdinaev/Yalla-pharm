@@ -16,6 +16,10 @@ public class PaymentSettings
 
   public string? DcBaseUrl { get; private set; }
 
+  public string? AlifUrlTemplate { get; private set; }
+
+  public string? EskhataUrlTemplate { get; private set; }
+
   public DateTime UpdatedAtUtc { get; private set; }
 
   public Guid? UpdatedByUserId { get; private set; }
@@ -44,5 +48,36 @@ public class PaymentSettings
     }
     UpdatedAtUtc = DateTime.UtcNow;
     UpdatedByUserId = updatedBy;
+  }
+
+  public void SetAlifUrlTemplate(string? urlTemplate, Guid? updatedBy)
+  {
+    AlifUrlTemplate = NormalizePaymentTemplate(urlTemplate, nameof(AlifUrlTemplate));
+    UpdatedAtUtc = DateTime.UtcNow;
+    UpdatedByUserId = updatedBy;
+  }
+
+  public void SetEskhataUrlTemplate(string? urlTemplate, Guid? updatedBy)
+  {
+    EskhataUrlTemplate = NormalizePaymentTemplate(urlTemplate, nameof(EskhataUrlTemplate));
+    UpdatedAtUtc = DateTime.UtcNow;
+    UpdatedByUserId = updatedBy;
+  }
+
+  private static string? NormalizePaymentTemplate(string? urlTemplate, string fieldName)
+  {
+    if (string.IsNullOrWhiteSpace(urlTemplate))
+      return null;
+
+    var trimmed = urlTemplate.Trim();
+    if (trimmed.Length > 2048)
+      throw new DomainArgumentException($"{fieldName} can't be longer than 2048 characters.");
+
+    var normalizedForValidation = trimmed.Replace("{amount}", "1.00", StringComparison.OrdinalIgnoreCase);
+    if (!Uri.TryCreate(normalizedForValidation, UriKind.Absolute, out var uri)
+        || string.IsNullOrWhiteSpace(uri.Scheme))
+      throw new DomainArgumentException($"{fieldName} must be a valid absolute URL template.");
+
+    return trimmed;
   }
 }

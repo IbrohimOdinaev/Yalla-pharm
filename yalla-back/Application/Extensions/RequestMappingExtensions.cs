@@ -19,6 +19,7 @@ public static class RequestMappingExtensions
           .ToList();
 
         var medicine = new Medicine(normalizedTitle, normalizedArticul, atributes);
+        medicine.SetBarcode(request.Barcode);
 
         if (!string.IsNullOrEmpty(request.Description))
             medicine.SetDescription(request.Description);
@@ -120,6 +121,7 @@ public static class RequestMappingExtensions
     {
         medicine.SetTitle(request.Title.Trim());
         medicine.SetArticul(request.Articul?.Trim());
+        medicine.SetBarcode(request.Barcode);
         medicine.SetCategoryId(request.CategoryId);
 
     }

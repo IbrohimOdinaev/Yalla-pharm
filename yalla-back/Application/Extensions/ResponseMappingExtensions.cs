@@ -40,6 +40,7 @@ public static class ResponseMappingExtensions
             Id = medicine.Id,
             Title = medicine.Title,
             Articul = medicine.Articul,
+            Barcode = medicine.Barcode,
             Description = medicine.Description,
             IsActive = medicine.IsActive,
             WooCommerceId = medicine.WooCommerceId,

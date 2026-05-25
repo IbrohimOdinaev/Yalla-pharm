@@ -31,6 +31,12 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .HasMaxLength(128)
           .IsRequired(false);
 
+        builder.Property(x => x.Barcode)
+          .HasColumnName("barcode")
+          .HasColumnType("character varying(64)")
+          .HasMaxLength(64)
+          .IsRequired(false);
+
         builder.Property(x => x.Description)
           .HasColumnName("description")
           .HasColumnType("text")
@@ -89,6 +95,11 @@ public class MedicineConfiguration : IEntityTypeConfiguration<Medicine>
           .IsUnique()
           .HasFilter("articul IS NOT NULL")
           .HasDatabaseName("ix_medicines_articul");
+
+        builder.HasIndex(x => x.Barcode)
+          .IsUnique()
+          .HasFilter("barcode IS NOT NULL")
+          .HasDatabaseName("ux_medicines_barcode");
 
         builder.HasIndex(x => x.WooCommerceId)
           .IsUnique()

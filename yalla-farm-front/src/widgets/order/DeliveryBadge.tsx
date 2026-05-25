@@ -8,7 +8,7 @@ export function DeliveryBadge({ isPickup, iconOnly }: Props) {
   if (isPickup) {
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700"
+        className="inline-flex items-center gap-1 rounded-full bg-surface-container px-1.5 py-0.5 text-[10px] font-bold text-warning"
         title="Самовывоз"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -23,7 +23,7 @@ export function DeliveryBadge({ isPickup, iconOnly }: Props) {
   }
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"
+      className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-1.5 py-0.5 text-[10px] font-bold text-primary"
       title="Доставка"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -39,5 +39,5 @@ export function DeliveryBadge({ isPickup, iconOnly }: Props) {
 
 /** Tailwind border classes for an order card depending on delivery type. */
 export function deliveryBorderClass(isPickup: boolean) {
-  return isPickup ? "border-2 border-orange-500" : "border-2 border-emerald-500";
+  return isPickup ? "border-2 border-warning-container" : "border-2 border-primary";
 }

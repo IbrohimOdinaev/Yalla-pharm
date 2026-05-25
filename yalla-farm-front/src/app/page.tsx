@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
-import { getCatalogMedicinesPaginated, getHomePopularMedicines, getMedicinesByIds, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
+import { getCatalogMedicinesPaginated, getHomePopularMedicines, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiPharmacyMedicinesGroup } from "@/shared/types/api";
 import { HeroCarousel } from "@/widgets/catalog/HeroCarousel";
@@ -58,78 +58,6 @@ const HOME_RAILS: RailSpec[] = [
   { id: "baby", title: "Мама и малыш", accent: "primary", keywords: ["дет", "малыш", "младен", "мама", "беремен", "памперс", "подгузн"] },
 ];
 
-const POPULAR_FALLBACK_MEDICINE_IDS = [
-  "9f257e18-86bb-57b6-8cca-39418b1a39c4",
-  "2c19af14-3397-5938-8bb6-272e654b5712",
-  "9079d7f1-2e1b-5adf-a66d-c5b6affa80da",
-  "78a66ef1-fca0-53c4-a0ba-efffcc2413aa",
-  "5cb0439c-5817-5666-8674-75a903adb648",
-  "8d0824c7-7b4e-5276-afee-f9300d68e5d3",
-];
-
-const POPULAR_SEED_MEDICINES: ApiMedicine[] = [
-  {
-    id: "9f257e18-86bb-57b6-8cca-39418b1a39c4",
-    title: "911 Крем детс под подгузник от опрелостей 150мл",
-    articul: "1-005383",
-    slug: "911-krem-dets-pod-podguznik-ot-opreloste",
-    isActive: true,
-    minPrice: 27,
-    categoryName: "Лекарственные средства",
-    images: [{ id: "057db9d4-bac0-4dc7-8c6c-6e3d2aa86dec", isMain: true, isMinimal: true }],
-  },
-  {
-    id: "2c19af14-3397-5938-8bb6-272e654b5712",
-    title: "911 Луковый шампунь от выпадения волос и облысения 150мл",
-    articul: "1-005382",
-    slug: "911-lukovyj-shampun-ot-vypadeniya-volos-i",
-    isActive: true,
-    minPrice: 27,
-    categoryName: "Уход за волосами",
-    images: [{ id: "f5c6f2dd-4fad-4f2a-b1c5-abbcbf187af4", isMain: true, isMinimal: true }],
-  },
-  {
-    id: "9079d7f1-2e1b-5adf-a66d-c5b6affa80da",
-    title: "911 Намозоль крем от сухих мозолей и натоптышей 100мл",
-    articul: "1-005381",
-    slug: "911-namozol-krem-ot-suhih-mozolej-i-nato",
-    isActive: true,
-    minPrice: 18,
-    categoryName: "Кожа",
-    images: [{ id: "afa1d0bb-fd67-4f7c-8e49-3c748a54f892", isMain: true, isMinimal: true }],
-  },
-  {
-    id: "78a66ef1-fca0-53c4-a0ba-efffcc2413aa",
-    title: "911 Сабельник гель-бальзам д/суставов туба 100мл",
-    articul: "1-005369",
-    slug: "911-sabelnik-gel-balzam-d-sustavov-tu",
-    isActive: true,
-    minPrice: 103.5,
-    categoryName: "Болезни суставов",
-    images: [{ id: "cce27115-a20b-4493-9e37-7e426c158e1d", isMain: true, isMinimal: true }],
-  },
-  {
-    id: "5cb0439c-5817-5666-8674-75a903adb648",
-    title: "911 с Хондроитином гель-бальзам д/суставов 100мл",
-    articul: "1-005370",
-    slug: "911-s-hondroitinom-gel-balzam-d-sustav",
-    isActive: true,
-    minPrice: 19,
-    categoryName: "Лекарственные средства",
-    images: [{ id: "45e2e477-5d2e-4470-b340-751395347acb", isMain: true, isMinimal: true }],
-  },
-  {
-    id: "8d0824c7-7b4e-5276-afee-f9300d68e5d3",
-    title: "911 Угрисепт гель-бальзам д/лица туба 100мл",
-    articul: "1-005367",
-    slug: "911-ugrisept-gel-balzam-d-licza-tuba-100ml",
-    isActive: true,
-    minPrice: 15,
-    categoryName: "Кожа",
-    images: [{ id: "30dfeee3-783f-4642-856a-aa00e54c86e2", isMain: true, isMinimal: true }],
-  },
-];
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Request timed out")), timeoutMs);
@@ -148,19 +76,13 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 async function getFastPopularMedicines(pharmacyId?: string) {
   try {
-    return await withTimeout(getHomePopularMedicines(10, pharmacyId), 900);
+    return await withTimeout(getHomePopularMedicines(10, pharmacyId), 1200);
   } catch {
-    const medicines = await getMedicinesByIds(POPULAR_FALLBACK_MEDICINE_IDS);
-    const byId = new Map(medicines.map((medicine) => [medicine.id, medicine]));
-    const ordered = POPULAR_FALLBACK_MEDICINE_IDS
-      .map((id) => byId.get(id))
-      .filter((medicine): medicine is ApiMedicine => Boolean(medicine));
-
     return {
       page: 1,
-      pageSize: ordered.length,
-      totalCount: ordered.length,
-      medicines: ordered,
+      pageSize: 0,
+      totalCount: 0,
+      medicines: [],
     };
   }
 }
@@ -304,9 +226,7 @@ function HomeContent() {
   // responses arrive so each rail can flip from skeleton → content
   // independently. Keyed map makes it trivial to skip already-fetched rails on
   // re-render and to blow the whole cache when the pharmacy filter changes.
-  const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>(() => ({
-    popular: POPULAR_SEED_MEDICINES,
-  }));
+  const [railMeds, setRailMeds] = useState<Record<string, ApiMedicine[]>>({});
   // Tracks rails that already have a fetch in-flight OR have completed
   // successfully, so re-renders inside the rail-fetch effect don't
   // double-dispatch. Lives in a ref (not state) because we only need
@@ -349,7 +269,7 @@ function HomeContent() {
   // Also wipes the in-flight ref so the new pharmacy's rails actually
   // refetch (without the clear they'd see the rail as already-fetched).
   useEffect(() => {
-    setRailMeds({ popular: POPULAR_SEED_MEDICINES });
+    setRailMeds({});
     railFetchedRef.current.clear();
   }, [selectedPharmacy?.id]);
 
@@ -653,7 +573,7 @@ function HomeContent() {
                     onClick={() => { setSelectedSearchPharmacyId(""); setPinnedSearchPharmacy(null); syncSearchUrl(query, ""); }}
                     className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
                       !selectedSearchPharmacyId
-                        ? "bg-primary text-white shadow-sm"
+                        ? "bg-primary text-on-primary shadow-sm"
                         : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
                     }`}
                   >
@@ -671,7 +591,7 @@ function HomeContent() {
                       }}
                       className={`flex items-center gap-2 rounded-full px-1 pr-3 py-1 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
                         selectedSearchPharmacyId === group.pharmacyId
-                          ? "bg-primary text-white shadow-sm"
+                          ? "bg-primary text-on-primary shadow-sm"
                           : "bg-surface-container-low text-on-surface hover:bg-surface-container-high"
                       }`}
                     >
@@ -820,12 +740,14 @@ function HomeContent() {
                       </div>
 
                       {/* Horizontal scroll cards */}
-                      <div className="flex gap-1 xs:gap-1.5 overflow-x-auto pb-2 snap-x scroll-touch -mx-1.5 px-1.5 xs:-mx-3 xs:px-3 sm:-mx-4 sm:px-4 sm:gap-2.5">
-                        {visibleMeds.map((medicine) => (
-                          <div key={medicine.id} className="w-[120px] xs:w-[130px] sm:w-[155px] max-w-[160px] flex-shrink-0 snap-start">
-                            <MedicineCard medicine={medicine} hideCart={isAdminOrSA} compact />
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto pb-2 scroll-touch">
+                        <div className="flex w-max gap-1 xs:gap-1.5 sm:gap-2.5 pr-3">
+                          {visibleMeds.map((medicine) => (
+                            <div key={medicine.id} className="w-[120px] xs:w-[130px] sm:w-[155px] max-w-[160px] flex-shrink-0">
+                              <MedicineCard medicine={medicine} hideCart={isAdminOrSA} compact />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );
@@ -883,7 +805,7 @@ function HomeContent() {
               href="/prescriptions/new"
               className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:p-4 xl:hidden"
             >
-              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-card sm:h-12 sm:w-12">
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card sm:h-12 sm:w-12">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
@@ -920,9 +842,7 @@ function HomeContent() {
               const ref = railCategoryRefs[spec.id];
               // Keyword-defined rail that found no matching category → drop it.
               if (spec.keywords !== null && (ref === undefined || !ref.id)) return null;
-              const meds = spec.id === "popular"
-                ? (railMeds[spec.id] ?? POPULAR_SEED_MEDICINES)
-                : railMeds[spec.id];
+              const meds = railMeds[spec.id];
               const target = ref?.slug ? `/catalog/${ref.slug}` : "/catalog";
               return (
                 <MedicineRail
@@ -930,7 +850,7 @@ function HomeContent() {
                   title={spec.title}
                   accent={spec.accent}
                   medicines={meds ?? []}
-                  isLoading={spec.id !== "popular" && meds === undefined}
+                  isLoading={meds === undefined}
                   onViewAll={() => navRouter.push(target)}
                 />
               );

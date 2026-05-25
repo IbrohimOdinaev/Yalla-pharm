@@ -15,8 +15,16 @@ internal sealed class FakePaymentSettingsService : IPaymentSettingsService
   public FakePaymentSettingsService(string? baseUrl = null) => _baseUrl = baseUrl;
   public Task<string?> GetDcBaseUrlAsync(CancellationToken ct = default) => Task.FromResult(_baseUrl);
   public Task SetDcBaseUrlAsync(string? url, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
+  public Task SetAlifUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
+  public Task SetEskhataUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken ct = default)
-    => Task.FromResult(new PaymentSettingsSnapshot { DcBaseUrl = _baseUrl, DcBaseUrlEffective = _baseUrl ?? string.Empty });
+    => Task.FromResult(new PaymentSettingsSnapshot
+    {
+      DcBaseUrl = _baseUrl,
+      DcBaseUrlEffective = _baseUrl ?? string.Empty,
+      AlifUrlTemplateEffective = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1",
+      EskhataUrlTemplateEffective = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM"
+    });
 }
 
 internal sealed class FakeClientAddressService : IClientAddressService
@@ -81,12 +89,14 @@ internal static class TestDbFactory
   public static Medicine CreateMedicine(
     string title,
     string articul,
-    bool isActive = true)
+    bool isActive = true,
+    string? barcode = null)
   {
     var medicine = new Medicine(
       title,
       articul,
       [new Atribute(AttributeType.Dosage, "500mg")]);
+    medicine.SetBarcode(barcode);
 
     if (!isActive)
       medicine.SetIsActive(false);

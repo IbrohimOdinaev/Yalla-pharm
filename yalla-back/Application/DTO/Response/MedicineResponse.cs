@@ -5,6 +5,7 @@ public sealed class MedicineResponse
   public Guid Id { get; init; }
   public string Title { get; init; } = string.Empty;
   public string? Articul { get; init; }
+  public string? Barcode { get; init; }
   public string Description { get; init; } = string.Empty;
   public bool IsActive { get; init; }
   public int? WooCommerceId { get; init; }

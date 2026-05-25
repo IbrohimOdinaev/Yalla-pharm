@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
+import { openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { getOrderById } from "@/entities/order/api";
 import { usePaymentIntentLiveState } from "@/features/checkout/model/usePaymentIntentLiveState";
 import type { ApiOrder } from "@/shared/types/api";
@@ -56,6 +57,14 @@ function PaymentAwaitContent() {
     }
   }, [liveState, router]);
 
+  const paymentUrl = order?.paymentUrl;
+  const [openedPaymentUrl, setOpenedPaymentUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!paymentUrl || openedPaymentUrl === paymentUrl) return;
+    setOpenedPaymentUrl(paymentUrl);
+    openPaymentUrl(paymentUrl);
+  }, [openedPaymentUrl, paymentUrl]);
+
   if (!orderId && !paymentIntentId) {
     return (
       <AppShell hideFooter top={<TopBar title="Ожидание оплаты" backHref="back" />}>
@@ -68,7 +77,6 @@ function PaymentAwaitContent() {
 
   const amount = order?.cost ?? 0;
   const currency = order?.currency ?? "TJS";
-  const paymentUrl = order?.paymentUrl;
   const mins = secondsLeft !== null ? Math.floor(secondsLeft / 60) : null;
   const secs = secondsLeft !== null ? secondsLeft % 60 : null;
   const progress = secondsLeft !== null && order?.paymentExpiresAtUtc
@@ -112,16 +120,16 @@ function PaymentAwaitContent() {
           </div>
         </section>
 
-        {/* Iframe / Payment UI */}
+        {/* Payment page is external and must stay outside the app shell. */}
         {paymentUrl ? (
-          <section className="overflow-hidden rounded-3xl bg-surface-container-lowest shadow-card">
-            <iframe
-              title="Страница оплаты"
-              src={paymentUrl}
-              className="w-full border-0"
-              style={{ minHeight: "520px" }}
-              loading="lazy"
-            />
+          <section className="rounded-3xl bg-surface-container-lowest p-6 text-center shadow-card">
+            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Icon name="bolt" size={22} />
+            </span>
+            <p className="text-sm font-bold text-on-surface">Dushanbe City открыт в новой вкладке</p>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Если браузер заблокировал открытие, нажмите кнопку ниже.
+            </p>
           </section>
         ) : (
           <section className="rounded-3xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">

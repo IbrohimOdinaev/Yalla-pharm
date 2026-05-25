@@ -24,6 +24,18 @@ public sealed class PaymentSettingsConfiguration : IEntityTypeConfiguration<Paym
       .HasMaxLength(2048)
       .IsRequired(false);
 
+    builder.Property(x => x.AlifUrlTemplate)
+      .HasColumnName("alif_url_template")
+      .HasColumnType("character varying(2048)")
+      .HasMaxLength(2048)
+      .IsRequired(false);
+
+    builder.Property(x => x.EskhataUrlTemplate)
+      .HasColumnName("eskhata_url_template")
+      .HasColumnType("character varying(2048)")
+      .HasMaxLength(2048)
+      .IsRequired(false);
+
     builder.Property(x => x.UpdatedAtUtc)
       .HasColumnName("updated_at_utc")
       .HasColumnType("timestamp without time zone")

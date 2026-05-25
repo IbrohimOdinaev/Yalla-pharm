@@ -63,6 +63,29 @@ function LoginContent() {
     if (session) setTimeout(() => codeInputRef.current?.focus(), 50);
   }, [session]);
 
+  useEffect(() => {
+    if (!session || typeof window === "undefined" || !("OTPCredential" in window)) return;
+    if (!navigator.credentials?.get) return;
+
+    const controller = new AbortController();
+    navigator.credentials
+      .get({
+        otp: { transport: ["sms"] },
+        signal: controller.signal,
+      } as CredentialRequestOptions & { otp: { transport: string[] } })
+      .then((credential) => {
+        const smsCode = (credential as (Credential & { code?: string }) | null)?.code
+          ?.replace(/\D/g, "")
+          .slice(0, session.codeLength);
+        if (smsCode?.length === session.codeLength) onCodeChange(smsCode);
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
+    // WebOTP is a best-effort enhancement; iOS still uses autocomplete="one-time-code".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.otpSessionId, session?.codeLength]);
+
   function applyCredentialsAndRedirect(token: string, role: string, userId: string) {
     dispatch(setCredentials({ token, role, userId }));
     const hadCheckoutIntent = consumeGuestCheckoutIntent();
@@ -289,7 +312,7 @@ function LoginContent() {
           </div>
           <div className="text-center">
             <h1 className="font-display text-2xl font-extrabold text-on-surface">
-              {session ? "Подтверждение" : "Добро пожаловать"}
+              {session ? "Подтверждение" : "Авторизация"}
             </h1>
             <p className="mt-1 text-sm text-on-surface-variant">
               {session
@@ -372,6 +395,7 @@ function LoginContent() {
                 autoComplete="one-time-code"
                 name="one-time-code"
                 pattern="[0-9]*"
+                maxLength={session.codeLength}
                 enterKeyHint="done"
                 value={code}
                 onChange={(e) => onCodeChange(e.target.value)}

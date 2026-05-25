@@ -53,7 +53,7 @@ function LinkedInGlyph() {
 function MailGlyph() {
   return (
     <svg width="20" height="20" viewBox="0 0 240 240" aria-hidden="true">
-      <rect width="240" height="240" rx="32" fill="#0E8B60" />
+      <rect width="240" height="240" rx="32" fill="#2F80ED" />
       <path
         d="M60 80h120c5.5 0 10 4.5 10 10v60c0 5.5-4.5 10-10 10H60c-5.5 0-10-4.5-10-10V90c0-5.5 4.5-10 10-10zm0 12v6.5l60 36.5 60-36.5V92H60zm120 21.5l-56 34a8 8 0 0 1-8 0l-56-34V148h120v-34.5z"
         fill="#fff"
@@ -78,7 +78,7 @@ export function Footer() {
           {/* Brand */}
           <div className="sm:col-span-2">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white font-display font-extrabold">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary font-display font-extrabold">
                 Y
               </span>
               <span className="font-display text-lg font-extrabold text-on-surface">Yalla Pharm</span>

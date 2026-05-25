@@ -197,7 +197,7 @@ export default function ProductDetailsPage() {
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => q + 1)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-container active:scale-95 xs:h-10 xs:w-10"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95 xs:h-10 xs:w-10"
                   aria-label="Увеличить"
                 >
                   <Icon name="plus" size={16} />

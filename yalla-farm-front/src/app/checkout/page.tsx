@@ -8,6 +8,7 @@ import { apiFetch } from "@/shared/api/http-client";
 import { calculateDelivery } from "@/shared/api/delivery";
 import { buildCheckoutIdempotencyKey } from "@/shared/lib/idempotency";
 import { formatMoney } from "@/shared/lib/format";
+import { openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
@@ -15,6 +16,7 @@ import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddre
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import { getMyProfile } from "@/entities/client/api";
 import { removeFromBasket } from "@/entities/basket/api";
+import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import type { ApiMedicine, ApiCheckoutResponse, ApiClient } from "@/shared/types/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
@@ -22,6 +24,14 @@ import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import type { GeoPoint } from "@/shared/lib/map";
 import { Button, Chip, Icon, StepProgress } from "@/shared/ui";
 import { CartSummary, type CartSummaryRow } from "@/widgets/cart/CartSummary";
+import {
+  buildPaymentUrlFromTemplate,
+  PaymentMethodModal,
+  type PaymentMethodOption,
+} from "@/widgets/payment/PaymentMethodModal";
+
+const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
 
 export default function CheckoutPage() {
   const token = useAppSelector((s) => s.auth.token);
@@ -49,6 +59,7 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null);
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
   const [profile, setProfile] = useState<ApiClient | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [selectedMedIds, setSelectedMedIds] = useState<Set<string>>(new Set());
   const [selectionInited, setSelectionInited] = useState(false);
   const [comment, setComment] = useState("");
@@ -56,6 +67,8 @@ export default function CheckoutPage() {
   const [floor, setFloor] = useState("");
   const [apartment, setApartment] = useState("");
   const [showCourierDetails, setShowCourierDetails] = useState(false);
+  const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
+  const [pendingPayment, setPendingPayment] = useState<{ amount: number; dcUrl: string } | null>(null);
 
   useEffect(() => {
     if (!pharmacyId) { router.replace("/cart/pharmacy"); return; }
@@ -68,8 +81,16 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!token) return;
-    getMyProfile(token).then(setProfile).catch(() => undefined);
+    setProfileLoaded(false);
+    getMyProfile(token)
+      .then(setProfile)
+      .catch(() => setProfile(null))
+      .finally(() => setProfileLoaded(true));
   }, [token]);
+
+  useEffect(() => {
+    getPublicPaymentSettings().then(setPaymentSettings).catch(() => undefined);
+  }, []);
 
   const checkoutItems = selectedPharmacyItems;
 
@@ -157,6 +178,48 @@ export default function CheckoutPage() {
   }, [savedCoords?.lat, savedCoords?.lng, savedAddress, isPickup]);
 
   const totalAmount = itemsAmount + (isPickup ? 0 : (deliveryCost ?? 0));
+  const paymentMethods = useMemo<PaymentMethodOption[]>(() => {
+    if (!pendingPayment) return [];
+    const amount = pendingPayment.amount;
+    const methods: PaymentMethodOption[] = [];
+
+    if (pendingPayment.dcUrl) {
+      methods.push({
+        id: "dc",
+        title: "Dushanbe City",
+        subtitle: "Оплата через Dushanbe City",
+        url: pendingPayment.dcUrl,
+      });
+    }
+
+    const alifUrl = buildPaymentUrlFromTemplate(
+      paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
+      amount,
+    );
+    if (alifUrl) {
+      methods.push({
+        id: "alif",
+        title: "Alif Mobi",
+        subtitle: "Оплата через приложение Alif",
+        url: alifUrl,
+      });
+    }
+
+    const eskhataUrl = buildPaymentUrlFromTemplate(
+      paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
+      amount,
+    );
+    if (eskhataUrl) {
+      methods.push({
+        id: "eskhata",
+        title: "Эсхата",
+        subtitle: "Оплата через приложение Эсхата",
+        url: eskhataUrl,
+      });
+    }
+
+    return methods;
+  }, [paymentSettings, pendingPayment]);
 
   async function onSubmit() {
     if (!pharmacyId) return;
@@ -167,10 +230,6 @@ export default function CheckoutPage() {
       return;
     }
     if (selectedCount === 0) return;
-    if (!hasContact) {
-      setError("Привяжите номер телефона или Telegram-аккаунт в профиле.");
-      return;
-    }
     setIsSubmitting(true);
     setError(null);
 
@@ -247,8 +306,10 @@ export default function CheckoutPage() {
 
       const paymentUrl = String(checkout.paymentUrl || "");
       if (paymentUrl) {
-        router.replace("/orders");
-        window.location.assign(paymentUrl);
+        setPendingPayment({
+          amount: Number(checkout.amount ?? checkout.cost ?? totalAmount),
+          dcUrl: paymentUrl,
+        });
       } else {
         router.replace("/orders");
       }
@@ -299,30 +360,6 @@ export default function CheckoutPage() {
         {error ? (
           <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
         ) : null}
-
-        {/* Method + Pharmacy */}
-        <section className="flex gap-3">
-          <div className={`flex-1 rounded-3xl p-4 shadow-card ${isPickup ? "bg-surface-container-lowest" : "bg-gradient-to-br from-primary to-primary-container text-white"}`}>
-            <div className="flex items-center gap-2">
-              <Icon name="truck" size={20} />
-              <span className="text-xs font-bold uppercase tracking-wide">
-                {isPickup ? "Доставка" : "Доставка"}
-              </span>
-            </div>
-            <p className="mt-2 text-sm font-extrabold">
-              {isPickup ? "Недоступно" : `30–45 мин · ${deliveryCost != null ? formatMoney(deliveryCost) + " TJS" : "—"}`}
-            </p>
-          </div>
-          <div className={`flex-1 rounded-3xl p-4 shadow-card ${isPickup ? "bg-gradient-to-br from-primary to-primary-container text-white" : "bg-surface-container-lowest"}`}>
-            <div className="flex items-center gap-2">
-              <Icon name="store" size={20} />
-              <span className="text-xs font-bold uppercase tracking-wide">Самовывоз</span>
-            </div>
-            <p className="mt-2 text-sm font-extrabold">
-              {isPickup ? "Бесплатно" : "Выберите в корзине"}
-            </p>
-          </div>
-        </section>
 
         {/* Pharmacy card */}
         <section className="rounded-3xl bg-surface-container-lowest p-4 shadow-card">
@@ -431,7 +468,7 @@ export default function CheckoutPage() {
                 </div>
               ) : null}
             </div>
-            {!hasContact ? (
+            {profileLoaded && !hasContact ? (
               <div className="mt-3 rounded-2xl bg-warning-soft p-3">
                 <p className="text-sm font-bold text-warning">Нет контакта для связи</p>
                 <p className="mt-1 text-xs text-warning/90">
@@ -505,7 +542,7 @@ export default function CheckoutPage() {
                       ) : null}
                     </p>
                     {missing ? (
-                      <Chip tone="danger" asButton={false} size="sm">Нет в наличии</Chip>
+                      <Chip tone="danger" asButton={false} size="sm">В этой аптеке нет</Chip>
                     ) : partial ? (
                       <Chip tone="warning" asButton={false} size="sm">
                         Доступно {item.foundQuantity} из {item.requestedQuantity}
@@ -569,16 +606,28 @@ export default function CheckoutPage() {
             rightIcon="arrow-right"
             onClick={onSubmit}
             loading={isSubmitting || isCalculating}
-            disabled={selectedCount === 0 || (!isPickup && !localAddress && !savedAddress) || !hasContact}
+            disabled={selectedCount === 0 || (!isPickup && !localAddress && !savedAddress)}
           >
             {selectedCount === 0
               ? "Выберите позиции"
-              : !hasContact
-                ? "Нужен контакт"
-                : `Подтвердить · ${formatMoney(totalAmount)}`}
+            : `Подтвердить · ${formatMoney(totalAmount)}`}
           </Button>
         </div>
       </div>
+      <PaymentMethodModal
+        open={Boolean(pendingPayment)}
+        amount={pendingPayment?.amount ?? 0}
+        methods={paymentMethods}
+        onSelect={(method) => {
+          openPaymentUrl(method.url);
+          setPendingPayment(null);
+          router.replace("/orders");
+        }}
+        onClose={() => {
+          setPendingPayment(null);
+          router.replace("/orders");
+        }}
+      />
     </AppShell>
   );
 }

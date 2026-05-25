@@ -7,6 +7,7 @@ public static class RequestDtoValidator
 {
   private const int MedicineTitleMaxLength = 256;
   private const int MedicineArticulMaxLength = 128;
+  private const int MedicineBarcodeMaxLength = 64;
   private const int MedicineAttributeNameMaxLength = 200;
   private const int MedicineAttributeOptionMaxLength = 500;
 
@@ -189,6 +190,8 @@ public static class RequestDtoValidator
     RequireMaxLength(request.Title, nameof(request.Title), MedicineTitleMaxLength, errors);
     if (!string.IsNullOrWhiteSpace(request.Articul))
       RequireMaxLength(request.Articul, nameof(request.Articul), MedicineArticulMaxLength, errors);
+    if (!string.IsNullOrWhiteSpace(request.Barcode))
+      RequireMaxLength(request.Barcode, nameof(request.Barcode), MedicineBarcodeMaxLength, errors);
 
     if (request.Atributes is null)
     {
@@ -445,6 +448,8 @@ public static class RequestDtoValidator
     RequireMaxLength(request.Title, nameof(request.Title), MedicineTitleMaxLength, errors);
     if (!string.IsNullOrWhiteSpace(request.Articul))
       RequireMaxLength(request.Articul, nameof(request.Articul), MedicineArticulMaxLength, errors);
+    if (!string.IsNullOrWhiteSpace(request.Barcode))
+      RequireMaxLength(request.Barcode, nameof(request.Barcode), MedicineBarcodeMaxLength, errors);
   }
 
   private static void ValidateUpdatePharmacy(

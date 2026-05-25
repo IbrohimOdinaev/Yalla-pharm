@@ -1283,6 +1283,16 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(2048)")
                         .HasColumnName("dc_base_url");
 
+                    b.Property<string>("AlifUrlTemplate")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("alif_url_template");
+
+                    b.Property<string>("EskhataUrlTemplate")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("eskhata_url_template");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("updated_at_utc");
@@ -2169,6 +2179,11 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly?>("DateOfBirth")
                         .HasColumnType("date")
                         .HasColumnName("date_of_birth");
+
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("avatar_url");
 
                     b.Property<DateTime?>("DeactivatedAtUtc")
                         .HasColumnType("timestamp without time zone")

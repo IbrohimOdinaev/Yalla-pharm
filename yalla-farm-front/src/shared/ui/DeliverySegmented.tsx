@@ -24,7 +24,7 @@ export function DeliverySegmented({
         onClick={() => onChange("delivery")}
         className={`flex h-full flex-1 items-center justify-center gap-2 rounded-full text-xs font-bold transition active:scale-[0.97] ${
           value === "delivery"
-            ? "bg-primary text-white shadow-card"
+            ? "bg-primary text-on-primary shadow-card"
             : "text-on-surface-variant hover:bg-surface-container-high"
         }`}
       >
@@ -36,7 +36,7 @@ export function DeliverySegmented({
         onClick={() => onChange("pickup")}
         className={`flex h-full flex-1 items-center justify-center gap-2 rounded-full text-xs font-bold transition active:scale-[0.97] ${
           value === "pickup"
-            ? "bg-primary text-white shadow-card"
+            ? "bg-primary text-on-primary shadow-card"
             : "text-on-surface-variant hover:bg-surface-container-high"
         }`}
       >

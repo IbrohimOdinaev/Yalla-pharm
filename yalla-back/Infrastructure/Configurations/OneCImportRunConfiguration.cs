@@ -67,6 +67,16 @@ public sealed class OneCImportRunConfiguration : IEntityTypeConfiguration<OneCIm
       .HasColumnType("integer")
       .IsRequired();
 
+    builder.Property(x => x.InsertedCount)
+      .HasColumnName("inserted_count")
+      .HasColumnType("integer")
+      .IsRequired();
+
+    builder.Property(x => x.UnchangedCount)
+      .HasColumnName("unchanged_count")
+      .HasColumnType("integer")
+      .IsRequired();
+
     builder.Property(x => x.UnmatchedCount)
       .HasColumnName("unmatched_count")
       .HasColumnType("integer")
@@ -89,6 +99,9 @@ public sealed class OneCImportRunConfiguration : IEntityTypeConfiguration<OneCIm
 
     builder.HasIndex(x => new { x.SourceId, x.FileSignature })
       .HasDatabaseName("ix_one_c_import_runs_source_id_file_signature");
+
+    builder.HasIndex(x => new { x.SourceId, x.FileSignature, x.Status })
+      .HasDatabaseName("ix_one_c_import_runs_source_signature_status");
 
     builder.HasIndex(x => new { x.SourceId, x.FileKind, x.StartedAtUtc })
       .HasDatabaseName("ix_one_c_import_runs_source_kind_started");

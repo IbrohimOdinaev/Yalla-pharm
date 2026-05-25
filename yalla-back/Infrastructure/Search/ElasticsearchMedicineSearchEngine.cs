@@ -118,7 +118,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
                             {
                                 should = new object[]
                                 {
-                                    new { multi_match = new { query = trimmed, fields = new[] { "title^3", "articul^2", "categoryName", "description" }, type = "best_fields", fuzziness = "AUTO" } },
+                                    new { multi_match = new { query = trimmed, fields = new[] { "title^3", "barcode^3", "articul^2", "categoryName", "description" }, type = "best_fields", fuzziness = "AUTO" } },
                                     new { match_phrase_prefix = new { title = new { query = trimmed, boost = 5 } } }
                                 },
                                 minimum_should_match = 1
@@ -158,6 +158,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
                 Id = guid,
                 Title = source.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
                 Articul = source.TryGetProperty("articul", out var a) ? a.GetString() ?? "" : "",
+                Barcode = source.TryGetProperty("barcode", out var b) ? b.GetString() ?? "" : "",
                 CategoryName = source.TryGetProperty("categoryName", out var c) ? c.GetString() : null,
                 MinPrice = source.TryGetProperty("minPrice", out var p) && p.TryGetDecimal(out var price) && price > 0 ? price : null,
                 Score = hit.TryGetProperty("_score", out var s) ? s.GetDouble() : 0
@@ -184,12 +185,15 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
             {
                 Id = m.Id,
                 Title = m.Title,
-                Articul = m.Articul,
+                Articul = m.Articul ?? string.Empty,
+                Barcode = m.Barcode ?? string.Empty,
                 CategoryName = m.Category != null ? m.Category.Name : null,
                 Description = m.Description,
-                MinPrice = m.Offers.Any(o => o.Price > 0) ? m.Offers.Where(o => o.Price > 0).Min(o => o.Price) : 0m,
+                MinPrice = m.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0)
+                    ? m.Offers.Where(o => o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
+                    : 0m,
                 IsActive = m.IsActive,
-                HasStock = m.Offers.Any(o => o.StockQuantity > 0)
+                HasStock = m.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0)
             })
             .ToListAsync(ct);
 
@@ -234,6 +238,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
                         ["id"] = new { type = "keyword" },
                         ["title"] = new { type = "text", analyzer = "russian_custom", fields = new { raw = new { type = "keyword" } } },
                         ["articul"] = new { type = "text", analyzer = "standard" },
+                        ["barcode"] = new { type = "keyword" },
                         ["categoryName"] = new { type = "text", analyzer = "russian_custom" },
                         ["description"] = new { type = "text", analyzer = "russian_custom" },
                         ["minPrice"] = new { type = "float" },
@@ -257,6 +262,7 @@ public sealed class ElasticsearchMedicineSearchEngine : IMedicineSearchEngine
         id = doc.Id.ToString(),
         title = doc.Title,
         articul = doc.Articul,
+        barcode = doc.Barcode,
         categoryName = doc.CategoryName ?? "",
         description = doc.Description ?? "",
         minPrice = doc.MinPrice.HasValue ? (float)doc.MinPrice.Value : 0f,

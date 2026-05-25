@@ -17,11 +17,11 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   children?: ReactNode;
 };
 
-// Yandex-Plus flat variants — primary buttons are warm yellow with near-black
-// text (matches Yandex Market/Apteka buy-flow CTA). No gradients, no glow.
+// Flat CTA variants. Primary confirmation actions use the same blue as the
+// catalog add button, with a soft near-white label instead of pure white.
 const variants: Record<Variant, string> = {
   primary:
-    "bg-accent text-on-surface hover:bg-accent-dark active:scale-[0.98]",
+    "bg-primary text-on-primary hover:bg-primary-container active:scale-[0.98]",
   secondary:
     "bg-surface-container text-on-surface hover:bg-surface-container-high active:scale-[0.98]",
   ghost:
@@ -33,7 +33,7 @@ const variants: Record<Variant, string> = {
   telegram:
     "bg-telegram text-white hover:bg-telegram-dark active:scale-[0.98]",
   yellow:
-    "bg-accent text-on-surface hover:bg-accent-dark active:scale-[0.98]",
+    "bg-primary text-on-primary hover:bg-primary-container active:scale-[0.98]",
 };
 
 const sizes: Record<Size, string> = {
@@ -67,7 +67,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       {...rest}
     >
       {loading ? (
-        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current/35 border-t-current" />
       ) : leftIcon ? (
         <Icon name={leftIcon} size={iconSizes[size]} />
       ) : null}

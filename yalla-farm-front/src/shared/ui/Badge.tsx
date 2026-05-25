@@ -10,7 +10,7 @@ type Props = {
 };
 
 const tones: Record<Tone, string> = {
-  primary: "bg-primary text-white",
+  primary: "bg-primary text-on-primary",
   secondary: "bg-secondary text-white",
   tertiary: "bg-tertiary text-white",
   neutral: "bg-surface-container-high text-on-surface-variant",

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
+using Yalla.Application.DTO.Response;
 using Yalla.Application.Services;
 using Yalla.Application.UnitTests.TestInfrastructure;
 using Yalla.Domain.Entities;
@@ -59,6 +60,12 @@ public sealed class PaymentIntentServiceTests
     var order = await db.Orders.AsNoTracking().FirstOrDefaultAsync(x => x.Id == reservedOrderId);
     Assert.NotNull(order);
     Assert.Equal(OrderPaymentState.Confirmed, order!.PaymentState);
+    Assert.False(order.IsStockDeducted);
+
+    var unchangedOffer = await db.Offers
+      .AsNoTracking()
+      .FirstAsync(x => x.MedicineId == medicine.Id && x.PharmacyId == pharmacy.Id);
+    Assert.Equal(10, unchangedOffer.StockQuantity);
 
     var paymentHistory = await db.PaymentHistories.AsNoTracking().FirstOrDefaultAsync(x => x.OrderId == reservedOrderId);
     Assert.NotNull(paymentHistory);
@@ -118,6 +125,60 @@ public sealed class PaymentIntentServiceTests
     Assert.Contains(
       updatesPublisher.Events,
       x => x.PaymentIntentId == intent.Id && x.State == PaymentIntentState.NeedsResolution && x.OrderId is null);
+  }
+
+  [Fact]
+  public async Task ConfirmBySuperAdmin_ForManualLookupShadowMedicine_ShouldRemoveTemporaryOfferAndImage()
+  {
+    using var scope = TestDbFactory.Create();
+    var db = scope.Db;
+
+    var client = TestDbFactory.CreateClient("ClientManual", "911000013");
+    var superAdmin = TestDbFactory.CreateUser("SuperAdminManual", "911000014", Role.SuperAdmin);
+    var pharmacy = TestDbFactory.CreatePharmacy("Ph-Manual", "Addr-Manual", superAdmin.Id);
+    var medicine = Medicine.ForManualLookup(
+      "Manual Citramon",
+      $"manual-{Guid.NewGuid():N}",
+      manualLookupRequestId: Guid.NewGuid(),
+      manualLookupResponseId: Guid.NewGuid());
+    var image = new MedicineImage(medicine.Id, "manual-lookups/test.png", isMain: true, isMinimal: false);
+    var offer = TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, stock: 10, price: 57m);
+
+    db.Clients.Add(client);
+    db.Users.Add(superAdmin);
+    db.Pharmacies.Add(pharmacy);
+    db.Medicines.Add(medicine);
+    db.MedicineImages.Add(image);
+    db.Offers.Add(offer);
+    await db.SaveChangesAsync();
+
+    var reservedOrderId = Guid.NewGuid();
+    var intent = BuildPaymentIntent(
+      reservedOrderId: reservedOrderId,
+      client: client,
+      pharmacyId: pharmacy.Id,
+      medicineId: medicine.Id,
+      price: 57m,
+      quantity: 1,
+      idempotencyKey: "intent-confirm-manual-cleanup");
+    db.PaymentIntents.Add(intent);
+    await db.SaveChangesAsync();
+
+    var service = CreateService(db);
+    var response = await service.ConfirmBySuperAdminAsync(new ConfirmPaymentIntentBySuperAdminRequest
+    {
+      SuperAdminId = superAdmin.Id,
+      PaymentIntentId = intent.Id
+    });
+
+    Assert.True(response.OrderCreated);
+    Assert.Equal(PaymentIntentState.Confirmed, response.PaymentIntentState);
+    Assert.False(await db.Offers.AsNoTracking().AnyAsync(x => x.MedicineId == medicine.Id));
+    Assert.False(await db.MedicineImages.AsNoTracking().AnyAsync(x => x.MedicineId == medicine.Id));
+
+    var shadow = await db.Medicines.AsNoTracking().SingleAsync(x => x.Id == medicine.Id);
+    Assert.False(shadow.IsActive);
+    Assert.True(await db.OrderPositions.AsNoTracking().AnyAsync(x => x.OrderId == reservedOrderId && x.MedicineId == medicine.Id));
   }
 
   [Fact]
@@ -242,5 +303,6 @@ public sealed class PaymentIntentServiceTests
     public Task PublishManualLookupRequestCreatedAsync(Guid requestId, Guid prescriptionId, Guid requestedByPharmacistId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PublishManualLookupResponseAddedAsync(Guid requestId, Guid responseId, Guid respondingPharmacyId, Guid requestedByPharmacistId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PublishManualLookupRequestClosedAsync(Guid requestId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task PublishOneCImportRunUpdatedAsync(OneCImportRunLogResponse run, CancellationToken cancellationToken = default) => Task.CompletedTask;
   }
 }

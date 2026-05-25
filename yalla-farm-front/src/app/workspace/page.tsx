@@ -8,9 +8,8 @@ import { formatMoney, formatPhone } from "@/shared/lib/format";
 import { DatePicker } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
 
-import { updateAdminMe, getAdminMe } from "@/entities/admin/api";
+import { getAdminMe, requestAdminProfileOtp, uploadAdminAvatar, verifyAdminProfileOtp } from "@/entities/admin/api";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
-import { updatePharmacy } from "@/entities/pharmacy/admin-api";
 import { getCatalogMedicinesPaginated, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
 import type { ApiCategory, ApiMedicine, ApiOrder } from "@/shared/types/api";
@@ -276,22 +275,20 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [adminName, setAdminName] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
+  const [adminAvatarUrl, setAdminAvatarUrl] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  const [pharmaTitle, setPharmaTitle] = useState("");
-  const [pharmaAddress, setPharmaAddress] = useState("");
-  const [pharmaActive, setPharmaActive] = useState(true);
-  const [pharmaMsg, setPharmaMsg] = useState<string | null>(null);
-  const [isAllDay, setIsAllDay] = useState(true);
-  const [opensAt, setOpensAt] = useState("");
-  const [closesAt, setClosesAt] = useState("");
+  const [otpSessionId, setOtpSessionId] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpCodeLength, setOtpCodeLength] = useState(4);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   useEffect(() => {
     getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
     getAdminMe(token).then((data) => {
       setAdminName(data.name || "");
       setAdminPhone(data.phoneNumber || "");
+      setAdminAvatarUrl(data.avatarUrl ?? null);
     }).catch(() => undefined);
   }, [token]);
 
@@ -300,25 +297,34 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
     ? pharmacies.find((p) => p.id === adminPharmacyId)
     : pharmacies[0];
 
-  useEffect(() => {
-    if (pharmacy) {
-      setPharmaTitle(pharmacy.title);
-      setPharmaAddress(pharmacy.address);
-      setPharmaActive(pharmacy.isActive ?? true);
-      const hasSchedule = Boolean(pharmacy.opensAt && pharmacy.closesAt);
-      setIsAllDay(!hasSchedule);
-      // Backend returns "HH:mm:ss" — trim to minutes for the <input type="time"> field.
-      setOpensAt(hasSchedule ? (pharmacy.opensAt ?? "").slice(0, 5) : "");
-      setClosesAt(hasSchedule ? (pharmacy.closesAt ?? "").slice(0, 5) : "");
-    }
-  }, [pharmacy]);
-
   async function onSaveAdmin(e: FormEvent) {
     e.preventDefault();
     setIsSaving(true);
     setMsg(null);
     try {
-      await updateAdminMe(token, { name: adminName, phoneNumber: formatPhone(adminPhone) });
+      const response = await requestAdminProfileOtp(token, { name: adminName, phoneNumber: formatPhone(adminPhone) });
+      setOtpSessionId(response.otpSessionId);
+      setOtpCodeLength(response.codeLength || 4);
+      setOtpCode("");
+      setMsg(`Код подтверждения отправлен на +992 ${response.phoneNumber}.`);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function onConfirmAdminOtp() {
+    if (!otpSessionId) return;
+    setIsSaving(true);
+    setMsg(null);
+    try {
+      const response = await verifyAdminProfileOtp(token, { otpSessionId, code: otpCode });
+      setAdminName(response.name || "");
+      setAdminPhone(response.phoneNumber || "");
+      setAdminAvatarUrl(response.avatarUrl ?? adminAvatarUrl);
+      setOtpSessionId("");
+      setOtpCode("");
       setMsg("Профиль обновлён.");
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
@@ -327,27 +333,18 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
     }
   }
 
-  async function onSavePharmacy(e: FormEvent) {
-    e.preventDefault();
-    if (!pharmacy) return;
-    setPharmaMsg(null);
-    if (!isAllDay && (!opensAt || !closesAt)) {
-      setPharmaMsg("Укажите время открытия и закрытия (или включите режим «Круглосуточно»).");
-      return;
-    }
+  async function onUploadAvatar(file: File | null) {
+    if (!file) return;
+    setIsUploadingAvatar(true);
+    setMsg(null);
     try {
-      await updatePharmacy(token, {
-        pharmacyId: pharmacy.id,
-        title: pharmaTitle,
-        address: pharmaAddress,
-        isActive: pharmaActive,
-        opensAt: isAllDay ? "" : opensAt,
-        closesAt: isAllDay ? "" : closesAt,
-      });
-      setPharmaMsg("Аптека обновлена.");
-      getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
+      const response = await uploadAdminAvatar(token, file);
+      setAdminAvatarUrl(`${response.avatarUrl}?v=${Date.now()}`);
+      setMsg("Фото профиля обновлено.");
     } catch (err) {
-      setPharmaMsg(err instanceof Error ? err.message : "Ошибка.");
+      setMsg(err instanceof Error ? err.message : "Ошибка загрузки фото.");
+    } finally {
+      setIsUploadingAvatar(false);
     }
   }
 
@@ -370,101 +367,115 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       </section>
 
       <div className="grid gap-5 md:grid-cols-2">
-      <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSaveAdmin}>
-        <div>
-          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Профиль администратора</h2>
-          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Ваши контактные данные и данные для входа.</p>
-        </div>
-        <label className="block space-y-1">
-          <span className="text-sm font-medium text-on-surface-variant">Имя</span>
-          <input className="stitch-input" value={adminName} onChange={(e) => setAdminName(e.target.value)} required />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
-          <input className="stitch-input" type="tel" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} required />
-        </label>
-        {msg ? <div className={`rounded-xl p-3 text-sm ${msg.includes("обновлён") ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>{msg}</div> : null}
-        <button type="submit" className="stitch-button w-full" disabled={isSaving}>{isSaving ? "Сохраняем..." : "Сохранить"}</button>
-      </form>
-
-      {pharmacy ? (
-        <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSavePharmacy}>
+        <form className="stitch-card space-y-3 p-3 xs:p-4 sm:space-y-4 sm:p-5" onSubmit={onSaveAdmin}>
           <div>
-            <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление аптекой</h2>
-            <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Название, адрес и статус видимости для клиентов.</p>
+            <h2 className="text-sm font-bold xs:text-base sm:text-lg">Профиль администратора</h2>
+            <p className="mt-1 text-[10px] text-on-surface-variant xs:text-xs sm:text-sm">
+              Ваши контактные данные. Изменения подтверждаются SMS-кодом.
+            </p>
           </div>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant">Название</span>
-            <input className="stitch-input" value={pharmaTitle} onChange={(e) => setPharmaTitle(e.target.value)} required />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant">Адрес</span>
-            <input className="stitch-input" value={pharmaAddress} onChange={(e) => setPharmaAddress(e.target.value)} required />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={pharmaActive} onChange={(e) => setPharmaActive(e.target.checked)} />
-            <span>Активна</span>
-          </label>
 
-          {/* Opening hours — toggle «Круглосуточно» off to set a schedule.
-              Same-day pickup stops 30 min before closing; enforced on the
-              cart-pharmacy page. */}
-          <div className="rounded-xl bg-surface-container-low p-3 xs:p-4 space-y-2 xs:space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs xs:text-sm font-bold text-on-surface">Время работы</p>
-                <p className="mt-0.5 text-[10px] xs:text-[11px] text-on-surface-variant">
-                  {isAllDay
-                    ? "Аптека работает круглосуточно."
-                    : "Самовывоз доступен, пока до закрытия более 30 минут."}
-                </p>
-              </div>
-              <label className="flex flex-shrink-0 items-center gap-2 text-[11px] xs:text-xs font-semibold">
-                <input
-                  type="checkbox"
-                  checked={isAllDay}
-                  onChange={(e) => {
-                    setIsAllDay(e.target.checked);
-                    if (e.target.checked) {
-                      setOpensAt("");
-                      setClosesAt("");
-                    }
-                  }}
-                />
-                <span>Круглосуточно</span>
-              </label>
+          <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-lg font-black text-on-surface">
+              {adminAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={adminAvatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                (adminName || "A").trim().slice(0, 1).toUpperCase()
+              )}
             </div>
-
-            {!isAllDay ? (
-              <div className="grid grid-cols-2 gap-2 xs:gap-3">
-                <label className="block space-y-1">
-                  <span className="text-[11px] xs:text-xs font-medium text-on-surface-variant">Открытие</span>
-                  <input
-                    type="time"
-                    className="stitch-input w-full tabular-nums"
-                    value={opensAt}
-                    onChange={(e) => setOpensAt(e.target.value)}
-                    required={!isAllDay}
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] xs:text-xs font-medium text-on-surface-variant">Закрытие</span>
-                  <input
-                    type="time"
-                    className="stitch-input w-full tabular-nums"
-                    value={closesAt}
-                    onChange={(e) => setClosesAt(e.target.value)}
-                    required={!isAllDay}
-                  />
-                </label>
-              </div>
-            ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-on-surface">Фото профиля</p>
+              <p className="mt-0.5 text-xs text-on-surface-variant">jpg/png/webp до 5 МБ</p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-surface-container px-3 py-2 text-xs font-black transition hover:bg-surface-container-high">
+              {isUploadingAvatar ? "..." : "Загрузить"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                onChange={(e) => {
+                  void onUploadAvatar(e.target.files?.[0] ?? null);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
           </div>
 
-          {pharmaMsg ? <div className={`rounded-xl p-3 text-sm ${pharmaMsg.includes("обновлена") ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>{pharmaMsg}</div> : null}
-          <button type="submit" className="stitch-button w-full">Обновить аптеку</button>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-on-surface-variant">Имя</span>
+            <input className="stitch-input" value={adminName} onChange={(e) => setAdminName(e.target.value)} required />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
+            <input className="stitch-input" type="tel" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} required />
+          </label>
+
+          {otpSessionId ? (
+            <div className="space-y-2 rounded-2xl bg-surface-container-low p-3">
+              <label className="block space-y-1">
+                <span className="text-sm font-bold text-on-surface">Код подтверждения</span>
+                <input
+                  className="stitch-input text-center text-lg font-black tracking-[0.35em]"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="one-time-code"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, otpCodeLength))}
+                  placeholder={"0".repeat(otpCodeLength)}
+                />
+              </label>
+              <button
+                type="button"
+                className="stitch-button w-full"
+                onClick={onConfirmAdminOtp}
+                disabled={isSaving || otpCode.length !== otpCodeLength}
+              >
+                {isSaving ? "Проверяем..." : "Подтвердить"}
+              </button>
+            </div>
+          ) : null}
+
+          {msg ? (
+            <div className={`rounded-xl p-3 text-sm ${msg.includes("обновлён") || msg.includes("отправлен") || msg.includes("обновлено") ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
+              {msg}
+            </div>
+          ) : null}
+          <button type="submit" className="stitch-button w-full" disabled={isSaving}>
+            {isSaving ? "Отправляем..." : "Получить код"}
+          </button>
         </form>
-      ) : null}
+
+        {pharmacy ? (
+          <section className="stitch-card space-y-4 p-3 xs:p-4 sm:p-5">
+            <div>
+              <h2 className="text-sm font-bold xs:text-base sm:text-lg">Аптека администратора</h2>
+              <p className="mt-1 text-[10px] text-on-surface-variant xs:text-xs sm:text-sm">
+                Данные аптеки доступны только для просмотра. Изменение выполняет системный администратор.
+              </p>
+            </div>
+            <div className="space-y-3 rounded-2xl bg-surface-container-low p-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-on-surface-variant">Название</p>
+                <p className="mt-1 text-base font-black text-on-surface">{pharmacy.title}</p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-on-surface-variant">Адрес</p>
+                <p className="mt-1 text-sm font-semibold text-on-surface">{pharmacy.address}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-black ${pharmacy.isActive ? "bg-primary-soft text-primary" : "bg-secondary-soft text-secondary"}`}>
+                  {pharmacy.isActive ? "Активна" : "Отключена"}
+                </span>
+                <span className="rounded-full bg-surface-container px-3 py-1 text-xs font-black text-on-surface-variant">
+                  {pharmacy.opensAt && pharmacy.closesAt
+                    ? `${pharmacy.opensAt.slice(0, 5)}-${pharmacy.closesAt.slice(0, 5)}`
+                    : "Круглосуточно"}
+                </span>
+              </div>
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );
@@ -730,7 +741,7 @@ function OffersTab({ token }: { token: string }) {
                   type="button"
                   onClick={() => selectCategory("")}
                   className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
-                    !selectedCategoryId ? "bg-primary text-white" : "text-on-surface hover:bg-surface-container-low"
+                    !selectedCategoryId ? "bg-primary text-on-primary" : "text-on-surface hover:bg-surface-container-low"
                   }`}
                 >
                   Все товары
@@ -755,7 +766,7 @@ function OffersTab({ token }: { token: string }) {
                               selectCategory(category.id);
                             }}
                             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
-                              isActive || hasActiveChild ? "bg-primary text-white" : "text-on-surface hover:bg-surface-container-low"
+                              isActive || hasActiveChild ? "bg-primary text-on-primary" : "text-on-surface hover:bg-surface-container-low"
                             }`}
                           >
                             <span className="truncate">{category.name}</span>
@@ -774,7 +785,7 @@ function OffersTab({ token }: { token: string }) {
                                   onClick={() => selectCategory(child.id)}
                                   className={`block w-full rounded-lg px-3 py-1.5 text-left text-sm transition ${
                                     selectedCategoryId === child.id
-                                      ? "bg-primary/80 font-semibold text-white"
+                                      ? "bg-primary/80 font-semibold text-on-primary"
                                       : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
                                   }`}
                                 >
@@ -1037,8 +1048,8 @@ function OrderCard({
       {order.deliveryAddress ? <p className="text-xs text-on-surface-variant">{order.isPickup ? "Самовывоз" : order.deliveryAddress}</p> : null}
 
       {order.comment ? (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-800">
-          <p className="font-semibold text-[10px] uppercase tracking-wider text-amber-700">Комментарий</p>
+        <div className="rounded-lg bg-surface-container border border-outline px-2 py-1.5 text-xs text-on-surface">
+          <p className="font-semibold text-[10px] uppercase tracking-wider text-warning">Комментарий</p>
           <p className="whitespace-pre-wrap">{order.comment}</p>
         </div>
       ) : null}
@@ -1046,7 +1057,7 @@ function OrderCard({
       {/* Orphan record warning — historic orders whose order_positions rows
           are missing in the DB. Shows up as "0 TJS / 0 поз." otherwise. */}
       {isOrderDataLost(order) ? (
-        <div className="flex items-center gap-1.5 rounded-lg bg-amber-100 border border-amber-300 px-2 py-1.5 text-[11px] font-semibold text-amber-800">
+        <div className="flex items-center gap-1.5 rounded-lg bg-warning-soft border border-warning-container px-2 py-1.5 text-[11px] font-semibold text-warning">
           <span aria-hidden>⚠</span>
           <span>Данные позиций утеряны</span>
         </div>
@@ -1085,7 +1096,7 @@ function OrderCard({
             <button
               key={a.action}
               type="button"
-              className={`rounded-lg px-3 py-1 text-xs font-bold ${a.danger ? "bg-red-100 text-red-700" : "bg-primary text-white"}`}
+              className={`rounded-lg px-3 py-1 text-xs font-bold ${a.danger ? "bg-red-100 text-red-700" : "bg-primary text-on-primary"}`}
               onClick={() => {
                 if (a.danger && !confirm(`Подтвердите: ${a.label.toLowerCase()} заказ #${order.orderId.slice(0, 8)}?`)) return;
                 if (a.needsConfirm && !confirm(`${a.label}? Статус заказа #${order.orderId.slice(0, 8)} изменится.`)) return;

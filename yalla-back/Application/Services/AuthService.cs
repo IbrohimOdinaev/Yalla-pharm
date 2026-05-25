@@ -258,6 +258,124 @@ public sealed class AuthService : IAuthService
       AdminId = admin.Id,
       Name = admin.Name,
       PhoneNumber = admin.PhoneNumber,
+      AvatarUrl = admin.AvatarUrl,
+      Role = admin.Role
+    };
+  }
+
+  public async Task<RequestClientOtpResponse> RequestAdminProfileUpdateOtpAsync(
+    Guid adminId,
+    RequestAdminProfileUpdateOtpRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    if (adminId == Guid.Empty)
+      throw new DomainArgumentException("AdminId can't be empty.");
+
+    var admin = await _dbContext.Users
+      .AsNoTracking()
+      .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
+      ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
+
+    if (admin.Role != Role.Admin)
+      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+
+    var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
+    var phoneTaken = await _dbContext.Users
+      .AsNoTracking()
+      .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber && x.Id != adminId, cancellationToken);
+
+    if (phoneTaken)
+      throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
+
+    var payload = new AdminProfileUpdatePayload
+    {
+      AdminId = adminId,
+      Name = request.Name?.Trim() ?? string.Empty,
+      PhoneNumber = normalizedPhoneNumber
+    };
+
+    var sendResponse = await RequireSmsService().SendSmsAsync(
+      new SmsSendRequest
+      {
+        Purpose = SmsVerificationPurpose.AdminProfileUpdate,
+        PhoneNumber = normalizedPhoneNumber,
+        PayloadJson = JsonSerializer.Serialize(payload),
+        MessageTemplate = OtpMessageTemplate
+      },
+      cancellationToken);
+
+    return new RequestClientOtpResponse
+    {
+      OtpSessionId = sendResponse.SessionId,
+      PhoneNumber = sendResponse.PhoneNumber,
+      ExpiresAtUtc = sendResponse.ExpiresAtUtc,
+      ResendAvailableAtUtc = sendResponse.ResendAvailableAtUtc,
+      CodeLength = sendResponse.CodeLength,
+      IsNewClient = false
+    };
+  }
+
+  public async Task<UpdateAdminProfileResponse> VerifyAdminProfileUpdateOtpAsync(
+    Guid adminId,
+    VerifyAdminProfileUpdateOtpRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    if (adminId == Guid.Empty)
+      throw new DomainArgumentException("AdminId can't be empty.");
+
+    var verifyResult = await RequireSmsService().VerifySmsAsync(
+      new SmsVerifyRequest
+      {
+        SessionId = request.OtpSessionId,
+        Code = request.Code
+      },
+      cancellationToken);
+
+    if (!verifyResult.IsSuccess)
+      throw CreateOtpVerificationException(verifyResult.FailureReason);
+
+    if (verifyResult.Purpose != SmsVerificationPurpose.AdminProfileUpdate)
+      throw new ClientErrorException(
+        errorCode: "sms_session_purpose_mismatch",
+        detail: "Эта сессия не предназначена для изменения профиля администратора.",
+        reason: "purpose_mismatch");
+
+    var payload = DeserializeAdminProfileUpdatePayload(verifyResult.PayloadJson);
+    if (payload.AdminId != adminId)
+      throw new ClientErrorException(
+        errorCode: "sms_session_admin_mismatch",
+        detail: "Сессия принадлежит другому администратору.",
+        reason: "admin_mismatch");
+
+    var phoneTaken = await _dbContext.Users
+      .AsNoTracking()
+      .AnyAsync(x => x.PhoneNumber == payload.PhoneNumber && x.Id != adminId, cancellationToken);
+
+    if (phoneTaken)
+      throw new InvalidOperationException($"User with phone number '{payload.PhoneNumber}' already exists.");
+
+    var admin = await _dbContext.Users
+      .AsTracking()
+      .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
+      ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
+
+    if (admin.Role != Role.Admin)
+      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+
+    admin.SetName(payload.Name);
+    admin.SetPhoneNumber(payload.PhoneNumber);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+
+    return new UpdateAdminProfileResponse
+    {
+      AdminId = admin.Id,
+      Name = admin.Name,
+      PhoneNumber = admin.PhoneNumber,
+      AvatarUrl = admin.AvatarUrl,
       Role = admin.Role
     };
   }
@@ -468,6 +586,40 @@ public sealed class AuthService : IAuthService
   {
     public Guid ClientId { get; init; }
     public string PhoneNumber { get; init; } = string.Empty;
+  }
+
+  private sealed class AdminProfileUpdatePayload
+  {
+    public Guid AdminId { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string PhoneNumber { get; init; } = string.Empty;
+  }
+
+  private static AdminProfileUpdatePayload DeserializeAdminProfileUpdatePayload(string? payloadJson)
+  {
+    if (string.IsNullOrWhiteSpace(payloadJson))
+      throw new ClientErrorException(
+        errorCode: "sms_payload_missing",
+        detail: "Данные сессии изменения профиля повреждены.",
+        reason: "payload_missing");
+
+    try
+    {
+      var payload = JsonSerializer.Deserialize<AdminProfileUpdatePayload>(payloadJson);
+      if (payload is null || payload.AdminId == Guid.Empty || string.IsNullOrWhiteSpace(payload.PhoneNumber))
+        throw new ClientErrorException(
+          errorCode: "sms_payload_invalid",
+          detail: "Данные сессии изменения профиля повреждены.",
+          reason: "payload_invalid");
+      return payload;
+    }
+    catch (JsonException)
+    {
+      throw new ClientErrorException(
+        errorCode: "sms_payload_invalid",
+        detail: "Данные сессии изменения профиля повреждены.",
+        reason: "payload_invalid");
+    }
   }
 
   public async Task<RequestClientOtpResponse> RequestPhoneLinkOtpAsync(

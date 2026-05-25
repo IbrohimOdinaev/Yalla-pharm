@@ -529,7 +529,7 @@ function PharmacySelectPageInner() {
             onClick={() => setIsPickup(false)}
             className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition active:scale-[0.97] ${
               !isPickup
-                ? "bg-primary text-white shadow-card"
+                ? "bg-primary text-on-primary shadow-card"
                 : "text-on-surface-variant"
             }`}
           >
@@ -541,7 +541,7 @@ function PharmacySelectPageInner() {
             onClick={() => setIsPickup(true)}
             className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition active:scale-[0.97] ${
               isPickup
-                ? "bg-primary text-white shadow-card"
+                ? "bg-primary text-on-primary shadow-card"
                 : "text-on-surface-variant"
             }`}
           >
@@ -584,7 +584,7 @@ function PharmacySelectPageInner() {
                 onClick={() => setSortMode("cheapest")}
                 className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
                   sortMode === "cheapest"
-                    ? "bg-primary text-white shadow-card"
+                    ? "bg-primary text-on-primary shadow-card"
                     : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container"
                 }`}
               >
@@ -595,7 +595,7 @@ function PharmacySelectPageInner() {
                 onClick={() => setSortMode("most-positions")}
                 className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
                   sortMode === "most-positions"
-                    ? "bg-primary text-white shadow-card"
+                    ? "bg-primary text-on-primary shadow-card"
                     : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container"
                 }`}
               >
@@ -610,7 +610,8 @@ function PharmacySelectPageInner() {
               title="Показать карту"
             >
               <span>Карта</span>
-              <Icon name="chevron-up" size={14} strokeWidth={2.4} />
+              <Icon name="chevron-up" size={14} strokeWidth={2.4} className="md:hidden" />
+              <Icon name="chevron-right" size={14} strokeWidth={2.4} className="hidden md:block" />
             </button>
           </div>
 
@@ -694,29 +695,38 @@ function PharmacySelectPageInner() {
                         delivery?.state === "ready" ? delivery.cost : 0;
                       const grandTotal = availableTotal + deliveryCost;
                       return (
-                        <div className="mt-3 flex items-end justify-between gap-2">
+                        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                           <div className="min-w-0">
-                            <p className="font-display text-xl font-extrabold text-primary tabular-nums">
-                              {formatMoney(grandTotal)}
-                            </p>
                             {!isPickup ? (
-                              <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-on-surface-variant tabular-nums">
-                                <span>Товары: {formatMoney(availableTotal)}</span>
+                              <div className="space-y-1.5 tabular-nums">
+                                <p className="text-xs font-semibold text-on-surface-variant">
+                                  Товары: <span className="font-extrabold text-on-surface">{formatMoney(availableTotal)}</span>
+                                </p>
                                 {delivery?.state === "ready" ? (
-                                  <span>
-                                    + Доставка: <span className="font-semibold text-on-surface">{formatMoney(delivery.cost)}</span>
+                                  <p className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1.5 text-xs font-extrabold text-on-surface">
+                                    <Icon name="truck" size={13} />
+                                    <span>Доставка {formatMoney(delivery.cost)}</span>
                                     {delivery.distance > 0 ? (
-                                      <span className="text-on-surface-variant/70"> · {delivery.distance.toFixed(1)} км</span>
+                                      <span className="font-semibold opacity-70">· {delivery.distance.toFixed(1)} км</span>
                                     ) : null}
-                                  </span>
+                                  </p>
                                 ) : delivery?.state === "loading" ? (
-                                  <span className="text-on-surface-variant/70">+ Доставка…</span>
+                                  <p className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-low px-2.5 py-1.5 text-xs font-extrabold text-on-surface-variant">
+                                    <span className="h-2 w-2 animate-pulse rounded-full bg-on-surface-variant/50" />
+                                    Доставка считается
+                                  </p>
                                 ) : delivery?.state === "error" ? (
-                                  <span className="text-warning">+ Доставка: ошибка расчёта</span>
+                                  <p className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1.5 text-xs font-extrabold text-warning">
+                                    <Icon name="truck" size={13} />
+                                    Доставка: ошибка расчёта
+                                  </p>
                                 ) : (
-                                  <span className="text-on-surface-variant/70">+ Доставка</span>
+                                  <p className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-low px-2.5 py-1.5 text-xs font-extrabold text-on-surface-variant">
+                                    <Icon name="truck" size={13} />
+                                    Доставка
+                                  </p>
                                 )}
-                              </p>
+                              </div>
                             ) : null}
                             {/* Stock chip + map + expand chevron. Three roles,
                                 three controls — each affordance does exactly
@@ -754,20 +764,22 @@ function PharmacySelectPageInner() {
                                 type="button"
                                 onClick={() => {
                                   // Centre the map + pulse the marker.
-                                  // Crucially: do NOT toggle expand or
-                                  // highlight the card — this button is
-                                  // exclusively about the *marker*.
+                                  // On phones the list overlays the map, so
+                                  // hide it first. On desktop the list is a
+                                  // side panel and should stay visible.
+                                  const shouldCollapsePanel = !window.matchMedia("(min-width: 768px)").matches;
+                                  if (shouldCollapsePanel) setIsPanelCollapsed(true);
+                                  setExpandedId("");
                                   const geo = pharmacyGeo[option.pharmacyId];
                                   if (geo?.latitude != null && geo?.longitude != null) {
                                     mapHandleRef.current?.panTo({ lat: geo.latitude, lng: geo.longitude });
                                   }
-                                  // Map's pan animation is ~300 ms; trigger
-                                  // the marker pulse after that so the user
-                                  // sees the highlight on the centred view,
-                                  // not on a marker mid-flight off-screen.
+                                  // Map pan is ~300 ms; on phones also wait
+                                  // for the panel collapse so the marker is
+                                  // visible when the pulse starts.
                                   window.setTimeout(() => {
                                     mapHandleRef.current?.highlightPharmacy(option.pharmacyId);
-                                  }, 320);
+                                  }, shouldCollapsePanel ? 360 : 320);
                                 }}
                                 aria-label="Показать аптеку на карте"
                                 title="Показать на карте"
@@ -778,13 +790,21 @@ function PharmacySelectPageInner() {
                             </div>
                           </div>
 
-                          <Button
-                            size="md"
-                            rightIcon="arrow-right"
-                            onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
-                          >
-                            {pickup ? pickup.buttonText : "Выбрать"}
-                          </Button>
+                          <div className="flex flex-col items-stretch gap-2 sm:min-w-[128px] sm:items-end">
+                            <div className="sm:text-right">
+                              <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Итого</p>
+                              <p className="font-display text-2xl font-extrabold text-primary tabular-nums">
+                                {formatMoney(grandTotal)}
+                              </p>
+                            </div>
+                            <Button
+                              size="md"
+                              rightIcon="arrow-right"
+                              onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
+                            >
+                              {pickup ? pickup.buttonText : "Выбрать"}
+                            </Button>
+                          </div>
                         </div>
                       );
                     })()}
@@ -827,10 +847,10 @@ function PharmacySelectPageInner() {
                                 {missing ? (
                                   <p className="text-[10px] text-red-500">Нет в наличии</p>
                                 ) : partial ? (
-                                  <p className="text-[10px] text-amber-600">Доступно только {item.foundQuantity} из {item.requestedQuantity}</p>
+                                  <p className="text-[10px] text-warning">Доступно только {item.foundQuantity} из {item.requestedQuantity}</p>
                                 ) : null}
                               </div>
-                              <span className={`flex-shrink-0 tabular-nums ${enough ? "text-on-surface-variant" : "text-amber-600 font-semibold"}`}>
+                              <span className={`flex-shrink-0 tabular-nums ${enough ? "text-on-surface-variant" : "text-warning font-semibold"}`}>
                                 {inUnitMode
                                   ? `${item.unitCount ?? 0} шт.`
                                   : `${cappedFound}/${item.requestedQuantity}`}

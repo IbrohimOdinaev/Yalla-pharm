@@ -31,6 +31,16 @@ public interface IAuthService
     UpdateAdminProfileRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<RequestClientOtpResponse> RequestAdminProfileUpdateOtpAsync(
+    Guid adminId,
+    RequestAdminProfileUpdateOtpRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<UpdateAdminProfileResponse> VerifyAdminProfileUpdateOtpAsync(
+    Guid adminId,
+    VerifyAdminProfileUpdateOtpRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<RequestClientOtpResponse> RequestClientOtpAsync(
     RequestClientOtpRequest request,
     CancellationToken cancellationToken = default);

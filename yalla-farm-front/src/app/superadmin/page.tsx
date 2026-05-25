@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
+import { apiFetch } from "@/shared/api/http-client";
 import { formatMoney } from "@/shared/lib/format";
 import { DatePicker, Select } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
@@ -26,7 +27,14 @@ import { getPharmacists, registerPharmacist, deletePharmacist, type ApiPharmacis
 import { AuthedImage } from "@/shared/ui";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
 import { getRefundRequests, completeRefund } from "@/entities/refund/api";
-import { getPaymentSettings, updateDcBaseUrl, type PaymentSettingsSnapshot } from "@/entities/payment-settings/api";
+import {
+  getPaymentSettings,
+  updateAlifUrlTemplate,
+  updateDcBaseUrl,
+  updateEskhataUrlTemplate,
+  type PaymentSettingsSnapshot,
+} from "@/entities/payment-settings/api";
+import { createOneCSource, deleteOneCSource, getOneCSources, setOneCSourceActive, updateOneCSource, type OneCSource, type OneCExchangeStatus } from "@/entities/one-c/admin-api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
@@ -35,7 +43,7 @@ import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
-type Tab = "dashboard" | "pharmacies" | "medicines" | "orders" | "prescriptions";
+type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 
@@ -75,7 +83,7 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "pharmacies" || h === "medicines" || h === "orders" || h === "prescriptions") setActiveTab(h);
+      if (h === "pharmacies" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions") setActiveTab(h);
       else setActiveTab("dashboard");
     }
     syncHash();
@@ -109,6 +117,7 @@ export default function SuperAdminPage() {
 
         {activeTab === "pharmacies" ? <PharmaciesTab token={token} /> : null}
         {activeTab === "medicines" ? <MedicinesTab token={token} /> : null}
+        {activeTab === "logs" ? <OneCLogsTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
         {activeTab === "prescriptions" ? <PrescriptionsTab token={token} /> : null}
       </div>
@@ -306,38 +315,55 @@ function StatsDashboard({ token }: { token: string }) {
 
 function PaymentSettingsCard({ token }: { token: string }) {
   const [snapshot, setSnapshot] = useState<PaymentSettingsSnapshot | null>(null);
-  const [input, setInput] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [inputs, setInputs] = useState({
+    dc: "",
+    alif: "",
+    eskhata: "",
+  });
+  const [editing, setEditing] = useState<"dc" | "alif" | "eskhata" | null>(null);
+  const [saving, setSaving] = useState<"dc" | "alif" | "eskhata" | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
     getPaymentSettings(token).then((s) => {
       setSnapshot(s);
-      setInput(s.dcBaseUrl ?? "");
+      setInputs({
+        dc: s.dcBaseUrl ?? "",
+        alif: s.alifUrlTemplate ?? "",
+        eskhata: s.eskhataUrlTemplate ?? "",
+      });
     }).catch(() => undefined);
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function save() {
-    const trimmed = input.trim();
+  async function save(kind: "dc" | "alif" | "eskhata") {
+    const trimmed = inputs[kind].trim();
+    const label = kind === "dc" ? "Dushanbe City" : kind === "alif" ? "Alif" : "Эсхата";
     const confirmMsg = trimmed
-      ? `Сменить base URL Dushanbe City Payment на:\n${trimmed}?\n\nВсе новые платежи будут использовать этот адрес.`
-      : "Сбросить base URL к системному значению по умолчанию?";
+      ? `Сменить платежный URL ${label} на:\n${trimmed}?\n\nВсе новые платежи будут использовать этот адрес.`
+      : `Сбросить платежный URL ${label} к системному значению по умолчанию?`;
     if (!confirm(confirmMsg)) return;
-    setIsSaving(true);
+    setSaving(kind);
     setMsg(null);
     try {
-      const updated = await updateDcBaseUrl(token, trimmed || null);
+      const updated = kind === "dc"
+        ? await updateDcBaseUrl(token, trimmed || null)
+        : kind === "alif"
+          ? await updateAlifUrlTemplate(token, trimmed || null)
+          : await updateEskhataUrlTemplate(token, trimmed || null);
       setSnapshot(updated);
-      setInput(updated.dcBaseUrl ?? "");
-      setIsEditing(false);
-      setMsg("Base URL обновлён.");
+      setInputs({
+        dc: updated.dcBaseUrl ?? "",
+        alif: updated.alifUrlTemplate ?? "",
+        eskhata: updated.eskhataUrlTemplate ?? "",
+      });
+      setEditing(null);
+      setMsg("Настройки платежей обновлены.");
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
     } finally {
-      setIsSaving(false);
+      setSaving(null);
     }
   }
 
@@ -347,60 +373,380 @@ function PaymentSettingsCard({ token }: { token: string }) {
     );
   }
 
-  const usingDefault = !snapshot.dcBaseUrl;
+  const rows = [
+    {
+      kind: "dc" as const,
+      title: "Dushanbe City",
+      hint: "Base URL. Сумма и комментарий добавляются сервером.",
+      value: snapshot.dcBaseUrl,
+      effective: snapshot.dcBaseUrlEffective,
+      placeholder: "http://pay.expresspay.tj/?A=...",
+    },
+    {
+      kind: "alif" as const,
+      title: "Alif Mobi",
+      hint: "Шаблон ссылки. Используйте {amount} там, где должна быть сумма.",
+      value: snapshot.alifUrlTemplate,
+      effective: snapshot.alifUrlTemplateEffective,
+      placeholder: "https://alifmobi.page.link/toMobi?account=...&summa={amount}",
+    },
+    {
+      kind: "eskhata" as const,
+      title: "Эсхата",
+      hint: "Шаблон deep link. Используйте {amount} там, где должна быть сумма.",
+      value: snapshot.eskhataUrlTemplate,
+      effective: snapshot.eskhataUrlTemplateEffective,
+      placeholder: "eskhata://service/.../{amount}/...",
+    },
+  ];
 
   return (
     <div className="stitch-card p-3 xs:p-4 sm:p-5 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Платежи: Dushanbe City</h2>
+          <h2 className="text-sm xs:text-base sm:text-lg font-bold">Платежи</h2>
           <p className="text-[10px] xs:text-xs text-on-surface-variant">
-            Base URL применяется для всех новых платежей. Изменение не затрагивает уже созданные заказы.
+            Эти адреса применяются для новых платежей. Изменение не затрагивает уже созданные заказы.
           </p>
         </div>
-        {!isEditing ? (
-          <button type="button" className="stitch-button-secondary text-xs px-3 py-1.5 flex-shrink-0" onClick={() => setIsEditing(true)}>Изменить</button>
-        ) : null}
       </div>
 
-      {isEditing ? (
-        <div className="space-y-2">
-          <label className="block space-y-1">
-            <span className="text-[10px] xs:text-xs font-semibold text-on-surface-variant uppercase">Base URL (пусто = по умолчанию)</span>
-            <input
-              type="url"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="http://pay.expresspay.tj/?A=..."
-              className="stitch-input font-mono text-xs"
-            />
-          </label>
-          {msg ? <p className={`text-[11px] ${msg.includes("обновлён") ? "text-emerald-600" : "text-red-600"}`}>{msg}</p> : null}
-          <div className="flex gap-2">
-            <button type="button" className="stitch-button-secondary text-xs flex-1 py-2" onClick={() => { setIsEditing(false); setInput(snapshot.dcBaseUrl ?? ""); setMsg(null); }}>Отмена</button>
-            <button type="button" className="stitch-button text-xs flex-1 py-2" onClick={save} disabled={isSaving}>
-              {isSaving ? "Сохраняем..." : "Сохранить"}
-            </button>
+      <div className="space-y-3">
+        {rows.map((row) => {
+          const isEditing = editing === row.kind;
+          const usingDefault = !row.value;
+          return (
+            <div key={row.kind} className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold">{row.title}</h3>
+                  <p className="text-[10px] text-on-surface-variant">{row.hint}</p>
+                </div>
+                {!isEditing ? (
+                  <button type="button" className="stitch-button-secondary px-3 py-1.5 text-xs" onClick={() => setEditing(row.kind)}>
+                    Изменить
+                  </button>
+                ) : null}
+              </div>
+              {isEditing ? (
+                <div className="mt-3 space-y-2">
+                  <input
+                    type="text"
+                    value={inputs[row.kind]}
+                    onChange={(e) => setInputs((current) => ({ ...current, [row.kind]: e.target.value }))}
+                    placeholder={row.placeholder}
+                    className="stitch-input font-mono text-xs"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="stitch-button-secondary flex-1 py-2 text-xs"
+                      onClick={() => {
+                        setEditing(null);
+                        setInputs((current) => ({ ...current, [row.kind]: row.value ?? "" }));
+                        setMsg(null);
+                      }}
+                    >
+                      Отмена
+                    </button>
+                    <button type="button" className="stitch-button flex-1 py-2 text-xs" onClick={() => save(row.kind)} disabled={saving === row.kind}>
+                      {saving === row.kind ? "Сохраняем..." : "Сохранить"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${usingDefault ? "bg-surface-container-high text-on-surface-variant" : "bg-primary-soft text-primary"}`}>
+                      {usingDefault ? "По умолчанию" : "Переопределён"}
+                    </span>
+                    <span className="text-[10px] text-on-surface-variant">
+                      Обновлён: {new Date(snapshot.updatedAtUtc).toLocaleString("ru-RU")}
+                    </span>
+                  </div>
+                  <p className="break-all rounded-lg bg-surface-container-low p-2 font-mono text-[11px] xs:text-xs">
+                    {row.effective || "Не настроено"}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {msg ? <p className={`text-[11px] ${msg.includes("обновлены") ? "text-primary" : "text-red-600"}`}>{msg}</p> : null}
+    </div>
+  );
+}
+
+/* ── 1C Sync Logs Tab ── */
+
+type OneCImportRunLog = {
+  id: string;
+  sourceId: string;
+  pharmacyId: string;
+  sourceToken: string;
+  sourceName: string;
+  pharmacyTitle: string;
+  fileKind: "import" | "offers" | string;
+  fileName: string;
+  fileSize: number;
+  status: "started" | "success" | "failed" | string;
+  processedCount: number;
+  linkedCount: number;
+  updatedCount: number;
+  insertedCount?: number;
+  unchangedCount?: number;
+  unmatchedCount: number;
+  error?: string | null;
+  startedAtUtc: string;
+  finishedAtUtc?: string | null;
+};
+
+type OneCSourceSyncStatus = {
+  sourceId: string;
+  pharmacyId: string;
+  sourceToken: string;
+  sourceName: string;
+  pharmacyTitle: string;
+  isActive: boolean;
+  endpointPath: string;
+  exchangeStatus: OneCExchangeStatus;
+  totalLinks: number;
+  catalogLinkedMedicines: number;
+  autoMatchedLinks: number;
+  confirmedLinks: number;
+  manualRequiredLinks: number;
+  missingBarcodeLinks: number;
+  barcodeConflictLinks: number;
+  latestImport?: OneCImportRunLog | null;
+  latestOffers?: OneCImportRunLog | null;
+};
+
+type OneCSyncLogs = {
+  sources: OneCSourceSyncStatus[];
+  nomenclatureXml: OneCImportRunLog[];
+  offersXml: OneCImportRunLog[];
+};
+
+function getOneCSyncLogs(token: string) {
+  return apiFetch<OneCSyncLogs>("/api/1c/sync-logs", { token });
+}
+
+function OneCLogsTab({ token }: { token: string }) {
+  const [data, setData] = useState<OneCSyncLogs | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    getOneCSyncLogs(token)
+      .then((next) => {
+        setData(next);
+        setError(null);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить логи 1C."))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useSignalREvent("OneCImportRunUpdated", useCallback(() => { load(); }, [load]), token);
+
+  const sources = data?.sources ?? [];
+  const nomenclature = data?.nomenclatureXml ?? [];
+  const offers = data?.offersXml ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="stitch-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black">1C синхронизация</h2>
+            <p className="text-xs text-on-surface-variant">Последние 3 XML номенклатуры и offers по каждой аптеке, плюс статус ключей.</p>
           </div>
+          <button type="button" className="stitch-button-secondary px-4 py-2 text-xs" onClick={load} disabled={loading}>
+            {loading ? "Обновляем..." : "Обновить"}
+          </button>
         </div>
-      ) : (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${usingDefault ? "bg-surface-container-high text-on-surface-variant" : "bg-emerald-100 text-emerald-700"}`}>
-              {usingDefault ? "По умолчанию" : "Переопределён"}
-            </span>
-            <p className="text-[10px] text-on-surface-variant">
-              Обновлён: {new Date(snapshot.updatedAtUtc).toLocaleString("ru-RU")}
-            </p>
+        {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{error}</p> : null}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {sources.map((source) => (
+          <div key={source.sourceId} className="stitch-card p-4">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-base font-black">{source.pharmacyTitle}</p>
+                <p className="truncate text-xs text-on-surface-variant">{source.sourceName} · {source.sourceToken}</p>
+                <p className="truncate font-mono text-[10px] text-on-surface-variant">{source.endpointPath}</p>
+              </div>
+              <span className={`rounded-full px-2 py-1 text-[10px] font-black ${source.isActive ? "bg-primary-soft text-primary" : "bg-surface-container text-on-surface-variant"}`}>
+                {source.isActive ? "Активен" : "Отключён"}
+              </span>
+            </div>
+            <div className="mb-3 rounded-lg bg-surface-container-low p-2 text-xs">
+              <p className="text-[10px] font-black uppercase text-on-surface-variant">Последний контакт 1C</p>
+              <p className="mt-0.5 font-semibold">{formatExchangeContact(source.exchangeStatus)}</p>
+              {source.exchangeStatus?.lastFilename ? (
+                <p className="mt-0.5 truncate font-mono text-[10px] text-on-surface-variant">{source.exchangeStatus.lastFilename}</p>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+              <SyncMetric label="Ключи" value={source.totalLinks} />
+              <SyncMetric label="Товаров каталога" value={source.catalogLinkedMedicines} />
+              <SyncMetric label="1C ключей связано" value={source.autoMatchedLinks + source.confirmedLinks} />
+              <SyncMetric label="Авто по штрихкоду" value={source.autoMatchedLinks} />
+              <SyncMetric label="Подтверждены вручную" value={source.confirmedLinks} />
+              <SyncMetric label="Ручная связка" value={source.manualRequiredLinks} tone={source.manualRequiredLinks > 0 ? "warn" : "ok"} />
+              <SyncMetric label="Без штрихкода" value={source.missingBarcodeLinks} tone={source.missingBarcodeLinks > 0 ? "warn" : "ok"} />
+              <SyncMetric label="Конфликт штрихкода" value={source.barcodeConflictLinks} tone={source.barcodeConflictLinks > 0 ? "bad" : "ok"} />
+            </div>
+            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+              <LatestRun label="Номенклатура" run={source.latestImport} />
+              <LatestRun label="Offers" run={source.latestOffers} />
+            </div>
           </div>
-          <p className="font-mono text-[11px] xs:text-xs break-all bg-surface-container-low rounded-lg p-2">
-            {snapshot.dcBaseUrlEffective}
-          </p>
-          {msg ? <p className="text-[11px] text-emerald-600">{msg}</p> : null}
+        ))}
+      </div>
+
+      <XmlRunsBlock title="NomenkulaturaXml" runs={nomenclature} emptyText="Номенклатура ещё не обработана." />
+      <XmlRunsBlock title="OfferiXml" runs={offers} emptyText="Offers ещё не обработаны." />
+    </div>
+  );
+}
+
+function SyncMetric({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "bad" }) {
+  const toneClass = tone === "bad"
+    ? "text-red-700"
+    : tone === "warn"
+      ? "text-warning"
+      : "text-primary";
+  return (
+    <div className="rounded-lg bg-surface-container-low p-2">
+      <p className={`text-lg font-black ${toneClass}`}>{value}</p>
+      <p className="text-[10px] font-bold uppercase text-on-surface-variant">{label}</p>
+    </div>
+  );
+}
+
+function LatestRun({ label, run }: { label: string; run?: OneCImportRunLog | null }) {
+  return (
+    <div className="rounded-lg border border-outline/60 p-2">
+      <p className="text-[10px] font-black uppercase text-on-surface-variant">{label}</p>
+      {run ? (
+        <>
+          <div className="mt-1 flex items-center gap-2">
+            <StatusBadge status={run.status} />
+            <span className="truncate font-semibold">{run.fileName}</span>
+          </div>
+          <p className="mt-1 text-[11px] text-on-surface-variant">{formatRunTime(run)}</p>
+          <div className={`mt-2 grid gap-1 text-[10px] ${run.fileKind === "offers" ? "grid-cols-5" : "grid-cols-3"}`}>
+            <RunMetric label={run.fileKind === "offers" ? "Offers" : "Товары"} value={run.processedCount} />
+            <RunMetric label={run.fileKind === "offers" ? "Обновлено" : "Новые"} value={run.fileKind === "offers" ? run.updatedCount : run.linkedCount} />
+            {run.fileKind === "offers" ? <RunMetric label="Добавлено" value={run.insertedCount ?? 0} tone="ok" /> : null}
+            {run.fileKind === "offers" ? <RunMetric label="Без изменений" value={run.unchangedCount ?? 0} tone="ok" /> : null}
+            <RunMetric label={run.fileKind === "offers" ? "Без связи" : "Ручные"} value={run.unmatchedCount} tone={run.unmatchedCount > 0 ? "warn" : "ok"} />
+          </div>
+        </>
+      ) : (
+        <p className="mt-1 text-[11px] text-on-surface-variant">Нет данных</p>
+      )}
+    </div>
+  );
+}
+
+function RunMetric({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
+  return (
+    <div className="rounded-md bg-surface-container-low px-1.5 py-1">
+      <p className={`font-black ${tone === "warn" ? "text-warning" : "text-primary"}`}>{value}</p>
+      <p className="font-bold uppercase text-on-surface-variant">{label}</p>
+    </div>
+  );
+}
+
+function XmlRunsBlock({ title, runs, emptyText }: { title: string; runs: OneCImportRunLog[]; emptyText: string }) {
+  const isOffers = title.toLowerCase().includes("offer");
+
+  return (
+    <div className="stitch-card overflow-hidden">
+      <div className="border-b border-outline/60 p-4">
+        <h3 className="text-base font-black">{title}</h3>
+      </div>
+      {runs.length === 0 ? (
+        <p className="p-4 text-sm text-on-surface-variant">{emptyText}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1100px] text-left text-xs">
+            <thead className="bg-surface-container-low text-[10px] uppercase text-on-surface-variant">
+              <tr>
+                <th className="px-3 py-2">Аптека</th>
+                <th className="px-3 py-2">Файл</th>
+                <th className="px-3 py-2">Статус</th>
+                <th className="px-3 py-2">{isOffers ? "Offers" : "Товары"}</th>
+                {!isOffers ? <th className="px-3 py-2">Новые ключи</th> : null}
+                <th className="px-3 py-2">{isOffers ? "Обновлено" : "Обновлено"}</th>
+                {isOffers ? <th className="px-3 py-2">Добавлено</th> : null}
+                {isOffers ? <th className="px-3 py-2">Без изменений</th> : null}
+                <th className="px-3 py-2">{isOffers ? "Без связи" : "Ручная связка"}</th>
+                <th className="px-3 py-2">Время</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline/50">
+              {runs.map((run) => (
+                <tr key={run.id}>
+                  <td className="px-3 py-2 font-semibold">{run.pharmacyTitle}</td>
+                  <td className="px-3 py-2">
+                    <p className="font-mono text-[11px]">{run.fileName}</p>
+                    <p className="text-[10px] text-on-surface-variant">{formatBytes(run.fileSize)}</p>
+                  </td>
+                  <td className="px-3 py-2"><StatusBadge status={run.status} /></td>
+                  <td className="px-3 py-2">{run.processedCount}</td>
+                  {!isOffers ? <td className="px-3 py-2">{run.linkedCount}</td> : null}
+                  <td className="px-3 py-2">{run.updatedCount}</td>
+                  {isOffers ? <td className="px-3 py-2">{run.insertedCount ?? 0}</td> : null}
+                  {isOffers ? <td className="px-3 py-2">{run.unchangedCount ?? 0}</td> : null}
+                  <td className="px-3 py-2">{run.unmatchedCount}</td>
+                  <td className="px-3 py-2">{formatRunTime(run)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cls = status === "success"
+    ? "bg-primary-soft text-primary"
+    : status === "failed"
+      ? "bg-red-100 text-red-700"
+      : status === "superseded"
+        ? "bg-surface-container-high text-on-surface-variant"
+        : "bg-warning-soft text-warning";
+  const label = status === "success"
+    ? "Успешно"
+    : status === "failed"
+      ? "Ошибка"
+      : status === "superseded"
+        ? "Пропущен"
+        : "В работе";
+  return <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${cls}`}>{label}</span>;
+}
+
+function formatRunTime(run: OneCImportRunLog) {
+  const value = run.finishedAtUtc ?? run.startedAtUtc;
+  return new Date(value).toLocaleString("ru-RU");
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /* ── Pharmacies & Admins Tab ── */
@@ -408,14 +754,23 @@ function PaymentSettingsCard({ token }: { token: string }) {
 function PharmaciesTab({ token }: { token: string }) {
   const [admins, setAdmins] = useState<ApiAdmin[]>([]);
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
+  const [oneCSources, setOneCSources] = useState<OneCSource[]>([]);
   const [query, setQuery] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback((q = "") => {
-    Promise.all([getAdmins(token, q), getAllPharmacies(token, q)])
-      .then(([a, p]) => { setAdmins(a); setPharmacies(p); })
-      .catch(() => undefined);
+    getAdmins(token, q)
+      .then(setAdmins)
+      .catch(() => setAdmins([]));
+
+    getAllPharmacies(token, q)
+      .then(setPharmacies)
+      .catch(() => setPharmacies([]));
+
+    getOneCSources(token)
+      .then(setOneCSources)
+      .catch(() => setOneCSources([]));
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
@@ -495,7 +850,7 @@ function PharmaciesTab({ token }: { token: string }) {
             )}
           </div>
         )}
-        {msg ? <div className={`text-sm ${msg.includes("созданы") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
+        {msg ? <div className={`text-sm ${msg.includes("созданы") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
         <button type="submit" className="stitch-button">Создать</button>
       </form>
 
@@ -528,7 +883,14 @@ function PharmaciesTab({ token }: { token: string }) {
         <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Аптеки ({pharmacies.length})</h3>
         <div className="space-y-2">
           {pharmacies.map((p) => (
-            <EditablePharmacyCard key={p.id} token={token} pharmacy={p} admins={admins} onDone={() => load(query)} />
+            <EditablePharmacyCard
+              key={p.id}
+              token={token}
+              pharmacy={p}
+              admins={admins}
+              oneCSources={oneCSources.filter((source) => source.pharmacyId === p.id)}
+              onDone={() => load(query)}
+            />
           ))}
         </div>
       </section>
@@ -578,13 +940,25 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
           ]}
         />
       </div>
-      {msg ? <div className={`text-sm ${msg.includes("создан") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
+      {msg ? <div className={`text-sm ${msg.includes("создан") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
       <button type="submit" className="stitch-button">Создать</button>
     </form>
   );
 }
 
-function EditablePharmacyCard({ token, pharmacy, admins, onDone }: { token: string; pharmacy: ActivePharmacy; admins: ApiAdmin[]; onDone: () => void }) {
+function EditablePharmacyCard({
+  token,
+  pharmacy,
+  admins,
+  oneCSources,
+  onDone,
+}: {
+  token: string;
+  pharmacy: ActivePharmacy;
+  admins: ApiAdmin[];
+  oneCSources: OneCSource[];
+  onDone: () => void;
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(pharmacy.title);
   const [address, setAddress] = useState(pharmacy.address);
@@ -718,14 +1092,14 @@ function EditablePharmacyCard({ token, pharmacy, admins, onDone }: { token: stri
               </button>
             </div>
           ) : (
-            <p className="text-xs text-yellow-600">Нет администратора. Создайте нового в форме ниже.</p>
+            <p className="text-xs text-warning">Нет администратора. Создайте нового в форме ниже.</p>
           )}
         </div>
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Активна
         </label>
-        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("загружена") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
+        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("загружена") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
         <div className="flex gap-2">
           <button type="submit" className="stitch-button text-xs">Сохранить</button>
           <button type="button" className="stitch-button-secondary text-xs" onClick={() => setIsEditing(false)}>Отмена</button>
@@ -735,38 +1109,195 @@ function EditablePharmacyCard({ token, pharmacy, admins, onDone }: { token: stri
   }
 
   return (
-    <div className="stitch-card flex items-center justify-between gap-3 p-3">
-      <div className="flex items-start gap-2.5 flex-1 min-w-0">
-        {iconSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={iconSrc} alt="" className="h-10 w-10 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
-        ) : (
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg>
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className="font-bold truncate">{pharmacy.title}</p>
-          <p className="text-xs text-on-surface-variant truncate">{pharmacy.address} · {pharmacy.isActive ? "Активна" : "Неактивна"}</p>
-          {pharmacyAdmin && <p className="text-[10px] text-on-surface-variant">Админ: {pharmacyAdmin.name}</p>}
-          {!pharmacyAdmin && <p className="text-[10px] text-yellow-600">Нет админа</p>}
-          {pharmacy.latitude && pharmacy.longitude ? (
-            <p className="text-[10px] text-on-surface-variant">Координаты: {pharmacy.latitude}, {pharmacy.longitude}</p>
+    <div className="stitch-card space-y-3 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+          {iconSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={iconSrc} alt="" className="h-10 w-10 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
           ) : (
-            <p className="text-[10px] text-yellow-600">Координаты не заданы</p>
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" strokeLinecap="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg>
+            </div>
           )}
+          <div className="min-w-0">
+            <p className="font-bold truncate">{pharmacy.title}</p>
+            <p className="text-xs text-on-surface-variant truncate">{pharmacy.address} · {pharmacy.isActive ? "Активна" : "Неактивна"}</p>
+            {pharmacyAdmin && <p className="text-[10px] text-on-surface-variant">Админ: {pharmacyAdmin.name}</p>}
+            {!pharmacyAdmin && <p className="text-[10px] text-warning">Нет админа</p>}
+            {pharmacy.latitude && pharmacy.longitude ? (
+              <p className="text-[10px] text-on-surface-variant">Координаты: {pharmacy.latitude}, {pharmacy.longitude}</p>
+            ) : (
+              <p className="text-[10px] text-warning">Координаты не заданы</p>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          <button type="button" className="rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold" onClick={() => setIsEditing(true)}>Изменить</button>
+          <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={async () => {
+            if (!confirm(`Удалить аптеку ${pharmacy.title}?`)) return;
+            await deletePharmacy(token, pharmacy.id).catch(() => undefined);
+            onDone();
+          }}>Удалить</button>
         </div>
       </div>
-      <div className="flex gap-1 flex-shrink-0">
-        <button type="button" className="rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold" onClick={() => setIsEditing(true)}>Изменить</button>
-        <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={async () => {
-          if (!confirm(`Удалить аптеку ${pharmacy.title}?`)) return;
-          await deletePharmacy(token, pharmacy.id).catch(() => undefined);
-          onDone();
-        }}>Удалить</button>
-      </div>
+      <OneCIntegrationPanel token={token} pharmacy={pharmacy} sources={oneCSources} onDone={onDone} />
     </div>
   );
+}
+
+function OneCIntegrationPanel({
+  token,
+  pharmacy,
+  sources,
+  onDone,
+}: {
+  token: string;
+  pharmacy: ActivePharmacy;
+  sources: OneCSource[];
+  onDone: () => void;
+}) {
+  const [name, setName] = useState(`${pharmacy.title} 1C`);
+  const [sourceToken, setSourceToken] = useState(suggestOneCToken(pharmacy.title));
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+
+  async function onCreate(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      await createOneCSource(token, { pharmacyId: pharmacy.id, sourceToken, name });
+      setMsg("1C источник создан.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Не удалось создать 1C источник.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggle(source: OneCSource) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await setOneCSourceActive(token, source.id, !source.isActive);
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Не удалось изменить статус 1C.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rename(source: OneCSource) {
+    const nextName = prompt("Название 1C источника", source.name)?.trim();
+    if (!nextName) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await updateOneCSource(token, source.id, { name: nextName, isActive: source.isActive });
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Не удалось обновить 1C источник.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(source: OneCSource) {
+    if (!confirm(`Удалить 1C endpoint ${source.token}? Чтобы изменить URL, после удаления добавьте источник с новым token.`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await deleteOneCSource(token, source.id);
+      setMsg("1C endpoint удален. Теперь можно добавить новый.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Не удалось удалить 1C endpoint.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-outline/60 bg-surface-container-low p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-black uppercase text-on-surface-variant">1C интеграция</p>
+          <p className="text-[11px] text-on-surface-variant">Token формирует endpoint и связывает входящие XML с этой аптекой.</p>
+        </div>
+        <span className="rounded-full bg-surface px-2 py-1 text-[10px] font-black text-primary">{sources.length}</span>
+      </div>
+
+      {sources.length > 0 ? (
+        <div className="space-y-2">
+          {sources.map((source) => {
+            const url = `${origin}${source.endpointPath}`;
+            return (
+              <div key={source.id} className="rounded-lg bg-surface p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{source.name}</p>
+                    <p className="font-mono text-[11px] text-on-surface-variant">{source.token}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button type="button" className="rounded-lg bg-surface-container-low px-2 py-1 text-[10px] font-bold" onClick={() => navigator.clipboard?.writeText(url)}>
+                      Копировать URL
+                    </button>
+                    <button type="button" className="rounded-lg bg-surface-container-low px-2 py-1 text-[10px] font-bold" onClick={() => rename(source)} disabled={busy}>
+                      Имя 1C
+                    </button>
+                    <button type="button" className={`rounded-lg px-2 py-1 text-[10px] font-bold ${source.isActive ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`} onClick={() => toggle(source)} disabled={busy}>
+                      {source.isActive ? "Вкл" : "Выкл"}
+                    </button>
+                    <button type="button" className="rounded-lg bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700" onClick={() => remove(source)} disabled={busy}>
+                      Удалить endpoint
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-1 break-all font-mono text-[10px] text-on-surface-variant">{url}</p>
+                <p className="mt-1 text-[10px] text-on-surface-variant">
+                  URL меняется только через удаление этого endpoint и добавление нового token.
+                </p>
+                <p className="mt-1 text-[10px] text-on-surface-variant">
+                  Контакт: {formatExchangeContact(source.exchangeStatus)}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {sources.length === 0 ? (
+        <form className="mt-2 grid gap-2 md:grid-cols-[1fr_1fr_auto]" onSubmit={onCreate}>
+          <input className="stitch-input text-xs" placeholder="Название, например Nishon 1C" value={name} onChange={(e) => setName(e.target.value)} required />
+          <input className="stitch-input font-mono text-xs" placeholder="token: nishon-1c" value={sourceToken} onChange={(e) => setSourceToken(e.target.value.toLowerCase())} required />
+          <button type="submit" className="stitch-button px-3 py-2 text-xs" disabled={busy}>
+            Добавить endpoint
+          </button>
+        </form>
+      ) : null}
+      {msg ? <p className={`mt-2 text-xs ${msg.includes("создан") ? "text-primary" : "text-red-700"}`}>{msg}</p> : null}
+    </div>
+  );
+}
+
+function suggestOneCToken(title: string) {
+  const raw = title
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, "-")
+    .replace(/[а-яё]/gi, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${raw || "pharmacy"}-1c`;
+}
+
+function formatExchangeContact(status?: OneCExchangeStatus | null) {
+  if (!status?.lastContactAtUtc) return "нет";
+  const time = new Date(status.lastContactAtUtc).toLocaleString("ru-RU");
+  return `${time}${status.lastMode ? ` · ${status.lastMode}` : ""}`;
 }
 
 /* ── Medicines Tab ── */
@@ -878,6 +1409,7 @@ function MedicinesTab({ token }: { token: string }) {
   /* Create medicine */
   const [newTitle, setNewTitle] = useState("");
   const [newArticul, setNewArticul] = useState("");
+  const [newBarcode, setNewBarcode] = useState("");
   const [newAttrs, setNewAttrs] = useState("");
 
   async function onCreateMedicine(e: FormEvent) {
@@ -888,9 +1420,9 @@ function MedicinesTab({ token }: { token: string }) {
         const [type, value] = pair.split(":").map((s) => s.trim());
         return { type: type || "", value: value || "" };
       }).filter((a) => a.type);
-      await createMedicine(token, { title: newTitle, articul: newArticul || undefined, atributes: atributes.length > 0 ? atributes : undefined });
+      await createMedicine(token, { title: newTitle, articul: newArticul || undefined, barcode: newBarcode || undefined, atributes: atributes.length > 0 ? atributes : undefined });
       setMsg("Товар создан.");
-      setNewTitle(""); setNewArticul(""); setNewAttrs("");
+      setNewTitle(""); setNewArticul(""); setNewBarcode(""); setNewAttrs("");
       load(query, page, activeFilter, categoryId);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
@@ -934,9 +1466,10 @@ function MedicinesTab({ token }: { token: string }) {
           <div className="grid gap-2">
             <input className="stitch-input" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required />
             <input className="stitch-input" placeholder="Артикул" value={newArticul} onChange={(e) => setNewArticul(e.target.value)} required />
+            <input className="stitch-input" placeholder="Штрихкод" value={newBarcode} onChange={(e) => setNewBarcode(e.target.value)} />
             <input className="stitch-input" placeholder="Атрибуты (dosage:500mg, pack:20)" value={newAttrs} onChange={(e) => setNewAttrs(e.target.value)} />
           </div>
-          {msg ? <div className={`text-sm ${msg.includes("создан") || msg.includes("загружено") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
+          {msg ? <div className={`text-sm ${msg.includes("создан") || msg.includes("загружено") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
           <button type="submit" className="stitch-button">Создать</button>
         </form>
 
@@ -982,7 +1515,7 @@ function MedicinesTab({ token }: { token: string }) {
             </div>
           )}
           {popularMsg ? (
-            <div className={`text-sm ${popularMsg.includes("обновлены") ? "text-emerald-700" : "text-red-700"}`}>{popularMsg}</div>
+            <div className={`text-sm ${popularMsg.includes("обновлены") ? "text-primary" : "text-red-700"}`}>{popularMsg}</div>
           ) : null}
         </div>
 
@@ -1015,7 +1548,7 @@ function MedicinesTab({ token }: { token: string }) {
               type="button"
               onClick={() => onFilterChange(f.id)}
               className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                activeFilter === f.id ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant"
+                activeFilter === f.id ? "bg-primary text-on-primary" : "bg-surface-container-low text-on-surface-variant"
               }`}
             >
               {f.label}
@@ -1051,11 +1584,12 @@ function MedicinesTab({ token }: { token: string }) {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm truncate">{getMedicineDisplayName(m)}</p>
                     {m.articul ? <p className="text-[10px] font-mono text-on-surface-variant">{m.articul}</p> : null}
+                    {m.barcode ? <p className="text-[10px] font-mono text-on-surface-variant">ШК: {m.barcode}</p> : null}
                     <div className="mt-1 flex flex-wrap gap-1">
-                      <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold ${m.isActive === false ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>
+                      <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold ${m.isActive === false ? "bg-red-100 text-red-700" : "bg-primary-soft text-primary"}`}>
                         {m.isActive === false ? "Скрыт" : "В каталоге"}
                       </span>
-                      {isPopular ? <span className="inline-block rounded-full bg-yellow-100 px-1.5 py-0.5 text-[9px] font-bold text-yellow-800">Популярный</span> : null}
+                      {isPopular ? <span className="inline-block rounded-full bg-warning-soft px-1.5 py-0.5 text-[9px] font-bold text-warning">Популярный</span> : null}
                     </div>
                     <button
                       type="button"
@@ -1099,7 +1633,7 @@ function MedicinesTab({ token }: { token: string }) {
                   type="button"
                   onClick={() => setPage(p)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                    page === p ? "bg-primary text-white" : "bg-surface-container-low text-on-surface-variant"
+                    page === p ? "bg-primary text-on-primary" : "bg-surface-container-low text-on-surface-variant"
                   }`}
                 >
                   {p}
@@ -1150,9 +1684,10 @@ function MedicinesTab({ token }: { token: string }) {
                 <div className="space-y-1">
                   <h3 className="text-sm xs:text-base sm:text-lg font-bold pr-8">{getMedicineDisplayName(detail)}</h3>
                   {detail.articul ? <p className="text-xs xs:text-sm text-on-surface-variant">Артикул: {detail.articul}</p> : null}
+                  {detail.barcode ? <p className="text-xs xs:text-sm text-on-surface-variant">Штрихкод: {detail.barcode}</p> : null}
                   {detail.categoryName ? <p className="text-xs xs:text-sm text-on-surface-variant">Категория: <span className="font-medium text-on-surface">{detail.categoryName}</span></p> : null}
                   <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${detail.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${detail.isActive !== false ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
                       {detail.isActive !== false ? "Активный" : "Неактивный"}
                     </span>
                   </div>
@@ -1223,7 +1758,7 @@ function MedicinesTab({ token }: { token: string }) {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className="rounded-xl bg-yellow-100 px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-bold text-yellow-800" onClick={async () => {
+                  <button type="button" className="rounded-xl bg-warning-soft px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-bold text-warning" onClick={async () => {
                     await deleteMedicine(token, selected.id, false).catch(() => undefined);
                     setSelected(null); load(query, page, activeFilter, categoryId);
                   }}>Деактивировать</button>
@@ -1244,7 +1779,8 @@ function MedicinesTab({ token }: { token: string }) {
 
 function EditMedicineForm({ token, medicine, onDone }: { token: string; medicine: ApiMedicine; onDone: () => void }) {
   const [title, setTitle] = useState(medicine.title ?? "");
-  const [articul, setArticul] = useState("");
+  const [articul, setArticul] = useState(medicine.articul ?? "");
+  const [barcode, setBarcode] = useState(medicine.barcode ?? "");
   const [msg, setMsg] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -1253,7 +1789,7 @@ function EditMedicineForm({ token, medicine, onDone }: { token: string; medicine
     setIsSaving(true);
     setMsg(null);
     try {
-      await updateMedicine(token, { medicineId: medicine.id, title, articul });
+      await updateMedicine(token, { medicineId: medicine.id, title, articul, barcode });
       setMsg("Товар обновлён.");
       onDone();
     } catch (err) {
@@ -1268,8 +1804,9 @@ function EditMedicineForm({ token, medicine, onDone }: { token: string; medicine
       <div className="grid gap-2 md:grid-cols-2">
         <input className="stitch-input" placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <input className="stitch-input" placeholder="Артикул" value={articul} onChange={(e) => setArticul(e.target.value)} required />
+        <input className="stitch-input" placeholder="Штрихкод" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
       </div>
-      {msg ? <div className={`text-xs ${msg.includes("обновлён") ? "text-emerald-700" : "text-red-700"}`}>{msg}</div> : null}
+      {msg ? <div className={`text-xs ${msg.includes("обновлён") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
       <button type="submit" className="stitch-button text-xs" disabled={isSaving}>{isSaving ? "Сохраняем..." : "Обновить товар"}</button>
     </form>
   );
@@ -1552,7 +2089,7 @@ function OrdersTab({ token }: { token: string }) {
                           <p className="text-[10px] font-mono text-tertiary truncate">{tgHandle}</p>
                         ) : null}
                         {isOrderDataLost(order) ? (
-                          <div className="mt-1 flex items-center gap-1 rounded-md bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                          <div className="mt-1 flex items-center gap-1 rounded-md bg-warning-soft border border-warning-container px-1.5 py-0.5 text-[10px] font-semibold text-warning">
                             <span aria-hidden>⚠</span>
                             <span>Данные утеряны</span>
                           </div>
@@ -1560,7 +2097,7 @@ function OrdersTab({ token }: { token: string }) {
                         {order.status === "OnTheWay" ? (
                           <button
                             type="button"
-                            className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] xs:text-xs font-bold text-white hover:bg-emerald-700 transition"
+                            className="mt-2 w-full rounded-lg bg-primary px-3 py-1.5 text-[10px] xs:text-xs font-bold text-on-primary hover:bg-primary-container transition"
                             onClick={async (e) => {
                               e.stopPropagation();
                               await superAdminNextStatus(token, order.orderId).catch(() => undefined);
@@ -1586,7 +2123,7 @@ function OrdersTab({ token }: { token: string }) {
               refund workflows in the same workspace as order workflows. */}
           <RefundKanbanColumn
             title="Возвраты средств"
-            dotClassName="bg-amber-500"
+            dotClassName="bg-warning-soft0"
             refunds={refunds.filter((r) => r.status !== "Completed")}
             token={token}
             onChange={load}
@@ -1594,7 +2131,7 @@ function OrdersTab({ token }: { token: string }) {
           />
           <RefundKanbanColumn
             title="Возвращённые средства"
-            dotClassName="bg-emerald-500"
+            dotClassName="bg-primary"
             refunds={refunds.filter((r) => r.status === "Completed")}
             token={token}
             onChange={load}
@@ -1619,9 +2156,9 @@ function OrdersTab({ token }: { token: string }) {
             </div>
 
             {isOrderDataLost(selectedOrder) ? (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="rounded-xl border border-warning-container bg-warning-soft p-3 text-sm text-warning">
                 <p className="font-bold">⚠ Данные позиций утеряны</p>
-                <p className="mt-0.5 text-xs text-amber-800">
+                <p className="mt-0.5 text-xs text-warning">
                   Этот заказ — исторический: записи позиций отсутствуют в БД.
                   Сумма и состав показаны как 0 — данные восстановить нельзя.
                 </p>
@@ -1672,7 +2209,7 @@ function OrdersTab({ token }: { token: string }) {
               {selectedOrder.paymentState ? (
                 <div className="rounded-xl bg-surface-container-low p-3">
                   <p className="text-[10px] text-on-surface-variant uppercase">Оплата</p>
-                  <p className={`font-bold ${selectedOrder.paymentState === "Confirmed" ? "text-emerald-600" : "text-yellow-600"}`}>
+                  <p className={`font-bold ${selectedOrder.paymentState === "Confirmed" ? "text-primary" : "text-warning"}`}>
                     {selectedOrder.paymentState === "Confirmed" ? "Подтверждена" : selectedOrder.paymentState === "PendingManualConfirmation" ? "Ожидает" : selectedOrder.paymentState}
                   </p>
                 </div>
@@ -1709,9 +2246,9 @@ function OrdersTab({ token }: { token: string }) {
 
             {/* Comment */}
             {selectedOrder.comment ? (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-1">
-                <p className="text-[10px] text-amber-700 uppercase tracking-wider font-semibold">Комментарий клиента</p>
-                <p className="text-sm text-amber-900 whitespace-pre-wrap">{selectedOrder.comment}</p>
+              <div className="rounded-xl bg-warning-soft border border-warning-container p-3 space-y-1">
+                <p className="text-[10px] text-warning uppercase tracking-wider font-semibold">Комментарий клиента</p>
+                <p className="text-sm text-warning whitespace-pre-wrap">{selectedOrder.comment}</p>
               </div>
             ) : null}
 
@@ -1997,8 +2534,8 @@ function RefundKanbanCard({
     && refund.status !== "Completed"
     && refund.status !== "Rejected";
 
-  // Border accent mirrors the type indicator (amber = with product return, emerald = without).
-  const borderClass = isProductReturn ? "border-l-4 border-amber-400" : "border-l-4 border-emerald-400";
+  // Border accent mirrors the type indicator: grey for product return, blue for money-only.
+  const borderClass = isProductReturn ? "border-l-4 border-warning-container" : "border-l-4 border-primary";
 
   return (
     <div className={`stitch-card p-3 ${borderClass}`}>
@@ -2008,7 +2545,7 @@ function RefundKanbanCard({
         </span>
         <span
           className={`rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase ${
-            isProductReturn ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+            isProductReturn ? "bg-warning-soft text-warning" : "bg-primary-soft text-primary"
           }`}
           title={isProductReturn ? "С возвратом товара" : "Без возврата товара"}
         >
@@ -2045,7 +2582,7 @@ function RefundKanbanCard({
         </>
       ) : null}
       {refund.status === "Completed" && refund.updatedAtUtc ? (
-        <p className="text-[10px] text-emerald-700 font-semibold">
+        <p className="text-[10px] text-primary font-semibold">
           Возвращён {new Date(refund.updatedAtUtc).toLocaleDateString("ru-RU")}
         </p>
       ) : null}
@@ -2066,7 +2603,7 @@ function RefundKanbanCard({
               setBusy(false);
             }
           }}
-          className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] xs:text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+          className="mt-2 w-full rounded-lg bg-primary px-3 py-1.5 text-[10px] xs:text-xs font-bold text-on-primary hover:bg-primary-container transition disabled:opacity-50"
         >
           {busy ? "..." : "Подтвердить возврат"}
         </button>
@@ -2084,9 +2621,9 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
   const INTENT_STATES: Record<number, string> = { 0: "Создан", 1: "Ожидает подтверждения", 2: "Подтверждён", 3: "Отклонён", 4: "Требует решения" };
 
   return (
-    <div className="stitch-card space-y-2 p-2 xs:p-3 sm:p-4 ring-1 ring-yellow-300">
+    <div className="stitch-card space-y-2 p-2 xs:p-3 sm:p-4 ring-1 ring-warning-container">
       <div className="flex items-center justify-between">
-        <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-800">
+        <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
           {intent.state != null ? (INTENT_STATES[intent.state] ?? `State ${intent.state}`) : "Ожидает"}
         </span>
         <span className="font-bold">{formatMoney(intent.amount, intent.currency)}</span>
@@ -2307,7 +2844,7 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                     type="button"
                     disabled={busyId === p.prescriptionId}
                     onClick={() => onConfirm(p.prescriptionId)}
-                    className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-white transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
+                    className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-on-primary transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
                   >
                     {busyId === p.prescriptionId ? "..." : "Подтвердить оплату"}
                   </button>
@@ -2460,7 +2997,7 @@ function RegisterPharmacistForm({
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-white transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
+        className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-on-primary transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
       >
         {submitting ? "..." : "Зарегистрировать"}
       </button>

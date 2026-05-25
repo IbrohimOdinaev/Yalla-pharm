@@ -339,7 +339,7 @@ export function PharmacyMapYandex({
         {
           iconLayout: "default#image",
           iconImageHref: "data:image/svg+xml," + encodeURIComponent(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="#0E8B60"/><circle cx="16" cy="14" r="6" fill="white"/></svg>',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="#2F80ED"/><circle cx="16" cy="14" r="6" fill="white"/></svg>',
           ),
           iconImageSize: [32, 42],
           iconImageOffset: [-16, -42],
@@ -411,9 +411,9 @@ export function PharmacyMapYandex({
               fill="none"
               className="transition-transform duration-150"
             >
-              <path d="M20 0C9 0 0 9 0 20c0 15 20 32 20 32s20-17 20-32C40 9 31 0 20 0z" fill="#0E8B60" />
+              <path d="M20 0C9 0 0 9 0 20c0 15 20 32 20 32s20-17 20-32C40 9 31 0 20 0z" fill="#2F80ED" />
               <circle cx="20" cy="18" r="8" fill="white" />
-              <circle cx="20" cy="18" r="4" fill="#0E8B60" />
+              <circle cx="20" cy="18" r="4" fill="#2F80ED" />
             </svg>
           </div>
         </div>
@@ -427,7 +427,7 @@ export function PharmacyMapYandex({
 // ── Marker pill ────────────────────────────────────────────────────────
 //
 // Visual contract: a horizontal capsule with the pharmacy avatar on the
-// left, name in the middle, price in a yellow chip on the right, and a
+// left, name in the middle, price in a neutral chip on the right, and a
 // downward triangular tail centred on the bottom edge. The whole thing
 // is white-on-shadow for crisp readability against any tile colour. The
 // layout's outer wrapper sets `transform: translate(-50%, -100%)` on the
@@ -435,8 +435,8 @@ export function PharmacyMapYandex({
 const PILL_BG = "#FFFFFF";
 const PILL_BORDER = "rgba(15, 23, 42, 0.10)";
 const PILL_SHADOW = "0 6px 20px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.06)";
-const PRICE_BG = "#FFD83D"; // accent yellow — matches the rest of the app
-const PRICE_INK = "#1A1816";
+const PRICE_BG = "#EEF3F4";
+const PRICE_INK = "#1A1C1B";
 
 function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLElement {
   const iconSrc = pharmacy.iconUrl

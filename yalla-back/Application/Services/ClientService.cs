@@ -833,24 +833,6 @@ public sealed class ClientService : IClientService
         Order? order = null;
         try
         {
-            foreach (var positionGroup in acceptedByMedicineId)
-            {
-                var affectedRows = await _dbContext.Offers
-                  .Where(x =>
-                    x.PharmacyId == request.PharmacyId &&
-                    x.MedicineId == positionGroup.Key &&
-                    x.StockQuantity >= positionGroup.Value)
-                  .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(
-                      x => x.StockQuantity,
-                      x => x.StockQuantity - positionGroup.Value),
-                    cancellationToken);
-
-                if (affectedRows == 0)
-                    throw new InvalidOperationException(
-                      $"Insufficient stock due to concurrent checkout for medicine '{positionGroup.Key}' in pharmacy '{request.PharmacyId}'.");
-            }
-
             var acceptedMedicineIds = acceptedByMedicineId.Keys.ToList();
             var currentOfferPrices = await _dbContext.Offers
               .AsNoTracking()
@@ -889,6 +871,7 @@ public sealed class ClientService : IClientService
             };
 
             order = orderRequest.ToDomain(orderId, effectivePhone, orderPositions);
+            order.MarkStockNotDeducted();
             order.MarkManualPaymentPending(
               amount: estimatedCost,
               currency: _paymentOptions.Currency,
@@ -939,6 +922,10 @@ public sealed class ClientService : IClientService
               orderId,
               cancellationToken);
 
+            await CleanupTemporaryPrescriptionOfferRowsAsync(
+              request.Source?.PrescriptionId,
+              cancellationToken);
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -984,6 +971,50 @@ public sealed class ClientService : IClientService
             return;
 
         prescription.MarkOrderPlaced(orderId);
+    }
+
+    private async Task CleanupTemporaryPrescriptionOfferRowsAsync(
+      Guid? prescriptionId,
+      CancellationToken cancellationToken)
+    {
+        if (!prescriptionId.HasValue || prescriptionId.Value == Guid.Empty)
+            return;
+
+        var lookupIds = await _dbContext.PrescriptionChecklistItems
+          .AsNoTracking()
+          .Where(i => i.PrescriptionId == prescriptionId.Value
+                   && i.LookupRequestId.HasValue)
+          .Select(i => i.LookupRequestId!.Value)
+          .Distinct()
+          .ToListAsync(cancellationToken);
+
+        if (lookupIds.Count == 0)
+            return;
+
+        var shadowMedicineIds = await _dbContext.Medicines
+          .AsNoTracking()
+          .Where(m => !m.IsCatalogMedicine
+                   && m.ManualLookupRequestId.HasValue
+                   && lookupIds.Contains(m.ManualLookupRequestId.Value))
+          .Select(m => m.Id)
+          .ToListAsync(cancellationToken);
+
+        if (shadowMedicineIds.Count == 0)
+            return;
+
+        await _dbContext.Offers
+          .Where(o => shadowMedicineIds.Contains(o.MedicineId))
+          .ExecuteDeleteAsync(cancellationToken);
+
+        await _dbContext.MedicineImages
+          .Where(i => shadowMedicineIds.Contains(i.MedicineId))
+          .ExecuteDeleteAsync(cancellationToken);
+
+        await _dbContext.Medicines
+          .Where(m => shadowMedicineIds.Contains(m.Id))
+          .ExecuteUpdateAsync(
+            setters => setters.SetProperty(m => m.IsActive, false),
+            cancellationToken);
     }
 
     /// <summary>

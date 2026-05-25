@@ -29,8 +29,12 @@ services:
       NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: ${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
       NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL: ${NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL:-/hubs/telegram-auth}
       NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+      MAHAL_API_TOKEN: ${MAHAL_API_TOKEN:?MAHAL_API_TOKEN is required for production}
+      ONE_C_EXCHANGE_DIR: /data/1c-exchange
     expose:
       - "3000"
+    volumes:
+      - one-c-exchange-prod:/data/1c-exchange
 
   api:
     image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-api:${TAG:-latest}
@@ -51,8 +55,36 @@ services:
       MinIo__AccessKey: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required for production}
       MinIo__SecretKey: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required for production}
       MinIo__BucketName: ${MINIO_BUCKET:?MINIO_BUCKET is required for production}
+      OneCImport__Enabled: "false"
     expose:
       - "8080"
+
+  one-c-worker:
+    image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-api:${TAG:-latest}
+    container_name: pharm-one-c-worker-prod
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Yalla__RunMode: OneCWorker
+      Jwt__Key: ${JWT_KEY:?JWT_KEY is required for production}
+      ConnectionStrings__Default: ${DB_CONNECTION_STRING:?DB_CONNECTION_STRING is required for production}
+      MinIo__Endpoint: ${MINIO_ENDPOINT:?MINIO_ENDPOINT is required for production}
+      MinIo__AccessKey: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required for production}
+      MinIo__SecretKey: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required for production}
+      MinIo__BucketName: ${MINIO_BUCKET:?MINIO_BUCKET is required for production}
+      OneCImport__Enabled: "true"
+      OneCImport__ExchangeDirectory: /data/1c-exchange
+      OneCImport__PollIntervalSeconds: ${ONE_C_IMPORT_POLL_INTERVAL_SECONDS:-30}
+      OneCImport__StableFileSeconds: ${ONE_C_IMPORT_STABLE_FILE_SECONDS:-30}
+      OneCImport__DefaultSourceToken: ${ONE_C_IMPORT_DEFAULT_SOURCE_TOKEN:-}
+      OneCImport__DefaultSourceName: ${ONE_C_IMPORT_DEFAULT_SOURCE_NAME:-1C}
+      OneCImport__DefaultPharmacyId: ${ONE_C_IMPORT_DEFAULT_PHARMACY_ID:-00000000-0000-0000-0000-000000000000}
+    volumes:
+      - one-c-exchange-prod:/data/1c-exchange
+    networks:
+      - yalla-net
 
 # Production network. Distinct name from staging guarantees the stacks
 # never see each other, even if they end up on the same physical host.
@@ -60,3 +92,6 @@ networks:
   yalla-net:
     external: true
     name: yalla-net-prod
+
+volumes:
+  one-c-exchange-prod:

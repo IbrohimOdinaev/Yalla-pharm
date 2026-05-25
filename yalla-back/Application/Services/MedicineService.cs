@@ -52,6 +52,16 @@ public sealed class MedicineService : IMedicineService
                 throw new InvalidOperationException($"Medicine with articul '{articul}' already exists.");
         }
 
+        var barcode = NormalizeBarcode(request.Barcode);
+        if (!string.IsNullOrWhiteSpace(barcode))
+        {
+            var barcodeExists = await _dbContext.Medicines
+              .AnyAsync(x => x.Barcode == barcode, cancellationToken);
+
+            if (barcodeExists)
+                throw new InvalidOperationException($"Medicine with barcode '{barcode}' already exists.");
+        }
+
         var medicine = request.ToDomain();
 
         _dbContext.Medicines.Add(medicine);
@@ -77,6 +87,16 @@ public sealed class MedicineService : IMedicineService
 
             if (articulExists)
                 throw new InvalidOperationException($"Medicine with articul '{articul}' already exists.");
+        }
+
+        var barcode = NormalizeBarcode(request.Barcode);
+        if (!string.IsNullOrWhiteSpace(barcode))
+        {
+            var barcodeExists = await _dbContext.Medicines
+              .AnyAsync(x => x.Barcode == barcode && x.Id != request.MedicineId, cancellationToken);
+
+            if (barcodeExists)
+                throw new InvalidOperationException($"Medicine with barcode '{barcode}' already exists.");
         }
 
         var medicine = await _dbContext.Medicines
@@ -182,8 +202,8 @@ public sealed class MedicineService : IMedicineService
           // the prescription flow, not via browse/search.
           .Where(x => x.IsCatalogMedicine)
           .Where(x => filterPharmacyId.HasValue
-            ? x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0)
-            : x.Offers.Any(o => o.StockQuantity > 0));
+            ? x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0 && o.Price > 0)
+            : x.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0));
 
         if (request.CategoryId.HasValue)
         {
@@ -214,15 +234,16 @@ public sealed class MedicineService : IMedicineService
               Id = x.Id,
               Title = x.Title,
               Articul = x.Articul,
+              Barcode = x.Barcode,
               Slug = x.Slug,
               IsActive = x.IsActive,
               CategoryName = x.Category != null ? x.Category.Name : null,
               MinPrice = filterPharmacyId.HasValue
-                ? (x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.Price > 0)
-                    ? x.Offers.Where(o => o.PharmacyId == filterPharmacyId.Value && o.Price > 0).Min(o => o.Price)
+                ? (x.Offers.Any(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0 && o.Price > 0)
+                    ? x.Offers.Where(o => o.PharmacyId == filterPharmacyId.Value && o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
                     : (decimal?)null)
-                : (x.Offers.Any(o => o.Price > 0)
-                    ? x.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                : (x.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0)
+                    ? x.Offers.Where(o => o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
                     : (decimal?)null),
               Images = x.Images
                 .OrderByDescending(i => i.IsMain)
@@ -253,35 +274,34 @@ public sealed class MedicineService : IMedicineService
       CancellationToken cancellationToken = default)
     {
         var safeLimit = limit <= 0 ? 6 : Math.Min(limit, 24);
-        var query = from popular in _dbContext.HomePopularMedicines.AsNoTracking()
-                    join medicine in _dbContext.Medicines.AsNoTracking()
-                      on popular.MedicineId equals medicine.Id
-                    where medicine.IsActive && medicine.IsCatalogMedicine
-                    where pharmacyId.HasValue
-                      ? medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0)
-                      : medicine.Offers.Any(o => o.StockQuantity > 0)
-                    orderby popular.Position
-                    select new { popular.Position, Medicine = medicine };
+        var query = _dbContext.Medicines
+          .AsNoTracking()
+          .Where(medicine => medicine.IsActive && medicine.IsCatalogMedicine)
+          .Where(medicine => pharmacyId.HasValue
+            ? medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0 && o.Price > 0)
+            : medicine.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0));
 
         var totalCount = await query.CountAsync(cancellationToken);
         var medicines = await query
+          .OrderBy(_ => EF.Functions.Random())
           .Take(safeLimit)
-          .Select(x => new MedicineSearchItemResponse
+          .Select(medicine => new MedicineSearchItemResponse
           {
-              Id = x.Medicine.Id,
-              Title = x.Medicine.Title,
-              Articul = x.Medicine.Articul,
-              Slug = x.Medicine.Slug,
-              IsActive = x.Medicine.IsActive,
-              CategoryName = x.Medicine.Category != null ? x.Medicine.Category.Name : null,
+              Id = medicine.Id,
+              Title = medicine.Title,
+              Articul = medicine.Articul,
+              Barcode = medicine.Barcode,
+              Slug = medicine.Slug,
+              IsActive = medicine.IsActive,
+              CategoryName = medicine.Category != null ? medicine.Category.Name : null,
               MinPrice = pharmacyId.HasValue
-                ? (x.Medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.Price > 0)
-                    ? x.Medicine.Offers.Where(o => o.PharmacyId == pharmacyId.Value && o.Price > 0).Min(o => o.Price)
+                ? (medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0 && o.Price > 0)
+                    ? medicine.Offers.Where(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
                     : (decimal?)null)
-                : (x.Medicine.Offers.Any(o => o.Price > 0)
-                    ? x.Medicine.Offers.Where(o => o.Price > 0).Min(o => o.Price)
+                : (medicine.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0)
+                    ? medicine.Offers.Where(o => o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
                     : (decimal?)null),
-              Images = x.Medicine.Images
+              Images = medicine.Images
                 .OrderByDescending(i => i.IsMain)
                 .ThenByDescending(i => i.IsMinimal)
                 .Select(i => new MedicineImageResponse
@@ -321,6 +341,7 @@ public sealed class MedicineService : IMedicineService
                                    Id = medicine.Id,
                                    Title = medicine.Title,
                                    Articul = medicine.Articul,
+                                   Barcode = medicine.Barcode,
                                    Slug = medicine.Slug,
                                    IsActive = medicine.IsActive,
                                    CategoryName = medicine.Category != null ? medicine.Category.Name : null,
@@ -424,7 +445,8 @@ public sealed class MedicineService : IMedicineService
             var searchPattern = $"%{normalizedQuery.ToLower()}%";
             query = query.Where(x =>
               EF.Functions.Like(x.Title.ToLower(), searchPattern)
-              || EF.Functions.Like(x.Articul.ToLower(), searchPattern));
+              || (x.Articul != null && EF.Functions.Like(x.Articul.ToLower(), searchPattern))
+              || (x.Barcode != null && EF.Functions.Like(x.Barcode.ToLower(), searchPattern)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -439,6 +461,7 @@ public sealed class MedicineService : IMedicineService
               Id = x.Id,
               Title = x.Title,
               Articul = x.Articul,
+              Barcode = x.Barcode,
               Slug = x.Slug,
               IsActive = x.IsActive,
               CategoryName = x.Category != null ? x.Category.Name : null,
@@ -630,23 +653,29 @@ public sealed class MedicineService : IMedicineService
           .Where(x =>
             x.IsActive &&
             x.IsCatalogMedicine &&
-            x.Offers.Any(o => o.StockQuantity > 0) &&
+            x.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0) &&
             (EF.Functions.Like(x.Title.ToLower(), containsPattern)
-             || EF.Functions.Like(x.Articul.ToLower(), containsPattern)))
+             || (x.Articul != null && EF.Functions.Like(x.Articul.ToLower(), containsPattern))
+             || (x.Barcode != null && EF.Functions.Like(x.Barcode.ToLower(), containsPattern))))
           .Select(x => new
           {
               x.Id,
               x.Title,
               x.Articul,
+              x.Barcode,
               x.Slug,
               TitleStarts = EF.Functions.Like(x.Title.ToLower(), prefixPattern),
-              ArticulStarts = EF.Functions.Like(x.Articul.ToLower(), prefixPattern),
+              ArticulStarts = x.Articul != null && EF.Functions.Like(x.Articul.ToLower(), prefixPattern),
+              BarcodeStarts = x.Barcode != null && EF.Functions.Like(x.Barcode.ToLower(), prefixPattern),
               TitleContains = EF.Functions.Like(x.Title.ToLower(), containsPattern),
-              ArticulContains = EF.Functions.Like(x.Articul.ToLower(), containsPattern)
+              ArticulContains = x.Articul != null && EF.Functions.Like(x.Articul.ToLower(), containsPattern),
+              BarcodeContains = x.Barcode != null && EF.Functions.Like(x.Barcode.ToLower(), containsPattern)
           })
           .OrderByDescending(x => x.TitleStarts)
+          .ThenByDescending(x => x.BarcodeStarts)
           .ThenByDescending(x => x.ArticulStarts)
           .ThenByDescending(x => x.TitleContains)
+          .ThenByDescending(x => x.BarcodeContains)
           .ThenByDescending(x => x.ArticulContains)
           .ThenBy(x => x.Title)
           .Take(limit)
@@ -678,7 +707,7 @@ public sealed class MedicineService : IMedicineService
 
         var minPrices = await _dbContext.Offers
           .AsNoTracking()
-          .Where(x => medicineIds.Contains(x.MedicineId) && x.Price > 0)
+          .Where(x => medicineIds.Contains(x.MedicineId) && x.StockQuantity > 0 && x.Price > 0)
           .GroupBy(x => x.MedicineId)
           .Select(g => new { MedicineId = g.Key, MinPrice = g.Min(x => x.Price) })
           .ToDictionaryAsync(x => x.MedicineId, x => x.MinPrice, cancellationToken);
@@ -693,6 +722,7 @@ public sealed class MedicineService : IMedicineService
                   Id = x.Id,
                   Title = x.Title,
                   Articul = x.Articul,
+                  Barcode = x.Barcode,
                   Slug = x.Slug,
                   IsActive = true,
                   MinPrice = minPrices.TryGetValue(x.Id, out var mp) ? mp : null,
@@ -733,10 +763,13 @@ public sealed class MedicineService : IMedicineService
           join pharmacy in _dbContext.Pharmacies.AsNoTracking()
             on offer.PharmacyId equals pharmacy.Id
           where medicine.IsActive
+                && medicine.IsCatalogMedicine
                 && pharmacy.IsActive
                 && offer.StockQuantity > 0
+                && offer.Price > 0
                 && (EF.Functions.Like(medicine.Title.ToLower(), searchPattern)
-                    || EF.Functions.Like(medicine.Articul.ToLower(), searchPattern))
+                    || (medicine.Articul != null && EF.Functions.Like(medicine.Articul.ToLower(), searchPattern))
+                    || (medicine.Barcode != null && EF.Functions.Like(medicine.Barcode.ToLower(), searchPattern)))
           select new
           {
               offer.PharmacyId,
@@ -744,6 +777,7 @@ public sealed class MedicineService : IMedicineService
               offer.MedicineId,
               MedicineTitle = medicine.Title,
               MedicineArticul = medicine.Articul,
+              MedicineBarcode = medicine.Barcode,
               MedicineSlug = medicine.Slug,
               offer.Price,
               offer.StockQuantity
@@ -803,6 +837,7 @@ public sealed class MedicineService : IMedicineService
                         Id = first.MedicineId,
                         Title = first.MedicineTitle,
                         Articul = first.MedicineArticul,
+                        Barcode = first.MedicineBarcode,
                         Slug = first.MedicineSlug,
                         IsActive = true,
                         MinPrice = minPrice > 0 ? minPrice : null,
@@ -1098,6 +1133,8 @@ public sealed class MedicineService : IMedicineService
           join pharmacy in _dbContext.Pharmacies.AsNoTracking()
             on offer.PharmacyId equals pharmacy.Id
           where offer.MedicineId == medicineId
+            && pharmacy.IsActive
+            && offer.StockQuantity > 0
           orderby pharmacy.Title
           select new MedicineOfferResponse
           {
@@ -1109,6 +1146,15 @@ public sealed class MedicineService : IMedicineService
               Price = offer.Price,
               IsAvailable = pharmacy.IsActive && offer.StockQuantity > 0
           }).ToListAsync(cancellationToken);
+    }
+
+    private static string? NormalizeBarcode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? null : digits;
     }
 
     private sealed class NullMedicineImageStorage : IMedicineImageStorage

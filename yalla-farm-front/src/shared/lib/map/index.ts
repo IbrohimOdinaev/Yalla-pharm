@@ -2,15 +2,15 @@ export type { MapProvider, MapInstance, MapOptions, MapMarkerOptions, MapClickHa
 
 import type { MapProvider } from "./types";
 import { YandexMapProvider } from "./yandex-provider";
-import { JuraMapProvider } from "./jura-provider";
+import { MahalMapProvider } from "./mahal-provider";
 
-let _provider: JuraMapProvider | null = null;
+let _provider: MahalMapProvider | null = null;
 
 export function getMapProvider(): MapProvider {
   // Yandex is the only supported provider; the Google variant was
   // retired together with the @react-google-maps/api dep.
   if (!_provider) {
-    _provider = new JuraMapProvider(new YandexMapProvider());
+    _provider = new MahalMapProvider(new YandexMapProvider());
   }
   return _provider;
 }

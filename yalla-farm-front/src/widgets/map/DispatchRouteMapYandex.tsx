@@ -43,7 +43,7 @@ export function DispatchRouteMapYandex({
         );
 
         if (fromPoint) {
-          const dot = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#0E8B60" stroke="white" stroke-width="2"/></svg>';
+          const dot = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#2F80ED" stroke="white" stroke-width="2"/></svg>';
           map.geoObjects.add(new ymaps.Placemark(
             [fromPoint.lat, fromPoint.lng],
             { hintContent: "Аптека" },

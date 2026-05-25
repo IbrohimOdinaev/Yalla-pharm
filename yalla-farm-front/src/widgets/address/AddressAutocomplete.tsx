@@ -84,7 +84,7 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
   const borderColor = isValidated === false
     ? "ring-2 ring-red-400"
     : isValidated === true
-      ? "ring-2 ring-emerald-400"
+      ? "ring-2 ring-primary"
       : "";
 
   return (

@@ -69,12 +69,16 @@ button {
          focus:border-primary focus:ring-2 focus:ring-primary/20;
 }
 
-/* Primary CTA (legacy class name kept for all stale refs). Yandex-Plus look:
-   warm yellow with near-black text. */
+/* Primary CTA (legacy class name kept for all stale refs). */
 .stitch-button {
-  @apply rounded-full bg-accent px-5 py-3 text-sm font-bold text-on-surface transition
-         hover:bg-accent-dark active:scale-[0.98]
+  @apply rounded-full px-5 py-3 text-sm font-bold text-on-primary transition
+         active:scale-[0.98]
          disabled:cursor-not-allowed disabled:opacity-50;
+  background-color: #2F80ED;
+}
+
+.stitch-button:hover {
+  background-color: #256BD4;
 }
 
 .stitch-button-secondary {
@@ -178,9 +182,9 @@ html, body { overflow-x: clip; }
    primary colour around the card on top of the static `ring` so it
    reads as “this is the one” without permanently colouring the card. */
 @keyframes pharmacyCardPulse {
-  0%   { box-shadow: 0 0 0 0    rgba(14, 139, 96, 0.55); }
-  60%  { box-shadow: 0 0 0 14px rgba(14, 139, 96, 0);    }
-  100% { box-shadow: 0 0 0 0    rgba(14, 139, 96, 0);    }
+  0%   { box-shadow: 0 0 0 0    rgba(47, 128, 237, 0.55); }
+  60%  { box-shadow: 0 0 0 14px rgba(47, 128, 237, 0);    }
+  100% { box-shadow: 0 0 0 0    rgba(47, 128, 237, 0);    }
 }
 .pharmacy-card-pulse {
   animation: pharmacyCardPulse 0.9s ease-out 1;

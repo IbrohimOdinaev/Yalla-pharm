@@ -1,12 +1,18 @@
 using System.Globalization;
+using System.Data;
 using System.Xml;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
+using NpgsqlTypes;
+using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
+using Yalla.Application.DTO.Response;
 using Yalla.Domain.Entities;
 
 namespace Yalla.Infrastructure.OneC;
@@ -69,16 +75,21 @@ public sealed class OneCImportHostedService : BackgroundService
 
     using var scope = _scopeFactory.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var realtime = scope.ServiceProvider.GetService<IRealtimeUpdatesPublisher>();
 
     foreach (var context in await ResolveSourceContextsAsync(db, ct))
     {
       var importFile = await FindLatestReadyFileAsync(context.Directory, "import", ct);
       if (importFile != null)
-        await ProcessFileIfNeededAsync(db, context.Source, importFile, "import", ct);
+        await ProcessFileIfNeededAsync(db, realtime, context.Source, importFile, "import", ct);
 
-      var offersFile = await FindLatestReadyFileAsync(context.Directory, "offers", ct);
+      var readyOfferFiles = await FindReadyFilesAsync(context.Directory, "offers", ct);
+      var offersFile = readyOfferFiles.FirstOrDefault();
       if (offersFile != null)
-        await ProcessFileIfNeededAsync(db, context.Source, offersFile, "offers", ct);
+      {
+        await MarkSupersededOffersAsync(db, realtime, context.Source, readyOfferFiles.Skip(1), offersFile, ct);
+        await ProcessFileIfNeededAsync(db, realtime, context.Source, offersFile, "offers", ct);
+      }
     }
   }
 
@@ -147,11 +158,17 @@ public sealed class OneCImportHostedService : BackgroundService
 
   private async Task<FileInfo?> FindLatestReadyFileAsync(DirectoryInfo directory, string prefix, CancellationToken ct)
   {
+    return (await FindReadyFilesAsync(directory, prefix, ct)).FirstOrDefault();
+  }
+
+  private async Task<List<FileInfo>> FindReadyFilesAsync(DirectoryInfo directory, string prefix, CancellationToken ct)
+  {
     var candidates = directory
       .EnumerateFiles($"{prefix}*.xml")
       .OrderByDescending(x => x.LastWriteTimeUtc)
       .ToList();
 
+    var ready = new List<FileInfo>();
     foreach (var candidate in candidates)
     {
       var stableFor = DateTime.UtcNow - candidate.LastWriteTimeUtc;
@@ -159,12 +176,15 @@ public sealed class OneCImportHostedService : BackgroundService
         continue;
 
       if (await LooksCompleteXmlAsync(candidate, ct))
-        return candidate;
+      {
+        ready.Add(candidate);
+        continue;
+      }
 
       _logger.LogWarning("1C import ignored incomplete XML snapshot: {File}", candidate.FullName);
     }
 
-    return null;
+    return ready;
   }
 
   private static async Task<bool> LooksCompleteXmlAsync(FileInfo file, CancellationToken ct)
@@ -183,6 +203,7 @@ public sealed class OneCImportHostedService : BackgroundService
 
   private async Task ProcessFileIfNeededAsync(
     AppDbContext db,
+    IRealtimeUpdatesPublisher? realtime,
     IntegrationSource source,
     FileInfo file,
     string kind,
@@ -190,14 +211,17 @@ public sealed class OneCImportHostedService : BackgroundService
   {
     file.Refresh();
     var signature = $"{file.Name}:{file.Length}:{file.LastWriteTimeUtc.Ticks}";
-    var alreadySucceeded = await db.OneCImportRuns
-      .AnyAsync(x => x.SourceId == source.Id && x.FileSignature == signature && x.Status == "success", ct);
-    if (alreadySucceeded)
+    var alreadyHandled = await db.OneCImportRuns
+      .AnyAsync(x => x.SourceId == source.Id
+        && x.FileSignature == signature
+        && (x.Status == "success" || x.Status == "superseded"), ct);
+    if (alreadyHandled)
       return;
 
     var run = new OneCImportRun(source.Id, kind, file.Name, file.Length, signature, DateTime.UtcNow);
     db.OneCImportRuns.Add(run);
     await db.SaveChangesAsync(ct);
+    await PublishRunUpdatedAsync(db, realtime, source, run, ct);
 
     try
     {
@@ -205,17 +229,86 @@ public sealed class OneCImportHostedService : BackgroundService
         ? await ProcessImportFileAsync(db, source, file.FullName, ct)
         : await ProcessOffersFileAsync(db, source, file.FullName, ct);
 
-      run.Complete(result.Processed, result.Linked, result.Updated, result.Unmatched, DateTime.UtcNow);
+      run.Complete(result.Processed, result.Linked, result.Updated, result.Inserted, result.Unchanged, result.Unmatched, DateTime.UtcNow);
       await db.SaveChangesAsync(ct);
-      _logger.LogInformation("1C {Kind} import success: processed={Processed}, linked={Linked}, updated={Updated}, unmatched={Unmatched}, file={File}",
-        kind, result.Processed, result.Linked, result.Updated, result.Unmatched, file.Name);
+      await PublishRunUpdatedAsync(db, realtime, source, run, ct);
+      _logger.LogInformation("1C {Kind} import success: processed={Processed}, linked={Linked}, updated={Updated}, inserted={Inserted}, unchanged={Unchanged}, unmatched={Unmatched}, file={File}",
+        kind, result.Processed, result.Linked, result.Updated, result.Inserted, result.Unchanged, result.Unmatched, file.Name);
     }
     catch (Exception ex)
     {
       run.Fail(ex.Message, DateTime.UtcNow);
       await db.SaveChangesAsync(ct);
+      await PublishRunUpdatedAsync(db, realtime, source, run, ct);
       _logger.LogError(ex, "1C {Kind} import failed for {File}", kind, file.FullName);
     }
+  }
+
+  private async Task MarkSupersededOffersAsync(
+    AppDbContext db,
+    IRealtimeUpdatesPublisher? realtime,
+    IntegrationSource source,
+    IEnumerable<FileInfo> files,
+    FileInfo latestFile,
+    CancellationToken ct)
+  {
+    foreach (var file in files)
+    {
+      file.Refresh();
+      var signature = $"{file.Name}:{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+      var alreadyHandled = await db.OneCImportRuns
+        .AnyAsync(x => x.SourceId == source.Id
+          && x.FileSignature == signature
+          && (x.Status == "success" || x.Status == "superseded"), ct);
+      if (alreadyHandled)
+        continue;
+
+      var run = new OneCImportRun(source.Id, "offers", file.Name, file.Length, signature, DateTime.UtcNow);
+      run.Supersede($"Superseded by newer complete offers snapshot '{latestFile.Name}'.", DateTime.UtcNow);
+      db.OneCImportRuns.Add(run);
+      await db.SaveChangesAsync(ct);
+      await PublishRunUpdatedAsync(db, realtime, source, run, ct);
+      _logger.LogInformation("1C offers import superseded old snapshot: file={File}, latest={LatestFile}",
+        file.Name, latestFile.Name);
+    }
+  }
+
+  private static async Task PublishRunUpdatedAsync(
+    AppDbContext db,
+    IRealtimeUpdatesPublisher? realtime,
+    IntegrationSource source,
+    OneCImportRun run,
+    CancellationToken ct)
+  {
+    if (realtime == null)
+      return;
+
+    var pharmacyTitle = await db.Pharmacies
+      .AsNoTracking()
+      .Where(x => x.Id == source.PharmacyId)
+      .Select(x => x.Title)
+      .FirstOrDefaultAsync(ct) ?? source.Name;
+
+    await realtime.PublishOneCImportRunUpdatedAsync(new OneCImportRunLogResponse(
+      run.Id,
+      run.SourceId,
+      source.PharmacyId,
+      source.Token,
+      source.Name,
+      pharmacyTitle,
+      run.FileKind,
+      run.FileName,
+      run.FileSize,
+      run.Status,
+      run.ProcessedCount,
+      run.LinkedCount,
+      run.UpdatedCount,
+      run.InsertedCount,
+      run.UnchangedCount,
+      run.UnmatchedCount,
+      run.Error,
+      run.StartedAtUtc,
+      run.FinishedAtUtc), ct);
   }
 
   private async Task<ImportResult> ProcessImportFileAsync(
@@ -230,29 +323,26 @@ public sealed class OneCImportHostedService : BackgroundService
 
     var externalIds = products.Select(x => x.ExternalId).Distinct().ToList();
     var barcodes = products.Select(x => x.Barcode).Where(x => x != null).Select(x => x!).Distinct().ToList();
-    var legacy1CIds = products
-      .Select(x => Guid.TryParse(x.ExternalId, out var id) ? id : Guid.Empty)
-      .Where(x => x != Guid.Empty)
-      .Distinct()
-      .ToList();
 
     var existingLinks = await db.ExternalProductLinks
       .AsTracking()
       .Where(x => x.SourceId == source.Id && externalIds.Contains(x.ExternalProductId))
       .ToDictionaryAsync(x => x.ExternalProductId, ct);
 
-    var legacyMedicines = await db.Medicines
+    var canonicalBarcodeRows = await db.Medicines
       .AsNoTracking()
-      .Where(x => x.Id1C.HasValue && legacy1CIds.Contains(x.Id1C.Value))
-      .ToDictionaryAsync(x => x.Id1C!.Value, x => x.Id, ct);
+      .Where(x => x.Barcode != null && barcodes.Contains(x.Barcode))
+      .Select(x => new { Barcode = x.Barcode!, MedicineId = x.Id })
+      .ToListAsync(ct);
 
-    var barcodeRows = await db.MedicineBarcodes
+    var aliasBarcodeRows = await db.MedicineBarcodes
       .AsNoTracking()
       .Where(x => barcodes.Contains(x.Barcode))
       .Select(x => new { x.Barcode, x.MedicineId })
       .ToListAsync(ct);
 
-    var uniqueBarcodeMatches = barcodeRows
+    var uniqueBarcodeMatches = canonicalBarcodeRows
+      .Concat(aliasBarcodeRows)
       .GroupBy(x => x.Barcode)
       .Where(g => g.Select(x => x.MedicineId).Distinct().Count() == 1)
       .ToDictionary(g => g.Key, g => g.First().MedicineId);
@@ -286,11 +376,7 @@ public sealed class OneCImportHostedService : BackgroundService
 
       if (!link.MedicineId.HasValue)
       {
-        if (Guid.TryParse(product.ExternalId, out var legacyId) && legacyMedicines.TryGetValue(legacyId, out var legacyMedicineId))
-        {
-          link.AutoMatch(legacyMedicineId, "legacy_id_1c", 1m);
-        }
-        else if (product.Barcode != null && uniqueBarcodeMatches.TryGetValue(product.Barcode, out var barcodeMedicineId))
+        if (product.Barcode != null && uniqueBarcodeMatches.TryGetValue(product.Barcode, out var barcodeMedicineId))
         {
           link.AutoMatch(barcodeMedicineId, "barcode", 0.98m);
         }
@@ -319,15 +405,17 @@ public sealed class OneCImportHostedService : BackgroundService
     if (uniquePairs.Count == 0)
       return;
 
-    var medicineIds = uniquePairs.Select(x => x.MedicineId).Distinct().ToList();
     var barcodes = uniquePairs.Select(x => x.Barcode).Distinct().ToList();
 
     var existing = await db.MedicineBarcodes
       .AsTracking()
-      .Where(x => medicineIds.Contains(x.MedicineId) && barcodes.Contains(x.Barcode))
+      .Where(x => barcodes.Contains(x.Barcode))
       .ToListAsync(ct);
 
     var existingSet = existing.Select(x => (x.MedicineId, x.Barcode)).ToHashSet();
+    var existingBarcodeOwners = existing
+      .GroupBy(x => x.Barcode)
+      .ToDictionary(x => x.Key, x => x.Select(y => y.MedicineId).Distinct().ToHashSet());
     var now = DateTime.UtcNow;
     foreach (var row in existing)
       row.MarkSeen(now);
@@ -335,6 +423,9 @@ public sealed class OneCImportHostedService : BackgroundService
     foreach (var pair in uniquePairs)
     {
       if (existingSet.Contains(pair))
+        continue;
+
+      if (existingBarcodeOwners.TryGetValue(pair.Barcode, out var owners) && !owners.Contains(pair.MedicineId))
         continue;
 
       db.MedicineBarcodes.Add(new MedicineBarcode(pair.MedicineId, pair.Barcode, false, now));
@@ -351,6 +442,18 @@ public sealed class OneCImportHostedService : BackgroundService
     if (incomingOffers.Count == 0)
       return ImportResult.Empty;
 
+    if (string.Equals(db.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
+      return await BulkUpsertOffersAsync(db, source, incomingOffers, ct);
+
+    return await UpsertOffersWithEfAsync(db, source, incomingOffers, ct);
+  }
+
+  private static async Task<ImportResult> UpsertOffersWithEfAsync(
+    AppDbContext db,
+    IntegrationSource source,
+    IReadOnlyList<OneCOffer> incomingOffers,
+    CancellationToken ct)
+  {
     var externalIds = incomingOffers.Select(x => x.ExternalProductId).Distinct().ToList();
     var links = await db.ExternalProductLinks
       .AsNoTracking()
@@ -364,6 +467,8 @@ public sealed class OneCImportHostedService : BackgroundService
       .ToDictionaryAsync(x => x.MedicineId, ct);
 
     var updated = 0;
+    var inserted = 0;
+    var unchanged = 0;
     var unmatched = 0;
     foreach (var incoming in incomingOffers)
     {
@@ -375,21 +480,190 @@ public sealed class OneCImportHostedService : BackgroundService
 
       if (existingOffers.TryGetValue(medicineId, out var offer))
       {
-        if (incoming.Price.HasValue)
-          offer.SetPrice(incoming.Price.Value);
-        offer.SetStockQuantity(incoming.Stock);
+        var nextPrice = incoming.Price ?? offer.Price;
+        if (offer.StockQuantity == incoming.Stock && offer.Price == nextPrice)
+        {
+          unchanged++;
+          continue;
+        }
+
+        if (offer.Price != nextPrice)
+          offer.SetPrice(nextPrice);
+        if (offer.StockQuantity != incoming.Stock)
+          offer.SetStockQuantity(incoming.Stock);
+        updated++;
       }
       else
       {
         offer = new Offer(medicineId, source.PharmacyId, incoming.Stock, incoming.Price ?? 0m);
         db.Offers.Add(offer);
         existingOffers[medicineId] = offer;
+        inserted++;
       }
-      updated++;
     }
 
     await db.SaveChangesAsync(ct);
-    return new ImportResult(incomingOffers.Count, 0, updated, unmatched);
+    return new ImportResult(incomingOffers.Count, 0, updated, unmatched, inserted, unchanged);
+  }
+
+  private static async Task<ImportResult> BulkUpsertOffersAsync(
+    AppDbContext db,
+    IntegrationSource source,
+    IReadOnlyList<OneCOffer> incomingOffers,
+    CancellationToken ct)
+  {
+    var runId = Guid.NewGuid();
+    var wasClosed = db.Database.GetDbConnection().State == ConnectionState.Closed;
+    if (wasClosed)
+      await db.Database.OpenConnectionAsync(ct);
+
+    await using var transaction = await db.Database.BeginTransactionAsync(ct);
+    try
+    {
+      await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TEMP TABLE one_c_offer_staging
+        (
+          offer_id uuid NOT NULL,
+          run_id uuid NOT NULL,
+          source_id uuid NOT NULL,
+          pharmacy_id uuid NOT NULL,
+          external_product_id character varying(128) NOT NULL,
+          price numeric(18,2) NULL,
+          stock integer NOT NULL
+        ) ON COMMIT DROP;
+
+        CREATE INDEX ix_one_c_offer_staging_link
+          ON one_c_offer_staging (source_id, external_product_id);
+        """,
+        ct);
+
+      await CopyOffersToStagingAsync(db, runId, source, incomingOffers, ct);
+
+      var unmatched = await ExecuteScalarIntAsync(
+        db,
+        """
+        SELECT COUNT(*)::int
+        FROM one_c_offer_staging s
+        LEFT JOIN external_product_links l
+          ON l.source_id = s.source_id
+         AND l.external_product_id = s.external_product_id
+         AND l.medicine_id IS NOT NULL
+        WHERE l.id IS NULL;
+        """,
+        ct);
+
+      var unchanged = await ExecuteScalarIntAsync(
+        db,
+        """
+        SELECT COUNT(*)::int
+        FROM one_c_offer_staging s
+        JOIN external_product_links l
+          ON l.source_id = s.source_id
+         AND l.external_product_id = s.external_product_id
+         AND l.medicine_id IS NOT NULL
+        JOIN offers o
+          ON o.pharmacy_id = s.pharmacy_id
+         AND o.medicine_id = l.medicine_id
+        WHERE o.stock_quantity = s.stock
+          AND (s.price IS NULL OR o.price = s.price);
+        """,
+        ct);
+
+      var updated = await db.Database.ExecuteSqlRawAsync(
+        """
+        UPDATE offers o
+           SET stock_quantity = s.stock,
+               price = COALESCE(s.price, o.price)
+        FROM one_c_offer_staging s
+        JOIN external_product_links l
+          ON l.source_id = s.source_id
+         AND l.external_product_id = s.external_product_id
+         AND l.medicine_id IS NOT NULL
+        WHERE o.pharmacy_id = s.pharmacy_id
+          AND o.medicine_id = l.medicine_id
+          AND (o.stock_quantity <> s.stock OR (s.price IS NOT NULL AND o.price <> s.price));
+        """,
+        ct);
+
+      var inserted = await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO offers (id, medicine_id, pharmacy_id, stock_quantity, price)
+        SELECT s.offer_id, l.medicine_id, s.pharmacy_id, s.stock, COALESCE(s.price, 0)
+        FROM one_c_offer_staging s
+        JOIN external_product_links l
+          ON l.source_id = s.source_id
+         AND l.external_product_id = s.external_product_id
+         AND l.medicine_id IS NOT NULL
+        LEFT JOIN offers o
+          ON o.pharmacy_id = s.pharmacy_id
+         AND o.medicine_id = l.medicine_id
+        WHERE o.id IS NULL
+        ON CONFLICT (medicine_id, pharmacy_id) DO NOTHING;
+        """,
+        ct);
+
+      await transaction.CommitAsync(ct);
+      return new ImportResult(incomingOffers.Count, 0, updated, unmatched, inserted, unchanged);
+    }
+    catch
+    {
+      await transaction.RollbackAsync(ct);
+      throw;
+    }
+    finally
+    {
+      if (wasClosed)
+        await db.Database.CloseConnectionAsync();
+    }
+  }
+
+  private static async Task CopyOffersToStagingAsync(
+    AppDbContext db,
+    Guid runId,
+    IntegrationSource source,
+    IReadOnlyList<OneCOffer> incomingOffers,
+    CancellationToken ct)
+  {
+    if (db.Database.GetDbConnection() is not NpgsqlConnection connection)
+      throw new InvalidOperationException("1C offers bulk import requires an Npgsql connection.");
+
+    await using var writer = await connection.BeginBinaryImportAsync(
+      """
+      COPY one_c_offer_staging
+        (offer_id, run_id, source_id, pharmacy_id, external_product_id, price, stock)
+      FROM STDIN (FORMAT BINARY)
+      """,
+      ct);
+
+    foreach (var offer in incomingOffers)
+    {
+      await writer.StartRowAsync(ct);
+      await writer.WriteAsync(Guid.NewGuid(), NpgsqlDbType.Uuid, ct);
+      await writer.WriteAsync(runId, NpgsqlDbType.Uuid, ct);
+      await writer.WriteAsync(source.Id, NpgsqlDbType.Uuid, ct);
+      await writer.WriteAsync(source.PharmacyId, NpgsqlDbType.Uuid, ct);
+      await writer.WriteAsync(offer.ExternalProductId, NpgsqlDbType.Varchar, ct);
+      if (offer.Price.HasValue)
+        await writer.WriteAsync(offer.Price.Value, NpgsqlDbType.Numeric, ct);
+      else
+        await writer.WriteNullAsync(ct);
+      await writer.WriteAsync(offer.Stock, NpgsqlDbType.Integer, ct);
+    }
+
+    await writer.CompleteAsync(ct);
+  }
+
+  private static async Task<int> ExecuteScalarIntAsync(AppDbContext db, string sql, CancellationToken ct)
+  {
+    var connection = db.Database.GetDbConnection();
+    await using var command = connection.CreateCommand();
+    command.CommandText = sql;
+    if (db.Database.CurrentTransaction != null)
+      command.Transaction = db.Database.CurrentTransaction.GetDbTransaction();
+
+    var result = await command.ExecuteScalarAsync(ct);
+    return Convert.ToInt32(result, CultureInfo.InvariantCulture);
   }
 
   private static IEnumerable<OneCProduct> ParseProducts(string filePath)
@@ -546,7 +820,7 @@ public sealed class OneCImportHostedService : BackgroundService
     public OneCOffer ToOffer() => new(externalProductId, _maxPrice, _stock, _sourceOfferIds);
   }
   private sealed record SourceContext(IntegrationSource Source, DirectoryInfo Directory);
-  private sealed record ImportResult(int Processed, int Linked, int Updated, int Unmatched)
+  private sealed record ImportResult(int Processed, int Linked, int Updated, int Unmatched, int Inserted = 0, int Unchanged = 0)
   {
     public static ImportResult Empty => new(0, 0, 0, 0);
   }

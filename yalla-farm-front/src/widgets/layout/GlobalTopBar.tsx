@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { useAppSelector } from "@/shared/lib/redux";
 import { TopBar } from "@/widgets/layout/TopBar";
@@ -33,6 +33,7 @@ function GlobalTopBarFallback() {
 function GlobalTopBarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const role = useAppSelector((s) => s.auth.role);
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
   const deliveryAddressTitle = useDeliveryAddressStore((s) => s.title);
@@ -44,6 +45,7 @@ function GlobalTopBarInner() {
   // The page's own on-page search UI is active while `?search=…` is in the URL.
   // Hide the top-bar search pill so only one search input is visible at a time.
   const hideSearch = searchParams.has("search");
+  const hideMobileSearch = pathname === "/prescriptions/new";
 
   // Hide the prescription CTA for staff — they don't shop. Same condition the
   // home-page banner uses, so the in-header pill and the page banner share
@@ -56,6 +58,7 @@ function GlobalTopBarInner() {
         title="Аптека Душанбе"
         homeMode
         hideSearch={hideSearch}
+        hideMobileSearch={hideMobileSearch}
         showPrescriptionCta={showPrescriptionCta}
         onLogoClick={() => { window.location.href = "/"; }}
         onSearchClick={() => router.push("/?search=")}

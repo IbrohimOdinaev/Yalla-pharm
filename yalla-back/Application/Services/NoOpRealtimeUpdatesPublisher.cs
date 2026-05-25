@@ -1,4 +1,5 @@
 using Yalla.Application.Abstractions;
+using Yalla.Application.DTO.Response;
 using Yalla.Domain.Enums;
 
 namespace Yalla.Application.Services;
@@ -22,4 +23,5 @@ public sealed class NoOpRealtimeUpdatesPublisher : IRealtimeUpdatesPublisher
   public Task PublishManualLookupRequestCreatedAsync(Guid requestId, Guid prescriptionId, Guid requestedByPharmacistId, CancellationToken cancellationToken = default) => Task.CompletedTask;
   public Task PublishManualLookupResponseAddedAsync(Guid requestId, Guid responseId, Guid respondingPharmacyId, Guid requestedByPharmacistId, CancellationToken cancellationToken = default) => Task.CompletedTask;
   public Task PublishManualLookupRequestClosedAsync(Guid requestId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+  public Task PublishOneCImportRunUpdatedAsync(OneCImportRunLogResponse run, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

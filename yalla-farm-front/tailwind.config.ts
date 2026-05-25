@@ -5,8 +5,8 @@ import type { Config } from "tailwindcss";
  *
  * Design rules
  * ─────────────
- * 1. **One brand (green)**, **one CTA (yellow)**, **one danger (red)**,
- *    **one info (blue)**, **one warning (amber)**. Nothing else mixes.
+ * 1. **One brand/CTA blue**, **one neutral chip grey**, **one danger (red)**,
+ *    **one info blue**, **one warning grey**. Nothing else mixes.
  * 2. Every semantic colour has a **-container** (stronger, hover/emphasis)
  *    and **-soft** (pastel fill for chips/backgrounds).
  * 3. The 8 accent pastels share the same HSL lightness/saturation window so
@@ -32,10 +32,10 @@ const config: Config = {
     },
     extend: {
       colors: {
-        // ── Brand green (logo, status, secondary UI, links) ───────────────
-        primary: "#0E8B60",
-        "primary-container": "#13A271",
-        "primary-soft": "#E1F0E9",
+        // ── Brand blue (logo family, CTAs, selected states, links) ────────
+        primary: "#2F80ED",
+        "primary-container": "#256BD4",
+        "primary-soft": "#DDE9FA",
 
         // ── Action red (cart button on products, favourites, sale prices) ─
         secondary: "#E94A33",
@@ -46,15 +46,15 @@ const config: Config = {
         tertiary: "#2F80ED",
         "tertiary-soft": "#DDE9FA",
 
-        // ── Yandex-Plus yellow (primary CTA buttons) ──────────────────────
-        accent: "#FFDB4D",
-        "accent-dark": "#F5CC20",
-        "accent-soft": "#FFF1C7",
+        // ── Neutral action chip (replaces yellow delivery/status pills) ───
+        accent: "#EEF3F4",
+        "accent-dark": "#DDE7EA",
+        "accent-soft": "#EEF3F4",
 
-        // ── Amber warning (pending payments, partial stock, soft alerts) ──
-        warning: "#B77400",
-        "warning-container": "#FFC24D",
-        "warning-soft": "#FFE8C2",
+        // ── Soft warning (neutral grey, not yellow/orange) ────────────────
+        warning: "#6F7572",
+        "warning-container": "#DDE7EA",
+        "warning-soft": "#EEF3F4",
 
         // ── Telegram brand (buttons, link chips) ──────────────────────────
         telegram: "#229ED9",
@@ -78,24 +78,25 @@ const config: Config = {
         // ── Text & strokes ────────────────────────────────────────────────
         "on-surface": "#1A1C1B",
         "on-surface-variant": "#6F7572",
+        "on-primary": "#E9F1F3",
         outline: "#D8DCD9",
 
         // ── Category pastels — same HSL family (L≈92%, S≈60%) ─────────────
-        "accent-mint":  "#DFF3E7",   // green
+        "accent-mint":  "#EEF3F4",   // neutral blue-grey
         "accent-coral": "#FCE1D9",   // red-orange
         "accent-sky":   "#DCEBF6",   // blue
         "accent-lilac": "#E8E2F3",   // purple
-        "accent-sun":   "#FBEDC9",   // yellow
+        "accent-sun":   "#EEF3F4",   // neutral grey
         "accent-rose":  "#F9DFE7",   // pink
         "accent-peach": "#FCE6D7",   // peach
         "accent-sage":  "#E4EEDC",   // olive
 
         // ── Category ink colours — matched saturation/lightness (L≈45%) ────
-        "accent-mint-ink":  "#0E8B60",
+        "accent-mint-ink":  "#2F80ED",
         "accent-coral-ink": "#C04F3A",
         "accent-sky-ink":   "#2F80ED",
         "accent-lilac-ink": "#6C57C5",
-        "accent-sun-ink":   "#A67A0C",
+        "accent-sun-ink":   "#6F7572",
         "accent-rose-ink":  "#BF4A7A",
         "accent-peach-ink": "#BE6330",
         "accent-sage-ink":  "#5B8648",

@@ -46,7 +46,8 @@ public sealed class MedicineBarcodeConfiguration : IEntityTypeConfiguration<Medi
       .IsRequired();
 
     builder.HasIndex(x => x.Barcode)
-      .HasDatabaseName("ix_medicine_barcodes_barcode");
+      .IsUnique()
+      .HasDatabaseName("ux_medicine_barcodes_barcode");
 
     builder.HasIndex(x => new { x.MedicineId, x.Barcode })
       .IsUnique()

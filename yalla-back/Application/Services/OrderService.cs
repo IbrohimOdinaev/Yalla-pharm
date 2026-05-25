@@ -398,7 +398,7 @@ public sealed class OrderService : IOrderService
       foreach (var positionId in positionIds)
         orderPositionsById[positionId].Reject();
 
-      if (positionsToReject.Count > 0)
+      if (order.IsStockDeducted && positionsToReject.Count > 0)
       {
         await RestoreStockForPositionsAsync(
           order.PharmacyId,
@@ -1148,21 +1148,25 @@ public sealed class OrderService : IOrderService
       order.InitiateReturn(byPositionId);
       LogStatusTransition(order.Id, oldStatus, order.Status, "ReturnOrderPositionsBySuperAdmin", actorUserId);
 
-      // Restock the returned units.
-      var restockPositions = order.Positions
-        .Where(p => !p.IsRejected && p.ReturnedQuantity > 0 && byPositionId.ContainsKey(p.Id))
-        .Select(p => new ReturnedStockEntry(p.MedicineId, p.ReturnedQuantity))
-        .GroupBy(x => x.MedicineId)
-        .Select(g => new ReturnedStockEntry(g.Key, g.Sum(x => x.Quantity)))
-        .ToList();
-
-      foreach (var entry in restockPositions)
+      if (order.IsStockDeducted)
       {
-        await _dbContext.Offers
-          .Where(o => o.PharmacyId == order.PharmacyId && o.MedicineId == entry.MedicineId)
-          .ExecuteUpdateAsync(
-            setters => setters.SetProperty(o => o.StockQuantity, o => o.StockQuantity + entry.Quantity),
-            cancellationToken);
+        // Restock the returned units only for legacy orders where stock was
+        // actually deducted from the catalog at checkout/confirmation time.
+        var restockPositions = order.Positions
+          .Where(p => !p.IsRejected && p.ReturnedQuantity > 0 && byPositionId.ContainsKey(p.Id))
+          .Select(p => new ReturnedStockEntry(p.MedicineId, p.ReturnedQuantity))
+          .GroupBy(x => x.MedicineId)
+          .Select(g => new ReturnedStockEntry(g.Key, g.Sum(x => x.Quantity)))
+          .ToList();
+
+        foreach (var entry in restockPositions)
+        {
+          await _dbContext.Offers
+            .Where(o => o.PharmacyId == order.PharmacyId && o.MedicineId == entry.MedicineId)
+            .ExecuteUpdateAsync(
+              setters => setters.SetProperty(o => o.StockQuantity, o => o.StockQuantity + entry.Quantity),
+              cancellationToken);
+        }
       }
 
       // Refund = current ReturnCost (rejected + returned) recalculated by domain.

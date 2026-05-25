@@ -6,6 +6,15 @@ export type ApiAdmin = {
   phoneNumber: string;
   pharmacyId?: string;
   pharmacyTitle?: string;
+  avatarUrl?: string | null;
+};
+
+export type AdminProfileOtpResponse = {
+  otpSessionId: string;
+  phoneNumber: string;
+  expiresAtUtc: string;
+  resendAvailableAtUtc: string;
+  codeLength: number;
 };
 
 export async function getAdmins(token: string, query = "", page = 1, pageSize = 50): Promise<ApiAdmin[]> {
@@ -16,6 +25,26 @@ export async function getAdmins(token: string, query = "", page = 1, pageSize = 
 
 export async function updateAdminMe(token: string, data: { name: string; phoneNumber: string }): Promise<void> {
   await apiFetch<unknown>("/api/admins/me", { method: "PUT", token, body: data });
+}
+
+export async function requestAdminProfileOtp(
+  token: string,
+  data: { name: string; phoneNumber: string },
+): Promise<AdminProfileOtpResponse> {
+  return apiFetch<AdminProfileOtpResponse>("/api/admins/me/otp/request", { method: "POST", token, body: data });
+}
+
+export async function verifyAdminProfileOtp(
+  token: string,
+  data: { otpSessionId: string; code: string },
+): Promise<ApiAdmin> {
+  return apiFetch<ApiAdmin>("/api/admins/me/otp/verify", { method: "POST", token, body: data });
+}
+
+export async function uploadAdminAvatar(token: string, file: File): Promise<{ avatarUrl: string }> {
+  const body = new FormData();
+  body.append("image", file);
+  return apiFetch<{ avatarUrl: string }>("/api/admins/me/avatar", { method: "POST", token, body });
 }
 
 export async function createAdmin(token: string, data: { name: string; phoneNumber: string; password: string; pharmacyId?: string }): Promise<void> {
@@ -33,7 +62,7 @@ export async function deleteAdmin(token: string, pharmacyWorkerId: string): Prom
   await apiFetch<unknown>("/api/admins", { method: "DELETE", token, body: { pharmacyWorkerId } });
 }
 
-export async function getAdminMe(token: string): Promise<{name: string; phoneNumber: string}> {
-  const response = await apiFetch<{name?: string; phoneNumber?: string}>("/api/admins/me", { token, method: "GET" });
-  return { name: response?.name ?? "", phoneNumber: response?.phoneNumber ?? "" };
+export async function getAdminMe(token: string): Promise<{name: string; phoneNumber: string; avatarUrl?: string | null}> {
+  const response = await apiFetch<{name?: string; phoneNumber?: string; avatarUrl?: string | null}>("/api/admins/me", { token, method: "GET" });
+  return { name: response?.name ?? "", phoneNumber: response?.phoneNumber ?? "", avatarUrl: response?.avatarUrl ?? null };
 }

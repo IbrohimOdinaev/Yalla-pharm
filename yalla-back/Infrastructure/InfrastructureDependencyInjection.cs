@@ -25,6 +25,7 @@ public static class DependencyInjection
   public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
   {
     var connectionString = NormalizeConnectionString(config.GetConnectionString("Default"), config);
+    var oneCWorkerOnly = IsOneCWorkerOnly(config);
 
     services.AddDbContext<AppDbContext>(options =>
     {
@@ -89,6 +90,8 @@ public static class DependencyInjection
     services.Configure<DushanbeCityPaymentOptions>(options =>
     {
       options.BaseUrl = config[$"{DushanbeCityPaymentOptions.SectionName}:BaseUrl"] ?? options.BaseUrl;
+      options.AlifUrlTemplate = config[$"{DushanbeCityPaymentOptions.SectionName}:AlifUrlTemplate"] ?? options.AlifUrlTemplate;
+      options.EskhataUrlTemplate = config[$"{DushanbeCityPaymentOptions.SectionName}:EskhataUrlTemplate"] ?? options.EskhataUrlTemplate;
       options.ProviderName = config[$"{DushanbeCityPaymentOptions.SectionName}:ProviderName"] ?? options.ProviderName;
       options.Currency = config[$"{DushanbeCityPaymentOptions.SectionName}:Currency"] ?? options.Currency;
       options.CreateOrderOnlyAfterAdminPaymentConfirmation = !bool.TryParse(
@@ -233,11 +236,14 @@ public static class DependencyInjection
 
       return provider.GetRequiredService<OsonSmsSender>();
     });
-    services.AddHostedService<SmsVerificationCleanupHostedService>();
-    services.AddHostedService<OrderStatusSmsEnqueueHostedService>();
-    services.AddHostedService<SmsOutboxDispatcherHostedService>();
-    services.AddHostedService<ManualPaymentTimeoutHostedService>();
-    services.AddHostedService<PrescriptionPaymentTimeoutHostedService>();
+    if (!oneCWorkerOnly)
+    {
+      services.AddHostedService<SmsVerificationCleanupHostedService>();
+      services.AddHostedService<OrderStatusSmsEnqueueHostedService>();
+      services.AddHostedService<SmsOutboxDispatcherHostedService>();
+      services.AddHostedService<ManualPaymentTimeoutHostedService>();
+      services.AddHostedService<PrescriptionPaymentTimeoutHostedService>();
+    }
 
     // Telegram order-status outbox (mirror of SMS pipeline)
     services.Configure<TelegramOutboxOptions>(options =>
@@ -259,8 +265,11 @@ public static class DependencyInjection
         ? retentionDays
         : 7;
     });
-    services.AddHostedService<OrderStatusTelegramEnqueueHostedService>();
-    services.AddHostedService<TelegramOutboxDispatcherHostedService>();
+    if (!oneCWorkerOnly)
+    {
+      services.AddHostedService<OrderStatusTelegramEnqueueHostedService>();
+      services.AddHostedService<TelegramOutboxDispatcherHostedService>();
+    }
 
     // WooCommerce sync
     services.Configure<WooCommerceOptions>(config.GetSection(WooCommerceOptions.SectionName));
@@ -274,7 +283,8 @@ public static class DependencyInjection
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
       }
     });
-    services.AddHostedService<WooCommercePollHostedService>();
+    if (!oneCWorkerOnly)
+      services.AddHostedService<WooCommercePollHostedService>();
 
     services.Configure<OneCImportOptions>(config.GetSection(OneCImportOptions.SectionName));
     services.AddHostedService<OneCImportHostedService>();
@@ -304,7 +314,8 @@ public static class DependencyInjection
       client.Timeout = TimeSpan.FromSeconds(15);
     });
     services.AddScoped<IJuraService>(provider => provider.GetRequiredService<JuraService>());
-    services.AddHostedService<JuraDeliveryStatusSyncHostedService>();
+    if (!oneCWorkerOnly)
+      services.AddHostedService<JuraDeliveryStatusSyncHostedService>();
 
     // Elasticsearch / OpenSearch — auth is optional. Dev runs the
     // security plugin disabled (no creds); managed prod services
@@ -343,9 +354,16 @@ public static class DependencyInjection
             esUser,
             esPass,
             esApiKey));
-    services.AddHostedService<ElasticsearchReindexHostedService>();
+    if (!oneCWorkerOnly)
+      services.AddHostedService<ElasticsearchReindexHostedService>();
 
     return services;
+  }
+
+  private static bool IsOneCWorkerOnly(IConfiguration config)
+  {
+    var runMode = config["Yalla:RunMode"] ?? config["YALLA_RUN_MODE"];
+    return string.Equals(runMode, "OneCWorker", StringComparison.OrdinalIgnoreCase);
   }
 
   /// <summary>

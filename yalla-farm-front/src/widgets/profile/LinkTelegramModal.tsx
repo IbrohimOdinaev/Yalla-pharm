@@ -74,8 +74,8 @@ export function LinkTelegramModal({ open, token, onClose, onSuccess }: Props) {
 
         {status === "confirmed" ? (
           <div className="text-center space-y-2 py-4">
-            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600"><polyline points="20 6 9 17 4 12"/></svg>
+            <div className="mx-auto w-12 h-12 rounded-full bg-primary-soft flex items-center justify-center">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <p className="text-sm font-semibold">Telegram привязан</p>
           </div>

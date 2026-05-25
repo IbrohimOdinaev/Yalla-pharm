@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { acceptPrivacyPolicy } from "@/entities/legal/api";
 import { Button, Icon } from "@/shared/ui";
@@ -10,7 +10,7 @@ type Props = {
   token: string;
   /** Current backend-enforced version the client must accept. */
   version: string;
-  onAccepted: () => void;
+  onAccepted: (paymentWindow: Window | null) => void;
   onClose: () => void;
 };
 
@@ -26,10 +26,22 @@ type Props = {
  * double-taps while the POST is in flight. Errors surface inline so
  * the user doesn't lose the modal.
  */
-export function PrivacyPolicyAcceptanceModal({ open, token, version, onAccepted, onClose }: Props) {
+export function PrivacyPolicyAcceptanceModal({
+  open,
+  token,
+  version,
+  onAccepted,
+  onClose,
+}: Props) {
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setAgreed(false);
+    setError(null);
+  }, [open]);
 
   if (!open) return null;
 
@@ -39,7 +51,7 @@ export function PrivacyPolicyAcceptanceModal({ open, token, version, onAccepted,
     setError(null);
     try {
       await acceptPrivacyPolicy(token, version);
-      onAccepted();
+      onAccepted(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось сохранить согласие.");
     } finally {
@@ -123,7 +135,7 @@ export function PrivacyPolicyAcceptanceModal({ open, token, version, onAccepted,
             disabled={!agreed || submitting}
             loading={submitting}
           >
-            Принимаю
+            Принять и отправить
           </Button>
         </div>
       </div>

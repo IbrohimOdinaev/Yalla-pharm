@@ -23,6 +23,8 @@ public class User
 
     public string? TelegramUsername { get; private protected set; }
 
+    public string? AvatarUrl { get; private protected set; }
+
     /// <summary>Per-account active flag. False blocks login and any
     /// already-issued access token after a short cache window (~60s)
     /// via the JWT validation handler. Clients are always active —
@@ -103,6 +105,15 @@ public class User
     public void SetTelegramUsername(string? telegramUsername)
     {
         TelegramUsername = string.IsNullOrWhiteSpace(telegramUsername) ? null : telegramUsername.Trim();
+    }
+
+    public void SetAvatarUrl(string? avatarUrl)
+    {
+        AvatarUrl = string.IsNullOrWhiteSpace(avatarUrl)
+            ? null
+            : avatarUrl.Trim().Length > 500
+                ? avatarUrl.Trim()[..500]
+                : avatarUrl.Trim();
     }
 
     public void SetName(string? name)

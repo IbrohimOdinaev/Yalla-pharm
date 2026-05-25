@@ -39,6 +39,7 @@ const SUPERADMIN_ITEMS: StaffNavItem[] = [
   { label: "Dashboard", href: "/superadmin#dashboard", icon: "grid", group: "Обзор" },
   { label: "Аптеки", href: "/superadmin#pharmacies", icon: "pharmacy", group: "Система" },
   { label: "Лекарства", href: "/superadmin#medicines", icon: "bag", group: "Система" },
+  { label: "Логи", href: "/superadmin#logs", icon: "list", group: "Система" },
   { label: "Заказы", href: "/superadmin#orders", icon: "orders", group: "Операции" },
   { label: "Рецепты", href: "/superadmin#prescriptions", icon: "orders", group: "Операции" },
 ];
@@ -231,7 +232,7 @@ export function StaffShell({
                       }}
                       className={`group flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-bold transition active:scale-[0.99] ${
                         active
-                          ? "bg-primary text-white shadow-card"
+                          ? "bg-primary text-on-primary shadow-card"
                           : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
                       } ${collapsed ? "lg:justify-center" : ""}`}
                     >
