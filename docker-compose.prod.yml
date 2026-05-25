@@ -18,6 +18,8 @@
 #   docker login ghcr.io -u <user> --password-stdin   # PAT with read:packages
 # ============================================
 
+name: lunch-pharm-prod
+
 services:
 
   front:

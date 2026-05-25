@@ -21,6 +21,8 @@
 # `docker compose down -v` can't drop them.
 # ============================================
 
+name: lunch-pharm
+
 services:
 
   front:
