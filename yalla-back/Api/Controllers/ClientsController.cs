@@ -204,8 +204,18 @@ public sealed class ClientsController : ControllerBase
       PharmacyId = request.PharmacyId,
       IsPickup = request.IsPickup,
       DeliveryAddress = request.DeliveryAddress,
+      DeliveryAddressId = request.DeliveryAddressId,
+      DeliveryAddressTitle = request.DeliveryAddressTitle,
+      DeliveryLatitude = request.DeliveryLatitude,
+      DeliveryLongitude = request.DeliveryLongitude,
       IdempotencyKey = request.IdempotencyKey,
       IgnoredPositionIds = request.IgnoredPositionIds,
+      Comment = request.Comment,
+      DeliverToDoor = request.DeliverToDoor,
+      CourierDetails = request.CourierDetails,
+      Entrance = request.Entrance,
+      Floor = request.Floor,
+      Apartment = request.Apartment,
       Source = request.Source
     };
 
@@ -248,6 +258,8 @@ public sealed class ClientsController : ControllerBase
       IdempotencyKey = idempotencyKey,
       IgnoredPositionIds = request.IgnoredPositionIds,
       Comment = request.Comment,
+      DeliverToDoor = request.DeliverToDoor,
+      CourierDetails = request.CourierDetails,
       Entrance = request.Entrance,
       Floor = request.Floor,
       Apartment = request.Apartment,

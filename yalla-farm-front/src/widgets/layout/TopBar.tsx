@@ -844,8 +844,9 @@ function LatestClientActivityButton() {
     };
   }, [load]);
 
-  useSignalREvent("OrderStatusChanged", load, token);
-  useSignalREvent("PrescriptionUpdated", load, token);
+  const clientSignalRToken = role === "Client" ? token : null;
+  useSignalREvent("OrderStatusChanged", load, clientSignalRToken);
+  useSignalREvent("PrescriptionUpdated", load, clientSignalRToken);
 
   if (!token || role !== "Client" || !activity) return null;
 

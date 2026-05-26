@@ -167,6 +167,8 @@ internal static class RequestDtoValidator
     RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
     if (!request.IsPickup)
       RequireNotWhiteSpace(request.DeliveryAddress, nameof(request.DeliveryAddress), errors);
+    if (!string.IsNullOrWhiteSpace(request.CourierDetails))
+      RequireMaxLength(request.CourierDetails, nameof(request.CourierDetails), 1024, errors);
     RequireNoEmptyGuids(request.IgnoredPositionIds, nameof(request.IgnoredPositionIds), errors);
   }
 
@@ -435,6 +437,12 @@ internal static class RequestDtoValidator
   {
     if (value is not null && string.IsNullOrWhiteSpace(value))
       errors.Add(new ValidationError(field, $"{field} can't be whitespace."));
+  }
+
+  private static void RequireMaxLength(string? value, string field, int maxLength, List<ValidationError> errors)
+  {
+    if (value is not null && value.Length > maxLength)
+      errors.Add(new ValidationError(field, $"{field} length must be less than or equal to {maxLength}."));
   }
 
   private static void RequireDigitsPhone(string? value, string field, List<ValidationError> errors)

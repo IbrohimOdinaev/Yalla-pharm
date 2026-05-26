@@ -1,12 +1,5 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using Yalla.Application.DTO.Request;
-using Yalla.Application.Services;
-using Yalla.Application.Common;
 
 namespace Api.Controllers;
 
@@ -14,86 +7,28 @@ namespace Api.Controllers;
 [Route("api/webhooks")]
 public sealed class WebhooksController : ControllerBase
 {
-    private readonly IWooCommerceSyncService _syncService;
-    private readonly WooCommerceOptions _options;
     private readonly ILogger<WebhooksController> _logger;
 
-    public WebhooksController(
-        IWooCommerceSyncService syncService,
-        IOptions<WooCommerceOptions> options,
-        ILogger<WebhooksController> logger)
+    public WebhooksController(ILogger<WebhooksController> logger)
     {
-        _syncService = syncService;
-        _options = options.Value;
         _logger = logger;
     }
 
     [HttpPost("woocommerce")]
     [AllowAnonymous]
-    public async Task<IActionResult> WooCommerceWebhook(CancellationToken cancellationToken)
+    public IActionResult WooCommerceWebhook()
     {
-        if (!_options.Enabled)
-        {
-            _logger.LogInformation("WooCommerce webhook ignored: Enabled=false");
-            return Ok(new { status = "disabled" });
-        }
-
-        // Read raw body for signature verification
-        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
-        var body = await reader.ReadToEndAsync(cancellationToken);
-
-        // Verify signature (if secret is configured)
-        if (!string.IsNullOrWhiteSpace(_options.WebhookSecret))
-        {
-            var signature = Request.Headers["X-WC-Webhook-Signature"].FirstOrDefault();
-            if (string.IsNullOrEmpty(signature))
-            {
-                _logger.LogWarning("Webhook: Missing X-WC-Webhook-Signature header");
-                return Unauthorized(new { error = "missing signature" });
-            }
-
-            if (!VerifySignature(body, signature))
-            {
-                _logger.LogWarning("Webhook: Signature mismatch. Received={Received}, Topic={Topic}",
-                    signature, Request.Headers["X-WC-Webhook-Topic"].FirstOrDefault());
-                return Unauthorized(new { error = "invalid signature" });
-            }
-        }
-
-        // Check topic
         var topic = Request.Headers["X-WC-Webhook-Topic"].FirstOrDefault() ?? "";
-        _logger.LogInformation("Webhook received: topic={Topic}, bodyLength={Length}", topic, body.Length);
+        _logger.LogInformation(
+            "WooCommerce webhook removed; request acknowledged without offer updates. topic={Topic}, contentLength={Length}",
+            topic,
+            Request.ContentLength ?? 0);
 
-        if (topic is not ("product.updated" or "product.created" or "product.deleted"))
-            return Ok(new { status = "ignored", topic });
-
-        WooCommerceWebhookPayload? payload;
-        try
+        return Ok(new
         {
-            payload = JsonSerializer.Deserialize<WooCommerceWebhookPayload>(body);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "Webhook: Failed to parse payload");
-            return BadRequest(new { error = "Invalid JSON" });
-        }
-
-        if (payload == null || payload.Id <= 0)
-            return Ok(new { status = "skipped", reason = "no product id" });
-
-        if (topic == "product.deleted")
-            await _syncService.ProcessDeleteAsync(payload.Id, cancellationToken);
-        else
-            await _syncService.ProcessUpdateAsync(payload, cancellationToken);
-
-        return Ok(new { status = "processed", productId = payload.Id, topic });
-    }
-
-    private bool VerifySignature(string body, string signature)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_options.WebhookSecret));
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(body));
-        var computed = Convert.ToBase64String(hash);
-        return computed == signature;
+            status = "removed",
+            topic,
+            message = "WooCommerce offer webhook is disabled; offers are no longer updated from WordPress webhooks."
+        });
     }
 }

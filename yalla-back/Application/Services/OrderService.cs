@@ -592,7 +592,12 @@ public sealed class OrderService : IOrderService
       // will bill us per the chosen tariff; if it differs from the checkout quote,
       // that's an operational cost for the pharmacy, not the client.
       var result = await _juraService.CreateDeliveryOrderAsync(
-        from, to, request.TariffId, clientPhone, cancellationToken);
+        from,
+        to,
+        request.TariffId,
+        clientPhone,
+        cancellationToken,
+        deliverToDoor: deliveryData.DeliverToDoor);
 
       // ─── Orphan-protection ───
       // JURA has now created the delivery order. If we fail to persist locally,

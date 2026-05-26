@@ -867,7 +867,12 @@ public sealed class ClientService : IClientService
                 DeliveryAddress = effectiveDeliveryAddress,
                 IdempotencyKey = normalizedIdempotencyKey,
                 IgnoredPositionIds = request.IgnoredPositionIds ?? [],
-                Comment = request.Comment
+                Comment = request.Comment,
+                DeliverToDoor = request.DeliverToDoor,
+                CourierDetails = request.CourierDetails,
+                Entrance = request.Entrance,
+                Floor = request.Floor,
+                Apartment = request.Apartment
             };
 
             order = orderRequest.ToDomain(orderId, effectivePhone, orderPositions);
@@ -907,6 +912,7 @@ public sealed class ClientService : IClientService
                   fromAddressId: null,
                   toAddressId: request.DeliveryAddressId);
                 deliveryData.SetDeliveryCost(deliveryCost, deliveryDistance);
+                deliveryData.SetDoorToDoor(request.DeliverToDoor, request.CourierDetails);
 
                 _dbContext.DeliveryData.Add(deliveryData);
             }
@@ -1194,7 +1200,12 @@ public sealed class ClientService : IClientService
             DeliveryAddress = effectiveDeliveryAddress,
             IdempotencyKey = normalizedIdempotencyKey,
             IgnoredPositionIds = request.IgnoredPositionIds ?? [],
-            Comment = request.Comment
+            Comment = request.Comment,
+            DeliverToDoor = request.DeliverToDoor,
+            CourierDetails = request.CourierDetails,
+            Entrance = request.Entrance,
+            Floor = request.Floor,
+            Apartment = request.Apartment
         };
 
         var order = orderRequest.ToDomain(reservedOrderId, effectivePhone, orderPositions);
@@ -1238,6 +1249,7 @@ public sealed class ClientService : IClientService
                   fromAddressId: null,
                   toAddressId: request.DeliveryAddressId);
                 deliveryData.SetDeliveryCost(deliveryCost, deliveryDistance);
+                deliveryData.SetDoorToDoor(request.DeliverToDoor, request.CourierDetails);
 
                 _dbContext.DeliveryData.Add(deliveryData);
             }
@@ -1438,7 +1450,8 @@ public sealed class ClientService : IClientService
             };
 
             var result = await _juraService.CalculateDeliveryAsync(from, to, tariffId: null, clientPhone: null, ct);
-            return (result.Amount, result.Distance);
+            var deliveryCost = result.Amount + (request.DeliverToDoor ? JuraDeliveryConstants.DoorToDoorFee : 0m);
+            return (deliveryCost, result.Distance);
         }
         catch (Exception ex)
         {

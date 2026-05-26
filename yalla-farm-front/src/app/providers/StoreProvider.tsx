@@ -53,6 +53,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function AuthPersistenceBridge() {
   const dispatch = useDispatch();
   const token = useSelector((state: RootState) => state.auth.token);
+  const role = useSelector((state: RootState) => state.auth.role);
   const prevTokenRef = useRef<string | null>(null);
   const guestMerge = useGuestCartStore((state) => state.mergeIntoServer);
   const guestLoad = useGuestCartStore((state) => state.load);
@@ -84,12 +85,12 @@ function AuthPersistenceBridge() {
   useEffect(() => {
     setStoredToken(token);
 
-    // merge guest cart and load server cart when user just logged in
-    if (token && !prevTokenRef.current) {
+    // merge guest cart and load server cart only for real client accounts.
+    // Staff tokens (Admin/SuperAdmin/Pharmacist) are not valid for /api/basket.
+    if (token && role === "Client" && !prevTokenRef.current) {
       guestMerge(token).catch(() => undefined);
     }
-    // Load server cart whenever token is available
-    if (token) {
+    if (token && role === "Client") {
       loadServerCart(token).catch(() => undefined);
     }
     // Tear down SignalR on logout so no stale connection keeps retrying with
@@ -98,7 +99,7 @@ function AuthPersistenceBridge() {
       stopSignalRConnection().catch(() => undefined);
     }
     prevTokenRef.current = token;
-  }, [token, guestMerge, loadServerCart]);
+  }, [token, role, guestMerge, loadServerCart]);
 
   return null;
 }

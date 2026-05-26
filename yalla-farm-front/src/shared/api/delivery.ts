@@ -7,6 +7,7 @@ export type CalculateDeliveryRequest = {
   toAddress: string;
   toLatitude: number;
   toLongitude: number;
+  deliverToDoor?: boolean;
 };
 
 export type CalculateDeliveryResponse = {

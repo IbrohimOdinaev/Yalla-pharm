@@ -31,71 +31,6 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
         _logger = logger;
     }
 
-    public async Task ProcessUpdateAsync(WooCommerceWebhookPayload payload, CancellationToken cancellationToken = default)
-    {
-        if (payload.Id <= 0) return;
-
-        var medicine = await _dbContext.Medicines
-            .AsTracking()
-            .Where(x => x.WooCommerceId == payload.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (medicine is null)
-        {
-            _logger.LogWarning("Webhook: Medicine not found for WooCommerceId {WcId}", payload.Id);
-            return;
-        }
-
-        if (!TryComputeStock(payload, out var stock))
-        {
-            _logger.LogWarning("Webhook: WC:{WcId} skipped — invalid stock_quantity", payload.Id);
-            return;
-        }
-
-        if (!TryParsePrice(payload.Price, out var price))
-        {
-            _logger.LogWarning("Webhook: WC:{WcId} skipped — invalid price '{Price}'", payload.Id, payload.Price);
-            return;
-        }
-
-        // Always pull the latest slug + display name from the webhook payload.
-        // WC slugs change rarely but a rename does invalidate the old URL —
-        // the API maps both old and new IDs/slugs so existing /product/{slug}
-        // links keep resolving.
-        ApplyMetadata(medicine, payload);
-
-        await UpsertOfferAsync(medicine.Id, price, stock, cancellationToken);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Webhook update: WC:{WcId} → Medicine {MedicineId}, price={Price}, stock={Stock}",
-            payload.Id, medicine.Id, price, stock);
-    }
-
-    public async Task ProcessDeleteAsync(int wooCommerceId, CancellationToken cancellationToken = default)
-    {
-        if (wooCommerceId <= 0) return;
-
-        var pharmacyId = _options.PharmacyId;
-        if (pharmacyId == Guid.Empty) return;
-
-        var offer = await (
-            from m in _dbContext.Medicines
-            join o in _dbContext.Offers on m.Id equals o.MedicineId
-            where m.WooCommerceId == wooCommerceId && o.PharmacyId == pharmacyId
-            select o).AsTracking().FirstOrDefaultAsync(cancellationToken);
-
-        if (offer is null)
-        {
-            _logger.LogInformation("Webhook delete: WC:{WcId} — no offer to zero", wooCommerceId);
-            return;
-        }
-
-        offer.SetStockQuantity(0);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Webhook delete: WC:{WcId} → offer stock set to 0", wooCommerceId);
-    }
-
     public async Task<int> BackfillCatalogAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_options.BaseUrl) || string.IsNullOrWhiteSpace(_options.ConsumerKey))
@@ -334,26 +269,6 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
     private static string? CleanWooCommerceText(string? value)
     {
         return value?.Replace("\0", string.Empty);
-    }
-
-    private async Task UpsertOfferAsync(Guid medicineId, decimal price, int stock, CancellationToken ct)
-    {
-        var pharmacyId = _options.PharmacyId;
-        if (pharmacyId == Guid.Empty) return;
-
-        var offer = await _dbContext.Offers
-            .AsTracking()
-            .FirstOrDefaultAsync(x => x.MedicineId == medicineId && x.PharmacyId == pharmacyId, ct);
-
-        if (offer != null)
-        {
-            offer.SetPrice(price);
-            offer.SetStockQuantity(stock);
-        }
-        else
-        {
-            _dbContext.Offers.Add(new Offer(medicineId, pharmacyId, stock, price));
-        }
     }
 
     private async Task<DateTime> LoadCursorAsync(CancellationToken ct)

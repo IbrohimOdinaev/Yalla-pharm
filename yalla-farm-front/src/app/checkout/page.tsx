@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { apiFetch } from "@/shared/api/http-client";
 import { calculateDelivery } from "@/shared/api/delivery";
@@ -32,6 +32,7 @@ import {
 
 const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
 const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
+const DOOR_TO_DOOR_FEE = 5;
 
 export default function CheckoutPage() {
   const token = useAppSelector((s) => s.auth.token);
@@ -66,9 +67,12 @@ export default function CheckoutPage() {
   const [entrance, setEntrance] = useState("");
   const [floor, setFloor] = useState("");
   const [apartment, setApartment] = useState("");
+  const [deliverToDoor, setDeliverToDoor] = useState(false);
+  const [courierDetails, setCourierDetails] = useState("");
   const [showCourierDetails, setShowCourierDetails] = useState(false);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
   const [pendingPayment, setPendingPayment] = useState<{ amount: number; dcUrl: string } | null>(null);
+  const courierDetailsRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!pharmacyId) { router.replace("/cart/pharmacy"); return; }
@@ -177,7 +181,9 @@ export default function CheckoutPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCoords?.lat, savedCoords?.lng, savedAddress, isPickup]);
 
-  const totalAmount = itemsAmount + (isPickup ? 0 : (deliveryCost ?? 0));
+  const doorToDoorFee = !isPickup && deliverToDoor ? DOOR_TO_DOOR_FEE : 0;
+  const effectiveDeliveryCost = isPickup ? 0 : (deliveryCost ?? 0) + doorToDoorFee;
+  const totalAmount = itemsAmount + effectiveDeliveryCost;
   const paymentMethods = useMemo<PaymentMethodOption[]>(() => {
     if (!pendingPayment) return [];
     const amount = pendingPayment.amount;
@@ -280,6 +286,8 @@ export default function CheckoutPage() {
         idempotencyKey,
         ignoredPositionIds: [] as string[],
         comment: comment.trim() ? comment.trim() : null,
+        deliverToDoor: !isPickup && deliverToDoor,
+        courierDetails: courierDetails.trim() ? courierDetails.trim() : null,
         entrance: parsePositiveInt(entrance),
         floor: parsePositiveInt(floor),
         apartment: parsePositiveInt(apartment),
@@ -342,7 +350,13 @@ export default function CheckoutPage() {
   const summaryRows: CartSummaryRow[] = [
     { label: `Товары${selectedCount ? ` · ${selectedCount}` : ""}`, value: itemsAmount },
     ...(!isPickup
-      ? [{ label: "Доставка", hint: deliveryDistance != null ? `${deliveryDistance.toFixed(1)} км` : undefined, value: deliveryCost ?? 0 }]
+      ? [{
+          label: "Доставка",
+          hint: deliveryDistance != null
+            ? `${deliveryDistance.toFixed(1)} км${deliverToDoor ? " · до двери" : ""}`
+            : (deliverToDoor ? "до двери" : undefined),
+          value: effectiveDeliveryCost
+        }]
       : []),
   ];
 
@@ -407,21 +421,57 @@ export default function CheckoutPage() {
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setShowCourierDetails((value) => !value)}
-              className="mt-3 flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-3 py-2 text-left text-xs font-bold text-on-surface transition active:scale-95 hover:bg-surface-container-high"
-              aria-expanded={showCourierDetails}
-            >
-              <span>Детали для курьера</span>
-              <Icon
-                name="chevron-down"
-                size={16}
-                className={`transition-transform ${showCourierDetails ? "rotate-180" : ""}`}
-              />
-            </button>
+            <div className="mt-3 rounded-2xl bg-surface-container-low p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-extrabold text-on-surface">Доставить до двери</p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-on-surface-variant">+5.00 TJS к доставке</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={deliverToDoor}
+                  onClick={() => {
+                    setDeliverToDoor((value) => {
+                      const next = !value;
+                      if (next) {
+                        setShowCourierDetails(true);
+                        window.setTimeout(() => courierDetailsRef.current?.focus(), 80);
+                      } else {
+                        setShowCourierDetails(false);
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`relative h-8 w-14 flex-shrink-0 rounded-full p-1 transition ${
+                    deliverToDoor ? "bg-primary" : "bg-outline"
+                  }`}
+                >
+                  <span
+                    className={`block h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
+                      deliverToDoor ? "translate-x-6" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+              {deliverToDoor ? (
+                <button
+                  type="button"
+                  onClick={() => setShowCourierDetails((value) => !value)}
+                  className="mt-3 flex w-full items-center justify-between rounded-xl bg-surface-container-high px-3 py-2 text-left text-xs font-bold text-on-surface transition active:scale-95"
+                  aria-expanded={showCourierDetails}
+                >
+                  <span>Детали для курьера</span>
+                  <Icon
+                    name="chevron-down"
+                    size={16}
+                    className={`transition-transform ${showCourierDetails ? "rotate-180" : ""}`}
+                  />
+                </button>
+              ) : null}
+            </div>
 
-            {showCourierDetails ? (
+            {deliverToDoor && showCourierDetails ? (
               <>
                 <div className="mt-3 flex items-center justify-between">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
@@ -434,6 +484,15 @@ export default function CheckoutPage() {
                   <NumericField label="Этаж" value={floor} onChange={setFloor} />
                   <NumericField label="Квартира" value={apartment} onChange={setApartment} />
                 </div>
+                <textarea
+                  ref={courierDetailsRef}
+                  value={courierDetails}
+                  onChange={(e) => setCourierDetails(e.target.value.slice(0, 1024))}
+                  placeholder="Например: домофон 12, дверь слева"
+                  rows={2}
+                  maxLength={1024}
+                  className="mt-2 w-full resize-none rounded-2xl bg-surface-container-low p-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
               </>
             ) : null}
           </section>

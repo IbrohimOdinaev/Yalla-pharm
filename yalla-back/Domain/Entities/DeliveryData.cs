@@ -25,6 +25,8 @@ public class DeliveryData
   // Delivery cost
   public decimal DeliveryCost { get; private set; }
   public double? Distance { get; private set; }
+  public bool DeliverToDoor { get; private set; }
+  public string? CourierDetails { get; private set; }
 
   // JURA order data
   public long? JuraOrderId { get; private set; }
@@ -68,6 +70,12 @@ public class DeliveryData
   {
     DeliveryCost = cost;
     Distance = distance;
+  }
+
+  public void SetDoorToDoor(bool deliverToDoor, string? courierDetails)
+  {
+    DeliverToDoor = deliverToDoor;
+    CourierDetails = string.IsNullOrWhiteSpace(courierDetails) ? null : courierDetails.Trim();
   }
 
   public void SetJuraOrder(long juraOrderId, string? status, int? statusId)

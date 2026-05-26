@@ -58,6 +58,8 @@ services:
       MinIo__SecretKey: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required for production}
       MinIo__BucketName: ${MINIO_BUCKET:?MINIO_BUCKET is required for production}
       OneCImport__Enabled: "false"
+      Telegram__WebhookPublicBaseUrl: ${TELEGRAM_WEBHOOK_PUBLIC_BASE_URL:-https://pharm.yalla.tj}
+      Telegram__AutoRegisterWebhookOnStart: ${TELEGRAM_AUTO_REGISTER_WEBHOOK_ON_START:-true}
     volumes:
       - one-c-exchange-prod:/data/1c-exchange:ro
     expose:

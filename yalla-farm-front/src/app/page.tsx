@@ -449,6 +449,14 @@ function HomeContent() {
     doSearch(urlSearch, urlPharmacy || undefined);
   }, [urlSearch, urlPharmacy]);
 
+  useEffect(() => {
+    if (view !== "search") return;
+    const focusTimer = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 80);
+    return () => window.clearTimeout(focusTimer);
+  }, [view]);
+
   // Match quick category label to actual category via keywords, then
   // navigate to its dedicated /catalog/[slug] page (SEO).
   function onQuickCategoryClick(label: string) {
@@ -478,7 +486,7 @@ function HomeContent() {
   // ── SEARCH VIEW ──
   if (view === "search") {
     return (
-      <AppShell>
+      <AppShell hideFooter>
         <div className="space-y-5 sm:space-y-7 lg:space-y-8 overflow-x-hidden">
           <section className="space-y-3 xs:space-y-4 min-w-0">
             {/* Search header */}
@@ -498,6 +506,11 @@ function HomeContent() {
                 placeholder="Название лекарства..."
                 value={query}
                 onChange={(e) => onSearchInput(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    searchInputRef.current?.blur();
+                  }
+                }}
                 autoFocus
               />
               {query && (

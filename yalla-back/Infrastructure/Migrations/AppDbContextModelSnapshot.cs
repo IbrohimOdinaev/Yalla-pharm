@@ -363,6 +363,17 @@ namespace Infrastructure.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("distance");
 
+                    b.Property<bool>("DeliverToDoor")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("deliver_to_door");
+
+                    b.Property<string>("CourierDetails")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("courier_details");
+
                     b.Property<long?>("DriverDeviceId")
                         .HasColumnType("bigint")
                         .HasColumnName("driver_device_id");

@@ -33,6 +33,27 @@ public sealed class JuraServiceTests
   }
 
   [Fact]
+  public async Task CalculateDeliveryAsync_WithDoorToDoor_SendsAllowanceToLegacyEndpoint()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Text(HttpStatusCode.NotFound, "Requested URL not found!"),
+      Json(HttpStatusCode.OK, """{"amount":22,"distance":2.31}"""));
+    var service = CreateService(handler);
+
+    await service.CalculateDeliveryAsync(
+      Address("A", 38.573255, 68.786378),
+      Address("B", 38.5598, 68.7870),
+      tariffId: null,
+      clientPhone: "000000000",
+      CancellationToken.None,
+      deliverToDoor: true);
+
+    var decodedQuery = Uri.UnescapeDataString(handler.Requests[2].Query);
+    Assert.Contains("""allowances=[{"allowance_id":17,"value":1}]""", decodedQuery);
+  }
+
+  [Fact]
   public async Task SearchAddressAsync_UsesExternalOrdersAddressSearchEndpoint()
   {
     var handler = new SequenceMessageHandler(
@@ -102,6 +123,36 @@ public sealed class JuraServiceTests
     Assert.Equal("1074", result.RecipientCode);
     Assert.Equal("/api/v2/integration/orders/create", handler.Requests[1].PathAndQuery);
     Assert.Equal("/api/v2/external-api/orders/create?tariff_id=37&phone=992000000003&pay_type_id=243115", handler.Requests[2].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task CreateDeliveryOrderAsync_WithDoorToDoor_SendsAllowanceToLegacyEndpoint()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Text(HttpStatusCode.NotFound, "Requested URL not found!"),
+      Json(HttpStatusCode.OK, """
+      {
+        "message": "Заказ успешно создан",
+        "data": {
+          "id": 42106901,
+          "status": "Поступило",
+          "status_id": 1
+        }
+      }
+      """));
+    var service = CreateService(handler);
+
+    await service.CreateDeliveryOrderAsync(
+      Address("A", 38.573255, 68.786378),
+      Address("B", 38.580832, 68.786342),
+      tariffId: null,
+      clientPhone: "000000003",
+      CancellationToken.None,
+      deliverToDoor: true);
+
+    var decodedQuery = Uri.UnescapeDataString(handler.Requests[2].Query);
+    Assert.Contains("""allowances=[{"allowance_id":17,"value":1}]""", decodedQuery);
   }
 
   [Fact]

@@ -287,7 +287,11 @@ public static class DependencyInjection
       services.AddHostedService<WooCommercePollHostedService>();
 
     services.Configure<OneCImportOptions>(config.GetSection(OneCImportOptions.SectionName));
-    services.AddHostedService<OneCImportHostedService>();
+    if (oneCWorkerOnly || IsOneCImportEnabled(config))
+      services.AddHostedService<OneCImportHostedService>();
+
+    if (!oneCWorkerOnly)
+      services.AddHostedService<TelegramWebhookRegistrationHostedService>();
 
     // Jura delivery service
     services.Configure<JuraOptions>(options =>
@@ -364,6 +368,12 @@ public static class DependencyInjection
   {
     var runMode = config["Yalla:RunMode"] ?? config["YALLA_RUN_MODE"];
     return string.Equals(runMode, "OneCWorker", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static bool IsOneCImportEnabled(IConfiguration config)
+  {
+    var raw = config[$"{OneCImportOptions.SectionName}:Enabled"];
+    return bool.TryParse(raw, out var enabled) && enabled;
   }
 
   /// <summary>

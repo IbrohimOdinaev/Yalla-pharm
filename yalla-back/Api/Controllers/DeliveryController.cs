@@ -51,7 +51,13 @@ public sealed class DeliveryController : ControllerBase
       Lng = request.ToLongitude
     };
 
-    var result = await _jura.CalculateDeliveryAsync(from, to, tariffId: null, clientPhone: null, ct);
+    var result = await _jura.CalculateDeliveryAsync(
+      from,
+      to,
+      tariffId: null,
+      clientPhone: null,
+      ct,
+      deliverToDoor: request.DeliverToDoor);
 
     return Ok(new CalculateDeliveryResponse
     {

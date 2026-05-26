@@ -8,4 +8,5 @@ public sealed class CalculateDeliveryRequest
   public string ToAddress { get; init; } = string.Empty;
   public double ToLatitude { get; init; }
   public double ToLongitude { get; init; }
+  public bool DeliverToDoor { get; init; }
 }

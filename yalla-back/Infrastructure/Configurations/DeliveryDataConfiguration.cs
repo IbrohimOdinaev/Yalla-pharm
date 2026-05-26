@@ -89,6 +89,17 @@ public class DeliveryDataConfiguration : IEntityTypeConfiguration<DeliveryData>
       .HasColumnName("distance")
       .HasColumnType("double precision");
 
+    builder.Property(x => x.DeliverToDoor)
+      .HasColumnName("deliver_to_door")
+      .HasColumnType("boolean")
+      .HasDefaultValue(false)
+      .IsRequired();
+
+    builder.Property(x => x.CourierDetails)
+      .HasColumnName("courier_details")
+      .HasColumnType("character varying(1024)")
+      .HasMaxLength(1024);
+
     // JURA order
     builder.Property(x => x.JuraOrderId)
       .HasColumnName("jura_order_id")

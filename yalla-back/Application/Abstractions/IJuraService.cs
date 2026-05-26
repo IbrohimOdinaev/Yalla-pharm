@@ -7,10 +7,10 @@ public interface IJuraService
   Task<List<JuraAddressSuggestion>> SearchAddressAsync(string text, CancellationToken ct);
 
   Task<JuraCalculateResult> CalculateDeliveryAsync(
-    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct);
+    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false);
 
   Task<JuraCreateOrderResult> CreateDeliveryOrderAsync(
-    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct);
+    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false);
 
   Task<JuraOrderStatusResult> GetOrderStatusAsync(long juraOrderId, CancellationToken ct);
 

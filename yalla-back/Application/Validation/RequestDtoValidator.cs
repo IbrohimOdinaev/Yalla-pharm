@@ -179,6 +179,8 @@ public static class RequestDtoValidator
     RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
     if (!request.IsPickup)
       RequireNotWhiteSpace(request.DeliveryAddress, nameof(request.DeliveryAddress), errors);
+    if (!string.IsNullOrWhiteSpace(request.CourierDetails))
+      RequireMaxLength(request.CourierDetails, nameof(request.CourierDetails), 1024, errors);
     RequireNoEmptyGuids(request.IgnoredPositionIds, nameof(request.IgnoredPositionIds), errors);
   }
 

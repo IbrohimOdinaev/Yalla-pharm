@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
+using Yalla.Application.Common;
 using Yalla.Application.DTO.Response;
 
 namespace Yalla.Infrastructure.Jura;
@@ -75,24 +76,27 @@ public sealed class JuraService : IJuraService
   // ─── Calculate Delivery ───
 
   public async Task<JuraCalculateResult> CalculateDeliveryAsync(
-    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct)
+    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
   {
     var effectiveTariffId = tariffId ?? _options.DefaultTariffId;
     var normalizedPhone = NormalizeJuraPhone(clientPhone);
     var query = $"tariff_id={effectiveTariffId}";
     if (!string.IsNullOrEmpty(normalizedPhone))
       query += $"&phone={Uri.EscapeDataString(normalizedPhone)}";
+    query = AppendAllowancesQuery(query, deliverToDoor);
 
     var integrationBody = new
     {
       tariff_id = effectiveTariffId,
       phone = normalizedPhone,
+      allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
       to_addresses = new[] { ToJuraAddressPayload(to) }
     };
 
     var legacyBody = new
     {
+      allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
       to_addresses = new[] { ToJuraAddressPayload(to) }
     };
@@ -117,19 +121,21 @@ public sealed class JuraService : IJuraService
   // ─── Create Delivery Order ───
 
   public async Task<JuraCreateOrderResult> CreateDeliveryOrderAsync(
-    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct)
+    JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
   {
     var effectiveTariffId = tariffId ?? _options.DefaultTariffId;
     var normalizedPhone = NormalizeJuraPhone(clientPhone);
     var query = $"tariff_id={effectiveTariffId}";
     if (!string.IsNullOrEmpty(normalizedPhone))
       query += $"&phone={Uri.EscapeDataString(normalizedPhone)}";
+    query = AppendAllowancesQuery(query, deliverToDoor);
 
     var integrationBody = new
     {
       tariff_id = effectiveTariffId,
       pay_type_id = _options.DefaultPayTypeId,
       phone = normalizedPhone,
+      allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
       to_address = new[] { ToJuraAddressPayload(to) }
     };
@@ -137,6 +143,7 @@ public sealed class JuraService : IJuraService
     var legacyBody = new
     {
       pay_type_id = _options.DefaultPayTypeId,
+      allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
       to_address = new[] { ToJuraAddressPayload(to) }
     };
@@ -172,6 +179,25 @@ public sealed class JuraService : IJuraService
       PerformerPhone = data.Performer?.Phone
     };
   }
+
+  private static JuraAllowancePayload[]? BuildAllowancesPayload(bool deliverToDoor)
+  {
+    return deliverToDoor
+      ? [new JuraAllowancePayload(JuraDeliveryConstants.DoorToDoorAllowanceId, 1)]
+      : null;
+  }
+
+  private static string AppendAllowancesQuery(string query, bool deliverToDoor)
+  {
+    var payload = BuildAllowancesPayload(deliverToDoor);
+    if (payload is null)
+      return query;
+
+    var json = JsonSerializer.Serialize(payload, JsonOptions);
+    return $"{query}&allowances={Uri.EscapeDataString(json)}";
+  }
+
+  private sealed record JuraAllowancePayload(int AllowanceId, int Value);
 
   // ─── Order Status ───
 

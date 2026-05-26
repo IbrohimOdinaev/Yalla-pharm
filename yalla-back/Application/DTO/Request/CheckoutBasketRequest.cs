@@ -16,6 +16,12 @@ public sealed class CheckoutBasketRequest
   /// <summary>Optional free-form comment for the order (max 1024).</summary>
   public string? Comment { get; init; }
 
+  /// <summary>Whether client requested delivery directly to the door.</summary>
+  public bool DeliverToDoor { get; init; }
+
+  /// <summary>Optional courier-only delivery details (max 1024).</summary>
+  public string? CourierDetails { get; init; }
+
   /// <summary>Подъезд / building entrance. Optional, non-negative.</summary>
   public int? Entrance { get; init; }
 
