@@ -253,8 +253,8 @@ export function TopBar({
     const LogoBlock = (
       <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-icon.png" alt="Yalla" className="h-9 w-9 flex-shrink-0 sm:h-10 sm:w-10" />
-        <span className="hidden font-display text-base font-extrabold text-on-surface lg:block whitespace-nowrap">
+        <img src="/logo-icon.png" alt="Yalla" className="h-9 w-9 flex-shrink-0 object-contain sm:h-10 sm:w-10" />
+        <span className="hidden whitespace-nowrap font-display text-[17px] font-black text-[#D8484B] lg:block">
           Yalla Pharm
         </span>
       </>
@@ -316,14 +316,14 @@ export function TopBar({
           <button
             type="button"
             onClick={onLogoClick}
-            className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl rounded transition active:bg-surface-container-low/70"
+            className="rounded font-display text-base font-black leading-tight text-[#D8484B] transition active:bg-surface-container-low/70 xs:text-lg sm:text-xl"
           >
             Yalla Pharm
           </button>
         ) : (
           <Link
             href="/"
-            className="font-display text-base xs:text-lg font-extrabold leading-tight text-on-surface sm:text-xl rounded transition active:bg-surface-container-low/70"
+            className="rounded font-display text-base font-black leading-tight text-[#D8484B] transition active:bg-surface-container-low/70 xs:text-lg sm:text-xl"
           >
             Yalla Pharm
           </Link>
@@ -671,7 +671,7 @@ export function TopBar({
             )
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-icon.png" alt="Yalla" className="h-7 w-7 flex-shrink-0" />
+            <img src="/logo-icon.png" alt="Yalla" className="h-7 w-7 flex-shrink-0 object-contain" />
           )}
           <h1 className="truncate font-display text-base font-extrabold text-on-surface">{title}</h1>
         </div>

@@ -28,7 +28,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # rationale. The alpine base already has a `node` user/group (uid 1000)
 # but we mint our own fixed `nextjs` to match the playbook's convention
 # of one explicit non-root identity per image.
-RUN addgroup --system --gid 1001 nodejs \
+RUN apk add --no-cache su-exec \
+ && addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 --ingroup nodejs --shell /sbin/nologin nextjs
 
 # Files arrive owned by nextjs:nodejs so the runtime never needs write
@@ -42,8 +43,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json ./package-lock.
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --chown=nextjs:nodejs entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
-USER nextjs
 
 EXPOSE 3000
 ENTRYPOINT ["/entrypoint.sh"]

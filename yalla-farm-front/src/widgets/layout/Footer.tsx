@@ -78,10 +78,10 @@ export function Footer() {
           {/* Brand */}
           <div className="sm:col-span-2">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary font-display font-extrabold">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#D8484B] font-display font-black text-white">
                 Y
               </span>
-              <span className="font-display text-lg font-extrabold text-on-surface">Yalla Pharm</span>
+              <span className="font-display text-lg font-black text-[#D8484B]">Yalla Pharm</span>
             </div>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-on-surface-variant">
               Онлайн-аптека Душанбе. Тысячи лекарств из самых крупных аптек с доставкой за 30–45 минут.
