@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 
 const exchangeRoot = process.env.ONE_C_EXCHANGE_DIR ?? path.join(process.cwd(), ".data", "1c-exchange");
+const nomenclatureMinIntervalMs = 24 * 60 * 60 * 1000;
 const sessionCookieName = "yalla_1c_exchange";
 const sessionCookieValue = "accepted";
 const maxOfferHistory = 3;
@@ -234,6 +235,51 @@ async function findLatestIncompleteSnapshot(sourceToken: string, filename: strin
   return latest.file;
 }
 
+async function shouldIgnoreNomenclatureFile(sourceToken: string, filename: string) {
+  if (!isImportFilename(filename)) {
+    return false;
+  }
+
+  await ensureExchangeDirectory(sourceToken);
+
+  const incomplete = await findLatestIncompleteSnapshot(sourceToken, filename);
+  if (incomplete) {
+    return false;
+  }
+
+  const latestComplete = await findLatestCompleteSnapshot(sourceToken, filename);
+  if (!latestComplete) {
+    return false;
+  }
+
+  return Date.now() - latestComplete.modifiedAt < nomenclatureMinIntervalMs;
+}
+
+async function findLatestCompleteSnapshot(sourceToken: string, filename: string) {
+  const directory = sourceDirectory(sourceToken);
+  const extension = path.extname(filename) || ".xml";
+  const baseName = path.basename(filename, extension);
+  const files = await readdir(directory);
+  const candidates = await Promise.all(
+    files
+      .filter((file) => file.startsWith(`${baseName}.`) && file.endsWith(extension))
+      .map(async (file) => {
+        const fullPath = path.join(directory, file);
+        const info = await stat(fullPath);
+        if (!info.isFile()) {
+          return null;
+        }
+        return await isCompleteCommerceXml(fullPath)
+          ? { file, fullPath, modifiedAt: info.mtimeMs }
+          : null;
+      })
+  );
+
+  return candidates
+    .filter((file): file is { file: string; fullPath: string; modifiedAt: number } => file != null)
+    .sort((a, b) => b.modifiedAt - a.modifiedAt)[0] ?? null;
+}
+
 async function isCompleteCommerceXml(fullPath: string) {
   const info = await stat(fullPath);
   if (!info.isFile() || info.size === 0) {
@@ -328,6 +374,10 @@ export async function handleOneCGet(request: NextRequest, routeToken?: string) {
 
   if (mode === "import") {
     const filename = safeFilename(request.nextUrl.searchParams.get("filename"));
+    if (await shouldIgnoreNomenclatureFile(sourceToken, filename)) {
+      return textResponse("success\nignored=nomenclature_throttled\n");
+    }
+
     await recordExchangeStatus(sourceToken, "import", { filename, size: 0 });
     if (isOffersFilename(filename)) {
       await pruneOfferHistory(sourceToken);
@@ -362,6 +412,10 @@ export async function handleOneCPost(request: NextRequest, routeToken?: string) 
   const filename = safeFilename(request.nextUrl.searchParams.get("filename"));
 
   if (mode === "file" || mode === "" || mode === "import") {
+    if (await shouldIgnoreNomenclatureFile(sourceToken, filename)) {
+      return textResponse("success\nignored=nomenclature_throttled\n");
+    }
+
     const saved = await saveRequestBody(request, sourceToken, filename);
     await recordExchangeStatus(sourceToken, "file", { filename, size: saved.totalSize });
     return textResponse(

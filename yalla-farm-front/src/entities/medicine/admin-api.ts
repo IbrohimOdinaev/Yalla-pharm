@@ -42,8 +42,18 @@ export async function getAllMedicines(
   };
 }
 
-export async function createMedicine(token: string, data: { title: string; articul?: string; barcode?: string; atributes?: Array<{ type: string; value: string }> }): Promise<void> {
-  await apiFetch<unknown>("/api/medicines", { method: "POST", token, body: data });
+export async function createMedicine(
+  token: string,
+  data: {
+    title: string;
+    articul?: string;
+    barcode?: string;
+    description?: string;
+    categoryId?: string;
+    atributes?: Array<{ type: string; value: string }>;
+  },
+): Promise<ApiMedicine> {
+  return apiFetch<ApiMedicine>("/api/medicines", { method: "POST", token, body: data });
 }
 
 export async function updateMedicine(token: string, data: { medicineId: string; title: string; articul?: string; barcode?: string }): Promise<void> {
