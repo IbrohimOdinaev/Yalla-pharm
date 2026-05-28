@@ -1410,7 +1410,10 @@ function MedicinesTab({ token }: { token: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [newArticul, setNewArticul] = useState("");
   const [newBarcode, setNewBarcode] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState("");
   const [newAttrs, setNewAttrs] = useState("");
+  const createImageRef = useRef<HTMLInputElement>(null);
 
   async function onCreateMedicine(e: FormEvent) {
     e.preventDefault();
@@ -1420,9 +1423,23 @@ function MedicinesTab({ token }: { token: string }) {
         const [type, value] = pair.split(":").map((s) => s.trim());
         return { type: type || "", value: value || "" };
       }).filter((a) => a.type);
-      await createMedicine(token, { title: newTitle, articul: newArticul || undefined, barcode: newBarcode || undefined, atributes: atributes.length > 0 ? atributes : undefined });
-      setMsg("Товар создан.");
-      setNewTitle(""); setNewArticul(""); setNewBarcode(""); setNewAttrs("");
+      const created = await createMedicine(token, {
+        title: newTitle,
+        articul: newArticul || undefined,
+        barcode: newBarcode || undefined,
+        description: newDescription || undefined,
+        categoryId: newCategoryId || undefined,
+        atributes: atributes.length > 0 ? atributes : undefined,
+      });
+
+      const image = createImageRef.current?.files?.[0];
+      if (image) {
+        await uploadMedicineImage(token, created.id, image, true, false);
+        if (createImageRef.current) createImageRef.current.value = "";
+      }
+
+      setMsg(image ? "Товар создан, фото загружено." : "Товар создан.");
+      setNewTitle(""); setNewArticul(""); setNewBarcode(""); setNewDescription(""); setNewCategoryId(""); setNewAttrs("");
       load(query, page, activeFilter, categoryId);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
@@ -1467,7 +1484,26 @@ function MedicinesTab({ token }: { token: string }) {
             <input className="stitch-input" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required />
             <input className="stitch-input" placeholder="Артикул" value={newArticul} onChange={(e) => setNewArticul(e.target.value)} required />
             <input className="stitch-input" placeholder="Штрихкод" value={newBarcode} onChange={(e) => setNewBarcode(e.target.value)} />
+            <Select
+              value={newCategoryId}
+              onChange={setNewCategoryId}
+              options={[
+                { value: "", label: "Без категории" },
+                ...flatCats.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              placeholder="Категория"
+            />
+            <textarea
+              className="stitch-input min-h-[96px] resize-y"
+              placeholder="Описание"
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+            />
             <input className="stitch-input" placeholder="Атрибуты (dosage:500mg, pack:20)" value={newAttrs} onChange={(e) => setNewAttrs(e.target.value)} />
+            <label className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3 rounded-xl border border-outline/70 bg-surface-container-lowest px-4 py-3 text-sm text-on-surface transition hover:bg-surface-container-low">
+              <span className="min-w-0 truncate text-on-surface-variant">Фото товара</span>
+              <input ref={createImageRef} type="file" accept="image/png,image/jpeg,image/webp" className="min-w-0 text-xs" />
+            </label>
           </div>
           {msg ? <div className={`text-sm ${msg.includes("создан") || msg.includes("загружено") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
           <button type="submit" className="stitch-button">Создать</button>

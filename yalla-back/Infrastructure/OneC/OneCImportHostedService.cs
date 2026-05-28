@@ -20,6 +20,7 @@ namespace Yalla.Infrastructure.OneC;
 public sealed class OneCImportHostedService : BackgroundService
 {
   private const string SourceType = "1c";
+  private static readonly TimeSpan NomenclatureMinInterval = TimeSpan.FromDays(1);
 
   private readonly IServiceScopeFactory _scopeFactory;
   private readonly OneCImportOptions _options;
@@ -80,7 +81,7 @@ public sealed class OneCImportHostedService : BackgroundService
     foreach (var context in await ResolveSourceContextsAsync(db, ct))
     {
       var importFile = await FindLatestReadyFileAsync(context.Directory, "import", ct);
-      if (importFile != null)
+      if (importFile != null && await ShouldProcessNomenclatureImportAsync(db, context.Source, ct))
         await ProcessFileIfNeededAsync(db, realtime, context.Source, importFile, "import", ct);
 
       var readyOfferFiles = await FindReadyFilesAsync(context.Directory, "offers", ct);
@@ -91,6 +92,35 @@ public sealed class OneCImportHostedService : BackgroundService
         await ProcessFileIfNeededAsync(db, realtime, context.Source, offersFile, "offers", ct);
       }
     }
+  }
+
+  private async Task<bool> ShouldProcessNomenclatureImportAsync(
+    AppDbContext db,
+    IntegrationSource source,
+    CancellationToken ct)
+  {
+    var lastSuccessfulImportAtUtc = await db.OneCImportRuns
+      .AsNoTracking()
+      .Where(x => x.SourceId == source.Id
+        && x.FileKind == "import"
+        && x.Status == "success")
+      .OrderByDescending(x => x.FinishedAtUtc ?? x.StartedAtUtc)
+      .Select(x => x.FinishedAtUtc ?? x.StartedAtUtc)
+      .FirstOrDefaultAsync(ct);
+
+    if (lastSuccessfulImportAtUtc == default)
+      return true;
+
+    var nextAllowedAtUtc = lastSuccessfulImportAtUtc.Add(NomenclatureMinInterval);
+    if (DateTime.UtcNow >= nextAllowedAtUtc)
+      return true;
+
+    _logger.LogDebug(
+      "1C nomenclature import throttled. SourceId={SourceId}, LastSuccessAtUtc={LastSuccessAtUtc}, NextAllowedAtUtc={NextAllowedAtUtc}",
+      source.Id,
+      lastSuccessfulImportAtUtc,
+      nextAllowedAtUtc);
+    return false;
   }
 
   private async Task<List<SourceContext>> ResolveSourceContextsAsync(AppDbContext db, CancellationToken ct)

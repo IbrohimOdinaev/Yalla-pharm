@@ -41,7 +41,7 @@ export class MahalMapProvider implements MapProvider {
         `/api/map/mahal/search?text=${encodeURIComponent(text)}&limit=8`,
       );
       this._lastSuggestions = results;
-      return results.map(({ title, subtitle }) => ({ title, subtitle }));
+      return results.map(({ title, subtitle, lat, lng }) => ({ title, subtitle, lat, lng }));
     } catch {
       this._lastSuggestions = [];
       return this._mapDelegate.suggest(query);
@@ -99,4 +99,3 @@ export class MahalMapProvider implements MapProvider {
     return this._mapDelegate.createMap(options);
   }
 }
-

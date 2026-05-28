@@ -12,6 +12,8 @@ export type GeoResult = {
 export type SuggestItem = {
   title: string;
   subtitle?: string;
+  lat?: number;
+  lng?: number;
 };
 
 export type MapMarkerOptions = {

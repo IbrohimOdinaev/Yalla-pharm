@@ -401,6 +401,54 @@ public sealed class OneCImportHostedServiceTests
   }
 
   [Fact]
+  public async Task RunOnceAsync_ThrottlesNomenclatureImportWhenRecentSuccessExists()
+  {
+    using var scope = TestDbFactory.Create();
+    var db = scope.Db;
+    var directory = Directory.CreateTempSubdirectory("yalla-1c-");
+    var sourceDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "source-a"));
+
+    var admin = TestDbFactory.CreateUser("Admin", "900000017", Role.Admin);
+    var pharmacy = TestDbFactory.CreatePharmacy("Throttle Pharmacy", "Dushanbe", admin.Id);
+    var source = new IntegrationSource(pharmacy.Id, "1c", "source-a", "Source A", DateTime.UtcNow);
+    var previousRun = new OneCImportRun(
+      source.Id,
+      "import",
+      "import.previous.xml",
+      1,
+      "import.previous.xml:1:1",
+      DateTime.UtcNow.AddMinutes(-5));
+    previousRun.Complete(1, 1, 0, 0, 0, 0, DateTime.UtcNow.AddMinutes(-5));
+
+    db.AddRange(admin, pharmacy, source, previousRun);
+    await db.SaveChangesAsync();
+
+    var importFile = Path.Combine(sourceDirectory.FullName, "import.latest.xml");
+    await File.WriteAllTextAsync(
+      importFile,
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <КоммерческаяИнформация xmlns="urn:1C.ru:commerceml_2">
+        <Каталог>
+          <Товары>
+            <Товар>
+              <Ид>external-product-id</Ид>
+              <Штрихкод>460123456789</Штрихкод>
+              <Наименование>Skipped product</Наименование>
+            </Товар>
+          </Товары>
+        </Каталог>
+      </КоммерческаяИнформация>
+      """);
+    File.SetLastWriteTimeUtc(importFile, DateTime.UtcNow.AddMinutes(-1));
+
+    await InvokeRunOnceAsync(db, directory.FullName);
+
+    Assert.Empty(await db.ExternalProductLinks.ToListAsync());
+    Assert.Single(await db.OneCImportRuns.ToListAsync());
+  }
+
+  [Fact]
   public async Task ProcessOffersFileAsync_IsolatesSameExternalProductIdBySourceAndPharmacy()
   {
     using var scope = TestDbFactory.Create();
@@ -621,14 +669,15 @@ public sealed class OneCImportHostedServiceTests
       .AddSingleton(db)
       .BuildServiceProvider();
 
+    var options = new OneCImportOptions
+    {
+      Enabled = true,
+      ExchangeDirectory = exchangeDirectory,
+      StableFileSeconds = 1
+    };
     var service = new OneCImportHostedService(
       provider.GetRequiredService<IServiceScopeFactory>(),
-      Options.Create(new OneCImportOptions
-      {
-        Enabled = true,
-        ExchangeDirectory = exchangeDirectory,
-        StableFileSeconds = 1
-      }),
+      Options.Create(options),
       NullLogger<OneCImportHostedService>.Instance);
 
     var method = typeof(OneCImportHostedService).GetMethod(

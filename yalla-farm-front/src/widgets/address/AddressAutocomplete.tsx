@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getMapProvider, type GeoPoint } from "@/shared/lib/map";
+import { getMapProvider, type GeoPoint, type SuggestItem } from "@/shared/lib/map";
 
 type Props = {
   value: string;
@@ -13,7 +13,7 @@ type Props = {
 };
 
 export function AddressAutocomplete({ value, onChange, onValidChange, onCoordinatesChange, placeholder = "Введите адрес...", className = "" }: Props) {
-  const [suggestions, setSuggestions] = useState<{ title: string; subtitle?: string }[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
   const [isValidated, setIsValidated] = useState<boolean | null>(value ? true : null);
@@ -67,7 +67,7 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
     }, 350);
   }
 
-  async function onSelect(item: { title: string; subtitle?: string }) {
+  async function onSelect(item: SuggestItem) {
     const fullAddress = item.subtitle ? `${item.title}, ${item.subtitle}` : item.title;
     setInputValue(fullAddress);
     onChange(fullAddress);
@@ -76,8 +76,9 @@ export function AddressAutocomplete({ value, onChange, onValidChange, onCoordina
     selectedRef.current = true;
     setValid(true);
 
-    const provider = getMapProvider();
-    const coords = await provider.geocode(fullAddress);
+    const coords = typeof item.lat === "number" && typeof item.lng === "number"
+      ? { lat: item.lat, lng: item.lng }
+      : await getMapProvider().geocode(fullAddress);
     onCoordinatesChange?.(coords);
   }
 
