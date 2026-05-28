@@ -26,6 +26,8 @@ import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/ap
 import { PharmacyLogo } from "@/shared/ui";
 
 const POPULAR_QUERIES = ["Парацетамол", "Ибупрофен", "Амоксициллин", "Цитрамон", "Лоратадин", "Омепразол"];
+const ADDRESS_PROMPT_DISMISSED_KEY = "yalla.delivery.addressPromptDismissed";
+const ADDRESS_PROMPT_DISMISSED_COOKIE = "yalla_address_prompt_dismissed";
 
 type QuickCategory = {
   icon: CategoryIconKey;
@@ -85,6 +87,20 @@ async function getFastPopularMedicines(pharmacyId?: string) {
       medicines: [],
     };
   }
+}
+
+function hasDismissedAddressPrompt() {
+  if (typeof window === "undefined") return false;
+  if (localStorage.getItem(ADDRESS_PROMPT_DISMISSED_KEY) === "1") return true;
+  return document.cookie
+    .split(";")
+    .some((part) => part.trim() === `${ADDRESS_PROMPT_DISMISSED_COOKIE}=1`);
+}
+
+function rememberAddressPromptDismissal() {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ADDRESS_PROMPT_DISMISSED_KEY, "1");
+  document.cookie = `${ADDRESS_PROMPT_DISMISSED_COOKIE}=1; Max-Age=31536000; Path=/; SameSite=Lax`;
 }
 
 const QUICK_CATEGORIES: QuickCategory[] = [
@@ -311,7 +327,7 @@ function HomeContent() {
     if (addressChecked.current) return;
     addressChecked.current = true;
     const saved = typeof window !== "undefined" ? localStorage.getItem("yalla.delivery.address") : null;
-    if (!saved) {
+    if (!saved && !hasDismissedAddressPrompt()) {
       setIsFirstVisit(true);
       setShowAddressModal(true);
     }
@@ -780,7 +796,14 @@ function HomeContent() {
     <AppShell>
       <AddressPickerModal
         open={showAddressModal}
-        onClose={() => { setShowAddressModal(false); setIsFirstVisit(false); }}
+        onClose={() => {
+          const saved = typeof window !== "undefined" ? localStorage.getItem("yalla.delivery.address") : null;
+          if (isFirstVisit && !saved) {
+            rememberAddressPromptDismissal();
+          }
+          setShowAddressModal(false);
+          setIsFirstVisit(false);
+        }}
         autoGeolocate={isFirstVisit}
       />
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">

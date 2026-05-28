@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { getMedicineByIdOrSlug, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
@@ -31,6 +31,8 @@ export default function ProductDetailsPage() {
   const [quantity, setQuantity] = useState(1);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [added, setAdded] = useState(false);
+  const [showMobileCartControls, setShowMobileCartControls] = useState(true);
+  const infoCardRef = useRef<HTMLElement | null>(null);
 
   useOfferLiveUpdates(useCallback((payload) => {
     if (medicine && payload.medicineId === medicine.id) {
@@ -62,6 +64,38 @@ export default function ProductDetailsPage() {
   const offersCount = medicine?.offers?.length ?? 0;
   const inStock = (medicine?.offers ?? []).some((o) => (o.stockQuantity ?? 0) > 0);
 
+  useEffect(() => {
+    const infoCard = infoCardRef.current;
+    if (!infoCard || typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
+      setShowMobileCartControls(true);
+      return;
+    }
+
+    const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    const syncDesktop = () => {
+      if (desktopQuery.matches) setShowMobileCartControls(true);
+    };
+    syncDesktop();
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (desktopQuery.matches) {
+          setShowMobileCartControls(true);
+          return;
+        }
+        setShowMobileCartControls(!entry.isIntersecting);
+      },
+      { threshold: 0.08 },
+    );
+
+    observer.observe(infoCard);
+    desktopQuery.addEventListener("change", syncDesktop);
+    return () => {
+      observer.disconnect();
+      desktopQuery.removeEventListener("change", syncDesktop);
+    };
+  }, [medicine]);
+
   function onAddToCart() {
     if (!medicine) return;
     if (token) addItem(token, medicine.id, quantity).catch(() => undefined);
@@ -81,9 +115,7 @@ export default function ProductDetailsPage() {
         <Icon name="chevron-left" size={20} />
       </button>
 
-      {isLoading ? (
-        <div className="rounded-3xl bg-surface-container-low p-8 text-sm">Загружаем товар...</div>
-      ) : null}
+      {isLoading ? <ProductDetailsSkeleton /> : null}
       {error ? (
         <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
       ) : null}
@@ -188,7 +220,10 @@ export default function ProductDetailsPage() {
           <div className="space-y-3 mt-3 xs:space-y-3.5 lg:mt-0">
 
           {/* Info card */}
-          <section className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5">
+          <section
+            ref={infoCardRef}
+            className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5"
+          >
             <div className="flex flex-wrap items-center gap-1.5">
               {medicine.categoryName ? (
                 <Chip tone="primary" asButton={false} size="sm">{medicine.categoryName}</Chip>
@@ -320,8 +355,8 @@ export default function ProductDetailsPage() {
         </div>
       ) : null}
 
-      {medicine && canShop ? (
-        <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 will-change-transform lg:hidden">
+      {medicine && canShop && showMobileCartControls ? (
+        <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 transition-opacity duration-150 will-change-transform lg:hidden">
           <ProductCartControls
             className="mx-auto flex max-w-md"
             quantity={quantity}
@@ -395,6 +430,56 @@ function ProductCartControls({
               : "В корзину"}
         </span>
       </Button>
+    </div>
+  );
+}
+
+function ProductDetailsSkeleton() {
+  return (
+    <div className="mx-auto max-w-6xl pb-28 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start lg:gap-6 lg:pb-6">
+      <div className="space-y-2.5 lg:sticky lg:top-20">
+        <div className="aspect-square animate-pulse rounded-2xl bg-surface-container-high shadow-card xs:rounded-3xl" />
+        <div className="-mx-3 flex gap-2 px-3 py-2 lg:-mx-2 lg:px-2">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-14 w-14 flex-shrink-0 animate-pulse rounded-xl bg-surface-container-high xs:h-16 xs:w-16 xs:rounded-2xl"
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-3 xs:space-y-3.5 lg:mt-0">
+        <section className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5">
+          <div className="flex gap-1.5">
+            <div className="h-7 w-28 animate-pulse rounded-full bg-surface-container-high" />
+            <div className="h-7 w-24 animate-pulse rounded-full bg-surface-container-high" />
+            <div className="h-7 w-24 animate-pulse rounded-full bg-surface-container-high" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-7 w-4/5 animate-pulse rounded-lg bg-surface-container-high" />
+            <div className="h-4 w-36 animate-pulse rounded-lg bg-surface-container-high" />
+          </div>
+          <div className="h-9 w-40 animate-pulse rounded-lg bg-surface-container-high" />
+          <div className="hidden h-14 animate-pulse rounded-full bg-surface-container-high lg:block" />
+        </section>
+
+        <section className="space-y-2">
+          <div className="h-5 w-36 animate-pulse rounded-lg bg-surface-container-high" />
+          <div className="grid grid-cols-1 gap-2 xs:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-20 animate-pulse rounded-2xl bg-surface-container-high shadow-card" />
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <div className="h-5 w-32 animate-pulse rounded-lg bg-surface-container-high" />
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-16 animate-pulse rounded-2xl bg-surface-container-high shadow-card" />
+          ))}
+        </section>
+      </div>
     </div>
   );
 }
