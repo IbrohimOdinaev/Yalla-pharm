@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -170,61 +169,15 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
   }
 
   const name = getMedicineDisplayName(medicine);
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   // Prefer the human-readable slug from WooCommerce — falls back to the GUID
   // for medicines that haven't synced yet. /product/[id] resolves either.
   const productKey = medicine.slug || medicine.id;
   const productHref = `/product/${productKey}`;
 
-  function onCardClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    // Unconditionally suppress the anchor's native navigation. We had a
-    // bug where some Android Chrome builds report `event.button === -1`
-    // for tap-derived clicks, which under the old `button !== 0` early
-    // return slipped past the preventDefault and let the anchor open
-    // /product/{slug} as a full page — instead of the in-place modal.
-    // Middle-click / right-click "open in new tab" via the browser's
-    // own gestures still works, because those don't fire `click` in
-    // modern browsers (they emit `auxclick` / `contextmenu`) and skip
-    // this handler entirely.
-    e.preventDefault();
-
-    // Modifier-click (Cmd / Ctrl / Shift / legacy middle-button click)
-    // → open the standalone product page in a new tab. window.open
-    // during a user gesture is exempt from popup blockers, and noopener
-    // keeps the new context isolated from this page.
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
-      window.open(productHref, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    // Plain click → push ?product={slug} so the global ProductModal
-    // opens over the current page. Use router.replace when a modal is
-    // already open (browsing from one product modal to another) so
-    // back-button doesn't step through every product viewed before
-    // closing — on first open use router.push so back closes the modal
-    // naturally.
-    const params = new URLSearchParams(searchParams.toString());
-    const wasOpen = params.has("product");
-    if (params.get("product") === productKey) return; // same product → no-op
-    params.set("product", productKey);
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
-    const url = `${pathname}?${params.toString()}${hash}`;
-    if (wasOpen) router.replace(url, { scroll: false });
-    else router.push(url, { scroll: false });
-  }
-
-  // Plain <a> rather than Next.js <Link> so we don't trigger client-side
-  // navigation on click — the anchor exists purely for SEO crawlers
-  // and middle-/right-click "open in new tab" flows. Cart buttons below
-  // call e.preventDefault() to suppress the modal trigger when toggling
-  // quantities inside the card.
   return (
     // eslint-disable-next-line @next/next/no-html-link-for-pages
     <a
       href={productHref}
-      onClick={onCardClick}
       className="group block h-full"
     >
       {/* Frame moved from inner image to outer card: a thin border outlines

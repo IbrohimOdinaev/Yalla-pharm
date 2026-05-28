@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { formatMoney } from "@/shared/lib/format";
 import { getMinimalImageUrl, imageSrcSet } from "@/entities/medicine/api";
 import {
@@ -60,8 +60,6 @@ type Props = {
 
 export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [order, setOrder] = useState<ApiOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,10 +178,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
   function openProduct(medicineId: string) {
     if (!medicineId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("product", medicineId);
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
-    router.push(`${pathname}?${params.toString()}${hash}`, { scroll: false });
+    router.push(`/product/${medicineId}`);
   }
 
   if (isLoading) {
