@@ -153,7 +153,8 @@ export function TopBar({
     pathname === "/checkout" ||
     pathname === "/login" ||
     pathname === "/login/admin" ||
-    pathname === "/register";
+    pathname === "/register" ||
+    pathname.startsWith("/product/");
   const floatingCartRef = useRef<HTMLAnchorElement>(null);
   const floatingCartLabel = bestPrice
     ? `от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
