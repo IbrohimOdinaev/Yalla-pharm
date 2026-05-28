@@ -58,7 +58,11 @@ public sealed class SmsService : ISmsService
       new SmsSendCommand
       {
         PhoneNumber = normalizedPhoneNumber,
-        Message = BuildSmsMessage(request.MessageTemplate, effectiveOptions.MessageTemplate, code),
+        Message = BuildSmsMessage(
+          request.MessageTemplate,
+          effectiveOptions.MessageTemplate,
+          code,
+          effectiveOptions.WebOtpOrigin),
         TxnId = txnId,
         IsConfidential = true
       },
@@ -186,7 +190,8 @@ public sealed class SmsService : ISmsService
         Message = BuildSmsMessage(
           customTemplate: null,
           defaultTemplate: effectiveOptions.MessageTemplate,
-          code: code),
+          code: code,
+          webOtpOrigin: effectiveOptions.WebOtpOrigin),
         TxnId = txnId,
         IsConfidential = true
       },
@@ -394,13 +399,43 @@ public sealed class SmsService : ISmsService
     return RandomNumberGenerator.GetInt32(lowerBound, upperBound).ToString();
   }
 
-  private static string BuildSmsMessage(string? customTemplate, string defaultTemplate, string code)
+  private static string BuildSmsMessage(
+    string? customTemplate,
+    string defaultTemplate,
+    string code,
+    string? webOtpOrigin)
   {
     var template = string.IsNullOrWhiteSpace(customTemplate) ? defaultTemplate : customTemplate;
     if (string.IsNullOrWhiteSpace(template))
       template = "Код подтверждения: {code}";
 
-    return template.Replace("{code}", code, StringComparison.Ordinal);
+    var message = template.Replace("{code}", code, StringComparison.Ordinal);
+    var origin = NormalizeWebOtpOrigin(webOtpOrigin);
+    if (string.IsNullOrWhiteSpace(origin))
+      return message;
+
+    return $"{message.TrimEnd()}\n\n@{origin} #{code}";
+  }
+
+  private static string NormalizeWebOtpOrigin(string? origin)
+  {
+    if (string.IsNullOrWhiteSpace(origin))
+      return string.Empty;
+
+    var normalized = origin.Trim().TrimStart('@');
+
+    if (Uri.TryCreate(normalized, UriKind.Absolute, out var absoluteUri))
+      normalized = absoluteUri.Host;
+
+    var pathIndex = normalized.IndexOfAny(new[] { '/', '?', '#' });
+    if (pathIndex >= 0)
+      normalized = normalized[..pathIndex];
+
+    normalized = normalized.Trim().TrimEnd('/');
+    if (normalized.Length == 0 || normalized.Any(char.IsWhiteSpace))
+      return string.Empty;
+
+    return normalized;
   }
 
   private static string NormalizeCode(string? code, int requiredLength)

@@ -46,6 +46,38 @@ public sealed class SmsServiceTests
   }
 
   [Fact]
+  public async Task SendSmsAsync_WhenWebOtpOriginConfigured_ShouldAppendOriginBoundCodeLine()
+  {
+    using var scope = TestDbFactory.Create();
+    var sender = new FakeSmsSender();
+    var service = CreateService(scope, sender, new SmsVerificationOptions
+    {
+      RegistrationEnabled = true,
+      AllowRegistrationBypass = true,
+      CodeLength = 6,
+      CodeTtlMinutes = 10,
+      ResendCooldownSeconds = 60,
+      MaxVerificationAttempts = 5,
+      MaxResendCount = 5,
+      MessageTemplate = "Код подтверждения: {code}",
+      WebOtpOrigin = "https://dev-pharm.yalla.tj/login",
+      FixedCodeForTests = "111111"
+    });
+
+    await service.SendSmsAsync(new SmsSendRequest
+    {
+      Purpose = SmsVerificationPurpose.ClientRegistration,
+      PhoneNumber = "+992900111222",
+      MessageTemplate = "Код входа в Yalla Farm: {code}"
+    });
+
+    Assert.Single(sender.SendCommands);
+    Assert.Equal(
+      "Код входа в Yalla Farm: 111111\n\n@dev-pharm.yalla.tj #111111",
+      sender.SendCommands[0].Message);
+  }
+
+  [Fact]
   public async Task SendSmsAsync_WhenProviderFails_ShouldThrowClientError()
   {
     using var scope = TestDbFactory.Create();

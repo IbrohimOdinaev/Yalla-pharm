@@ -55,6 +55,7 @@ services:
       ConnectionStrings__Default: ${DB_CONNECTION_STRING:-Host=postgres-staging;Username=postgres;Password=staging}
       Elasticsearch__Url: ${ELASTICSEARCH_URL:-http://opensearch:9200}
       Elasticsearch__MedicineIndex: ${ELASTICSEARCH_INDEX:-medicines}
+      SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-dev-pharm.yalla.tj}
     volumes:
       - one-c-exchange-dev:/data/1c-exchange:ro
     expose:
