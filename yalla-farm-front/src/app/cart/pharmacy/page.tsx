@@ -25,7 +25,7 @@ import { usePharmacyDeliveryCosts } from "@/features/pharmacy/model/usePharmacyD
 import { setGuestCheckoutIntent } from "@/shared/lib/guest-intent";
 
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
-import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
+import { Button, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 import dynamic from "next/dynamic";
 
 type PharmacySort = "cheapest" | "most-positions";
@@ -622,8 +622,6 @@ function PharmacySelectPageInner() {
             <div className="space-y-2 p-3 pb-32 [padding-bottom:calc(8rem+env(safe-area-inset-bottom))]">
               {filteredOptions.map((option) => {
                 const geo = pharmacyGeo[option.pharmacyId];
-                const resolvedAddress =
-                  resolvedAddresses[option.pharmacyId] ?? geo?.address;
                 const isHighlighted = highlightedId === option.pharmacyId;
                 const isExpanded = expandedId === option.pharmacyId;
                 const allAvailable = (option.enoughQuantityMedicinesCount ?? 0) >= (option.totalMedicinesCount ?? 1);
@@ -649,19 +647,16 @@ function PharmacySelectPageInner() {
                     }`}
                   >
                     {/* Pharmacy header */}
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-center gap-3">
                       <PharmacyLogo
                         pharmacyId={option.pharmacyId}
                         iconUrl={geo?.iconUrl}
-                        size={44}
+                        size={48}
                         className="flex-shrink-0"
                       />
 
                       <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-bold text-on-surface">{option.pharmacyTitle ?? "Аптека"}</h3>
-                        {resolvedAddress ? (
-                          <p className="truncate text-xs text-on-surface-variant">{resolvedAddress}</p>
-                        ) : null}
+                        <h3 className="truncate text-base font-extrabold leading-tight text-on-surface">{option.pharmacyTitle ?? "Аптека"}</h3>
                         {pickup ? (
                           <p
                             className={`mt-0.5 flex items-center gap-1 text-[11px] font-semibold ${
@@ -686,8 +681,8 @@ function PharmacySelectPageInner() {
                           <div className="min-w-0">
                             {!isPickup ? (
                               <div className="space-y-1.5 tabular-nums">
-                                <p className="text-xs font-semibold text-on-surface-variant">
-                                  Товары: <span className="font-extrabold text-on-surface">{formatMoney(availableTotal)}</span>
+                                <p className="text-[11px] font-black uppercase tracking-wide text-on-surface-variant">
+                                  Товары <span className="ml-1 text-xs font-extrabold normal-case tracking-normal text-on-surface">{formatMoney(availableTotal)}</span>
                                 </p>
                                 {delivery?.state === "ready" ? (
                                   <p className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1.5 text-xs font-extrabold text-on-surface">
@@ -715,37 +710,30 @@ function PharmacySelectPageInner() {
                                 )}
                               </div>
                             ) : null}
-                            {/* Stock chip + map + expand chevron. Three roles,
-                                three controls — each affordance does exactly
-                                one thing:
-                                  • Chip: passive status label (no click).
-                                  • Map: centre the map and pulse the marker;
-                                    does NOT open the items list.
-                                  • Chevron: toggles the items list. */}
-                            <div className="mt-1 flex items-center gap-1.5">
-                              <span className="inline-flex">
-                                {allAvailable ? (
-                                  <Chip tone="success" asButton={false} size="sm" leftIcon="check">Всё в наличии</Chip>
-                                ) : (
-                                  <Chip tone="warning" asButton={false} size="sm">
-                                    {option.enoughQuantityMedicinesCount ?? 0} из {option.totalMedicinesCount ?? 0}
-                                  </Chip>
-                                )}
-                              </span>
-                              {/* Expand toggle — single-purpose chevron that
-                                  flips when the items list is open so the
-                                  user can predict what happens on click. */}
+                            <div className="mt-2 flex items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => setExpandedId(isExpanded ? "" : option.pharmacyId)}
                                 aria-label={isExpanded ? "Скрыть позиции" : "Показать позиции"}
                                 title={isExpanded ? "Скрыть позиции" : "Показать позиции"}
                                 aria-expanded={isExpanded}
-                                className={`flex h-7 w-7 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant transition hover:bg-primary/10 hover:text-primary active:scale-95 ${
-                                  isExpanded ? "rotate-180" : ""
+                                className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] font-extrabold transition active:scale-95 ${
+                                  allAvailable
+                                    ? "bg-primary-soft text-primary hover:bg-primary/15"
+                                    : "bg-accent-soft text-warning hover:bg-accent-soft/80"
                                 }`}
                               >
-                                <Icon name="chevron-down" size={14} />
+                                {allAvailable ? <Icon name="check" size={13} /> : null}
+                                <span>
+                                  {allAvailable
+                                    ? "Всё в наличии"
+                                    : `${option.enoughQuantityMedicinesCount ?? 0} из ${option.totalMedicinesCount ?? 0}`}
+                                </span>
+                                <Icon
+                                  name="chevron-down"
+                                  size={13}
+                                  className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                />
                               </button>
                               <button
                                 type="button"
@@ -775,6 +763,63 @@ function PharmacySelectPageInner() {
                                 <Icon name="map" size={14} />
                               </button>
                             </div>
+
+                            {isExpanded && (
+                              <div className="mt-2 space-y-2 border-t border-surface-container-high pt-2">
+                                {(option.items ?? []).map((item) => {
+                                  const med = medicineMap[item.medicineId];
+                                  const name = med ? getMedicineDisplayName(med) : item.medicineId;
+                                  const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+
+                                  const enough = item.hasEnoughQuantity;
+                                  const partial = item.isFound && !enough;
+                                  const missing = !item.isFound;
+                                  const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
+                                  const inUnitMode = item.useUnitMode === true && item.unitTotalPrice != null;
+                                  return (
+                                    <button
+                                      key={item.medicineId}
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); openProductPage(med, item.medicineId); }}
+                                      className={`flex w-full items-center gap-2 rounded-lg p-1 text-left text-xs transition active:scale-95 hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
+                                    >
+                                      {imgUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={imgUrl} alt="" className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high object-contain mix-blend-multiply" />
+                                      ) : (
+                                        <div className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high" />
+                                      )}
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate font-semibold">
+                                          {name}
+                                          {inUnitMode ? (
+                                            <span className="ml-1 rounded-full bg-accent-sun/30 px-1 py-0 text-[9px] font-bold text-accent-sun-ink">
+                                              поштучно
+                                            </span>
+                                          ) : null}
+                                        </p>
+                                        {missing ? (
+                                          <p className="text-[10px] text-red-500">Нет в наличии</p>
+                                        ) : partial ? (
+                                          <p className="text-[10px] text-warning">Доступно только {item.foundQuantity} из {item.requestedQuantity}</p>
+                                        ) : null}
+                                      </div>
+                                      <span className={`flex-shrink-0 tabular-nums ${enough ? "text-on-surface-variant" : "font-semibold text-warning"}`}>
+                                        {inUnitMode
+                                          ? `${item.unitCount ?? 0} шт.`
+                                          : `${cappedFound}/${item.requestedQuantity}`}
+                                      </span>
+                                      <span className={`flex-shrink-0 font-bold ${missing ? "text-on-surface-variant line-through" : ""}`}>
+                                        {formatMoney(
+                                          inUnitMode ? (item.unitTotalPrice ?? 0) : (item.price ?? 0),
+                                          "TJS",
+                                        )}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex flex-col items-stretch gap-2 sm:min-w-[128px] sm:items-end">
@@ -795,64 +840,6 @@ function PharmacySelectPageInner() {
                         </div>
                       );
                     })()}
-
-                    {/* Expanded items list */}
-                    {isExpanded && (
-                      <div className="mt-3 space-y-2 border-t border-surface-container-high pt-3">
-                        {(option.items ?? []).map((item) => {
-                          const med = medicineMap[item.medicineId];
-                          const name = med ? getMedicineDisplayName(med) : item.medicineId;
-                          const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
-
-                          const enough = item.hasEnoughQuantity;
-                          const partial = item.isFound && !enough;
-                          const missing = !item.isFound;
-                          const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
-                          const inUnitMode = item.useUnitMode === true && item.unitTotalPrice != null;
-                          return (
-                            <button
-                              key={item.medicineId}
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); openProductPage(med, item.medicineId); }}
-                              className={`flex w-full items-center gap-2.5 rounded-lg p-1 text-left text-xs transition active:scale-95 hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
-                            >
-                              {imgUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={imgUrl} alt="" className="w-8 h-8 rounded object-contain bg-surface-container-high mix-blend-multiply flex-shrink-0" />
-                              ) : (
-                                <div className="w-8 h-8 rounded bg-surface-container-high flex-shrink-0" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium truncate">
-                                  {name}
-                                  {inUnitMode ? (
-                                    <span className="ml-1 rounded-full bg-accent-sun/30 px-1 py-0 text-[9px] font-bold text-accent-sun-ink">
-                                      поштучно
-                                    </span>
-                                  ) : null}
-                                </p>
-                                {missing ? (
-                                  <p className="text-[10px] text-red-500">Нет в наличии</p>
-                                ) : partial ? (
-                                  <p className="text-[10px] text-warning">Доступно только {item.foundQuantity} из {item.requestedQuantity}</p>
-                                ) : null}
-                              </div>
-                              <span className={`flex-shrink-0 tabular-nums ${enough ? "text-on-surface-variant" : "text-warning font-semibold"}`}>
-                                {inUnitMode
-                                  ? `${item.unitCount ?? 0} шт.`
-                                  : `${cappedFound}/${item.requestedQuantity}`}
-                              </span>
-                              <span className={`font-bold flex-shrink-0 ${missing ? "line-through text-on-surface-variant" : ""}`}>
-                                {formatMoney(
-                                  inUnitMode ? (item.unitTotalPrice ?? 0) : (item.price ?? 0),
-                                  "TJS",
-                                )}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 );
               })}
