@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { getMedicineByIdOrSlug, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
@@ -31,8 +31,6 @@ export default function ProductDetailsPage() {
   const [quantity, setQuantity] = useState(1);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [added, setAdded] = useState(false);
-  const [showMobileCartControls, setShowMobileCartControls] = useState(true);
-  const infoCardRef = useRef<HTMLElement | null>(null);
 
   useOfferLiveUpdates(useCallback((payload) => {
     if (medicine && payload.medicineId === medicine.id) {
@@ -63,38 +61,6 @@ export default function ProductDetailsPage() {
   const cheapestPrice = useMemo(() => getCheapestPrice(medicine ?? undefined), [medicine]);
   const offersCount = medicine?.offers?.length ?? 0;
   const inStock = (medicine?.offers ?? []).some((o) => (o.stockQuantity ?? 0) > 0);
-
-  useEffect(() => {
-    const infoCard = infoCardRef.current;
-    if (!infoCard || typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
-      setShowMobileCartControls(true);
-      return;
-    }
-
-    const desktopQuery = window.matchMedia("(min-width: 1024px)");
-    const syncDesktop = () => {
-      if (desktopQuery.matches) setShowMobileCartControls(true);
-    };
-    syncDesktop();
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (desktopQuery.matches) {
-          setShowMobileCartControls(true);
-          return;
-        }
-        setShowMobileCartControls(!entry.isIntersecting);
-      },
-      { threshold: 0.08 },
-    );
-
-    observer.observe(infoCard);
-    desktopQuery.addEventListener("change", syncDesktop);
-    return () => {
-      observer.disconnect();
-      desktopQuery.removeEventListener("change", syncDesktop);
-    };
-  }, [medicine]);
 
   function onAddToCart() {
     if (!medicine) return;
@@ -220,10 +186,7 @@ export default function ProductDetailsPage() {
           <div className="space-y-3 mt-3 xs:space-y-3.5 lg:mt-0">
 
           {/* Info card */}
-          <section
-            ref={infoCardRef}
-            className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5"
-          >
+          <section className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5">
             <div className="flex flex-wrap items-center gap-1.5">
               {medicine.categoryName ? (
                 <Chip tone="primary" asButton={false} size="sm">{medicine.categoryName}</Chip>
@@ -355,7 +318,7 @@ export default function ProductDetailsPage() {
         </div>
       ) : null}
 
-      {medicine && canShop && showMobileCartControls ? (
+      {medicine && canShop ? (
         <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 transition-opacity duration-150 will-change-transform lg:hidden">
           <ProductCartControls
             className="mx-auto flex max-w-md"
