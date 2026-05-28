@@ -597,8 +597,8 @@ function PharmacySelectPageInner() {
               title="Показать карту"
             >
               <span>Карта</span>
-              <Icon name="chevron-up" size={14} strokeWidth={2.4} className="md:hidden" />
-              <Icon name="chevron-right" size={14} strokeWidth={2.4} className="hidden md:block" />
+              <Icon name="chevron-down" size={14} strokeWidth={2.4} className="md:hidden" />
+              <Icon name="chevron-left" size={14} strokeWidth={2.4} className="hidden md:block" />
             </button>
           </div>
 
