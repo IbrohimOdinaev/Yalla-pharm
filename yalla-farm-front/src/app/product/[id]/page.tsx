@@ -76,7 +76,7 @@ export default function ProductDetailsPage() {
         type="button"
         onClick={goBack}
         aria-label="Назад"
-        className="fixed left-[max(1rem,calc((100vw-1440px)/2+1rem))] top-[calc(env(safe-area-inset-top,0px)+5.75rem)] z-30 flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-low text-on-surface shadow-card transition hover:bg-surface-container active:scale-95 md:top-[calc(env(safe-area-inset-top,0px)+5.25rem)]"
+        className="fixed left-[max(1rem,calc((100vw-1440px)/2+1rem))] top-[calc(env(safe-area-inset-top,0px)+8.75rem)] z-[60] flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-float ring-1 ring-outline/50 transition hover:bg-surface-container active:scale-95 md:top-[calc(env(safe-area-inset-top,0px)+5.25rem)]"
       >
         <Icon name="chevron-left" size={20} />
       </button>
@@ -356,12 +356,12 @@ function ProductCartControls({
   className = "",
 }: ProductCartControlsProps) {
   return (
-    <div className={`items-center gap-1.5 rounded-full bg-surface-container-lowest p-1.5 shadow-glass xs:gap-2 ${className}`}>
-      <div className="flex h-12 flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+    <div className={`items-center gap-1 rounded-full bg-surface-container-lowest p-1.5 shadow-glass xs:gap-2 ${className}`}>
+      <div className="flex h-11 flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5 xs:h-12">
         <button
           type="button"
           onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 xs:h-10 xs:w-10"
           aria-label="Уменьшить"
         >
           <Icon name="minus" size={16} />
@@ -372,7 +372,7 @@ function ProductCartControls({
         <button
           type="button"
           onClick={() => setQuantity((q) => q + 1)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95 xs:h-10 xs:w-10"
           aria-label="Увеличить"
         >
           <Icon name="plus" size={16} />
@@ -380,12 +380,12 @@ function ProductCartControls({
       </div>
       <Button
         size="lg"
-        className="h-12 min-w-0 flex-1 !px-3 xs:!px-5"
+        className="h-11 min-w-0 flex-1 !gap-1.5 !px-2 xs:h-12 xs:!gap-2 xs:!px-5"
         leftIcon={added ? "check" : "bag"}
         onClick={onAddToCart}
         disabled={!inStock}
       >
-        <span className="truncate text-[13px] xs:text-base">
+        <span className="truncate text-[11px] min-[390px]:text-xs xs:text-base">
           {added
             ? "Добавлено"
             : cheapestPrice
