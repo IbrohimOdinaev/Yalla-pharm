@@ -11,7 +11,6 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
-import { AppShell } from "@/widgets/layout/AppShell";
 import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 
 export default function ProductDetailsPage() {
@@ -71,119 +70,126 @@ export default function ProductDetailsPage() {
   }
 
   return (
-    <AppShell hideFooter>
+    <div className="fixed inset-0 overflow-hidden bg-on-surface/35 text-on-surface md:p-4">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={medicine ? getMedicineDisplayName(medicine) : "Товар"}
+        className="relative mx-auto flex h-svh w-full flex-col overflow-hidden bg-surface shadow-float md:h-[calc(100dvh-2rem)] md:max-w-6xl md:rounded-[28px]"
+      >
       <button
         type="button"
         onClick={goBack}
         aria-label="Назад"
-        className="fixed left-[max(1rem,calc((100vw-1440px)/2+1rem))] top-[calc(env(safe-area-inset-top,0px)+8.75rem)] z-[60] flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-float ring-1 ring-outline/50 transition hover:bg-surface-container active:scale-95 md:top-[calc(env(safe-area-inset-top,0px)+5.25rem)]"
+        className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-[60] flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-float ring-1 ring-outline/50 transition hover:bg-surface-container active:scale-95 md:left-4 md:top-4"
       >
         <Icon name="chevron-left" size={20} />
       </button>
 
-      {isLoading ? <ProductDetailsSkeleton /> : null}
-      {error ? (
-        <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
-      ) : null}
+      <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-28 pt-3 scroll-touch xs:pt-4 sm:px-5 lg:px-6 lg:pb-6">
+        {isLoading ? <ProductDetailsSkeleton /> : null}
+        {error ? (
+          <div className="mx-auto max-w-6xl rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+        ) : null}
 
-      {medicine ? (
-        // Two-column on desktop so the whole "above the fold" gives the
-        // user the gallery AND the buy controls + key facts at once,
-        // instead of an aspect-square hero that eats the entire viewport.
-        // Mobile keeps the single-column stack — gallery sits on top.
-        <div className="mx-auto max-w-6xl pb-28 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start lg:gap-6 lg:pb-6">
-          {/* Gallery — sticky on desktop so the info column can scroll past
-              long descriptions while the image stays in view. */}
-          <div className="space-y-2.5 lg:sticky lg:top-20">
-            <div
-              className="relative aspect-square overflow-hidden rounded-2xl bg-image-backdrop shadow-card xs:rounded-3xl"
-              onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
-              onTouchEnd={(e) => {
-                const startX = (e.currentTarget as HTMLElement).dataset.touchX;
-                if (!startX) return;
-                const diff = e.changedTouches[0].clientX - Number(startX);
-                if (Math.abs(diff) < 40) return;
-                if (diff < 0 && activeImageIdx < gallery.length - 1) setActiveImageIdx((i) => i + 1);
-                if (diff > 0 && activeImageIdx > 0) setActiveImageIdx((i) => i - 1);
-              }}
-            >
-              {activeImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={activeImage}
-                  alt={getMedicineDisplayName(medicine)}
-                  className="h-full w-full object-contain p-3 mix-blend-multiply xs:p-4 lg:p-3"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-primary/40">
-                  <Icon name="pharmacy" size={64} />
-                </div>
-              )}
+        {medicine ? (
+          // Two-column on desktop so the whole "above the fold" gives the
+          // user the gallery AND the buy controls + key facts at once,
+          // instead of an aspect-square hero that eats the entire viewport.
+          // Mobile keeps the single-column stack — gallery sits on top.
+          <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start lg:gap-6">
+            {/* Gallery — sticky on desktop so the info column can scroll past
+                long descriptions while the image stays in view. */}
+            <div className="space-y-2.5 lg:sticky lg:top-0">
+              <div
+                className="relative aspect-square overflow-hidden rounded-2xl bg-image-backdrop shadow-card xs:rounded-3xl"
+                onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
+                onTouchEnd={(e) => {
+                  const startX = (e.currentTarget as HTMLElement).dataset.touchX;
+                  if (!startX) return;
+                  const diff = e.changedTouches[0].clientX - Number(startX);
+                  if (Math.abs(diff) < 40) return;
+                  if (diff < 0 && activeImageIdx < gallery.length - 1) setActiveImageIdx((i) => i + 1);
+                  if (diff > 0 && activeImageIdx > 0) setActiveImageIdx((i) => i - 1);
+                }}
+              >
+                {activeImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={activeImage}
+                    alt={getMedicineDisplayName(medicine)}
+                    className="h-full w-full object-contain p-3 mix-blend-multiply xs:p-4 lg:p-3"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-primary/40">
+                    <Icon name="pharmacy" size={64} />
+                  </div>
+                )}
+
+                {gallery.length > 1 ? (
+                  <>
+                    {activeImageIdx > 0 ? (
+                      <IconButton
+                        icon="chevron-left"
+                        variant="floating"
+                        size="md"
+                        onClick={() => setActiveImageIdx((i) => i - 1)}
+                        aria-label="Предыдущее"
+                        className="!absolute left-3 top-1/2 -translate-y-1/2"
+                      />
+                    ) : null}
+                    {activeImageIdx < gallery.length - 1 ? (
+                      <IconButton
+                        icon="chevron-right"
+                        variant="floating"
+                        size="md"
+                        onClick={() => setActiveImageIdx((i) => i + 1)}
+                        aria-label="Следующее"
+                        className="!absolute right-3 top-1/2 -translate-y-1/2"
+                      />
+                    ) : null}
+                    <div className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-on-surface shadow-card">
+                      {activeImageIdx + 1} / {gallery.length}
+                    </div>
+                    <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+                      {gallery.map((_, i) => (
+                        <span
+                          key={i}
+                          className={`h-2 rounded-full transition ${
+                            i === activeImageIdx ? "w-6 bg-primary" : "w-2 bg-white/70"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
 
               {gallery.length > 1 ? (
-                <>
-                  {activeImageIdx > 0 ? (
-                    <IconButton
-                      icon="chevron-left"
-                      variant="floating"
-                      size="md"
-                      onClick={() => setActiveImageIdx((i) => i - 1)}
-                      aria-label="Предыдущее"
-                      className="!absolute left-3 top-1/2 -translate-y-1/2"
-                    />
-                  ) : null}
-                  {activeImageIdx < gallery.length - 1 ? (
-                    <IconButton
-                      icon="chevron-right"
-                      variant="floating"
-                      size="md"
-                      onClick={() => setActiveImageIdx((i) => i + 1)}
-                      aria-label="Следующее"
-                      className="!absolute right-3 top-1/2 -translate-y-1/2"
-                    />
-                  ) : null}
-                  <div className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-on-surface shadow-card">
-                    {activeImageIdx + 1} / {gallery.length}
-                  </div>
-                  <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-                    {gallery.map((_, i) => (
-                      <span
-                        key={i}
-                        className={`h-2 rounded-full transition ${
-                          i === activeImageIdx ? "w-6 bg-primary" : "w-2 bg-white/70"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </>
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 py-2 lg:-mx-2 lg:px-2">
+                  {gallery.map((url, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setActiveImageIdx(idx)}
+                      className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop transition xs:h-16 xs:w-16 xs:rounded-2xl ${
+                        idx === activeImageIdx
+                          ? "ring-2 ring-primary ring-offset-2 ring-offset-surface"
+                          : "opacity-70 hover:opacity-100"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="" className="h-full w-full object-contain p-1.5 mix-blend-multiply" />
+                    </button>
+                  ))}
+                </div>
               ) : null}
             </div>
 
-            {gallery.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 py-2 lg:-mx-2 lg:px-2">
-                {gallery.map((url, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setActiveImageIdx(idx)}
-                    className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop transition xs:h-16 xs:w-16 xs:rounded-2xl ${
-                      idx === activeImageIdx
-                        ? "ring-2 ring-primary ring-offset-2 ring-offset-surface"
-                        : "opacity-70 hover:opacity-100"
-                    }`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" className="h-full w-full object-contain p-1.5 mix-blend-multiply" />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          {/* Right column — info + actions + attributes + offers. On
-              mobile this stacks below the gallery; on lg+ it sits next
-              to it so the buy button is visible without scrolling. */}
-          <div className="space-y-3 mt-3 xs:space-y-3.5 lg:mt-0">
+            {/* Right column — info + actions + attributes + offers. On
+                mobile this stacks below the gallery; on lg+ it sits next
+                to it so the buy button is visible without scrolling. */}
+            <div className="space-y-3 mt-3 xs:space-y-3.5 lg:mt-0">
 
           {/* Info card */}
           <section className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5">
@@ -314,12 +320,13 @@ export default function ProductDetailsPage() {
               </Link>
             </div>
           ) : null}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {medicine && canShop ? (
-        <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 transition-opacity duration-150 will-change-transform lg:hidden">
+        <div className="absolute inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 transition-opacity duration-150 will-change-transform lg:hidden">
           <ProductCartControls
             className="mx-auto flex max-w-md"
             quantity={quantity}
@@ -332,7 +339,8 @@ export default function ProductDetailsPage() {
         </div>
       ) : null}
 
-    </AppShell>
+      </section>
+    </div>
   );
 }
 
