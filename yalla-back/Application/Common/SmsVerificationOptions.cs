@@ -18,5 +18,6 @@ public sealed class SmsVerificationOptions
   public int ExpiredSessionRetentionMinutes { get; set; } = 120;
   public int CompletedSessionRetentionHours { get; set; } = 24;
   public string MessageTemplate { get; set; } = "Код подтверждения Yalla Farm: {code}";
+  public string WebOtpOrigin { get; set; } = string.Empty;
   public string FixedCodeForTests { get; set; } = "1111";
 }

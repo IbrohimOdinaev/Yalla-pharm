@@ -85,6 +85,7 @@ services:
       - OneCImport__DefaultSourceToken=${ONE_C_IMPORT_DEFAULT_SOURCE_TOKEN:-}
       - OneCImport__DefaultSourceName=${ONE_C_IMPORT_DEFAULT_SOURCE_NAME:-1C}
       - OneCImport__DefaultPharmacyId=${ONE_C_IMPORT_DEFAULT_PHARMACY_ID:-00000000-0000-0000-0000-000000000000}
+      - SmsVerification__WebOtpOrigin=${SMS_VERIFICATION_WEB_OTP_ORIGIN:-}
       - OsonSms__Login=${OSON_SMS_LOGIN}
       - OsonSms__Token=${OSON_SMS_TOKEN}
       - OsonSms__PassSaltHash=${OSON_SMS_PASS_SALT_HASH}

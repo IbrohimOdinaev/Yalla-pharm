@@ -58,6 +58,7 @@ services:
       MinIo__SecretKey: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required for production}
       MinIo__BucketName: ${MINIO_BUCKET:?MINIO_BUCKET is required for production}
       OneCImport__Enabled: "false"
+      SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-pharm.yalla.tj}
       Telegram__WebhookPublicBaseUrl: ${TELEGRAM_WEBHOOK_PUBLIC_BASE_URL:-https://pharm.yalla.tj}
       Telegram__AutoRegisterWebhookOnStart: ${TELEGRAM_AUTO_REGISTER_WEBHOOK_ON_START:-true}
     volumes:
@@ -87,6 +88,7 @@ services:
       OneCImport__DefaultSourceToken: ${ONE_C_IMPORT_DEFAULT_SOURCE_TOKEN:-}
       OneCImport__DefaultSourceName: ${ONE_C_IMPORT_DEFAULT_SOURCE_NAME:-1C}
       OneCImport__DefaultPharmacyId: ${ONE_C_IMPORT_DEFAULT_PHARMACY_ID:-00000000-0000-0000-0000-000000000000}
+      SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-pharm.yalla.tj}
     volumes:
       - one-c-exchange-prod:/data/1c-exchange
     networks:

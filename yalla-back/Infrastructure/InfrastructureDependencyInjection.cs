@@ -154,6 +154,7 @@ public static class DependencyInjection
         ? completedRetentionHours
         : 24;
       options.MessageTemplate = config[$"{SmsVerificationOptions.SectionName}:MessageTemplate"] ?? options.MessageTemplate;
+      options.WebOtpOrigin = config[$"{SmsVerificationOptions.SectionName}:WebOtpOrigin"] ?? options.WebOtpOrigin;
       options.FixedCodeForTests = config[$"{SmsVerificationOptions.SectionName}:FixedCodeForTests"] ?? options.FixedCodeForTests;
     });
     services.Configure<OsonSmsOptions>(options =>
