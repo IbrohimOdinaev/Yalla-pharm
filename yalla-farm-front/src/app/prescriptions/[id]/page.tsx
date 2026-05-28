@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
   getMyPrescriptions,
@@ -25,7 +25,6 @@ export default function PrescriptionDetailPage() {
   const params = useParams<{ id: string }>();
   const id = String(params?.id || "");
   const router = useRouter();
-  const searchParams = useSearchParams();
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const hydrated = useAppSelector((s) => s.auth.hydrated);
@@ -236,19 +235,13 @@ export default function PrescriptionDetailPage() {
     return { available, unavailable, manual, totalCost };
   }, [prescription, medicineCache, editedQty, pairSelections]);
 
-  // Build a stable "open product modal" callback per item — pushes
-  // ?product=<slug-or-id> which the global ProductModal listens to. We
-  // prefer slug (SEO-friendly URL) and fall back to id when the cached
+  // Prefer slug (SEO-friendly URL) and fall back to id when the cached
   // medicine row has no slug yet (e.g. brand-new product before backfill).
   function openDetailsFor(it: ApiPrescription["items"][number]): (() => void) | undefined {
     if (!it.medicineId) return undefined;
     const med = medicineCache[it.medicineId];
     const target = med?.slug || it.medicineId;
-    return () => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("product", target);
-      router.push(`?${params.toString()}`, { scroll: false });
-    };
+    return () => router.push(`/product/${target}`);
   }
 
   // "Оформить заказ" — direct prescription-checkout flow. The prescription's
@@ -990,8 +983,8 @@ function SingletonRow({
 /* ===================================================================
    ItemRowFooter — small action row under any prescription checklist
    item (singleton or pair side). Two affordances: "Комментарий" toggles
-   the pharmacist's per-item note, "Подробно" pushes ?product=<slug>
-   to open the global ProductModal. Comment button is hidden when there
+   the pharmacist's per-item note, "Подробно" opens the product page.
+   Comment button is hidden when there
    is no comment to show. Details button is hidden for manual entries
    (no catalog entry to open).
    =================================================================== */

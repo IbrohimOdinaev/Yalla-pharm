@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
 import { getGuestBasketPreview } from "@/entities/basket/api";
@@ -25,7 +25,6 @@ import { usePharmacyDeliveryCosts } from "@/features/pharmacy/model/usePharmacyD
 import { setGuestCheckoutIntent } from "@/shared/lib/guest-intent";
 
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
-import { ProductModal } from "@/widgets/product/ProductModal";
 import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 import dynamic from "next/dynamic";
 
@@ -81,24 +80,14 @@ export default function PharmacySelectPage() {
 function PharmacySelectPageInner() {
   const token = useAppSelector((s) => s.auth.token);
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const goBack = useGoBack();
 
-  // Push `?product={slug-or-id}` so the global ProductModal opens on top of
-  // the current page — same UX as clicking a card in the catalog. Skip the
-  // call if the same product is already open.
-  const openProductModal = useCallback((med: ApiMedicine | undefined, fallbackId: string) => {
+  const openProductPage = useCallback((med: ApiMedicine | undefined, fallbackId: string) => {
     const key = med?.slug || med?.id || fallbackId;
     if (!key) return;
-    const params = new URLSearchParams(searchParams.toString());
-    if (params.get("product") === key) return;
-    const wasOpen = params.has("product");
-    params.set("product", key);
-    const url = `${pathname}?${params.toString()}`;
-    if (wasOpen) router.replace(url, { scroll: false });
-    else router.push(url, { scroll: false });
-  }, [pathname, router, searchParams]);
+    router.push(`/product/${key}`);
+  }, [router]);
 
   const { basket, loadBasket } = useCartStore();
   const guestItems = useGuestCartStore((s) => s.items);
@@ -140,7 +129,6 @@ function PharmacySelectPageInner() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [prescriptionItems, setPrescriptionItems] = useState<Array<{ medicineId: string; quantity: number }>>([]);
   const [prescriptionOptions, setPrescriptionOptions] = useState<ApiBasketPharmacyOption[]>([]);
-  const [prescription, setPrescription] = useState<ApiPrescription | null>(null);
 
   const resolvedAddresses = usePharmacyAddresses(pharmacies);
   const deliveryAddress = useDeliveryAddressStore((s) => s.address);
@@ -180,7 +168,6 @@ function PharmacySelectPageInner() {
           ]);
           setPharmacies(pharms);
           const found = all.find((p) => p.prescriptionId === prescriptionId) ?? null;
-          setPrescription(found);
           // Pull client-edited quantity overrides AND pair selections from
           // the prescription detail page. Both live in localStorage so
           // edits survive tab close. Reads the legacy sessionStorage qty
@@ -826,7 +813,7 @@ function PharmacySelectPageInner() {
                             <button
                               key={item.medicineId}
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); openProductModal(med, item.medicineId); }}
+                              onClick={(e) => { e.stopPropagation(); openProductPage(med, item.medicineId); }}
                               className={`flex w-full items-center gap-2.5 rounded-lg p-1 text-left text-xs transition active:scale-95 hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
                             >
                               {imgUrl ? (
@@ -927,10 +914,6 @@ function PharmacySelectPageInner() {
         </div>
       </div>
 
-      {/* Global product modal — opens when `?product={key}` is in the URL.
-          Mounted here too so position rows on this page can pop the modal
-          without leaving the pharmacy selection flow. */}
-      <ProductModal />
     </div>
   );
 }

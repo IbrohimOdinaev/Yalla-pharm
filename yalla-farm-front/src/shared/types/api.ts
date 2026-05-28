@@ -34,6 +34,7 @@ export type ApiCategory = {
 export type ApiMedicineOffer = {
   pharmacyId: string;
   pharmacyTitle?: string;
+  pharmacyIconUrl?: string | null;
   stockQuantity: number;
   price: number;
 };

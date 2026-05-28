@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { getMedicineByIdOrSlug, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useAppSelector } from "@/shared/lib/redux";
+import { useGoBack } from "@/shared/lib/useNavigationHistory";
 import { useOfferLiveUpdates } from "@/features/catalog/model/useOfferLiveUpdates";
 import { AppShell } from "@/widgets/layout/AppShell";
-import { TopBar } from "@/widgets/layout/TopBar";
-import { Button, Chip, Icon, IconButton } from "@/shared/ui";
+import { Button, Chip, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 
 export default function ProductDetailsPage() {
   const params = useParams<{ id: string }>();
@@ -22,6 +22,8 @@ export default function ProductDetailsPage() {
   const addGuestItem = useGuestCartStore((state) => state.addItem);
 
   const role = useAppSelector((state) => state.auth.role);
+  const goBack = useGoBack();
+  const canShop = role !== "Admin" && role !== "SuperAdmin";
 
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,7 +71,16 @@ export default function ProductDetailsPage() {
   }
 
   return (
-    <AppShell hideFooter top={<TopBar title="Товар" backHref="back" />}>
+    <AppShell hideFooter>
+      <button
+        type="button"
+        onClick={goBack}
+        aria-label="Назад"
+        className="fixed left-[max(1rem,calc((100vw-1440px)/2+1rem))] top-[calc(env(safe-area-inset-top,0px)+5.75rem)] z-30 flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-low text-on-surface shadow-card transition hover:bg-surface-container active:scale-95 md:top-[calc(env(safe-area-inset-top,0px)+5.25rem)]"
+      >
+        <Icon name="chevron-left" size={20} />
+      </button>
+
       {isLoading ? (
         <div className="rounded-3xl bg-surface-container-low p-8 text-sm">Загружаем товар...</div>
       ) : null}
@@ -82,7 +93,7 @@ export default function ProductDetailsPage() {
         // user the gallery AND the buy controls + key facts at once,
         // instead of an aspect-square hero that eats the entire viewport.
         // Mobile keeps the single-column stack — gallery sits on top.
-        <div className="mx-auto max-w-6xl pb-6 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start lg:gap-6">
+        <div className="mx-auto max-w-6xl pb-28 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start lg:gap-6 lg:pb-6">
           {/* Gallery — sticky on desktop so the info column can scroll past
               long descriptions while the image stays in view. */}
           <div className="space-y-2.5 lg:sticky lg:top-20">
@@ -171,55 +182,10 @@ export default function ProductDetailsPage() {
             ) : null}
           </div>
 
-          {/* Right column — actions + info + attributes + offers. On
+          {/* Right column — info + actions + attributes + offers. On
               mobile this stacks below the gallery; on lg+ it sits next
               to it so the buy button is visible without scrolling. */}
           <div className="space-y-3 mt-3 xs:space-y-3.5 lg:mt-0">
-
-          {/* Inline add-to-cart — sits directly under the gallery so the
-              primary action is in the user's eye-line, no sticky bar at the
-              bottom of the viewport. Hidden for admin/superadmin who can't
-              shop from this page. */}
-          {role !== "Admin" && role !== "SuperAdmin" ? (
-            <div className="flex items-center gap-1.5 rounded-full bg-surface-container-lowest p-1.5 shadow-glass xs:gap-2">
-              <div className="flex flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95 xs:h-10 xs:w-10"
-                  aria-label="Уменьшить"
-                >
-                  <Icon name="minus" size={16} />
-                </button>
-                <span className="min-w-[1.25rem] text-center text-sm font-extrabold tabular-nums xs:min-w-[1.5rem]">
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95 xs:h-10 xs:w-10"
-                  aria-label="Увеличить"
-                >
-                  <Icon name="plus" size={16} />
-                </button>
-              </div>
-              <Button
-                size="lg"
-                className="min-w-0 flex-1 !px-3 xs:!px-5"
-                leftIcon={added ? "check" : "bag"}
-                onClick={onAddToCart}
-                disabled={!inStock}
-              >
-                <span className="truncate text-[13px] xs:text-base">
-                  {added
-                    ? "Добавлено"
-                    : cheapestPrice
-                      ? `В корзину · ${formatMoney(cheapestPrice * quantity)}`
-                      : "В корзину"}
-                </span>
-              </Button>
-            </div>
-          ) : null}
 
           {/* Info card */}
           <section className="space-y-3 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card xs:rounded-3xl xs:p-5">
@@ -256,6 +222,18 @@ export default function ProductDetailsPage() {
                 {cheapestPrice ? formatMoney(cheapestPrice) : "—"}
               </span>
             </div>
+
+            {canShop ? (
+              <ProductCartControls
+                className="hidden lg:flex"
+                quantity={quantity}
+                setQuantity={setQuantity}
+                cheapestPrice={cheapestPrice}
+                added={added}
+                inStock={inStock}
+                onAddToCart={onAddToCart}
+              />
+            ) : null}
 
             {medicine.description ? (
               <div
@@ -295,9 +273,13 @@ export default function ProductDetailsPage() {
                     key={offer.pharmacyId}
                     className="flex items-center gap-2 rounded-2xl bg-surface-container-lowest p-2.5 shadow-card xs:gap-3 xs:p-3"
                   >
-                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent-mint text-primary xs:h-11 xs:w-11">
-                      <Icon name="pharmacy" size={18} />
-                    </span>
+                    <PharmacyLogo
+                      pharmacyId={offer.pharmacyId}
+                      iconUrl={offer.pharmacyIconUrl}
+                      size={44}
+                      alt={offer.pharmacyTitle ?? ""}
+                      className="flex-shrink-0"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-bold text-on-surface xs:text-sm">
                         {offer.pharmacyTitle ?? offer.pharmacyId.slice(0, 8)}
@@ -338,6 +320,81 @@ export default function ProductDetailsPage() {
         </div>
       ) : null}
 
+      {medicine && canShop ? (
+        <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 will-change-transform lg:hidden">
+          <ProductCartControls
+            className="mx-auto flex max-w-md"
+            quantity={quantity}
+            setQuantity={setQuantity}
+            cheapestPrice={cheapestPrice}
+            added={added}
+            inStock={inStock}
+            onAddToCart={onAddToCart}
+          />
+        </div>
+      ) : null}
+
     </AppShell>
+  );
+}
+
+type ProductCartControlsProps = {
+  quantity: number;
+  setQuantity: Dispatch<SetStateAction<number>>;
+  cheapestPrice?: number;
+  added: boolean;
+  inStock: boolean;
+  onAddToCart: () => void;
+  className?: string;
+};
+
+function ProductCartControls({
+  quantity,
+  setQuantity,
+  cheapestPrice,
+  added,
+  inStock,
+  onAddToCart,
+  className = "",
+}: ProductCartControlsProps) {
+  return (
+    <div className={`items-center gap-1.5 rounded-full bg-surface-container-lowest p-1.5 shadow-glass xs:gap-2 ${className}`}>
+      <div className="flex h-12 flex-shrink-0 items-center gap-0.5 rounded-full bg-surface-container-low p-0.5">
+        <button
+          type="button"
+          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+          className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10 active:scale-95"
+          aria-label="Уменьшить"
+        >
+          <Icon name="minus" size={16} />
+        </button>
+        <span className="min-w-[1.5rem] text-center text-sm font-extrabold tabular-nums">
+          {quantity}
+        </span>
+        <button
+          type="button"
+          onClick={() => setQuantity((q) => q + 1)}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container active:scale-95"
+          aria-label="Увеличить"
+        >
+          <Icon name="plus" size={16} />
+        </button>
+      </div>
+      <Button
+        size="lg"
+        className="h-12 min-w-0 flex-1 !px-3 xs:!px-5"
+        leftIcon={added ? "check" : "bag"}
+        onClick={onAddToCart}
+        disabled={!inStock}
+      >
+        <span className="truncate text-[13px] xs:text-base">
+          {added
+            ? "Добавлено"
+            : cheapestPrice
+              ? `В корзину · ${formatMoney(cheapestPrice * quantity)}`
+              : "В корзину"}
+        </span>
+      </Button>
+    </div>
   );
 }
