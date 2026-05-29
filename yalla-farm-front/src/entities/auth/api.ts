@@ -70,6 +70,7 @@ export type StartTelegramAuthResponse = {
   nonce: string;
   deepLink: string;
   appDeepLink?: string;
+  webDeepLink?: string;
   botUsername: string;
   expiresAtUtc: string;
   ttlSeconds: number;

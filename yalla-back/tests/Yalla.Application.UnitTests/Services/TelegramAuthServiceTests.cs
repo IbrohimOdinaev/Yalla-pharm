@@ -11,7 +11,7 @@ namespace Yalla.Application.UnitTests.Services;
 public sealed class TelegramAuthServiceTests
 {
   [Fact]
-  public async Task StartAsync_ReturnsHttpsDeepLinkAndKeepsAppDeepLink()
+  public async Task StartAsync_ReturnsAppDeepLinkAndKeepsWebFallback()
   {
     using var scope = TestDbFactory.Create();
     var service = CreateService(scope.Db, "@YallaTestBot ");
@@ -19,10 +19,12 @@ public sealed class TelegramAuthServiceTests
     var response = await service.StartAsync();
 
     Assert.Equal("YallaTestBot", response.BotUsername);
-    Assert.StartsWith("https://t.me/YallaTestBot?start=auth_", response.DeepLink);
+    Assert.StartsWith("tg://resolve?domain=YallaTestBot&start=auth_", response.DeepLink);
     Assert.StartsWith("tg://resolve?domain=YallaTestBot&start=auth_", response.AppDeepLink);
+    Assert.StartsWith("https://t.me/YallaTestBot?start=auth_", response.WebDeepLink);
     Assert.Contains(response.Nonce, response.DeepLink, StringComparison.Ordinal);
     Assert.Contains(response.Nonce, response.AppDeepLink, StringComparison.Ordinal);
+    Assert.Contains(response.Nonce, response.WebDeepLink, StringComparison.Ordinal);
   }
 
   private static TelegramAuthService CreateService(Yalla.Infrastructure.AppDbContext db, string botUsername)

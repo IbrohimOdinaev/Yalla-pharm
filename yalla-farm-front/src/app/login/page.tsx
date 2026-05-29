@@ -237,12 +237,7 @@ function LoginContent() {
         .then((conn) => { tgConnectionRef.current = conn; })
         .catch(() => { /* swallow — polling covers it */ });
 
-      const a = document.createElement("a");
-      a.href = session.deepLink;
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      window.location.href = session.appDeepLink || session.deepLink;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось запустить вход через Telegram.");
       closeTgModal();
@@ -471,7 +466,7 @@ function LoginContent() {
               size="lg"
               fullWidth
               leftIcon="telegram"
-              onClick={() => { window.location.href = tgSession.deepLink; }}
+              onClick={() => { window.location.href = tgSession.appDeepLink || tgSession.deepLink; }}
             >
               Открыть Telegram
             </Button>
