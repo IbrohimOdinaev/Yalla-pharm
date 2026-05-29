@@ -275,25 +275,25 @@ export function TopBar({
       <button
         type="button"
         onClick={onAddressClick}
-        className="flex flex-shrink items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface transition active:scale-95 hover:bg-surface-container sm:text-sm sm:px-3.5"
+        className="flex flex-shrink items-center gap-1.5 rounded-full bg-surface-container-low px-2.5 py-2 text-xs font-semibold text-on-surface transition active:scale-95 hover:bg-surface-container"
         title={addressTitle ? addressText : undefined}
       >
         <Icon name="pin" size={14} className="flex-shrink-0 text-secondary" />
         {/* Address text capped 20% tighter than before so the search
             bar has more room to breathe. Long addresses still fit
             with ellipsis; the full string lives in the title hover. */}
-        <span className="truncate max-w-[96px] sm:max-w-[128px] lg:max-w-[112px] xl:max-w-[160px] text-on-surface">
+        <span className="truncate max-w-[84px] lg:max-w-[96px] 2xl:max-w-[140px] text-on-surface">
           {addressTitle || addressText || "Выберите адрес"}
         </span>
         <Icon name="chevron-down" size={12} className="flex-shrink-0 text-on-surface-variant" />
       </button>
     );
 
-    const PrescriptionPill = showPrescriptionCta ? (
+    const renderPrescriptionPill = (className = "") => showPrescriptionCta ? (
       <Link
         href="/prescriptions/new"
         title="Отправить рецепт · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
-        className="hidden xl:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15"
+        className={`flex h-10 flex-shrink-0 items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-3 text-xs font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15 ${className}`}
       >
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -405,7 +405,7 @@ export function TopBar({
     ) : null;
 
     const cartFilled = cartCount > 0;
-    const CartButton = (
+    const renderCartButton = (className = "") => (
       <Link
         href="/cart"
         aria-label={
@@ -417,11 +417,11 @@ export function TopBar({
                 : `Корзина, ${cartCount} товаров`)
             : "Корзина"
         }
-        className={`hidden h-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-primary-container active:scale-[0.98] sm:inline-flex sm:h-12 ${
+        className={`h-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-primary-container active:scale-[0.98] sm:h-12 ${
           cartFilled
             ? "w-auto gap-2 px-5 sm:gap-2.5 sm:px-6"
             : "w-11 gap-0 px-0 sm:w-12"
-        }`}
+        } ${className}`}
       >
         <Icon name="bag" size={20} strokeWidth={cartFilled ? 2.4 : 2.2} className="flex-shrink-0" />
         <span
@@ -566,17 +566,23 @@ export function TopBar({
               Prescription pill is now part of the left/centre cluster
               (flush against the address pill); cart + profile sit at the
               right edge separated by a flex-1 spacer. */}
-          <div className="hidden h-[66px] items-center gap-3 lg:flex">
-            {LogoLink}
-            {DesktopSearch}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {DesktopAddressPill}
-              {PrescriptionPill}
+          <div className="hidden lg:block">
+            <div className="flex h-[62px] items-center gap-2 min-[1720px]:h-[66px] min-[1720px]:gap-3">
+              {LogoLink}
+              {DesktopSearch}
+              <div className="flex flex-shrink-0 items-center gap-2">
+                {DesktopAddressPill}
+                {renderPrescriptionPill("hidden min-[1720px]:flex")}
+              </div>
+              <span className="flex-1" />
+              {LatestActivity}
+              {!onCartRoute ? renderCartButton("hidden min-[1720px]:inline-flex") : null}
+              {renderProfileButton(menuRefDesktop)}
             </div>
-            <span className="flex-1" />
-            {LatestActivity}
-            {!onCartRoute ? CartButton : null}
-            {renderProfileButton(menuRefDesktop)}
+            <div className="flex items-center justify-end gap-2 pb-3 min-[1720px]:hidden">
+              {renderPrescriptionPill()}
+              {!onCartRoute ? renderCartButton("inline-flex") : null}
+            </div>
           </div>
 
           {/* MOBILE (< lg): two rows — logo+address+(cart sm+)+profile, then
@@ -587,7 +593,7 @@ export function TopBar({
               {LogoLink}
               {MobileBrandAndAddress}
               {LatestActivity}
-              {!onCartRoute ? CartButton : null}
+              {!onCartRoute ? renderCartButton("hidden sm:inline-flex") : null}
               {renderProfileButton(menuRefMobile)}
             </div>
             {MobileSearch ? (
