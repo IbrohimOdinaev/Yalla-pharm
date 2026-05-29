@@ -23,6 +23,20 @@ import { Button, Icon, Chip } from "@/shared/ui";
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
 
+function openTelegramAuthLink(session: StartTelegramAuthResponse, target?: Window | null) {
+  const deepLink = session.appDeepLink || session.deepLink;
+  if (target && !target.closed) {
+    try {
+      target.location.href = deepLink;
+      return;
+    } catch {
+      target.close();
+    }
+  }
+
+  window.location.href = deepLink;
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<AppShell hideFooter top={<TopBar title="Вход" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
@@ -218,6 +232,12 @@ function LoginContent() {
     setError(null);
     setInfo(null);
     setIsSubmitting(true);
+    const telegramWindow = window.open("about:blank", "_blank");
+    if (telegramWindow) {
+      telegramWindow.opener = null;
+      telegramWindow.document.title = "Telegram";
+    }
+
     try {
       const session = await startTelegramAuth();
       setTgSession(session);
@@ -237,8 +257,9 @@ function LoginContent() {
         .then((conn) => { tgConnectionRef.current = conn; })
         .catch(() => { /* swallow — polling covers it */ });
 
-      window.location.href = session.appDeepLink || session.deepLink;
+      openTelegramAuthLink(session, telegramWindow);
     } catch (err) {
+      telegramWindow?.close();
       setError(err instanceof Error ? err.message : "Не удалось запустить вход через Telegram.");
       closeTgModal();
     } finally {
@@ -466,7 +487,7 @@ function LoginContent() {
               size="lg"
               fullWidth
               leftIcon="telegram"
-              onClick={() => { window.location.href = tgSession.appDeepLink || tgSession.deepLink; }}
+              onClick={() => { openTelegramAuthLink(tgSession); }}
             >
               Открыть Telegram
             </Button>

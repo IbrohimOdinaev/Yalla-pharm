@@ -336,6 +336,7 @@ public sealed class TelegramAuthService : ITelegramAuthService
 
     if (session is null)
     {
+      _logger.LogWarning("Telegram auth start received for missing session. Nonce={Nonce}, TgUserId={TgUserId}", nonce, telegramUserId);
       await _bot.SendMessageAsync(chatId, "Сессия входа не найдена. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.", cancellationToken);
       return;
     }
