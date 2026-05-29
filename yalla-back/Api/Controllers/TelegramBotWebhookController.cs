@@ -43,7 +43,17 @@ public sealed class TelegramBotWebhookController : ControllerBase
       return Forbid();
     }
 
-    if (update is null) return Ok();
+    if (update is null)
+    {
+      _logger.LogInformation("Telegram webhook received an empty update.");
+      return Ok();
+    }
+
+    _logger.LogInformation(
+      "Telegram webhook received. UpdateId={UpdateId}, HasMessage={HasMessage}, HasCallback={HasCallback}",
+      update.UpdateId,
+      update.Message is not null,
+      update.CallbackQuery is not null);
 
     await _handler.HandleAsync(update, cancellationToken);
     return Ok();
