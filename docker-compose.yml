@@ -72,7 +72,7 @@ services:
       - Telegram__WebhookPublicBaseUrl=${TELEGRAM_WEBHOOK_URL}
       - Telegram__WebhookSecretToken=${TELEGRAM_WEBHOOK_SECRET}
       - Telegram__AutoRegisterWebhookOnStart=${TELEGRAM_AUTO_REGISTER_WEBHOOK:-false}
-      - WooCommerce__Enabled=${WOOCOMMERCE_ENABLED:-true}
+      - WooCommerce__Enabled=${WOOCOMMERCE_ENABLED:-false}
       - WooCommerce__BaseUrl=${WOOCOMMERCE_BASE_URL}
       - WooCommerce__ConsumerKey=${WOOCOMMERCE_CONSUMER_KEY}
       - WooCommerce__ConsumerSecret=${WOOCOMMERCE_CONSUMER_SECRET}

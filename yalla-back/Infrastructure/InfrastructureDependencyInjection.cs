@@ -284,8 +284,9 @@ public static class DependencyInjection
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
       }
     });
-    if (!oneCWorkerOnly)
-      services.AddHostedService<WooCommercePollHostedService>();
+    // WooCommerce automatic polling is intentionally disabled. WordPress is no
+    // longer the source of truth for offers, and polling can write offers for
+    // deleted/unmapped pharmacies.
 
     services.Configure<OneCImportOptions>(config.GetSection(OneCImportOptions.SectionName));
     if (oneCWorkerOnly || IsOneCImportEnabled(config))
