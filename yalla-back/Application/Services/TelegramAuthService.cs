@@ -61,9 +61,7 @@ public sealed class TelegramAuthService : ITelegramAuthService
     _dbContext.TelegramAuthSessions.Add(session);
     await _dbContext.SaveChangesAsync(cancellationToken);
 
-    // Use tg:// URI scheme — opens the Telegram app directly via OS handler.
-    // This avoids DNS resolution of t.me, which may be blocked in some networks.
-    var deepLink = $"tg://resolve?domain={_options.BotUsername}&start=auth_{nonce}";
+    var links = BuildAuthLinks(nonce);
 
     _logger.LogInformation(
       "Telegram auth session created. Nonce={Nonce}, ExpiresAtUtc={ExpiresAtUtc}",
@@ -73,8 +71,9 @@ public sealed class TelegramAuthService : ITelegramAuthService
     return new StartTelegramAuthResponse
     {
       Nonce = nonce,
-      DeepLink = deepLink,
-      BotUsername = _options.BotUsername,
+      DeepLink = links.WebLink,
+      AppDeepLink = links.AppLink,
+      BotUsername = links.BotUsername,
       ExpiresAtUtc = expiresAtUtc,
       TtlSeconds = ttlSeconds
     };
@@ -193,7 +192,7 @@ public sealed class TelegramAuthService : ITelegramAuthService
     _dbContext.TelegramAuthSessions.Add(session);
     await _dbContext.SaveChangesAsync(cancellationToken);
 
-    var deepLink = $"tg://resolve?domain={_options.BotUsername}&start=auth_{nonce}";
+    var links = BuildAuthLinks(nonce);
 
     _logger.LogInformation(
       "Telegram link session created. Nonce={Nonce}, ClientId={ClientId}, ExpiresAtUtc={ExpiresAtUtc}",
@@ -202,8 +201,9 @@ public sealed class TelegramAuthService : ITelegramAuthService
     return new StartTelegramAuthResponse
     {
       Nonce = nonce,
-      DeepLink = deepLink,
-      BotUsername = _options.BotUsername,
+      DeepLink = links.WebLink,
+      AppDeepLink = links.AppLink,
+      BotUsername = links.BotUsername,
       ExpiresAtUtc = expiresAtUtc,
       TtlSeconds = ttlSeconds
     };
@@ -480,9 +480,22 @@ public sealed class TelegramAuthService : ITelegramAuthService
   {
     if (string.IsNullOrWhiteSpace(_options.BotToken))
       throw new InvalidOperationException("Telegram:BotToken is not configured.");
-    if (string.IsNullOrWhiteSpace(_options.BotUsername))
+    if (string.IsNullOrWhiteSpace(NormalizeBotUsername(_options.BotUsername)))
       throw new InvalidOperationException("Telegram:BotUsername is not configured.");
   }
+
+  private (string WebLink, string AppLink, string BotUsername) BuildAuthLinks(string nonce)
+  {
+    var botUsername = NormalizeBotUsername(_options.BotUsername);
+    var startPayload = Uri.EscapeDataString($"auth_{nonce}");
+    return (
+      WebLink: $"https://t.me/{botUsername}?start={startPayload}",
+      AppLink: $"tg://resolve?domain={botUsername}&start={startPayload}",
+      BotUsername: botUsername);
+  }
+
+  private static string NormalizeBotUsername(string? botUsername)
+    => (botUsername ?? string.Empty).Trim().TrimStart('@');
 
   private static string GenerateNonce()
   {

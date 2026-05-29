@@ -57,14 +57,43 @@ public sealed class TelegramBotUpdateHandler
   private async Task HandleMessageAsync(TelegramMessage message, CancellationToken cancellationToken)
   {
     var text = message.Text!.Trim();
-    if (!text.StartsWith(StartCommandPrefix, StringComparison.Ordinal)) return;
+    if (!text.StartsWith("/start", StringComparison.Ordinal))
+    {
+      _logger.LogDebug("Telegram bot ignored non-start message.");
+      return;
+    }
+
+    if (!text.StartsWith(StartCommandPrefix, StringComparison.Ordinal))
+    {
+      _logger.LogInformation("Telegram bot received /start without auth payload.");
+      return;
+    }
 
     var arg = text[StartCommandPrefix.Length..].Trim();
-    if (!arg.StartsWith(AuthDeeplinkPrefix, StringComparison.Ordinal)) return;
+    if (!arg.StartsWith(AuthDeeplinkPrefix, StringComparison.Ordinal))
+    {
+      _logger.LogInformation("Telegram bot received /start with unsupported payload. PayloadPrefix={PayloadPrefix}", SafePrefix(arg));
+      return;
+    }
 
     var nonce = arg[AuthDeeplinkPrefix.Length..];
-    if (string.IsNullOrWhiteSpace(nonce)) return;
-    if (message.Chat is null || message.From is null) return;
+    if (string.IsNullOrWhiteSpace(nonce))
+    {
+      _logger.LogInformation("Telegram bot received /start auth_ with empty nonce.");
+      return;
+    }
+
+    if (message.Chat is null || message.From is null)
+    {
+      _logger.LogWarning("Telegram bot received auth start without chat/from. HasChat={HasChat}, HasFrom={HasFrom}", message.Chat is not null, message.From is not null);
+      return;
+    }
+
+    _logger.LogInformation(
+      "Telegram bot received auth start. Nonce={Nonce}, ChatId={ChatId}, TgUserId={TgUserId}",
+      nonce,
+      message.Chat.Id,
+      message.From.Id);
 
     await _authService.HandleStartCommandAsync(
       nonce,
@@ -112,4 +141,7 @@ public sealed class TelegramBotUpdateHandler
         cancellationToken);
     }
   }
+
+  private static string SafePrefix(string value)
+    => value.Length <= 16 ? value : value[..16];
 }

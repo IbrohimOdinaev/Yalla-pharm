@@ -69,6 +69,7 @@ export async function pharmacistLogin(phoneNumber: string, password: string): Pr
 export type StartTelegramAuthResponse = {
   nonce: string;
   deepLink: string;
+  appDeepLink?: string;
   botUsername: string;
   expiresAtUtc: string;
   ttlSeconds: number;
