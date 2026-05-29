@@ -78,8 +78,9 @@ export function Footer() {
           {/* Brand */}
           <div className="sm:col-span-2">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#D8484B] font-display font-black text-white">
-                Y
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo-icon.png" alt="Yalla Pharm" className="h-9 w-9 object-contain" />
               </span>
               <span className="font-display text-lg font-black text-[#D8484B]">Yalla Pharm</span>
             </div>

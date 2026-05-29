@@ -8,12 +8,12 @@ import { env } from "@/shared/config/env";
 let connection: HubConnection | null = null;
 let connectionToken: string | null = null;
 let currentAccessToken: string | null = null;
-const forcedTransport = process.env.NODE_ENV === "test" ? undefined : HttpTransportType.LongPolling;
+const forcedTransport = process.env.NODE_ENV === "test" ? undefined : HttpTransportType.WebSockets;
 
 function build(): HubConnection {
   return new HubConnectionBuilder()
     .withUrl(env.signalRUpdatesHubUrl, {
-      ...(forcedTransport ? { transport: forcedTransport } : {}),
+      ...(forcedTransport ? { transport: forcedTransport, skipNegotiation: true } : {}),
       // Read the latest token lazily on every negotiate / WebSocket upgrade.
       accessTokenFactory: () => currentAccessToken ?? "",
     })

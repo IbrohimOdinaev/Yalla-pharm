@@ -293,7 +293,7 @@ export function TopBar({
       <Link
         href="/prescriptions/new"
         title="Отправить рецепт · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
-        className="hidden lg:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15"
+        className="hidden xl:flex flex-shrink-0 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-2 text-sm font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15"
       >
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -360,26 +360,25 @@ export function TopBar({
         </span>
       </>
     );
+    const desktopSearchClass =
+      "ml-4 lg:ml-6 flex h-12 min-w-0 flex-none items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest lg:w-[clamp(360px,38vw,560px)] xl:w-[clamp(520px,42vw,720px)]";
 
-    // Search bar — width capped at 893 px (+15% over 776 px, which itself was
-    // +10% over the original 706 px). Cap keeps it from sprawling on ultra-
-    // wide displays while still letting it dominate the row. Address sits to
-    // the right; cart / prescription / profile cluster lives at the far right
-    // (separated by an explicit flex-1 spacer below). The `ml-4 lg:ml-6`
-    // gives a clearly-visible gap between the logo and the search bar.
+    // Stable explicit width: the search no longer flexes when neighbouring
+    // controls appear/change, so switching page tabs does not make the pill
+    // visually jump.
     const DesktopSearch = !hideSearch ? (
       onSearchClick ? (
         <button
           type="button"
           onClick={onSearchClick}
-          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest lg:max-w-[1543px]"
+          className={desktopSearchClass}
         >
           {SearchInner}
         </button>
       ) : (
         <Link
           href="/?search="
-          className="ml-4 lg:ml-6 flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest lg:max-w-[1543px]"
+          className={desktopSearchClass}
         >
           {SearchInner}
         </Link>
@@ -561,16 +560,13 @@ export function TopBar({
     return (
       <>
       <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-xl">
-        {/* No max-width cap — the header spans the full viewport on ultra-wide
-            displays per the user's request. Inner padding (px-6 / lg:px-10)
-            still keeps content from kissing the screen edge. */}
-        <div className="w-full">
+        <div className="mx-auto w-full max-w-[1440px] px-3 sm:px-6 lg:px-8">
           {/* DESKTOP (lg+): single row. Order requested:
               logo / search / address + prescription / … / cart / profile.
               Prescription pill is now part of the left/centre cluster
               (flush against the address pill); cart + profile sit at the
               right edge separated by a flex-1 spacer. */}
-          <div className="hidden h-[66px] items-center gap-3 px-6 lg:flex lg:px-10">
+          <div className="hidden h-[66px] items-center gap-3 lg:flex">
             {LogoLink}
             {DesktopSearch}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -587,7 +583,7 @@ export function TopBar({
               wide search. The inline cart fills the gap left by the floating
               pill, which is phone-only. */}
           <div className="lg:hidden">
-            <div className="flex items-center gap-3 px-3 py-2.5 sm:px-6 sm:py-3">
+            <div className="flex items-center gap-3 py-2.5 sm:py-3">
               {LogoLink}
               {MobileBrandAndAddress}
               {LatestActivity}
@@ -595,7 +591,7 @@ export function TopBar({
               {renderProfileButton(menuRefMobile)}
             </div>
             {MobileSearch ? (
-              <div className="px-3 pb-3 sm:px-6 sm:pb-4">
+              <div className="pb-3 sm:pb-4">
                 {MobileSearch}
               </div>
             ) : null}
