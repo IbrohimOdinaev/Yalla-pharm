@@ -756,7 +756,7 @@ function PharmacySelectPageInner() {
                             <button
                               type="button"
                               onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
-                              className="inline-flex h-12 min-w-[104px] flex-shrink-0 items-center justify-center rounded-2xl bg-[#35D0CD] px-5 text-sm font-bold text-[#071313] transition hover:bg-[#2EC5C2] active:scale-[0.98]"
+                              className="inline-flex h-12 min-w-[104px] flex-shrink-0 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-bold text-on-primary transition hover:bg-primary-container active:scale-[0.98]"
                             >
                               {pickup ? pickup.buttonText : "Выбрать"}
                             </button>
