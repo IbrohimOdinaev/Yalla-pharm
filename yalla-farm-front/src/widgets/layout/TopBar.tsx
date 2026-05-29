@@ -560,7 +560,7 @@ export function TopBar({
     return (
       <>
       <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-[1440px] px-3 sm:px-6 lg:px-8">
+        <div className="w-full px-3 sm:px-6 lg:px-12">
           {/* DESKTOP (lg+): single row. Order requested:
               logo / search / address + prescription / … / cart / profile.
               Prescription pill is now part of the left/centre cluster
