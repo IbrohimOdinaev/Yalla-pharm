@@ -25,7 +25,7 @@ import { usePharmacyDeliveryCosts } from "@/features/pharmacy/model/usePharmacyD
 import { setGuestCheckoutIntent } from "@/shared/lib/guest-intent";
 
 import { GlobalTopBar } from "@/widgets/layout/GlobalTopBar";
-import { Button, Icon, IconButton, PharmacyLogo } from "@/shared/ui";
+import { Icon, IconButton, PharmacyLogo } from "@/shared/ui";
 import dynamic from "next/dynamic";
 
 type PharmacySort = "cheapest" | "most-positions";
@@ -728,9 +728,9 @@ function PharmacySelectPageInner() {
                             </div>
                           ) : null}
 
-                          <div className="flex items-end justify-between gap-3">
+                          <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface-container-low px-3 py-2">
                             <div className="min-w-0">
-                              <p className="font-display text-2xl font-extrabold text-on-surface tabular-nums">
+                              <p className="font-display text-2xl font-extrabold leading-none text-on-surface tabular-nums">
                                 {formatMoney(grandTotal)}
                               </p>
                               <button
@@ -739,28 +739,27 @@ function PharmacySelectPageInner() {
                                 aria-label={isExpanded ? "Скрыть позиции" : "Показать позиции"}
                                 title={isExpanded ? "Скрыть позиции" : "Показать позиции"}
                                 aria-expanded={isExpanded}
-                                className="mt-0.5 inline-flex h-7 max-w-full items-center gap-1 rounded-full px-0 text-xs font-semibold text-on-surface-variant transition hover:text-primary active:scale-95"
+                                className="mt-1 inline-flex h-5 max-w-full items-center gap-1 rounded px-0 text-xs font-semibold text-on-surface-variant transition hover:text-on-surface active:scale-95"
                               >
                                 <span className="truncate">
                                   {allAvailable
-                                    ? "Всё в наличии"
+                                    ? "Все в наличии"
                                     : `${option.enoughQuantityMedicinesCount ?? 0} из ${option.totalMedicinesCount ?? 0}`}
                                 </span>
                                 <Icon
                                   name="chevron-down"
-                                  size={13}
+                                  size={12}
                                   className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
                                 />
                               </button>
                             </div>
-                            <Button
-                              size="md"
-                              rightIcon="arrow-right"
+                            <button
+                              type="button"
                               onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
-                              className="h-12 min-w-[128px] rounded-2xl px-5"
+                              className="inline-flex h-12 min-w-[104px] flex-shrink-0 items-center justify-center rounded-2xl bg-[#35D0CD] px-5 text-sm font-bold text-[#071313] transition hover:bg-[#2EC5C2] active:scale-[0.98]"
                             >
                               {pickup ? pickup.buttonText : "Выбрать"}
-                            </Button>
+                            </button>
                           </div>
                         </div>
                       );
