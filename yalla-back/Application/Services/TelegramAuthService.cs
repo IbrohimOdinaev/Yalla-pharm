@@ -71,8 +71,9 @@ public sealed class TelegramAuthService : ITelegramAuthService
     return new StartTelegramAuthResponse
     {
       Nonce = nonce,
-      DeepLink = links.WebLink,
+      DeepLink = links.AppLink,
       AppDeepLink = links.AppLink,
+      WebDeepLink = links.WebLink,
       BotUsername = links.BotUsername,
       ExpiresAtUtc = expiresAtUtc,
       TtlSeconds = ttlSeconds
@@ -201,8 +202,9 @@ public sealed class TelegramAuthService : ITelegramAuthService
     return new StartTelegramAuthResponse
     {
       Nonce = nonce,
-      DeepLink = links.WebLink,
+      DeepLink = links.AppLink,
       AppDeepLink = links.AppLink,
+      WebDeepLink = links.WebLink,
       BotUsername = links.BotUsername,
       ExpiresAtUtc = expiresAtUtc,
       TtlSeconds = ttlSeconds
