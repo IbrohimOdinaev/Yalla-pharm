@@ -18,6 +18,9 @@ public sealed class WorkerOrderResponse
   public string DeliveryAddress { get; init; } = string.Empty;
   public Status Status { get; init; }
   public OrderPaymentState PaymentState { get; init; }
+  public string PaymentProvider { get; init; } = string.Empty;
+  public string PaymentReceiverAccount { get; init; } = string.Empty;
+  public string? PaymentComment { get; init; }
   public DateTime? PaymentExpiresAtUtc { get; init; }
   public decimal Cost { get; init; }
   public decimal ReturnCost { get; init; }

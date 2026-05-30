@@ -48,6 +48,8 @@ const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) =
 type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
+const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
+const EXPLICIT_TIMEZONE_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 function PrettyFileInput({
   inputRef,
@@ -120,6 +122,63 @@ function getDushanbeTodayWindow(now = new Date()): { startUtcMs: number; endUtcM
   const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
   const label = `${String(day).padStart(2, "0")}.${String(month + 1).padStart(2, "0")}.${year}`;
   return { startUtcMs, endUtcMs, label };
+}
+
+function parseDushanbeDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const normalized = EXPLICIT_TIMEZONE_RE.test(value) ? value : `${value}+05:00`;
+  const date = new Date(normalized);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function formatDushanbeDateTime(value?: string | null) {
+  const date = parseDushanbeDate(value);
+  if (!date) return "—";
+  return date.toLocaleString("ru-RU", {
+    timeZone: DUSHANBE_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDushanbeDate(value?: string | null) {
+  const date = parseDushanbeDate(value);
+  if (!date) return "—";
+  return date.toLocaleDateString("ru-RU", {
+    timeZone: DUSHANBE_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function getDushanbeDateKey(value?: string | null) {
+  const date = parseDushanbeDate(value);
+  if (!date) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DUSHANBE_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function dushanbeTimeMs(value?: string | null) {
+  return parseDushanbeDate(value)?.getTime() ?? 0;
+}
+
+function paymentMethodLabel(order: ApiOrder) {
+  const provider = order.paymentProvider?.trim();
+  if (!provider || provider === "Legacy") return "Не указан";
+  if (provider === "DushanbeCityManualPhone") return "Dushanbe City";
+  if (provider.toLowerCase().includes("alif")) return "Alif";
+  if (provider.toLowerCase().includes("eskhata")) return "Eskhata";
+  return provider;
 }
 
 export default function SuperAdminPage() {
@@ -227,8 +286,7 @@ const EMPTY_SUPERADMIN_DAILY_STATS: SuperAdminDailyStats = {
 };
 
 function isWithinWindow(value: string | undefined | null, startUtcMs: number, endUtcMs: number): boolean {
-  if (!value) return false;
-  const ms = new Date(value).getTime();
+  const ms = dushanbeTimeMs(value);
   return Number.isFinite(ms) && ms >= startUtcMs && ms < endUtcMs;
 }
 
@@ -2139,9 +2197,11 @@ function OrdersTab({ token }: { token: string }) {
   const [intents, setIntents] = useState<ApiPaymentIntent[]>([]);
   const [refunds, setRefunds] = useState<ApiRefundRequest[]>([]);
   const [pharmacyTitleById, setPharmacyTitleById] = useState<Record<string, string>>({});
+  const [pharmacyById, setPharmacyById] = useState<Record<string, ActivePharmacy>>({});
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null);
+  const [showDeliveryMap, setShowDeliveryMap] = useState(false);
   const [returnMode, setReturnMode] = useState(false);
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
 
@@ -2151,8 +2211,13 @@ function OrdersTab({ token }: { token: string }) {
     getAllPharmacies(token)
       .then((list) => {
         const map: Record<string, string> = {};
-        for (const p of list) map[p.id] = p.title;
+        const byId: Record<string, ActivePharmacy> = {};
+        for (const p of list) {
+          map[p.id] = p.title;
+          byId[p.id] = p;
+        }
         setPharmacyTitleById(map);
+        setPharmacyById(byId);
       })
       .catch(() => undefined);
   }, [token]);
@@ -2184,6 +2249,7 @@ function OrdersTab({ token }: { token: string }) {
   useEffect(() => {
     setReturnMode(false);
     setReturnQty({});
+    setShowDeliveryMap(false);
   }, [selectedOrder?.orderId]);
 
   // Whenever the orders list refetches, swap the open overlay's reference to
@@ -2226,7 +2292,7 @@ function OrdersTab({ token }: { token: string }) {
 
 
   const filteredOrders = dateFilter
-    ? orders.filter((o) => o.createdAtUtc && new Date(o.createdAtUtc).toISOString().slice(0, 10) === dateFilter)
+    ? orders.filter((o) => getDushanbeDateKey(o.createdAtUtc) === dateFilter)
     : orders;
 
   // Order IDs that have pending payment intents — avoid showing them as regular order cards
@@ -2237,7 +2303,7 @@ function OrdersTab({ token }: { token: string }) {
   // (Delivered/PickedUp/Cancelled/Returned) flip to newest-first so the most
   // recent history is at the top of the column.
   const HISTORY_STATUSES = new Set(["Delivered", "PickedUp", "Cancelled", "Returned"]);
-  const orderTime = (o: ApiOrder) => o.createdAtUtc ? new Date(o.createdAtUtc).getTime() : 0;
+  const orderTime = (o: ApiOrder) => dushanbeTimeMs(o.createdAtUtc);
   const grouped = ALL_STATUSES.reduce<Record<string, ApiOrder[]>>((acc, status) => {
     const list = filteredOrders.filter((o) => {
       if (o.status !== status) return false;
@@ -2252,13 +2318,39 @@ function OrdersTab({ token }: { token: string }) {
     acc[status] = list;
     return acc;
   }, {});
+  const orderById = new Map(orders.map((order) => [order.orderId, order]));
+  const selectedPharmacy = selectedOrder?.pharmacyId ? pharmacyById[selectedOrder.pharmacyId] : undefined;
+  const deliveryFrom = selectedOrder
+    ? {
+        lat: selectedOrder.fromLatitude ?? selectedPharmacy?.latitude ?? null,
+        lng: selectedOrder.fromLongitude ?? selectedPharmacy?.longitude ?? null,
+      }
+    : null;
+  const deliveryTo = selectedOrder
+    ? {
+        lat: selectedOrder.toLatitude ?? null,
+        lng: selectedOrder.toLongitude ?? null,
+      }
+    : null;
+  const hasDeliveryFrom = deliveryFrom?.lat != null && deliveryFrom.lng != null;
+  const hasDeliveryTo = deliveryTo?.lat != null && deliveryTo.lng != null;
+  const canShowDeliveryMap = !!selectedOrder && !selectedOrder.isPickup && (hasDeliveryFrom || hasDeliveryTo);
+  const deliveryMapMarkers = hasDeliveryFrom && selectedOrder
+    ? [{
+        id: selectedOrder.pharmacyId ?? "pharmacy",
+        title: selectedOrder.pharmacyTitle || selectedPharmacy?.title || "Аптека",
+        address: selectedPharmacy?.address || "Аптека отправления",
+        lat: deliveryFrom!.lat!,
+        lng: deliveryFrom!.lng!,
+      }]
+    : [];
 
   return (
     <div className="space-y-2 xs:space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление заказами</h2>
-          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Контроль статусов и подтверждение оплат{dateFilter ? ` · ${dateFilter}` : ""}</p>
+          <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Контроль статусов и подтверждение оплат · время UTC+5{dateFilter ? ` · ${dateFilter}` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
           <DatePicker
@@ -2298,7 +2390,14 @@ function OrdersTab({ token }: { token: string }) {
                 <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                   {/* Payment intents as pending cards in New column */}
                   {showIntentsHere && intents.map((intent) => (
-                    <PaymentIntentCard key={intent.paymentIntentId} token={token} intent={intent} onDone={load} />
+                    <PaymentIntentCard
+                      key={intent.paymentIntentId}
+                      token={token}
+                      intent={intent}
+                      order={intent.reservedOrderId ? orderById.get(intent.reservedOrderId) : undefined}
+                      onOpenOrder={openOverlay}
+                      onDone={load}
+                    />
                   ))}
                   {/* Orders */}
                   {statusOrders.map(order => {
@@ -2329,10 +2428,7 @@ function OrdersTab({ token }: { token: string }) {
                         <div className="flex items-center justify-between mt-0.5 gap-1">
                           {order.createdAtUtc ? (
                             <p className="text-[10px] text-on-surface-variant tabular-nums">
-                              {new Date(order.createdAtUtc).toLocaleString("ru-RU", {
-                                day: "2-digit", month: "2-digit", year: "numeric",
-                                hour: "2-digit", minute: "2-digit",
-                              })}
+                              {formatDushanbeDateTime(order.createdAtUtc)}
                             </p>
                           ) : <span/>}
                           {phone ? <span className="text-[10px] font-mono text-on-surface-variant">{phone}</span> : null}
@@ -2429,11 +2525,23 @@ function OrdersTab({ token }: { token: string }) {
               </div>
               <div className="rounded-xl bg-surface-container-low p-3">
                 <p className="text-[10px] text-on-surface-variant uppercase">Доставка</p>
-                <p className="font-bold">{selectedOrder.isPickup ? "Самовывоз" : selectedOrder.deliveryAddress || "—"}</p>
+                {selectedOrder.isPickup ? (
+                  <p className="font-bold">Самовывоз</p>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-left font-bold text-primary underline-offset-2 hover:underline disabled:text-on-surface disabled:no-underline"
+                    disabled={!canShowDeliveryMap}
+                    onClick={() => setShowDeliveryMap((v) => !v)}
+                    title={canShowDeliveryMap ? "Показать карту доставки" : undefined}
+                  >
+                    {selectedOrder.deliveryAddress || "—"}
+                  </button>
+                )}
               </div>
               <div className="rounded-xl bg-surface-container-low p-3">
-                <p className="text-[10px] text-on-surface-variant uppercase">Дата</p>
-                <p className="font-bold">{selectedOrder.createdAtUtc ? new Date(selectedOrder.createdAtUtc).toLocaleString("ru-RU") : "—"}</p>
+                <p className="text-[10px] text-on-surface-variant uppercase">Дата UTC+5</p>
+                <p className="font-bold">{formatDushanbeDateTime(selectedOrder.createdAtUtc)}</p>
               </div>
               {selectedOrder.clientPhoneNumber || selectedOrder.clientName || selectedOrder.clientTelegramUsername || selectedOrder.clientTelegramId ? (
                 <div className="rounded-xl bg-surface-container-low p-3 space-y-0.5">
@@ -2466,6 +2574,16 @@ function OrdersTab({ token }: { token: string }) {
                   </p>
                 </div>
               ) : null}
+              <div className="rounded-xl bg-surface-container-low p-3">
+                <p className="text-[10px] text-on-surface-variant uppercase">Метод оплаты</p>
+                <p className="font-bold">{paymentMethodLabel(selectedOrder)}</p>
+                {selectedOrder.paymentReceiverAccount ? (
+                  <p className="mt-0.5 truncate text-[10px] text-on-surface-variant">{selectedOrder.paymentReceiverAccount}</p>
+                ) : null}
+                {selectedOrder.paymentComment ? (
+                  <p className="mt-0.5 text-[10px] text-on-surface-variant">{selectedOrder.paymentComment}</p>
+                ) : null}
+              </div>
               {(() => {
                 const rejected = computeRejectedRefund(selectedOrder);
                 const returned = computeReturnedRefund(selectedOrder);
@@ -2495,6 +2613,33 @@ function OrdersTab({ token }: { token: string }) {
                 );
               })()}
             </div>
+
+            {showDeliveryMap && canShowDeliveryMap ? (
+              <div className="space-y-2 rounded-2xl bg-surface-container-low p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold">Маршрут доставки</p>
+                    <p className="text-xs text-on-surface-variant">Метка аптеки и адрес клиента</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeliveryMap(false)}
+                    className="rounded-full bg-surface-container-high px-3 py-1 text-xs font-bold"
+                  >
+                    Скрыть
+                  </button>
+                </div>
+                <PharmacyMap
+                  className="h-[280px] rounded-xl overflow-hidden"
+                  pharmacies={deliveryMapMarkers}
+                  selectedPoint={hasDeliveryTo ? { lat: deliveryTo!.lat!, lng: deliveryTo!.lng! } : null}
+                />
+                <div className="grid gap-2 text-xs text-on-surface-variant sm:grid-cols-2">
+                  <p><span className="font-bold text-on-surface">Аптека:</span> {selectedOrder.pharmacyTitle || selectedPharmacy?.title || "—"}</p>
+                  <p><span className="font-bold text-on-surface">Клиент:</span> {selectedOrder.deliveryAddress || "—"}</p>
+                </div>
+              </div>
+            ) : null}
 
             {/* Comment */}
             {selectedOrder.comment ? (
@@ -2816,7 +2961,7 @@ function RefundKanbanCard({
       <div className="flex items-center justify-between mt-0.5 gap-1">
         {refund.createdAtUtc ? (
           <p className="text-[10px] text-on-surface-variant">
-            {new Date(refund.createdAtUtc).toLocaleDateString("ru-RU")}
+            {formatDushanbeDate(refund.createdAtUtc)}
           </p>
         ) : <span />}
         <span className="text-[10px] text-on-surface-variant">
@@ -2835,7 +2980,7 @@ function RefundKanbanCard({
       ) : null}
       {refund.status === "Completed" && refund.updatedAtUtc ? (
         <p className="text-[10px] text-primary font-semibold">
-          Возвращён {new Date(refund.updatedAtUtc).toLocaleDateString("ru-RU")}
+          Возвращён {formatDushanbeDate(refund.updatedAtUtc)}
         </p>
       ) : null}
 
@@ -2864,7 +3009,19 @@ function RefundKanbanCard({
   );
 }
 
-function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: ApiPaymentIntent; onDone: () => void }) {
+function PaymentIntentCard({
+  token,
+  intent,
+  order,
+  onOpenOrder,
+  onDone,
+}: {
+  token: string;
+  intent: ApiPaymentIntent;
+  order?: ApiOrder;
+  onOpenOrder: (order: ApiOrder) => void;
+  onDone: () => void;
+}) {
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -2873,7 +3030,10 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
   const INTENT_STATES: Record<number, string> = { 0: "Создан", 1: "Ожидает подтверждения", 2: "Подтверждён", 3: "Отклонён", 4: "Требует решения" };
 
   return (
-    <div className="stitch-card space-y-2 p-2 xs:p-3 sm:p-4 ring-1 ring-warning-container">
+    <div
+      className={`stitch-card space-y-2 p-2 xs:p-3 sm:p-4 ring-1 ring-warning-container ${order ? "cursor-pointer hover:ring-primary" : ""}`}
+      onClick={() => { if (order) onOpenOrder(order); }}
+    >
       <div className="flex items-center justify-between">
         <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
           {intent.state != null ? (INTENT_STATES[intent.state] ?? `State ${intent.state}`) : "Ожидает"}
@@ -2891,12 +3051,16 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
         <p className="text-[10px] font-mono text-on-surface-variant">Платёж: #{intent.paymentIntentId.slice(0, 8)}</p>
         <p className="text-[9px] font-mono text-on-surface-variant/50 break-all">{intent.paymentIntentId}</p>
       </div>
+      {order ? (
+        <p className="text-[10px] font-bold text-primary">Нажмите, чтобы открыть заказ</p>
+      ) : null}
 
       {actionError ? <div className="rounded-lg bg-red-100 px-3 py-2 text-xs text-red-700">{actionError}</div> : null}
 
       {!showReject ? (
         <div className="flex gap-2">
-          <button type="button" className="stitch-button text-xs" disabled={isProcessing} onClick={async () => {
+          <button type="button" className="stitch-button text-xs" disabled={isProcessing} onClick={async (event) => {
+            event.stopPropagation();
             if (!confirm(`Подтвердить оплату для заказа #${intent.reservedOrderId?.slice(0, 8) ?? intent.paymentIntentId.slice(0, 8)}? Заказ будет передан аптеке.`)) return;
             setIsProcessing(true); setActionError(null);
             try {
@@ -2910,20 +3074,21 @@ function PaymentIntentCard({ token, intent, onDone }: { token: string; intent: A
             catch (err) { setActionError(err instanceof Error ? err.message : "Ошибка подтверждения"); }
             finally { setIsProcessing(false); }
           }}>{isProcessing ? "..." : "Подтвердить"}</button>
-          <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={() => setShowReject(true)}>Отклонить</button>
+          <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={(event) => { event.stopPropagation(); setShowReject(true); }}>Отклонить</button>
         </div>
       ) : (
         <div className="space-y-2">
-          <input className="stitch-input w-full" placeholder="Причина отклонения..." value={reason} onChange={(e) => setReason(e.target.value)} />
+          <input className="stitch-input w-full" placeholder="Причина отклонения..." value={reason} onClick={(event) => event.stopPropagation()} onChange={(e) => setReason(e.target.value)} />
           <div className="flex gap-2">
-            <button type="button" className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white" disabled={isProcessing} onClick={async () => {
+            <button type="button" className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white" disabled={isProcessing} onClick={async (event) => {
+              event.stopPropagation();
               if (!confirm("Отклонить этот платёж? Заказ будет отменён.")) return;
               setIsProcessing(true); setActionError(null);
               try { await rejectPaymentIntent(token, intent.paymentIntentId, reason); onDone(); }
               catch (err) { setActionError(err instanceof Error ? err.message : "Ошибка отклонения"); }
               finally { setIsProcessing(false); }
             }}>{isProcessing ? "..." : "Отклонить"}</button>
-            <button type="button" className="stitch-button-secondary text-xs" onClick={() => setShowReject(false)}>Отмена</button>
+            <button type="button" className="stitch-button-secondary text-xs" onClick={(event) => { event.stopPropagation(); setShowReject(false); }}>Отмена</button>
           </div>
         </div>
       )}

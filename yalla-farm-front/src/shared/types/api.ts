@@ -201,6 +201,9 @@ export type ApiOrder = {
   orderId: string;
   status: string;
   paymentState?: string;
+  paymentProvider?: string | null;
+  paymentReceiverAccount?: string | null;
+  paymentComment?: string | null;
   clientId?: string;
   pharmacyId?: string;
   pharmacyTitle?: string;
