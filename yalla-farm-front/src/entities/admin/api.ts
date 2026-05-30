@@ -9,6 +9,28 @@ export type ApiAdmin = {
   avatarUrl?: string | null;
 };
 
+export type ApiPharmacyWorkerResponse = {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  avatarUrl?: string | null;
+  pharmacyId: string;
+};
+
+export type CreateAdminWithPharmacyResponse = {
+  pharmacyWorker: ApiPharmacyWorkerResponse;
+  pharmacy: {
+    id: string;
+    title: string;
+    address: string;
+    isActive?: boolean;
+    latitude?: number | null;
+    longitude?: number | null;
+    iconUrl?: string | null;
+    bannerUrl?: string | null;
+  };
+};
+
 export type AdminProfileOtpResponse = {
   otpSessionId: string;
   phoneNumber: string;
@@ -47,15 +69,29 @@ export async function uploadAdminAvatar(token: string, file: File): Promise<{ av
   return apiFetch<{ avatarUrl: string }>("/api/admins/me/avatar", { method: "POST", token, body });
 }
 
-export async function createAdmin(token: string, data: { name: string; phoneNumber: string; password: string; pharmacyId?: string }): Promise<void> {
-  await apiFetch<unknown>("/api/admins/register", { method: "POST", token, body: data });
+export async function uploadAdminAvatarForSuperAdmin(token: string, adminId: string, file: File): Promise<{ avatarUrl: string }> {
+  const body = new FormData();
+  body.append("image", file);
+  return apiFetch<{ avatarUrl: string }>(`/api/admins/${adminId}/avatar`, { method: "POST", token, body });
+}
+
+export async function createAdmin(token: string, data: { name: string; phoneNumber: string; password: string; pharmacyId?: string }): Promise<{ pharmacyWorker: ApiPharmacyWorkerResponse }> {
+  return apiFetch<{ pharmacyWorker: ApiPharmacyWorkerResponse }>("/api/admins/register", { method: "POST", token, body: data });
 }
 
 export async function createAdminWithPharmacy(
   token: string,
-  data: { adminName: string; adminPhoneNumber: string; adminPassword: string; pharmacyTitle: string; pharmacyAddress: string }
-): Promise<void> {
-  await apiFetch<unknown>("/api/admins/register-with-pharmacy", { method: "POST", token, body: data });
+  data: {
+    adminName: string;
+    adminPhoneNumber: string;
+    adminPassword: string;
+    pharmacyTitle: string;
+    pharmacyAddress: string;
+    latitude?: number;
+    longitude?: number;
+  }
+): Promise<CreateAdminWithPharmacyResponse> {
+  return apiFetch<CreateAdminWithPharmacyResponse>("/api/admins/register-with-pharmacy", { method: "POST", token, body: data });
 }
 
 export async function deleteAdmin(token: string, pharmacyWorkerId: string): Promise<void> {

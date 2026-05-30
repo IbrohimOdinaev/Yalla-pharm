@@ -199,6 +199,45 @@ public sealed class AdminsController : ControllerBase
     return Ok(new { avatarUrl = "/api/admins/me/avatar/content" });
   }
 
+  [HttpPost("{adminId:guid}/avatar")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> UploadAdminAvatar(
+    Guid adminId,
+    [FromForm] IFormFile image,
+    CancellationToken cancellationToken)
+  {
+    if (image is null || image.Length <= 0)
+      throw new InvalidOperationException("Image file is required.");
+
+    if (image.Length > 5 * 1024 * 1024)
+      throw new InvalidOperationException("Avatar file is too large. Maximum 5 MB.");
+
+    var admin = await _db.Users.FindAsync([adminId], cancellationToken)
+      ?? throw new InvalidOperationException("Admin user was not found.");
+
+    if (admin.Role != Role.Admin)
+      throw new InvalidOperationException("Only pharmacy admins can have this avatar.");
+
+    if (!string.IsNullOrEmpty(admin.AvatarUrl))
+    {
+      try { await _imageStorage.DeleteAsync(admin.AvatarUrl, cancellationToken); }
+      catch { /* best-effort cleanup */ }
+    }
+
+    var contentType = string.IsNullOrWhiteSpace(image.ContentType) ? "application/octet-stream" : image.ContentType;
+    using var stream = image.OpenReadStream();
+    var key = await _imageStorage.UploadAsync(
+      stream,
+      contentType,
+      $"admin-avatar-{adminId}{Path.GetExtension(image.FileName)}",
+      cancellationToken);
+
+    admin.SetAvatarUrl(key);
+    await _db.SaveChangesAsync(cancellationToken);
+
+    return Ok(new { avatarUrl = $"/api/admins/{adminId}/avatar/content" });
+  }
+
   [HttpGet("me/avatar/content")]
   [Authorize(Roles = nameof(Role.Admin))]
   public async Task<IActionResult> GetMyAvatarContent(CancellationToken cancellationToken)
@@ -206,6 +245,29 @@ public sealed class AdminsController : ControllerBase
     var adminId = User.GetRequiredUserId();
     var admin = await _db.Users.FindAsync([adminId], cancellationToken)
       ?? throw new InvalidOperationException("Admin user was not found.");
+
+    if (string.IsNullOrEmpty(admin.AvatarUrl))
+      return NotFound();
+
+    var content = await _imageStorage.GetContentAsync(admin.AvatarUrl, cancellationToken);
+    return File(content.Content, content.ContentType);
+  }
+
+  [HttpGet("{adminId:guid}/avatar/content")]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  public async Task<IActionResult> GetAdminAvatarContent(
+    Guid adminId,
+    CancellationToken cancellationToken)
+  {
+    var role = User.GetRequiredRole();
+    if (role == Role.Admin && User.GetRequiredUserId() != adminId)
+      return Forbid();
+
+    var admin = await _db.Users.FindAsync([adminId], cancellationToken)
+      ?? throw new InvalidOperationException("Admin user was not found.");
+
+    if (admin.Role != Role.Admin)
+      throw new InvalidOperationException("Only pharmacy admins can have this avatar.");
 
     if (string.IsNullOrEmpty(admin.AvatarUrl))
       return NotFound();
