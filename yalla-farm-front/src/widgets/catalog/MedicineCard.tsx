@@ -13,7 +13,7 @@ import type { ApiMedicine } from "@/shared/types/api";
 // render and burn a "Maximum update depth exceeded" loop.
 const EMPTY_DRAFT_ITEMS: DraftItem[] = [];
 import { formatMoney } from "@/shared/lib/format";
-import { getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet, primeMedicineCache } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet, primeMedicineCache } from "@/entities/medicine/api";
 import { Icon } from "@/shared/ui";
 
 type MedicineCardProps = {
@@ -54,20 +54,21 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
   // for retina automatically based on devicePixelRatio.
   const imageRefs = useMemo(() => {
     const imgs = medicine.images ?? [];
-    if (imgs.length > 0) return imgs;
-    // Fallback chain: minimal → main → first
     const minimal = imgs.find((i) => i.isMinimal);
     if (minimal) return [minimal];
     const main = imgs.find((i) => i.isMain);
     if (main) return [main];
-    return imgs[0] ? [imgs[0]] : [];
+    return imgs.length > 0 ? imgs : [];
   }, [medicine.images]);
   // 800 px for 1× and 1600 px for retina so even on 3× DPR phones the
   // browser still has more pixels than it needs to draw a crisp image
   // when downscaled into the ~150–220 px card cell. Older 600/1200 was
   // visibly soft on Retina iPads because the asset only covered ~2.7×
   // density once `mix-blend-multiply` filter ran.
-  const allImages = useMemo(() => imageRefs.map((i) => imageUrl(i, 800)).filter(Boolean), [imageRefs]);
+  const allImages = useMemo(() => {
+    const urls = imageRefs.map((i) => imageUrl(i, 800)).filter(Boolean);
+    return urls.length > 0 ? urls : [DEFAULT_MEDICINE_IMAGE_URL];
+  }, [imageRefs]);
   const price = getCheapestPrice(medicine);
   const hasReadOnlyPriceOverride = readOnlyPrice !== undefined;
   const displayReadOnlyPrice = hasReadOnlyPriceOverride ? (readOnlyPrice ?? undefined) : price;
