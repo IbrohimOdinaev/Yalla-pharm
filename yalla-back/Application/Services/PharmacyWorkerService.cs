@@ -208,6 +208,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
                   AdminId = x.Id,
                   Name = x.Name,
                   PhoneNumber = x.PhoneNumber,
+                  AvatarUrl = string.IsNullOrEmpty(x.AvatarUrl) ? null : $"/api/admins/{x.Id}/avatar/content",
                   PharmacyId = x.PharmacyId,
                   PharmacyTitle = x.Pharmacy?.Title ?? string.Empty,
                   PharmacyIsActive = x.Pharmacy?.IsActive ?? false
@@ -298,6 +299,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
           request.PharmacyAddress.Trim(),
           adminId,
           request.IsPharmacyActive);
+        pharmacy.SetCoordinates(request.Latitude, request.Longitude);
 
         var worker = new PharmacyWorker(
           adminId,

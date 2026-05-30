@@ -9,8 +9,8 @@ import { formatMoney } from "@/shared/lib/format";
 import { DatePicker, Select } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
 
-import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, type ApiAdmin } from "@/entities/admin/api";
-import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon } from "@/entities/pharmacy/admin-api";
+import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, uploadAdminAvatarForSuperAdmin, type ApiAdmin } from "@/entities/admin/api";
+import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon, uploadPharmacyBanner, deletePharmacyBanner } from "@/entities/pharmacy/admin-api";
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
 import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage, getHomePopularMedicinesForAdmin, updateHomePopularMedicines, type HomePopularMedicineItem } from "@/entities/medicine/admin-api";
 import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl } from "@/entities/medicine/api";
@@ -39,6 +39,8 @@ import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
 import type { GeoResult } from "@/shared/lib/map";
+import { AddressAutocomplete } from "@/widgets/address/AddressAutocomplete";
+import type { PharmacyMapHandle } from "@/widgets/map/PharmacyMap";
 import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
@@ -790,18 +792,39 @@ function PharmaciesTab({ token }: { token: string }) {
   const [showCreateMap, setShowCreateMap] = useState(false);
   const [newPharmaLat, setNewPharmaLat] = useState("");
   const [newPharmaLng, setNewPharmaLng] = useState("");
+  const createMapHandleRef = useRef<PharmacyMapHandle | null>(null);
+  const newPharmaLogoRef = useRef<HTMLInputElement>(null);
+  const newPharmaBannerRef = useRef<HTMLInputElement>(null);
+  const newAdminAvatarRef = useRef<HTMLInputElement>(null);
+
+  const updateCreatePoint = useCallback((result: GeoResult) => {
+    setNewPharmaLat(result.lat.toFixed(6));
+    setNewPharmaLng(result.lng.toFixed(6));
+    if (result.address) setNewPharmaAddr(result.address);
+  }, []);
 
   async function onCreateAdminPharmacy(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
     try {
-      await createAdminWithPharmacy(token, {
+      const created = await createAdminWithPharmacy(token, {
         adminName: newAdminName, adminPhoneNumber: newAdminPhone, adminPassword: newAdminPass,
-        pharmacyTitle: newPharmaTitle, pharmacyAddress: newPharmaAddr
+        pharmacyTitle: newPharmaTitle, pharmacyAddress: newPharmaAddr,
+        latitude: newPharmaLat ? parseFloat(newPharmaLat) : undefined,
+        longitude: newPharmaLng ? parseFloat(newPharmaLng) : undefined,
       });
+      const logo = newPharmaLogoRef.current?.files?.[0];
+      const banner = newPharmaBannerRef.current?.files?.[0];
+      const avatar = newAdminAvatarRef.current?.files?.[0];
+      if (logo) await uploadPharmacyIcon(token, created.pharmacy.id, logo);
+      if (banner) await uploadPharmacyBanner(token, created.pharmacy.id, banner);
+      if (avatar) await uploadAdminAvatarForSuperAdmin(token, created.pharmacyWorker.id, avatar);
       setMsg("Админ и аптека созданы.");
       setNewAdminName(""); setNewAdminPhone(""); setNewAdminPass(""); setNewPharmaTitle(""); setNewPharmaAddr("");
       setNewPharmaLat(""); setNewPharmaLng(""); setShowCreateMap(false);
+      if (newPharmaLogoRef.current) newPharmaLogoRef.current.value = "";
+      if (newPharmaBannerRef.current) newPharmaBannerRef.current.value = "";
+      if (newAdminAvatarRef.current) newAdminAvatarRef.current.value = "";
       load(query);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
@@ -828,7 +851,35 @@ function PharmaciesTab({ token }: { token: string }) {
           <input className="stitch-input" placeholder="Телефон" value={newAdminPhone} onChange={(e) => setNewAdminPhone(e.target.value)} required />
           <input className="stitch-input" type="password" placeholder="Пароль" value={newAdminPass} onChange={(e) => setNewAdminPass(e.target.value)} required />
           <input className="stitch-input" placeholder="Название аптеки" value={newPharmaTitle} onChange={(e) => setNewPharmaTitle(e.target.value)} required />
-          <input className="stitch-input md:col-span-2" placeholder="Адрес аптеки" value={newPharmaAddr} onChange={(e) => setNewPharmaAddr(e.target.value)} required />
+          <div className="md:col-span-2">
+            <AddressAutocomplete
+              value={newPharmaAddr}
+              onChange={setNewPharmaAddr}
+              onCoordinatesChange={(coords) => {
+                if (!coords) {
+                  setNewPharmaLat("");
+                  setNewPharmaLng("");
+                  return;
+                }
+                setNewPharmaLat(coords.lat.toFixed(6));
+                setNewPharmaLng(coords.lng.toFixed(6));
+                createMapHandleRef.current?.panTo(coords);
+              }}
+              placeholder="Адрес аптеки"
+            />
+          </div>
+          <label className="space-y-1 text-xs font-semibold text-on-surface-variant">
+            <span>Логотип аптеки</span>
+            <input ref={newPharmaLogoRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
+          </label>
+          <label className="space-y-1 text-xs font-semibold text-on-surface-variant">
+            <span>Баннер аптеки</span>
+            <input ref={newPharmaBannerRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
+          </label>
+          <label className="space-y-1 text-xs font-semibold text-on-surface-variant md:col-span-2">
+            <span>Фото профиля админа (необязательно)</span>
+            <input ref={newAdminAvatarRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
+          </label>
         </div>
         <button type="button" className="stitch-button-secondary text-xs w-full" onClick={() => setShowCreateMap(!showCreateMap)}>
           {showCreateMap ? "Скрыть карту" : "Выбрать адрес на карте"}
@@ -837,13 +888,11 @@ function PharmaciesTab({ token }: { token: string }) {
           <div className="space-y-1">
             <PharmacyMap
               className="h-[220px] xs:h-[260px] rounded-xl overflow-hidden"
-              pharmacies={newPharmaLat && newPharmaLng ? [{ id: "new", title: newPharmaTitle || "Новая аптека", address: newPharmaAddr, lat: parseFloat(newPharmaLat), lng: parseFloat(newPharmaLng) }] : []}
-              pickMode
-              onMapClick={(result: GeoResult) => {
-                setNewPharmaLat(result.lat.toFixed(6));
-                setNewPharmaLng(result.lng.toFixed(6));
-                if (result.address) setNewPharmaAddr(result.address);
-              }}
+              pharmacies={[]}
+              selectedPoint={newPharmaLat && newPharmaLng ? { lat: parseFloat(newPharmaLat), lng: parseFloat(newPharmaLng) } : null}
+              centerPinMode
+              onCenterChange={updateCreatePoint}
+              mapHandle={(h) => { createMapHandleRef.current = h; }}
             />
             {newPharmaLat && newPharmaLng && (
               <p className="text-[10px] text-on-surface-variant">Координаты: {newPharmaLat}, {newPharmaLng}</p>
@@ -863,10 +912,18 @@ function PharmaciesTab({ token }: { token: string }) {
         <div className="space-y-2">
           {admins.map((admin) => (
             <div key={admin.adminId} className="stitch-card flex items-center justify-between p-3">
-              <div>
-                <p className="font-bold">{admin.name}</p>
-                <p className="text-xs text-on-surface-variant">{admin.phoneNumber} {admin.pharmacyTitle ? `· ${admin.pharmacyTitle}` : ""}</p>
-                <p className="text-[10px] text-on-surface-variant font-mono break-all">{admin.adminId}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <AuthedImage
+                  src={admin.avatarUrl ?? null}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover"
+                  fallback={<span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{admin.name.slice(0, 2).toUpperCase()}</span>}
+                />
+                <div className="min-w-0">
+                  <p className="font-bold truncate">{admin.name}</p>
+                  <p className="text-xs text-on-surface-variant truncate">{admin.phoneNumber} {admin.pharmacyTitle ? `· ${admin.pharmacyTitle}` : ""}</p>
+                  <p className="text-[10px] text-on-surface-variant font-mono break-all">{admin.adminId}</p>
+                </div>
               </div>
               <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={async () => {
                 if (!confirm(`Удалить админа ${admin.name}?`)) return;
@@ -907,14 +964,18 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
   const [password, setPassword] = useState("");
   const [pharmacyId, setPharmacyId] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
     try {
-      await createAdmin(token, { name, phoneNumber: phone, password, pharmacyId: pharmacyId || undefined });
+      const created = await createAdmin(token, { name, phoneNumber: phone, password, pharmacyId: pharmacyId || undefined });
+      const avatar = avatarFileRef.current?.files?.[0];
+      if (avatar) await uploadAdminAvatarForSuperAdmin(token, created.pharmacyWorker.id, avatar);
       setMsg("Админ создан.");
       setName(""); setPhone(""); setPassword(""); setPharmacyId("");
+      if (avatarFileRef.current) avatarFileRef.current.value = "";
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
@@ -939,6 +1000,10 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
             ...pharmacies.map((p) => ({ value: p.id, label: p.title })),
           ]}
         />
+        <label className="space-y-1 text-xs font-semibold text-on-surface-variant md:col-span-2">
+          <span>Фото профиля админа (необязательно)</span>
+          <input ref={avatarFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
+        </label>
       </div>
       {msg ? <div className={`text-sm ${msg.includes("создан") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
       <button type="submit" className="stitch-button">Создать</button>
@@ -968,7 +1033,12 @@ function EditablePharmacyCard({
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [iconUploading, setIconUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [adminAvatarUploading, setAdminAvatarUploading] = useState(false);
   const iconFileRef = useRef<HTMLInputElement>(null);
+  const bannerFileRef = useRef<HTMLInputElement>(null);
+  const adminAvatarFileRef = useRef<HTMLInputElement>(null);
+  const mapHandleRef = useRef<PharmacyMapHandle | null>(null);
 
   // Find current admin for this pharmacy
   const pharmacyAdmin = admins.find((a) => a.pharmacyId === pharmacy.id);
@@ -976,6 +1046,16 @@ function EditablePharmacyCard({
   const iconSrc = pharmacy.iconUrl
     ? (pharmacy.iconUrl.startsWith("http") ? pharmacy.iconUrl : `/api/pharmacies/icon/${pharmacy.id}/content`)
     : null;
+  const bannerSrc = pharmacy.bannerUrl
+    ? (pharmacy.bannerUrl.startsWith("http") ? pharmacy.bannerUrl : `/api/pharmacies/banner/${pharmacy.id}/content?w=800`)
+    : null;
+  const adminAvatarSrc = pharmacyAdmin?.avatarUrl ?? null;
+
+  const updateEditPoint = useCallback((result: GeoResult) => {
+    setLat(result.lat.toFixed(6));
+    setLng(result.lng.toFixed(6));
+    if (result.address && !result.address.match(/^\d/)) setAddress(result.address);
+  }, []);
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -1001,7 +1081,7 @@ function EditablePharmacyCard({
     setMsg(null);
     try {
       await uploadPharmacyIcon(token, pharmacy.id, file);
-      setMsg("Иконка загружена.");
+      setMsg("Логотип загружен.");
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка загрузки.");
@@ -1021,6 +1101,50 @@ function EditablePharmacyCard({
     }
   }
 
+  async function onBannerUpload() {
+    const file = bannerFileRef.current?.files?.[0];
+    if (!file) return;
+    setBannerUploading(true);
+    setMsg(null);
+    try {
+      await uploadPharmacyBanner(token, pharmacy.id, file);
+      setMsg("Баннер загружен.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка загрузки.");
+    } finally {
+      setBannerUploading(false);
+      if (bannerFileRef.current) bannerFileRef.current.value = "";
+    }
+  }
+
+  async function onBannerDelete() {
+    if (!confirm("Удалить баннер аптеки?")) return;
+    try {
+      await deletePharmacyBanner(token, pharmacy.id);
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    }
+  }
+
+  async function onAdminAvatarUpload() {
+    const file = adminAvatarFileRef.current?.files?.[0];
+    if (!file || !pharmacyAdmin) return;
+    setAdminAvatarUploading(true);
+    setMsg(null);
+    try {
+      await uploadAdminAvatarForSuperAdmin(token, pharmacyAdmin.adminId, file);
+      setMsg("Фото админа загружено.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка загрузки.");
+    } finally {
+      setAdminAvatarUploading(false);
+      if (adminAvatarFileRef.current) adminAvatarFileRef.current.value = "";
+    }
+  }
+
   async function onRemoveAdmin() {
     if (!pharmacyAdmin) return;
     if (!confirm(`Удалить админа ${pharmacyAdmin.name} из аптеки?`)) return;
@@ -1036,7 +1160,21 @@ function EditablePharmacyCard({
     return (
       <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSave}>
         <input className="stitch-input" placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} required />
-        <input className="stitch-input" placeholder="Адрес" value={address} onChange={(e) => setAddress(e.target.value)} required />
+        <AddressAutocomplete
+          value={address}
+          onChange={setAddress}
+          onCoordinatesChange={(coords) => {
+            if (!coords) {
+              setLat("");
+              setLng("");
+              return;
+            }
+            setLat(coords.lat.toFixed(6));
+            setLng(coords.lng.toFixed(6));
+            mapHandleRef.current?.panTo(coords);
+          }}
+          placeholder="Адрес"
+        />
         <div className="grid grid-cols-2 gap-2">
           <input className="stitch-input" placeholder="Широта (lat)" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} />
           <input className="stitch-input" placeholder="Долгота (lng)" type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} />
@@ -1046,26 +1184,23 @@ function EditablePharmacyCard({
         </button>
         {showMapPicker && (
           <PharmacyMap
-            className="h-[250px]"
-            pharmacies={lat && lng ? [{ id: pharmacy.id, title, address, lat: parseFloat(lat), lng: parseFloat(lng) }] : []}
+            className="h-[250px] rounded-xl overflow-hidden"
+            pharmacies={[]}
             selectedPoint={lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : null}
-            pickMode
-            onMapClick={(result: GeoResult) => {
-              setLat(result.lat.toFixed(6));
-              setLng(result.lng.toFixed(6));
-              if (result.address && !result.address.match(/^\d/)) setAddress(result.address);
-            }}
+            centerPinMode
+            onCenterChange={updateEditPoint}
+            mapHandle={(h) => { mapHandleRef.current = h; }}
           />
         )}
 
         {/* Icon upload */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-on-surface-variant">Иконка аптеки</label>
+          <label className="text-xs font-semibold text-on-surface-variant">Логотип аптеки</label>
           <div className="flex gap-2 items-center">
             {iconSrc ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={iconSrc} alt="Иконка" className="h-10 w-10 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
+                <img src={iconSrc} alt="Логотип" className="h-10 w-10 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
                 <button type="button" onClick={onIconDelete} className="text-xs text-red-600 font-semibold">Удалить</button>
               </>
             ) : (
@@ -1078,18 +1213,52 @@ function EditablePharmacyCard({
           </div>
         </div>
 
+        {/* Banner upload */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-on-surface-variant">Баннер аптеки</label>
+          <div className="flex items-center gap-2">
+            {bannerSrc ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={bannerSrc} alt="Баннер" className="h-16 w-32 rounded-lg object-cover border border-surface-container-high flex-shrink-0" />
+                <button type="button" onClick={onBannerDelete} className="text-xs text-red-600 font-semibold">Удалить</button>
+              </>
+            ) : (
+              <span className="text-xs text-on-surface-variant">Не загружен</span>
+            )}
+          </div>
+          <div className="flex gap-2 items-center">
+            <input ref={bannerFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-xs flex-1" onChange={onBannerUpload} />
+            {bannerUploading && <span className="text-xs text-primary">Загрузка...</span>}
+          </div>
+        </div>
+
         {/* Admin section */}
         <div className="space-y-1.5 rounded-xl bg-surface-container-low p-2.5 xs:p-3">
           <label className="text-xs font-semibold text-on-surface-variant">Администратор</label>
           {pharmacyAdmin ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold">{pharmacyAdmin.name}</p>
-                <p className="text-[10px] text-on-surface-variant">{pharmacyAdmin.phoneNumber}</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <AuthedImage
+                    src={adminAvatarSrc}
+                    alt=""
+                    className="h-10 w-10 rounded-full object-cover"
+                    fallback={<span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{pharmacyAdmin.name.slice(0, 2).toUpperCase()}</span>}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate">{pharmacyAdmin.name}</p>
+                    <p className="text-[10px] text-on-surface-variant">{pharmacyAdmin.phoneNumber}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={onRemoveAdmin} className="rounded-lg bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700">
+                  Удалить админа
+                </button>
               </div>
-              <button type="button" onClick={onRemoveAdmin} className="rounded-lg bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700">
-                Удалить админа
-              </button>
+              <div className="flex gap-2 items-center">
+                <input ref={adminAvatarFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-xs flex-1" onChange={onAdminAvatarUpload} />
+                {adminAvatarUploading && <span className="text-xs text-primary">Загрузка...</span>}
+              </div>
             </div>
           ) : (
             <p className="text-xs text-warning">Нет администратора. Создайте нового в форме ниже.</p>
@@ -1099,7 +1268,7 @@ function EditablePharmacyCard({
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Активна
         </label>
-        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("загружена") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
+        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("загружен") || msg.includes("загружена") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
         <div className="flex gap-2">
           <button type="submit" className="stitch-button text-xs">Сохранить</button>
           <button type="button" className="stitch-button-secondary text-xs" onClick={() => setIsEditing(false)}>Отмена</button>

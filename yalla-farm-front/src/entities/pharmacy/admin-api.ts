@@ -31,22 +31,27 @@ export async function deletePharmacy(token: string, pharmacyId: string): Promise
 }
 
 export async function uploadPharmacyIcon(token: string, pharmacyId: string, file: File): Promise<string> {
-  const { env } = await import("@/shared/config/env");
   const formData = new FormData();
   formData.append("pharmacyId", pharmacyId);
   formData.append("image", file);
-  const response = await fetch(`${env.apiBaseUrl}/api/pharmacies/icon`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) throw new Error("Не удалось загрузить иконку.");
-  const data = await response.json();
+  const data = await apiFetch<{ iconUrl?: string }>("/api/pharmacies/icon", { method: "POST", token, body: formData });
   return data.iconUrl ?? "";
 }
 
 export async function deletePharmacyIcon(token: string, pharmacyId: string): Promise<void> {
   await apiFetch<unknown>("/api/pharmacies/icon", { method: "DELETE", token, body: { pharmacyId } });
+}
+
+export async function uploadPharmacyBanner(token: string, pharmacyId: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("pharmacyId", pharmacyId);
+  formData.append("image", file);
+  const data = await apiFetch<{ bannerUrl?: string }>("/api/pharmacies/banner", { method: "POST", token, body: formData });
+  return data.bannerUrl ?? "";
+}
+
+export async function deletePharmacyBanner(token: string, pharmacyId: string): Promise<void> {
+  await apiFetch<unknown>("/api/pharmacies/banner", { method: "DELETE", token, body: { pharmacyId } });
 }
 
 export function pharmacyIconUrl(pharmacyId: string): string {

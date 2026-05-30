@@ -7,5 +7,7 @@ public sealed class RegisterAdminWithPharmacyRequest
   public string AdminPassword { get; init; } = string.Empty;
   public string PharmacyTitle { get; init; } = string.Empty;
   public string PharmacyAddress { get; init; } = string.Empty;
+  public double? Latitude { get; init; }
+  public double? Longitude { get; init; }
   public bool IsPharmacyActive { get; init; } = true;
 }
