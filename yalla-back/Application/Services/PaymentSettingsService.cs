@@ -55,6 +55,13 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
     await _dbContext.SaveChangesAsync(cancellationToken);
   }
 
+  public async Task SetPaymentMethodEnabledAsync(string method, bool isEnabled, Guid updatedByUserId, CancellationToken cancellationToken = default)
+  {
+    var entity = await GetOrCreateSettingsAsync(cancellationToken);
+    entity.SetPaymentMethodEnabled(method, isEnabled, updatedByUserId);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+  }
+
   public async Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
   {
     var entity = await _dbContext.PaymentSettings
@@ -71,6 +78,9 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
       AlifUrlTemplateEffective = string.IsNullOrWhiteSpace(alifTemplate) ? _options.AlifUrlTemplate : alifTemplate,
       EskhataUrlTemplate = eskhataTemplate,
       EskhataUrlTemplateEffective = string.IsNullOrWhiteSpace(eskhataTemplate) ? _options.EskhataUrlTemplate : eskhataTemplate,
+      IsDcEnabled = entity?.IsDcEnabled ?? true,
+      IsAlifEnabled = entity?.IsAlifEnabled ?? true,
+      IsEskhataEnabled = entity?.IsEskhataEnabled ?? true,
       UpdatedAtUtc = entity?.UpdatedAtUtc ?? DateTime.UtcNow,
       UpdatedByUserId = entity?.UpdatedByUserId
     };

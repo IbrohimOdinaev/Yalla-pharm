@@ -7,6 +7,9 @@ export type PaymentSettingsSnapshot = {
   alifUrlTemplateEffective: string;
   eskhataUrlTemplate: string | null;
   eskhataUrlTemplateEffective: string;
+  isDcEnabled: boolean;
+  isAlifEnabled: boolean;
+  isEskhataEnabled: boolean;
   updatedAtUtc: string;
   updatedByUserId: string | null;
 };
@@ -15,6 +18,9 @@ export type PublicPaymentSettings = {
   dcBaseUrlEffective: string;
   alifUrlTemplateEffective: string;
   eskhataUrlTemplateEffective: string;
+  isDcEnabled: boolean;
+  isAlifEnabled: boolean;
+  isEskhataEnabled: boolean;
 };
 
 export async function getPaymentSettings(token: string): Promise<PaymentSettingsSnapshot> {
@@ -46,5 +52,17 @@ export async function updateEskhataUrlTemplate(token: string, urlTemplate: strin
     method: "PUT",
     token,
     body: { urlTemplate },
+  });
+}
+
+export async function updatePaymentMethodEnabled(
+  token: string,
+  method: "dc" | "alif" | "eskhata",
+  isEnabled: boolean,
+): Promise<PaymentSettingsSnapshot> {
+  return apiFetch<PaymentSettingsSnapshot>(`/api/payment-settings/method/${method}/enabled`, {
+    method: "PUT",
+    token,
+    body: { isEnabled },
   });
 }

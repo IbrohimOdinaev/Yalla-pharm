@@ -1478,8 +1478,8 @@ public sealed class PrescriptionService : IPrescriptionService
       Guid prescriptionId,
       CancellationToken cancellationToken)
     {
-        var overrideUrl = await _paymentSettingsService.GetDcBaseUrlAsync(cancellationToken);
-        var baseUrl = !string.IsNullOrWhiteSpace(overrideUrl) ? overrideUrl : _paymentOptions.BaseUrl;
+        var settings = await _paymentSettingsService.GetSnapshotAsync(cancellationToken);
+        var baseUrl = settings.IsDcEnabled ? settings.DcBaseUrlEffective : string.Empty;
         if (string.IsNullOrWhiteSpace(baseUrl))
             return string.Empty;
 

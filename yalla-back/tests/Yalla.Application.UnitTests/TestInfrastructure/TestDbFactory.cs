@@ -17,13 +17,17 @@ internal sealed class FakePaymentSettingsService : IPaymentSettingsService
   public Task SetDcBaseUrlAsync(string? url, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task SetAlifUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task SetEskhataUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
+  public Task SetPaymentMethodEnabledAsync(string method, bool isEnabled, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken ct = default)
     => Task.FromResult(new PaymentSettingsSnapshot
     {
       DcBaseUrl = _baseUrl,
       DcBaseUrlEffective = _baseUrl ?? string.Empty,
       AlifUrlTemplateEffective = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1",
-      EskhataUrlTemplateEffective = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM"
+      EskhataUrlTemplateEffective = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM",
+      IsDcEnabled = true,
+      IsAlifEnabled = true,
+      IsEskhataEnabled = true
     });
 }
 

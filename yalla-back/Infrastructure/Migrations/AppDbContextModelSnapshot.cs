@@ -1304,6 +1304,24 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(2048)")
                         .HasColumnName("eskhata_url_template");
 
+                    b.Property<bool>("IsAlifEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_alif_enabled");
+
+                    b.Property<bool>("IsDcEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_dc_enabled");
+
+                    b.Property<bool>("IsEskhataEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_eskhata_enabled");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("updated_at_utc");

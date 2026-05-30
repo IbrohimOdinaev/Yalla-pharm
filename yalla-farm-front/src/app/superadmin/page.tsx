@@ -32,6 +32,7 @@ import {
   updateAlifUrlTemplate,
   updateDcBaseUrl,
   updateEskhataUrlTemplate,
+  updatePaymentMethodEnabled,
   type PaymentSettingsSnapshot,
 } from "@/entities/payment-settings/api";
 import { createOneCSource, deleteOneCSource, getOneCSources, setOneCSourceActive, updateOneCSource, type OneCSource, type OneCExchangeStatus } from "@/entities/one-c/admin-api";
@@ -444,6 +445,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
   });
   const [editing, setEditing] = useState<"dc" | "alif" | "eskhata" | null>(null);
   const [saving, setSaving] = useState<"dc" | "alif" | "eskhata" | null>(null);
+  const [toggling, setToggling] = useState<"dc" | "alif" | "eskhata" | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -489,6 +491,31 @@ function PaymentSettingsCard({ token }: { token: string }) {
     }
   }
 
+  async function toggleMethod(kind: "dc" | "alif" | "eskhata", isEnabled: boolean) {
+    const label = kind === "dc" ? "Dushanbe City" : kind === "alif" ? "Alif" : "Эсхата";
+    const confirmMsg = isEnabled
+      ? `Включить способ оплаты ${label} для клиентов?`
+      : `Отключить способ оплаты ${label} для клиентов?\n\nНовые клиенты больше не увидят этот способ в выборе оплаты.`;
+    if (!confirm(confirmMsg)) return;
+
+    setToggling(kind);
+    setMsg(null);
+    try {
+      const updated = await updatePaymentMethodEnabled(token, kind, isEnabled);
+      setSnapshot(updated);
+      setInputs({
+        dc: updated.dcBaseUrl ?? "",
+        alif: updated.alifUrlTemplate ?? "",
+        eskhata: updated.eskhataUrlTemplate ?? "",
+      });
+      setMsg(isEnabled ? `${label} включён.` : `${label} отключён.`);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
+    } finally {
+      setToggling(null);
+    }
+  }
+
   if (!snapshot) {
     return (
       <div className="stitch-card p-3 text-xs text-on-surface-variant">Загружаем настройки платежей...</div>
@@ -502,6 +529,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
       hint: "Base URL. Сумма и комментарий добавляются сервером.",
       value: snapshot.dcBaseUrl,
       effective: snapshot.dcBaseUrlEffective,
+      isEnabled: snapshot.isDcEnabled !== false,
       placeholder: "http://pay.expresspay.tj/?A=...",
     },
     {
@@ -510,6 +538,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
       hint: "Шаблон ссылки. Используйте {amount} там, где должна быть сумма.",
       value: snapshot.alifUrlTemplate,
       effective: snapshot.alifUrlTemplateEffective,
+      isEnabled: snapshot.isAlifEnabled !== false,
       placeholder: "https://alifmobi.page.link/toMobi?account=...&summa={amount}",
     },
     {
@@ -518,6 +547,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
       hint: "Шаблон deep link. Используйте {amount} там, где должна быть сумма.",
       value: snapshot.eskhataUrlTemplate,
       effective: snapshot.eskhataUrlTemplateEffective,
+      isEnabled: snapshot.isEskhataEnabled !== false,
       placeholder: "eskhata://service/.../{amount}/...",
     },
   ];
@@ -541,14 +571,33 @@ function PaymentSettingsCard({ token }: { token: string }) {
             <div key={row.kind} className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-bold">{row.title}</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-bold">{row.title}</h3>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${row.isEnabled ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
+                      {row.isEnabled ? "Активен" : "Отключён"}
+                    </span>
+                  </div>
                   <p className="text-[10px] text-on-surface-variant">{row.hint}</p>
                 </div>
-                {!isEditing ? (
-                  <button type="button" className="stitch-button-secondary px-3 py-1.5 text-xs" onClick={() => setEditing(row.kind)}>
-                    Изменить
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={toggling === row.kind}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
+                      row.isEnabled
+                        ? "bg-red-100 text-red-700 hover:bg-red-200"
+                        : "bg-primary-soft text-primary hover:bg-primary/15"
+                    }`}
+                    onClick={() => toggleMethod(row.kind, !row.isEnabled)}
+                  >
+                    {toggling === row.kind ? "..." : row.isEnabled ? "Отключить" : "Включить"}
                   </button>
-                ) : null}
+                  {!isEditing ? (
+                    <button type="button" className="stitch-button-secondary px-3 py-1.5 text-xs" onClick={() => setEditing(row.kind)}>
+                      Изменить
+                    </button>
+                  ) : null}
+                </div>
               </div>
               {isEditing ? (
                 <div className="mt-3 space-y-2">
@@ -583,7 +632,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
                       {usingDefault ? "По умолчанию" : "Переопределён"}
                     </span>
                     <span className="text-[10px] text-on-surface-variant">
-                      Обновлён: {new Date(snapshot.updatedAtUtc).toLocaleString("ru-RU")}
+                      Обновлён: {formatDushanbeDateTime(snapshot.updatedAtUtc)}
                     </span>
                   </div>
                   <p className="break-all rounded-lg bg-surface-container-low p-2 font-mono text-[11px] xs:text-xs">
@@ -595,7 +644,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
           );
         })}
       </div>
-      {msg ? <p className={`text-[11px] ${msg.includes("обновлены") ? "text-primary" : "text-red-600"}`}>{msg}</p> : null}
+      {msg ? <p className={`text-[11px] ${msg.includes("Ошибка") || msg.includes("must") ? "text-red-600" : "text-primary"}`}>{msg}</p> : null}
     </div>
   );
 }

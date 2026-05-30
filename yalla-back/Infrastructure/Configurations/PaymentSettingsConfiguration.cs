@@ -36,6 +36,24 @@ public sealed class PaymentSettingsConfiguration : IEntityTypeConfiguration<Paym
       .HasMaxLength(2048)
       .IsRequired(false);
 
+    builder.Property(x => x.IsDcEnabled)
+      .HasColumnName("is_dc_enabled")
+      .HasColumnType("boolean")
+      .HasDefaultValue(true)
+      .IsRequired();
+
+    builder.Property(x => x.IsAlifEnabled)
+      .HasColumnName("is_alif_enabled")
+      .HasColumnType("boolean")
+      .HasDefaultValue(true)
+      .IsRequired();
+
+    builder.Property(x => x.IsEskhataEnabled)
+      .HasColumnName("is_eskhata_enabled")
+      .HasColumnType("boolean")
+      .HasDefaultValue(true)
+      .IsRequired();
+
     builder.Property(x => x.UpdatedAtUtc)
       .HasColumnName("updated_at_utc")
       .HasColumnType("timestamp without time zone")

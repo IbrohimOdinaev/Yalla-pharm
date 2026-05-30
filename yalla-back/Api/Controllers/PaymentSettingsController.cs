@@ -34,7 +34,10 @@ public sealed class PaymentSettingsController : ControllerBase
     {
       dcBaseUrlEffective = snapshot.DcBaseUrlEffective,
       alifUrlTemplateEffective = snapshot.AlifUrlTemplateEffective,
-      eskhataUrlTemplateEffective = snapshot.EskhataUrlTemplateEffective
+      eskhataUrlTemplateEffective = snapshot.EskhataUrlTemplateEffective,
+      isDcEnabled = snapshot.IsDcEnabled,
+      isAlifEnabled = snapshot.IsAlifEnabled,
+      isEskhataEnabled = snapshot.IsEskhataEnabled
     });
   }
 
@@ -79,5 +82,22 @@ public sealed class PaymentSettingsController : ControllerBase
   public sealed class UpdatePaymentUrlTemplateRequest
   {
     public string? UrlTemplate { get; init; }
+  }
+
+  [HttpPut("method/{method}/enabled")]
+  public async Task<IActionResult> UpdatePaymentMethodEnabled(
+    string method,
+    [FromBody] UpdatePaymentMethodEnabledRequest request,
+    CancellationToken cancellationToken)
+  {
+    var userId = User.GetRequiredUserId();
+    await _service.SetPaymentMethodEnabledAsync(method, request.IsEnabled, userId, cancellationToken);
+    var snapshot = await _service.GetSnapshotAsync(cancellationToken);
+    return Ok(snapshot);
+  }
+
+  public sealed class UpdatePaymentMethodEnabledRequest
+  {
+    public bool IsEnabled { get; init; }
   }
 }

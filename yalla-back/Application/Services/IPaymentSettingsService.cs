@@ -12,6 +12,8 @@ public interface IPaymentSettingsService
 
   Task SetEskhataUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken cancellationToken = default);
 
+  Task SetPaymentMethodEnabledAsync(string method, bool isEnabled, Guid updatedByUserId, CancellationToken cancellationToken = default);
+
   Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default);
 }
 
@@ -23,6 +25,9 @@ public sealed class PaymentSettingsSnapshot
   public string AlifUrlTemplateEffective { get; init; } = string.Empty;
   public string? EskhataUrlTemplate { get; init; }
   public string EskhataUrlTemplateEffective { get; init; } = string.Empty;
+  public bool IsDcEnabled { get; init; } = true;
+  public bool IsAlifEnabled { get; init; } = true;
+  public bool IsEskhataEnabled { get; init; } = true;
   public DateTime UpdatedAtUtc { get; init; }
   public Guid? UpdatedByUserId { get; init; }
 }

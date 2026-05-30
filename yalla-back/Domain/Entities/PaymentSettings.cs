@@ -20,6 +20,12 @@ public class PaymentSettings
 
   public string? EskhataUrlTemplate { get; private set; }
 
+  public bool IsDcEnabled { get; private set; } = true;
+
+  public bool IsAlifEnabled { get; private set; } = true;
+
+  public bool IsEskhataEnabled { get; private set; } = true;
+
   public DateTime UpdatedAtUtc { get; private set; }
 
   public Guid? UpdatedByUserId { get; private set; }
@@ -60,6 +66,32 @@ public class PaymentSettings
   public void SetEskhataUrlTemplate(string? urlTemplate, Guid? updatedBy)
   {
     EskhataUrlTemplate = NormalizePaymentTemplate(urlTemplate, nameof(EskhataUrlTemplate));
+    UpdatedAtUtc = DateTime.UtcNow;
+    UpdatedByUserId = updatedBy;
+  }
+
+  public void SetPaymentMethodEnabled(string method, bool isEnabled, Guid? updatedBy)
+  {
+    var normalized = (method ?? string.Empty).Trim().ToLowerInvariant();
+    switch (normalized)
+    {
+      case "dc":
+      case "dushanbecity":
+      case "dushanbe-city":
+        IsDcEnabled = isEnabled;
+        break;
+      case "alif":
+        IsAlifEnabled = isEnabled;
+        break;
+      case "eskhata":
+      case "эcхата":
+      case "эсхата":
+        IsEskhataEnabled = isEnabled;
+        break;
+      default:
+        throw new DomainArgumentException("Unknown payment method.");
+    }
+
     UpdatedAtUtc = DateTime.UtcNow;
     UpdatedByUserId = updatedBy;
   }

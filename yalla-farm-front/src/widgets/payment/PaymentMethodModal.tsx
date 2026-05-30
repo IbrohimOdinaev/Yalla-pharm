@@ -87,7 +87,11 @@ export function PaymentMethodModal({ open, amount, methods, onSelect, onClose }:
         </div>
 
         <div className="mt-5 space-y-2">
-          {methods.map((method) => {
+          {methods.length === 0 ? (
+            <div className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">
+              Сейчас нет доступных способов оплаты. Попробуйте позже или свяжитесь с поддержкой.
+            </div>
+          ) : methods.map((method) => {
             const style = methodStyles[method.id];
             return (
               <button

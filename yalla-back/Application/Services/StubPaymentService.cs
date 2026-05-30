@@ -69,8 +69,8 @@ public sealed class StubPaymentService : IPaymentService
   private async Task<PaymentLinkInfo> BuildPaymentLinkAsync(PayForOrderRequest request, CancellationToken cancellationToken)
   {
     // Prefer the runtime-editable URL from the DB; fall back to static config.
-    var overrideUrl = await _paymentSettingsService.GetDcBaseUrlAsync(cancellationToken);
-    var baseUrl = !string.IsNullOrWhiteSpace(overrideUrl) ? overrideUrl : _paymentOptions.BaseUrl;
+    var settings = await _paymentSettingsService.GetSnapshotAsync(cancellationToken);
+    var baseUrl = settings.IsDcEnabled ? settings.DcBaseUrlEffective : string.Empty;
 
     if (string.IsNullOrWhiteSpace(baseUrl))
     {

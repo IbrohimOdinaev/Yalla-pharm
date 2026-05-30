@@ -321,7 +321,7 @@ export default function NewPrescriptionPage() {
     const amount = pendingPayment.amount;
     const methods: PaymentMethodOption[] = [];
 
-    if (pendingPayment.dcUrl) {
+    if (pendingPayment.dcUrl && paymentSettings?.isDcEnabled !== false) {
       methods.push({
         id: "dc",
         title: "Dushanbe City",
@@ -334,7 +334,7 @@ export default function NewPrescriptionPage() {
       paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
       amount,
     );
-    if (alifUrl) {
+    if (alifUrl && paymentSettings?.isAlifEnabled !== false) {
       methods.push({
         id: "alif",
         title: "Alif Mobi",
@@ -347,7 +347,7 @@ export default function NewPrescriptionPage() {
       paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
       amount,
     );
-    if (eskhataUrl) {
+    if (eskhataUrl && paymentSettings?.isEskhataEnabled !== false) {
       methods.push({
         id: "eskhata",
         title: "Эсхата",
