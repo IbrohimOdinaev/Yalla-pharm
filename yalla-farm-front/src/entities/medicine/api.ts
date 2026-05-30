@@ -3,6 +3,7 @@ import { env } from "@/shared/config/env";
 import type { ApiMedicine, ApiPaginated, ApiSearchByPharmacyResponse } from "@/shared/types/api";
 
 const medicineCache = new Map<string, ApiMedicine>();
+export const DEFAULT_MEDICINE_IMAGE_URL = "/box-yalla-for-website-1.webp";
 
 function putMedicineInCache(medicine: ApiMedicine): void {
   if (!medicine?.id) return;
@@ -108,7 +109,7 @@ export function getMinimalImageUrl(medicine?: ApiMedicine, width?: number): stri
   if (minimal) return imageUrl(minimal, width);
   const main = images.find((i) => i.isMain);
   if (main) return imageUrl(main, width);
-  return imageUrl(images[0], width);
+  return imageUrl(images[0], width) || DEFAULT_MEDICINE_IMAGE_URL;
 }
 
 /** Main image (for product detail hero) */
@@ -116,17 +117,19 @@ export function getMainImageUrl(medicine?: ApiMedicine, width?: number): string 
   const images = medicine?.images ?? [];
   const main = images.find((i) => i.isMain);
   if (main) return imageUrl(main, width);
-  return imageUrl(images[0], width);
+  return imageUrl(images[0], width) || DEFAULT_MEDICINE_IMAGE_URL;
 }
 
 /** All gallery images: main first, then non-minimal others */
 export function getGalleryImages(medicine?: ApiMedicine, width?: number): string[] {
   const images = medicine?.images ?? [];
-  if (!images.length) return [];
+  if (!images.length) return [DEFAULT_MEDICINE_IMAGE_URL];
   const main = images.find((i) => i.isMain);
   const others = images.filter((i) => !i.isMain && !i.isMinimal);
   const ordered = [main, ...others].filter(Boolean);
-  return ordered.map((i) => imageUrl(i!, width)).filter(Boolean);
+  if (!ordered.length) return [];
+  const gallery = ordered.map((i) => imageUrl(i!, width)).filter(Boolean);
+  return gallery.length > 0 ? gallery : [DEFAULT_MEDICINE_IMAGE_URL];
 }
 
 /** Cheapest price — uses minPrice from catalog API, falls back to offers, then medicine.price */

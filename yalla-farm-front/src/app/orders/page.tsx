@@ -22,7 +22,7 @@ import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
-import { env } from "@/shared/config/env";
+import { getMinimalImageUrl } from "@/entities/medicine/api";
 import { Button, Chip, EmptyState, Icon } from "@/shared/ui";
 import { OrderStatusBadge } from "@/widgets/order/OrderStatusBadge";
 
@@ -512,14 +512,8 @@ export default function OrdersPage() {
                             className="flex items-center gap-2 xs:gap-3 rounded-xl bg-surface-container-low p-2 xs:p-3 transition active:scale-95 hover:bg-surface-container-high"
                           >
                             <div className="h-9 w-9 xs:h-10 xs:w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded-lg bg-image-backdrop overflow-hidden">
-                              {pos.medicine?.images?.[0] ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={`${env.apiBaseUrl}/api/medicines/images/${(pos.medicine.images[0] as { id: string }).id}/content?w=120`} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain mix-blend-multiply" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-[10px] xs:text-xs sm:text-sm font-bold text-on-surface-variant/40">
-                                  {(pos.medicine?.title ?? "?")[0]}
-                                </div>
-                              )}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={getMinimalImageUrl(pos.medicine, 120)} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain mix-blend-multiply" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-[10px] xs:text-xs sm:text-sm font-bold truncate">

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MEDICINE_IMAGE_URL,
   imageUrl,
   getMinimalImageUrl,
   getMainImageUrl,
@@ -55,11 +56,11 @@ describe("getMinimalImageUrl", () => {
     const med: ApiMedicine = { id: "m", images: [IMG_REGULAR1, IMG_REGULAR2] };
     expect(getMinimalImageUrl(med)).toContain("img-reg1");
   });
-  it("returns empty when no images", () => {
-    expect(getMinimalImageUrl({ id: "m", images: [] })).toBe("");
+  it("returns default image when no images", () => {
+    expect(getMinimalImageUrl({ id: "m", images: [] })).toBe(DEFAULT_MEDICINE_IMAGE_URL);
   });
-  it("returns empty for undefined medicine", () => {
-    expect(getMinimalImageUrl(undefined)).toBe("");
+  it("returns default image for undefined medicine", () => {
+    expect(getMinimalImageUrl(undefined)).toBe(DEFAULT_MEDICINE_IMAGE_URL);
   });
 });
 
@@ -71,8 +72,8 @@ describe("getMainImageUrl", () => {
     const med: ApiMedicine = { id: "m", images: [IMG_REGULAR1] };
     expect(getMainImageUrl(med)).toContain("img-reg1");
   });
-  it("returns empty when no images", () => {
-    expect(getMainImageUrl({ id: "m", images: [] })).toBe("");
+  it("returns default image when no images", () => {
+    expect(getMainImageUrl({ id: "m", images: [] })).toBe(DEFAULT_MEDICINE_IMAGE_URL);
   });
 });
 
@@ -86,8 +87,8 @@ describe("getGalleryImages", () => {
     // minimal should NOT be in gallery
     expect(gallery.join(",")).not.toContain("img-min");
   });
-  it("returns empty array for no images", () => {
-    expect(getGalleryImages({ id: "m", images: [] })).toEqual([]);
+  it("returns default image for no images", () => {
+    expect(getGalleryImages({ id: "m", images: [] })).toEqual([DEFAULT_MEDICINE_IMAGE_URL]);
   });
   it("handles medicine with only minimal image", () => {
     const med: ApiMedicine = { id: "m", images: [IMG_MINIMAL] };
