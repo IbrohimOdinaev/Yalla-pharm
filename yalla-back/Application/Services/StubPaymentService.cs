@@ -70,7 +70,11 @@ public sealed class StubPaymentService : IPaymentService
   {
     // Prefer the runtime-editable URL from the DB; fall back to static config.
     var settings = await _paymentSettingsService.GetSnapshotAsync(cancellationToken);
-    var baseUrl = settings.IsDcEnabled ? settings.DcBaseUrlEffective : string.Empty;
+    var baseUrl = settings.IsDcEnabled
+      ? (string.IsNullOrWhiteSpace(settings.DcBaseUrlEffective)
+        ? _paymentOptions.BaseUrl
+        : settings.DcBaseUrlEffective)
+      : string.Empty;
 
     if (string.IsNullOrWhiteSpace(baseUrl))
     {
