@@ -158,6 +158,8 @@ export default function CheckoutPage() {
   const doCalculateDelivery = useCallback(async (coords: GeoPoint, address: string) => {
     if (!pharmacyId || isPickup) return;
     setIsCalculating(true);
+    setDeliveryCost(null, null);
+    setError(null);
     try {
       const result = await calculateDelivery({
         pharmacyId,
@@ -170,6 +172,7 @@ export default function CheckoutPage() {
       setDeliveryAddressData({ title: address, address, lat: coords.lat, lng: coords.lng });
     } catch {
       setDeliveryCost(null, null);
+      setError("Не удалось рассчитать доставку. Выберите адрес ещё раз.");
     }
     setIsCalculating(false);
   }, [pharmacyId, isPickup, setDeliveryCost, setDeliveryAddressData]);
@@ -184,6 +187,12 @@ export default function CheckoutPage() {
   const doorToDoorFee = !isPickup && deliverToDoor ? DOOR_TO_DOOR_FEE : 0;
   const effectiveDeliveryCost = isPickup ? 0 : (deliveryCost ?? 0) + doorToDoorFee;
   const totalAmount = itemsAmount + effectiveDeliveryCost;
+  const effectiveAddress = localAddress || savedAddress;
+  const effectiveCoords = localCoords ?? savedCoords;
+  const hasDeliveryAddress = isPickup || Boolean(effectiveAddress?.trim() && effectiveCoords);
+  const hasCalculatedDelivery = isPickup || deliveryCost != null;
+  const canSubmitOrder = selectedCount > 0
+    && (isPickup || (hasDeliveryAddress && hasCalculatedDelivery && !isCalculating));
   const paymentMethods = useMemo<PaymentMethodOption[]>(() => {
     if (!pendingPayment) return [];
     const amount = pendingPayment.amount;
@@ -236,6 +245,16 @@ export default function CheckoutPage() {
       return;
     }
     if (selectedCount === 0) return;
+    if (!isPickup) {
+      if (!hasDeliveryAddress) {
+        setError("Выберите адрес доставки на карте.");
+        return;
+      }
+      if (!hasCalculatedDelivery) {
+        setError("Сначала нужно рассчитать доставку для выбранного адреса.");
+        return;
+      }
+    }
     setIsSubmitting(true);
     setError(null);
 
@@ -267,7 +286,6 @@ export default function CheckoutPage() {
 
     try {
       const idempotencyKey = buildCheckoutIdempotencyKey();
-      const effectiveAddress = localAddress || savedAddress;
       const effectiveTitle = localAddressTitle ?? savedAddressTitle;
       // Prescription-checkout flow: don't consume basket positions and tag
       // the source with prescriptionId so the backend transitions the
@@ -281,8 +299,8 @@ export default function CheckoutPage() {
         // ClientAddress record); otherwise fall back to the raw address — the
         // backend uses this for delivery API title and admin display.
         deliveryAddressTitle: effectiveTitle ?? effectiveAddress,
-        deliveryLatitude: localCoords?.lat ?? savedCoords?.lat ?? null,
-        deliveryLongitude: localCoords?.lng ?? savedCoords?.lng ?? null,
+        deliveryLatitude: effectiveCoords?.lat ?? null,
+        deliveryLongitude: effectiveCoords?.lng ?? null,
         idempotencyKey,
         ignoredPositionIds: [] as string[],
         comment: comment.trim() ? comment.trim() : null,
@@ -334,11 +352,13 @@ export default function CheckoutPage() {
     const storeAddress = storeState.address;
     const storeCoords = storeState.coords;
     const storeTitle = storeState.title;
-    if (storeAddress && storeAddress !== localAddress) {
+    const coordsChanged = storeCoords?.lat !== localCoords?.lat || storeCoords?.lng !== localCoords?.lng;
+    if (storeAddress && (storeAddress !== localAddress || coordsChanged)) {
       setLocalAddress(storeAddress);
       setLocalCoords(storeCoords);
       setLocalAddressTitle(storeTitle);
       if (storeCoords) doCalculateDelivery(storeCoords, storeAddress);
+      else setDeliveryCost(null, null);
     } else if (storeTitle !== localAddressTitle) {
       // Title may have changed (rename) without address changing.
       setLocalAddressTitle(storeTitle);
@@ -665,10 +685,14 @@ export default function CheckoutPage() {
             rightIcon="arrow-right"
             onClick={onSubmit}
             loading={isSubmitting || isCalculating}
-            disabled={selectedCount === 0 || (!isPickup && !localAddress && !savedAddress)}
+            disabled={!canSubmitOrder}
           >
             {selectedCount === 0
               ? "Выберите позиции"
+            : !isPickup && !hasDeliveryAddress
+              ? "Выберите адрес доставки"
+            : !isPickup && !hasCalculatedDelivery
+              ? "Рассчитайте доставку"
             : `Подтвердить · ${formatMoney(totalAmount)}`}
           </Button>
         </div>

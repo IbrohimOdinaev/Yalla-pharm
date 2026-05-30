@@ -16,6 +16,21 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
   }
 
   [Fact]
+  public async Task Checkout_DeliveryWithoutResolvedDelivery_ShouldBeRejected()
+  {
+    using var clientActor = await CreateAuthorizedClientAsync(TestActor.Client1);
+
+    var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
+    {
+      PharmacyId = ApiTestData.Pharmacy1Id,
+      DeliveryAddress = "Dushanbe, unresolved delivery",
+      IdempotencyKey = Guid.NewGuid().ToString("N")
+    });
+
+    Assert.Equal(HttpStatusCode.BadRequest, checkoutResponse.StatusCode);
+  }
+
+  [Fact]
   public async Task Checkout_WithPaymentIntent_ThenConfirm_ShouldCreateOrderAndPaymentHistory()
   {
     using var clientActor = await CreateAuthorizedClientAsync(TestActor.Client1);
@@ -24,6 +39,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, intent flow",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });
@@ -76,6 +92,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, double confirm",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });
@@ -118,6 +135,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, no timeout",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });
@@ -153,6 +171,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     var checkoutPayload = new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, idempotent intent",
       IdempotencyKey = idempotencyKey
     };
@@ -191,6 +210,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, reject intent",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });
@@ -228,6 +248,7 @@ public sealed class PaymentIntentsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, list intents",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });

@@ -34,6 +34,12 @@ public sealed class DeliveryController : ControllerBase
     if (!pharmacy.Latitude.HasValue || !pharmacy.Longitude.HasValue)
       return BadRequest(new { message = "Pharmacy does not have coordinates configured." });
 
+    if (string.IsNullOrWhiteSpace(pharmacy.Address))
+      return BadRequest(new { message = "Pharmacy does not have address configured." });
+
+    if (string.IsNullOrWhiteSpace(request.ToAddress))
+      return BadRequest(new { message = "Delivery address is required." });
+
     var from = new JuraAddress
     {
       Title = pharmacy.Title,

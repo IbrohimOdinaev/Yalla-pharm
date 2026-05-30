@@ -232,6 +232,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, superadmin next status",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });
@@ -289,6 +290,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var checkoutResponse = await clientActor.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, delete new order",
       IdempotencyKey = Guid.NewGuid().ToString("N")
     });
@@ -322,6 +324,7 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
     var checkoutResponse = await client.PostAsJsonAsync("/api/clients/checkout", new
     {
       PharmacyId = ApiTestData.Pharmacy1Id,
+      IsPickup = true,
       DeliveryAddress = "Dushanbe, test address",
       IdempotencyKey = idempotencyKey
     });

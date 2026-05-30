@@ -166,7 +166,13 @@ internal static class RequestDtoValidator
   {
     RequireNotEmpty(request.PharmacyId, nameof(request.PharmacyId), errors);
     if (!request.IsPickup)
+    {
       RequireNotWhiteSpace(request.DeliveryAddress, nameof(request.DeliveryAddress), errors);
+      if (!request.DeliveryLatitude.HasValue)
+        errors.Add(new ValidationError(nameof(request.DeliveryLatitude), $"{nameof(request.DeliveryLatitude)} is required for delivery."));
+      if (!request.DeliveryLongitude.HasValue)
+        errors.Add(new ValidationError(nameof(request.DeliveryLongitude), $"{nameof(request.DeliveryLongitude)} is required for delivery."));
+    }
     if (!string.IsNullOrWhiteSpace(request.CourierDetails))
       RequireMaxLength(request.CourierDetails, nameof(request.CourierDetails), 1024, errors);
     RequireNoEmptyGuids(request.IgnoredPositionIds, nameof(request.IgnoredPositionIds), errors);

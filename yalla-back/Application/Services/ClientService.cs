@@ -785,7 +785,10 @@ public sealed class ClientService : IClientService
             throw new InvalidOperationException("Checkout total amount must be greater than zero.");
 
         var (deliveryCost, deliveryDistance) = await CalculateJuraDeliveryCostAsync(
-          pharmacy, request, cancellationToken);
+          pharmacy,
+          request,
+          effectiveDeliveryAddress,
+          cancellationToken);
         var estimatedCost = itemsCost + deliveryCost;
 
         if (_paymentOptions.CreateOrderOnlyAfterAdminPaymentConfirmation)
@@ -1364,8 +1367,24 @@ public sealed class ClientService : IClientService
             ? ovr.UnitTotalPrice
             : (x.Price ?? 0m) * x.Draft.Quantity);
 
-        var (previewDeliveryCost, previewDeliveryDistance) = await CalculateJuraDeliveryCostAsync(
-          pharmacy, request, cancellationToken);
+        var previewDeliveryCost = 0m;
+        double? previewDeliveryDistance = null;
+        var hasDeliveryReady = true;
+        try
+        {
+            (previewDeliveryCost, previewDeliveryDistance) = await CalculateJuraDeliveryCostAsync(
+              pharmacy,
+              request,
+              previewEffectiveAddress,
+              cancellationToken);
+        }
+        catch (Exception ex) when (!request.IsPickup)
+        {
+            hasDeliveryReady = false;
+            _logger.LogInformation(ex,
+              "Checkout preview delivery validation failed for pharmacy {PharmacyId}",
+              request.PharmacyId);
+        }
 
         return new CheckoutPreviewResponse
         {
@@ -1374,7 +1393,8 @@ public sealed class ClientService : IClientService
             CanCheckout = pharmacy.IsActive
               && evaluation.CanCheckout
               && acceptedPositionsCount > 0
-              && hasValidAddress,
+              && hasValidAddress
+              && hasDeliveryReady,
             TotalPositions = evaluation.Positions.Count,
             AcceptedPositionsCount = acceptedPositionsCount,
             RejectedPositionsCount = rejectedPositionsCount,
@@ -1419,17 +1439,25 @@ public sealed class ClientService : IClientService
     private async Task<(decimal cost, double? distance)> CalculateJuraDeliveryCostAsync(
       Pharmacy pharmacy,
       CheckoutBasketRequest request,
+      string effectiveDeliveryAddress,
       CancellationToken ct)
     {
-        if (_juraService is null
-          || request.IsPickup
-          || !request.DeliveryLatitude.HasValue
-          || !request.DeliveryLongitude.HasValue
-          || !pharmacy.Latitude.HasValue
-          || !pharmacy.Longitude.HasValue)
-        {
+        if (request.IsPickup)
             return (0m, null);
-        }
+
+        EnsureDeliveryReadyForCheckout(pharmacy, request, effectiveDeliveryAddress);
+
+        if (_juraService is null)
+            throw new InvalidOperationException("Delivery service is unavailable.");
+
+        var pharmacyLatitude = pharmacy.Latitude
+          ?? throw new DomainArgumentException("Pharmacy coordinates are required for delivery.");
+        var pharmacyLongitude = pharmacy.Longitude
+          ?? throw new DomainArgumentException("Pharmacy coordinates are required for delivery.");
+        var deliveryLatitude = request.DeliveryLatitude
+          ?? throw new DomainArgumentException("Delivery coordinates are required.");
+        var deliveryLongitude = request.DeliveryLongitude
+          ?? throw new DomainArgumentException("Delivery coordinates are required.");
 
         try
         {
@@ -1437,29 +1465,55 @@ public sealed class ClientService : IClientService
             {
                 Title = pharmacy.Title,
                 Address = pharmacy.Address,
-                Lat = pharmacy.Latitude.Value,
-                Lng = pharmacy.Longitude.Value
+                Lat = pharmacyLatitude,
+                Lng = pharmacyLongitude
             };
             var to = new JuraAddress
             {
                 Id = request.DeliveryAddressId,
                 Title = request.DeliveryAddressTitle ?? request.DeliveryAddress,
                 Address = request.DeliveryAddress,
-                Lat = request.DeliveryLatitude.Value,
-                Lng = request.DeliveryLongitude.Value
+                Lat = deliveryLatitude,
+                Lng = deliveryLongitude
             };
 
             var result = await _juraService.CalculateDeliveryAsync(from, to, tariffId: null, clientPhone: null, ct);
+            if (result.Amount <= 0m)
+                throw new InvalidOperationException("Delivery provider returned empty delivery cost.");
+
             var deliveryCost = result.Amount + (request.DeliverToDoor ? JuraDeliveryConstants.DoorToDoorFee : 0m);
             return (deliveryCost, result.Distance);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-              "JURA delivery cost calculation failed for pharmacy {PharmacyId} — proceeding with zero cost",
+              "JURA delivery cost calculation failed for pharmacy {PharmacyId}",
               pharmacy.Id);
-            return (0m, null);
+            throw new InvalidOperationException(
+              "Delivery cost could not be calculated. Please choose the delivery address again.",
+              ex);
         }
+    }
+
+    private static void EnsureDeliveryReadyForCheckout(
+      Pharmacy pharmacy,
+      CheckoutBasketRequest request,
+      string effectiveDeliveryAddress)
+    {
+        if (request.IsPickup)
+            return;
+
+        if (string.IsNullOrWhiteSpace(pharmacy.Address))
+            throw new DomainArgumentException("Pharmacy address is required for delivery.");
+
+        if (!pharmacy.Latitude.HasValue || !pharmacy.Longitude.HasValue)
+            throw new DomainArgumentException("Pharmacy coordinates are required for delivery.");
+
+        if (string.IsNullOrWhiteSpace(effectiveDeliveryAddress))
+            throw new DomainArgumentException("Delivery address is required.");
+
+        if (!request.DeliveryLatitude.HasValue || !request.DeliveryLongitude.HasValue)
+            throw new DomainArgumentException("Delivery coordinates are required.");
     }
 
     private static CheckoutBasketResponse ToCheckoutPaymentIntentResponse(

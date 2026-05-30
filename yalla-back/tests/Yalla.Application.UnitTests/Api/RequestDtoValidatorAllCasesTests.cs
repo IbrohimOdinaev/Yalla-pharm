@@ -73,6 +73,8 @@ public sealed class RequestDtoValidatorAllCasesTests
     {
       PharmacyId = Guid.NewGuid(),
       DeliveryAddress = "A",
+      DeliveryLatitude = 38.5737,
+      DeliveryLongitude = 68.7738,
       IgnoredPositionIds = [Guid.NewGuid()]
     };
 
