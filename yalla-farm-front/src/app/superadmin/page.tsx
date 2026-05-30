@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObject } from "react";
 import { useAppSelector } from "@/shared/lib/redux";
 import { apiFetch } from "@/shared/api/http-client";
 import { formatMoney } from "@/shared/lib/format";
@@ -48,6 +48,68 @@ const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) =
 type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+function PrettyFileInput({
+  inputRef,
+  label,
+  accept,
+  required,
+  onFileChange,
+  clearAfterChange,
+  className = "",
+}: {
+  inputRef?: RefObject<HTMLInputElement | null>;
+  label: string;
+  accept: string;
+  required?: boolean;
+  onFileChange?: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
+  clearAfterChange?: boolean;
+  className?: string;
+}) {
+  const [fileName, setFileName] = useState("");
+
+  return (
+    <label className={`block min-w-0 ${className}`}>
+      <span className="mb-1 block text-xs font-semibold text-on-surface-variant">{label}</span>
+      <span className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3 rounded-2xl border border-outline/70 bg-surface-container-lowest px-3 py-2.5 text-sm transition hover:border-primary/40 hover:bg-primary/5 active:scale-[0.99]">
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-on-surface">
+              {fileName || "Выбрать файл"}
+            </span>
+            <span className="block truncate text-[11px] font-medium text-on-surface-variant">
+              png, jpg, webp
+            </span>
+          </span>
+        </span>
+        <span className="flex-shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-on-primary">
+          Обзор
+        </span>
+      </span>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        required={required}
+        className="sr-only"
+        onChange={(event) => {
+          setFileName(event.target.files?.[0]?.name ?? "");
+          if (!onFileChange) return;
+          void Promise.resolve(onFileChange(event)).finally(() => {
+            if (clearAfterChange) setFileName("");
+          });
+        }}
+      />
+    </label>
+  );
+}
 
 function getDushanbeTodayWindow(now = new Date()): { startUtcMs: number; endUtcMs: number; label: string } {
   const shifted = new Date(now.getTime() + DUSHANBE_OFFSET_MS);
@@ -868,18 +930,9 @@ function PharmaciesTab({ token }: { token: string }) {
               placeholder="Адрес аптеки"
             />
           </div>
-          <label className="space-y-1 text-xs font-semibold text-on-surface-variant">
-            <span>Логотип аптеки</span>
-            <input ref={newPharmaLogoRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
-          </label>
-          <label className="space-y-1 text-xs font-semibold text-on-surface-variant">
-            <span>Баннер аптеки</span>
-            <input ref={newPharmaBannerRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
-          </label>
-          <label className="space-y-1 text-xs font-semibold text-on-surface-variant md:col-span-2">
-            <span>Фото профиля админа (необязательно)</span>
-            <input ref={newAdminAvatarRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
-          </label>
+          <PrettyFileInput inputRef={newPharmaLogoRef} label="Логотип аптеки" accept="image/png,image/jpeg,image/webp" />
+          <PrettyFileInput inputRef={newPharmaBannerRef} label="Баннер аптеки" accept="image/png,image/jpeg,image/webp" />
+          <PrettyFileInput inputRef={newAdminAvatarRef} label="Фото профиля админа (необязательно)" accept="image/png,image/jpeg,image/webp" className="md:col-span-2" />
         </div>
         <button type="button" className="stitch-button-secondary text-xs w-full" onClick={() => setShowCreateMap(!showCreateMap)}>
           {showCreateMap ? "Скрыть карту" : "Выбрать адрес на карте"}
@@ -1000,10 +1053,7 @@ function CreateAdminInPharmacyForm({ token, pharmacies, onDone }: { token: strin
             ...pharmacies.map((p) => ({ value: p.id, label: p.title })),
           ]}
         />
-        <label className="space-y-1 text-xs font-semibold text-on-surface-variant md:col-span-2">
-          <span>Фото профиля админа (необязательно)</span>
-          <input ref={avatarFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" />
-        </label>
+        <PrettyFileInput inputRef={avatarFileRef} label="Фото профиля админа (необязательно)" accept="image/png,image/jpeg,image/webp" className="md:col-span-2" />
       </div>
       {msg ? <div className={`text-sm ${msg.includes("создан") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
       <button type="submit" className="stitch-button">Создать</button>
@@ -1208,7 +1258,7 @@ function EditablePharmacyCard({
             )}
           </div>
           <div className="flex gap-2 items-center">
-            <input ref={iconFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-xs flex-1" onChange={onIconUpload} />
+            <PrettyFileInput inputRef={iconFileRef} label="Новый логотип" accept="image/png,image/jpeg,image/webp" onFileChange={onIconUpload} clearAfterChange className="flex-1" />
             {iconUploading && <span className="text-xs text-primary">Загрузка...</span>}
           </div>
         </div>
@@ -1228,7 +1278,7 @@ function EditablePharmacyCard({
             )}
           </div>
           <div className="flex gap-2 items-center">
-            <input ref={bannerFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-xs flex-1" onChange={onBannerUpload} />
+            <PrettyFileInput inputRef={bannerFileRef} label="Новый баннер" accept="image/png,image/jpeg,image/webp" onFileChange={onBannerUpload} clearAfterChange className="flex-1" />
             {bannerUploading && <span className="text-xs text-primary">Загрузка...</span>}
           </div>
         </div>
@@ -1256,7 +1306,7 @@ function EditablePharmacyCard({
                 </button>
               </div>
               <div className="flex gap-2 items-center">
-                <input ref={adminAvatarFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-xs flex-1" onChange={onAdminAvatarUpload} />
+                <PrettyFileInput inputRef={adminAvatarFileRef} label="Фото профиля" accept="image/png,image/jpeg,image/webp" onFileChange={onAdminAvatarUpload} clearAfterChange className="flex-1" />
                 {adminAvatarUploading && <span className="text-xs text-primary">Загрузка...</span>}
               </div>
             </div>
@@ -1669,10 +1719,7 @@ function MedicinesTab({ token }: { token: string }) {
               onChange={(e) => setNewDescription(e.target.value)}
             />
             <input className="stitch-input" placeholder="Атрибуты (dosage:500mg, pack:20)" value={newAttrs} onChange={(e) => setNewAttrs(e.target.value)} />
-            <label className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3 rounded-xl border border-outline/70 bg-surface-container-lowest px-4 py-3 text-sm text-on-surface transition hover:bg-surface-container-low">
-              <span className="min-w-0 truncate text-on-surface-variant">Фото товара</span>
-              <input ref={createImageRef} type="file" accept="image/png,image/jpeg,image/webp" className="min-w-0 text-xs" />
-            </label>
+            <PrettyFileInput inputRef={createImageRef} label="Фото товара" accept="image/png,image/jpeg,image/webp" />
           </div>
           {msg ? <div className={`text-sm ${msg.includes("создан") || msg.includes("загружено") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
           <button type="submit" className="stitch-button">Создать</button>
@@ -1954,8 +2001,8 @@ function MedicinesTab({ token }: { token: string }) {
                         Миниатюра
                       </label>
                     </div>
-                    <div className="flex gap-2">
-                      <input ref={fileRef} type="file" accept="image/*" className="stitch-input flex-1 text-xs" required />
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <PrettyFileInput inputRef={fileRef} label="Файл изображения" accept="image/*" required className="flex-1" />
                       <button type="submit" className="stitch-button text-xs xs:text-sm">Загрузить</button>
                     </div>
                   </form>
