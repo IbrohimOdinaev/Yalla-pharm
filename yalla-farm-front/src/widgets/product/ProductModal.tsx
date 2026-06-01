@@ -9,6 +9,7 @@ import {
   getMainImageUrl,
   getGalleryImages,
   getCheapestPrice,
+  showDefaultMedicineImage,
 } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
@@ -231,7 +232,12 @@ function ProductModalInner() {
                 <div className="relative rounded-xl overflow-hidden bg-surface-container border border-surface-container-high">
                   {activeImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={activeImage} alt={getMedicineDisplayName(medicine)} className="w-full h-[200px] sm:h-[260px] object-contain mix-blend-multiply" />
+                    <img
+                      src={activeImage}
+                      alt={getMedicineDisplayName(medicine)}
+                      onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                      className="w-full h-[200px] sm:h-[260px] object-contain mix-blend-multiply"
+                    />
                   ) : (
                     <div className="flex h-[200px] sm:h-[260px] items-center justify-center text-on-surface-variant">Нет изображения</div>
                   )}
@@ -246,7 +252,12 @@ function ProductModalInner() {
                         className={`h-10 w-10 flex-shrink-0 rounded-lg border-2 overflow-hidden transition bg-surface-container ${idx === activeImageIdx ? "border-primary" : "border-surface-container-high hover:border-on-surface-variant"}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                        <img
+                          src={url}
+                          alt=""
+                          onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                          className="h-full w-full object-contain mix-blend-multiply"
+                        />
                       </button>
                     ))}
                   </div>

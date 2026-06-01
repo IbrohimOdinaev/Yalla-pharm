@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "@/shared/lib/format";
-import { getMinimalImageUrl, imageSrcSet } from "@/entities/medicine/api";
+import { getMinimalImageUrl, imageSrcSet, showDefaultMedicineImage } from "@/entities/medicine/api";
 import {
   getAdminOrders,
   startAssembly,
@@ -405,6 +405,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
                           alt=""
                           loading="lazy"
                           decoding="async"
+                          onError={(event) => showDefaultMedicineImage(event.currentTarget)}
                           className="h-full w-full object-contain p-1 mix-blend-multiply"
                         />
                       ) : (

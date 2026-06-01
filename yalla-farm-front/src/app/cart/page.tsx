@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, getCheapestPrice, getCatalogMedicinesPaginated } from "@/entities/medicine/api";
+import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, getCheapestPrice, getCatalogMedicinesPaginated, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useAppSelector } from "@/shared/lib/redux";
@@ -358,7 +358,7 @@ export default function CartPage() {
                   >
                     {image ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={image} alt={name} className="h-full w-full object-contain mix-blend-multiply" />
+                      <img src={image} alt={name} onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-on-surface-variant/40">
                         <Icon name="bag" size={20} />

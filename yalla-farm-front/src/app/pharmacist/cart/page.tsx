@@ -13,7 +13,7 @@ import {
   PRESCRIPTION_TIER_DESCRIPTION_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
-import { getMedicinesByIds, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { getMedicinesByIds, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore, type DraftItem } from "@/features/pharmacist/model/prescriptionDraftStore";
@@ -570,7 +570,7 @@ function DraftRow({
         <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
           {imgUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+            <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
               <Icon name="pharmacy" size={18} />
@@ -838,7 +838,7 @@ function PairAnalogModal({
                     <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop">
                       {imgUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                        <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
                           <Icon name="pharmacy" size={18} />

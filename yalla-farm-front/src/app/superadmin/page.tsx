@@ -13,7 +13,7 @@ import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, uploadAdm
 import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon, uploadPharmacyBanner, deletePharmacyBanner } from "@/entities/pharmacy/admin-api";
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
 import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage, getHomePopularMedicinesForAdmin, updateHomePopularMedicines, type HomePopularMedicineItem } from "@/entities/medicine/admin-api";
-import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getCategories, flattenCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
 import { getClients, deleteClient } from "@/entities/client/admin-api";
@@ -2031,7 +2031,7 @@ function MedicinesTab({ token }: { token: string }) {
                 {imageUrl ? (
                   <div className="overflow-hidden rounded-xl bg-image-backdrop">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={imageUrl} alt={getMedicineDisplayName(detail)} className="mx-auto max-h-48 xs:max-h-56 sm:max-h-64 object-contain mix-blend-multiply" />
+                    <img src={imageUrl} alt={getMedicineDisplayName(detail)} onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="mx-auto max-h-48 xs:max-h-56 sm:max-h-64 object-contain mix-blend-multiply" />
                   </div>
                 ) : (
                   <div className="flex h-32 xs:h-36 sm:h-40 items-center justify-center rounded-xl bg-surface-container-low text-sm text-on-surface-variant">

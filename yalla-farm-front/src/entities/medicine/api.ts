@@ -5,6 +5,12 @@ import type { ApiMedicine, ApiPaginated, ApiSearchByPharmacyResponse } from "@/s
 const medicineCache = new Map<string, ApiMedicine>();
 export const DEFAULT_MEDICINE_IMAGE_URL = "/box-yalla-for-website-1.webp";
 
+export function showDefaultMedicineImage(img: HTMLImageElement): void {
+  if (img.getAttribute("src") === DEFAULT_MEDICINE_IMAGE_URL) return;
+  img.removeAttribute("srcset");
+  img.src = DEFAULT_MEDICINE_IMAGE_URL;
+}
+
 function putMedicineInCache(medicine: ApiMedicine): void {
   if (!medicine?.id) return;
   medicineCache.set(medicine.id, medicine);

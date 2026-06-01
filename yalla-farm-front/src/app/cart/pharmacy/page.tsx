@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getGuestBasketPreview } from "@/entities/basket/api";
 import {
   getMyPrescriptions,
@@ -792,7 +792,7 @@ function PharmacySelectPageInner() {
                               >
                                 {imgUrl ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={imgUrl} alt="" className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high object-contain mix-blend-multiply" />
+                                  <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high object-contain mix-blend-multiply" />
                                 ) : (
                                   <div className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high" />
                                 )}

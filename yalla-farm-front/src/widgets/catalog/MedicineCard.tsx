@@ -13,7 +13,7 @@ import type { ApiMedicine } from "@/shared/types/api";
 // render and burn a "Maximum update depth exceeded" loop.
 const EMPTY_DRAFT_ITEMS: DraftItem[] = [];
 import { formatMoney } from "@/shared/lib/format";
-import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet, primeMedicineCache } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getCheapestPrice, imageUrl, imageSrcSet, primeMedicineCache, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { Icon } from "@/shared/ui";
 
 type MedicineCardProps = {
@@ -210,6 +210,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
               alt={name}
               loading="lazy"
               decoding="async"
+              onError={(event) => showDefaultMedicineImage(event.currentTarget)}
               // image-rendering hint nudges Chrome/Edge into a sharper
               // bicubic scaling profile, so the small product packaging stays
               // legible after the browser downscales the 600/1200 px source

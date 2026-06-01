@@ -12,7 +12,7 @@ import {
   PRESCRIPTION_TIER_LABEL_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
-import { getMedicinesByIds, getMedicineDisplayName, getCheapestPrice, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { getMedicinesByIds, getMedicineDisplayName, getCheapestPrice, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
@@ -675,7 +675,7 @@ function PairSideRow({
         <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
           {imgUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+            <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
               <Icon name="pharmacy" size={18} />
@@ -857,7 +857,7 @@ function SingletonRow({
         <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
           {imgUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imgUrl} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+            <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
               <Icon name="pharmacy" size={20} />

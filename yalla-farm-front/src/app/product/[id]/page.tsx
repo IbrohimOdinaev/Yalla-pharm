@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { getMedicineByIdOrSlug, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice } from "@/entities/medicine/api";
+import { getMedicineByIdOrSlug, getMedicineDisplayName, getMainImageUrl, getGalleryImages, getCheapestPrice, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useCartStore } from "@/features/cart/model/cartStore";
@@ -112,6 +112,7 @@ export default function ProductDetailsPage() {
                 <img
                   src={activeImage}
                   alt={getMedicineDisplayName(medicine)}
+                  onError={(event) => showDefaultMedicineImage(event.currentTarget)}
                   className="h-full w-full object-contain p-3 mix-blend-multiply xs:p-4 lg:p-3"
                 />
               ) : (
@@ -173,7 +174,12 @@ export default function ProductDetailsPage() {
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" className="h-full w-full object-contain p-1.5 mix-blend-multiply" />
+                    <img
+                      src={url}
+                      alt=""
+                      onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                      className="h-full w-full object-contain p-1.5 mix-blend-multiply"
+                    />
                   </button>
                 ))}
               </div>
