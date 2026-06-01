@@ -149,8 +149,12 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   );
 
   const selectedPharmacy = useMemo(
-    () => pharmacies.find((pharmacy) => pharmacy.id === selectedPharmacyId) ?? null,
-    [pharmacies, selectedPharmacyId],
+    () => {
+      if (!selectedPharmacyId) return null;
+      const sourceId = selectedPharmacyId.replace(/^doru-/, "");
+      return DORU_DUSHANBE_INTEGRATED_PHARMACIES.find((pharmacy) => pharmacy.id === sourceId) ?? null;
+    },
+    [selectedPharmacyId],
   );
 
   useEffect(() => {
@@ -246,9 +250,71 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
           />
 
           {selectedPharmacy ? (
-            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-surface/95 p-4 shadow-float backdrop-blur sm:left-5 sm:right-auto sm:w-[360px]">
-              <p className="truncate text-sm font-bold text-on-surface">{selectedPharmacy.title}</p>
-              <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">{selectedPharmacy.address}</p>
+            <div className="absolute inset-0 z-10 flex items-end justify-center bg-black/20 p-3 backdrop-blur-[1px] sm:items-center sm:p-5">
+              <button
+                type="button"
+                className="absolute inset-0 cursor-default"
+                onClick={() => setSelectedPharmacyId(null)}
+                aria-label="Закрыть информацию об аптеке"
+              />
+              <div
+                className="relative w-full max-w-md overflow-hidden rounded-3xl bg-surface shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Информация об аптеке ${selectedPharmacy.title}`}
+              >
+                <div className="flex items-start justify-between gap-3 border-b border-outline/60 px-4 py-3 sm:px-5">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-primary">Doru #{selectedPharmacy.id}</p>
+                    <h3 className="mt-1 text-lg font-extrabold leading-tight text-on-surface">{selectedPharmacy.title}</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPharmacyId(null)}
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition active:scale-95 hover:bg-surface-container-high"
+                    aria-label="Закрыть"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-3 px-4 py-4 sm:px-5">
+                  <div className="rounded-2xl bg-surface-container-low p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Адрес</p>
+                    <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{selectedPharmacy.address}</p>
+                  </div>
+
+                  {selectedPharmacy.landmark ? (
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Ориентир</p>
+                      <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{selectedPharmacy.landmark}</p>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Широта</p>
+                      <p className="mt-1 font-mono text-xs font-bold text-on-surface">{selectedPharmacy.lat.toFixed(6)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Долгота</p>
+                      <p className="mt-1 font-mono text-xs font-bold text-on-surface">{selectedPharmacy.lng.toFixed(6)}</p>
+                    </div>
+                  </div>
+
+                  <a
+                    href={`https://yandex.ru/maps/?pt=${selectedPharmacy.lng},${selectedPharmacy.lat}&z=17&l=map`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-bold text-on-primary transition active:scale-[0.98] hover:bg-primary/90"
+                  >
+                    Открыть в Яндекс Картах
+                  </a>
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
