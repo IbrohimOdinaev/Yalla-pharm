@@ -11,6 +11,11 @@ export function showDefaultMedicineImage(img: HTMLImageElement): void {
   img.src = DEFAULT_MEDICINE_IMAGE_URL;
 }
 
+function isPlaceholderMedicineImage(img?: { key?: string; url?: string }): boolean {
+  const value = `${img?.key ?? ""} ${img?.url ?? ""}`.toLowerCase();
+  return value.includes("/placeholder/") || value.includes("yalla-placeholder");
+}
+
 function putMedicineInCache(medicine: ApiMedicine): void {
   if (!medicine?.id) return;
   medicineCache.set(medicine.id, medicine);
@@ -90,6 +95,7 @@ export async function getMedicineByIdOrSlug(idOrSlug: string): Promise<ApiMedici
  *  larger or no width returns the original. */
 export function imageUrl(img?: { id?: string; url?: string }, width?: number): string {
   if (!img) return "";
+  if (isPlaceholderMedicineImage(img)) return "";
   if (img.url) return img.url;
   if (img.id) {
     const base = `${env.apiBaseUrl}/api/medicines/images/${img.id}/content`;
@@ -104,6 +110,7 @@ export function imageUrl(img?: { id?: string; url?: string }, width?: number): s
  *  re-served at multiple resolutions. */
 export function imageSrcSet(img?: { id?: string; url?: string }, oneXWidth = 480, twoXWidth?: number): string {
   if (!img?.id || img.url) return "";
+  if (isPlaceholderMedicineImage(img)) return "";
   const retina = twoXWidth ?? Math.min(oneXWidth * 2, 800);
   return `${imageUrl(img, oneXWidth)} 1x, ${imageUrl(img, retina)} 2x`;
 }
