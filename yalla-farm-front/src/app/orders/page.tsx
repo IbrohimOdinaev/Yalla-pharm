@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientOrderHistory, cancelOrder, getOrderById, repeatOrder } from "@/entities/order/api";
 import {
@@ -85,6 +86,8 @@ function isActiveOrder(order: ApiOrder): boolean {
 const PICKUP_HINT_STATUSES = new Set(["New", "UnderReview", "Preparing", "Ready"]);
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
+  const targetOrderId = searchParams.get("orderId");
   const token = useAppSelector((state) => state.auth.token);
   const addCartItem = useCartStore((s) => s.addItem);
   const addGuestItem = useGuestCartStore((s) => s.addItem);
@@ -151,10 +154,29 @@ export default function OrdersPage() {
   // Auto-switch to history tab if no active orders
   const hasActive = orders.some((o) => isActiveOrder(orderDetails[o.orderId] ?? o));
   useEffect(() => {
+    if (targetOrderId) return;
     if (!isLoading && !hasActive && orders.length > 0) {
       setActiveTab("history");
     }
-  }, [isLoading, hasActive, orders.length]);
+  }, [isLoading, hasActive, orders.length, targetOrderId]);
+
+  useEffect(() => {
+    if (!targetOrderId || isLoading || orders.length === 0) return;
+
+    const order = orders.find((item) => item.orderId === targetOrderId);
+    if (!order) return;
+
+    const resolvedOrder = orderDetails[targetOrderId] ?? order;
+    setActiveTab(isActiveOrder(resolvedOrder) ? "active" : "history");
+    setExpandedId(targetOrderId);
+
+    window.setTimeout(() => {
+      document.getElementById(`order-${targetOrderId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+  }, [targetOrderId, isLoading, orders, orderDetails]);
 
   /** Return non-rejected positions back to cart */
   async function returnPositionsToCart(order: ApiOrder) {
@@ -327,7 +349,7 @@ export default function OrdersPage() {
               : null;
 
           return (
-            <article key={order.orderId} className="overflow-hidden rounded-3xl bg-surface-container-lowest shadow-card">
+            <article id={`order-${order.orderId}`} key={order.orderId} className="overflow-hidden rounded-3xl bg-surface-container-lowest shadow-card">
               <button
                 type="button"
                 className="flex w-full items-start justify-between gap-3 p-4 text-left"

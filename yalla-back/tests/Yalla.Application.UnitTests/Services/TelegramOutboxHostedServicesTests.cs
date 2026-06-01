@@ -51,6 +51,7 @@ public sealed class TelegramOutboxHostedServicesTests
   }
 
   [Theory]
+  [InlineData(Status.New)]
   [InlineData(Status.UnderReview)]
   [InlineData(Status.Preparing)]
   [InlineData(Status.Ready)]
@@ -80,6 +81,46 @@ public sealed class TelegramOutboxHostedServicesTests
     Assert.Equal(999_111_222L, enqueued.ChatId);
     Assert.Equal(TelegramOutboxState.Pending, enqueued.State);
     Assert.False(string.IsNullOrWhiteSpace(enqueued.Message));
+    Assert.Contains($"/orders?orderId={enqueued.OrderId:D}", enqueued.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task PrescriptionEnqueue_ShouldCreateMessageWithPrescriptionLink()
+  {
+    using var testScope = TestDbFactory.Create();
+    var db = testScope.Db;
+
+    var client = TestDbFactory.CreateClient("TG Rx Client", "900222333");
+    client.SetTelegramId(999_333_222L);
+    var prescription = new Prescription(
+      client.Id,
+      patientAge: 30,
+      clientComment: null,
+      images: new[] { new PrescriptionImage("rx-key", 0) },
+      PrescriptionPreferenceTier.AsPrescribed);
+
+    db.Clients.Add(client);
+    db.Prescriptions.Add(prescription);
+    await db.SaveChangesAsync();
+
+    await db.Database.ExecuteSqlInterpolatedAsync(
+      $"UPDATE prescriptions SET status = {(int)PrescriptionStatus.Decoded}, updated_at_utc = {DateTime.UtcNow} WHERE id = {prescription.Id}");
+    db.ChangeTracker.Clear();
+
+    using var provider = BuildServiceProvider(db, scriptedBot: new ScriptedTelegramBot());
+    var enqueue = new PrescriptionStatusTelegramEnqueueHostedService(
+      provider.GetRequiredService<IServiceScopeFactory>(),
+      Options.Create(new TelegramOutboxOptions { Enabled = true, BatchSize = 50, PollIntervalSeconds = 5 }),
+      NullLogger<PrescriptionStatusTelegramEnqueueHostedService>.Instance);
+
+    await enqueue.RunOnceAsync(CancellationToken.None);
+
+    var enqueued = await db.TelegramOutboxMessages.AsNoTracking().SingleAsync();
+    Assert.Equal(prescription.Id, enqueued.PrescriptionId);
+    Assert.Equal(PrescriptionStatus.Decoded, enqueued.PrescriptionStatusSnapshot);
+    Assert.Null(enqueued.OrderId);
+    Assert.Equal(999_333_222L, enqueued.ChatId);
+    Assert.Contains($"/prescriptions/{prescription.Id:D}", enqueued.Message, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -272,7 +313,9 @@ public sealed class TelegramOutboxHostedServicesTests
       .AddLogging()
       .AddSingleton(db)
       .AddSingleton<IOptions<SmsTemplatesOptions>>(Options.Create(new SmsTemplatesOptions { Provider = "OsonSms" }))
+      .AddSingleton<IOptions<TelegramAuthOptions>>(Options.Create(new TelegramAuthOptions { WebhookPublicBaseUrl = "https://pharm.test" }))
       .AddScoped<IOrderStatusSmsService, OrderStatusSmsService>()
+      .AddScoped<IClientTelegramNotificationMessageService, ClientTelegramNotificationMessageService>()
       .AddSingleton(scriptedBot)
       .BuildServiceProvider();
   }

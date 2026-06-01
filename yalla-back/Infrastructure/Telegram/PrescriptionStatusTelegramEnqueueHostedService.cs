@@ -12,21 +12,18 @@ using Yalla.Domain.Enums;
 namespace Yalla.Infrastructure.Telegram;
 
 /// <summary>
-/// Mirror of <see cref="Yalla.Infrastructure.Sms.OrderStatusSmsEnqueueHostedService"/> for the
-/// Telegram channel. Polls orders and enqueues a <see cref="TelegramOutboxMessage"/> for any
-/// (Order, Status, Client.TelegramId) tuple that has no row yet. Skips clients without a bound
-/// TelegramId — they continue to receive SMS only.
+/// Enqueues Telegram notifications for prescription-request status changes.
 /// </summary>
-public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
+public sealed class PrescriptionStatusTelegramEnqueueHostedService : BackgroundService
 {
   private readonly IServiceScopeFactory _scopeFactory;
   private readonly TelegramOutboxOptions _options;
-  private readonly ILogger<OrderStatusTelegramEnqueueHostedService> _logger;
+  private readonly ILogger<PrescriptionStatusTelegramEnqueueHostedService> _logger;
 
-  public OrderStatusTelegramEnqueueHostedService(
+  public PrescriptionStatusTelegramEnqueueHostedService(
     IServiceScopeFactory scopeFactory,
     IOptions<TelegramOutboxOptions> options,
-    ILogger<OrderStatusTelegramEnqueueHostedService> logger)
+    ILogger<PrescriptionStatusTelegramEnqueueHostedService> logger)
   {
     ArgumentNullException.ThrowIfNull(scopeFactory);
     ArgumentNullException.ThrowIfNull(options);
@@ -41,7 +38,7 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
   {
     if (!_options.Enabled)
     {
-      _logger.LogInformation("Order status Telegram enqueue worker is disabled by configuration.");
+      _logger.LogInformation("Prescription status Telegram enqueue worker is disabled by configuration.");
       return;
     }
 
@@ -49,7 +46,7 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
     using var timer = new PeriodicTimer(interval);
 
     _logger.LogInformation(
-      "Order status Telegram enqueue worker started. PollIntervalSeconds={PollIntervalSeconds}, BatchSize={BatchSize}",
+      "Prescription status Telegram enqueue worker started. PollIntervalSeconds={PollIntervalSeconds}, BatchSize={BatchSize}",
       interval.TotalSeconds,
       Math.Max(1, _options.BatchSize));
 
@@ -71,54 +68,27 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
 
       var nowUtc = DateTime.UtcNow;
       var batchSize = Math.Max(1, _options.BatchSize);
-
-      // Telegram is free, so notify on every client-facing order status, including the initial
-      // New state.
-      var notifiableStatuses = new[]
-      {
-        Status.New,
-        Status.UnderReview,
-        Status.Preparing,
-        Status.Ready,
-        Status.OnTheWay,
-        Status.DriverArrived,
-        Status.Delivered,
-        Status.PickedUp,
-        Status.Cancelled,
-        Status.Returned
-      };
-
-      // Hard age cutoff — same reasoning as the SMS enqueue worker: without
-      // it, the very first poll after a client links their Telegram (or
-      // after a deploy / migration) blasts every historical order in a
-      // notifiable status. OrderPlacedAt is local time (UTC+5).
+      var notifiableStatuses = Enum.GetValues<PrescriptionStatus>();
       var maxAgeHours = Math.Max(1, _options.CatchUpMaxOrderAgeHours);
-      var cutoffPlacedAt = DateTime.SpecifyKind(
-        DateTime.UtcNow.AddHours(5).AddHours(-maxAgeHours),
-        DateTimeKind.Unspecified);
+      var cutoffUtc = nowUtc.AddHours(-maxAgeHours);
 
-      // JOIN Orders → Users (TPH, includes Client subtype) to pick up TelegramId.
-      // Skip orders whose client has no bound TelegramId.
       var candidates = await (
-        from order in dbContext.Orders.AsNoTracking()
-        join user in dbContext.Users.AsNoTracking() on order.ClientId equals user.Id
-        where order.ClientId.HasValue
-          && user.TelegramId.HasValue
-          && notifiableStatuses.Contains(order.Status)
-          && order.OrderPlacedAt >= cutoffPlacedAt
+        from prescription in dbContext.Prescriptions.AsNoTracking()
+        join user in dbContext.Users.AsNoTracking() on prescription.ClientId equals user.Id
+        where user.TelegramId.HasValue
+          && notifiableStatuses.Contains(prescription.Status)
+          && (prescription.UpdatedAtUtc ?? prescription.CreatedAtUtc) >= cutoffUtc
           && !dbContext.TelegramOutboxMessages.Any(m =>
-            m.OrderId == order.Id
-            && m.StatusSnapshot == order.Status
+            m.PrescriptionId == prescription.Id
+            && m.PrescriptionStatusSnapshot == prescription.Status
             && m.ChatId == user.TelegramId.Value
             && m.MessageKey == null)
-        orderby order.OrderPlacedAt descending
+        orderby (prescription.UpdatedAtUtc ?? prescription.CreatedAtUtc) descending
         select new
         {
-          order.Id,
+          prescription.Id,
           ChatId = user.TelegramId!.Value,
-          order.Status,
-          order.Cost,
-          order.PaymentCurrency
+          prescription.Status
         })
         .Take(batchSize)
         .ToListAsync(cancellationToken);
@@ -129,12 +99,12 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
       var insertedCount = 0;
       foreach (var candidate in candidates)
       {
-        var message = messageService.BuildOrderMessage(candidate.Id, candidate.Status, candidate.Cost, candidate.PaymentCurrency);
+        var message = messageService.BuildPrescriptionMessage(candidate.Id, candidate.Status);
         if (string.IsNullOrWhiteSpace(message))
           continue;
 
-        var outboxMessage = TelegramOutboxMessage.CreatePendingForOrder(
-          orderId: candidate.Id,
+        var outboxMessage = TelegramOutboxMessage.CreatePendingForPrescription(
+          prescriptionId: candidate.Id,
           chatId: candidate.ChatId,
           statusSnapshot: candidate.Status,
           message: message,
@@ -151,7 +121,7 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
         {
           dbContext.Entry(outboxMessage).State = EntityState.Detached;
           _logger.LogDebug(
-            "Skipped duplicate Telegram outbox message. OrderId={OrderId}, Status={Status}, ChatId={ChatId}",
+            "Skipped duplicate Telegram outbox message. PrescriptionId={PrescriptionId}, Status={Status}, ChatId={ChatId}",
             candidate.Id,
             candidate.Status,
             candidate.ChatId);
@@ -161,7 +131,7 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
       if (insertedCount > 0)
       {
         _logger.LogInformation(
-          "Enqueued {Count} order-status Telegram outbox messages.",
+          "Enqueued {Count} prescription-status Telegram outbox messages.",
           insertedCount);
       }
     }
@@ -171,7 +141,7 @@ public sealed class OrderStatusTelegramEnqueueHostedService : BackgroundService
     }
     catch (Exception exception)
     {
-      _logger.LogError(exception, "Order status Telegram enqueue worker failed.");
+      _logger.LogError(exception, "Prescription status Telegram enqueue worker failed.");
     }
   }
 

@@ -4,18 +4,18 @@ using Yalla.Domain.Exceptions;
 namespace Yalla.Domain.Entities;
 
 /// <summary>
-/// Outbox row for Telegram order-status notifications. Mirrors <see cref="SmsOutboxMessage"/>
-/// but is keyed by the recipient's Telegram chat id (== user id) rather than a phone number.
-/// One row per (OrderId, StatusSnapshot, ChatId) — uniqueness is enforced at the DB layer to
-/// guarantee idempotent enqueue from the polling worker.
+/// Outbox row for Telegram client notifications. It is keyed by the recipient's Telegram chat id
+/// (== user id) and can target either an order or a prescription request.
 /// </summary>
 public sealed class TelegramOutboxMessage
 {
   public Guid Id { get; private set; }
-  public Guid OrderId { get; private set; }
+  public Guid? OrderId { get; private set; }
+  public Guid? PrescriptionId { get; private set; }
   public long ChatId { get; private set; }
-  public Status StatusSnapshot { get; private set; }
-  /// <summary>Discriminator for cases where multiple TG messages per order+status are needed (e.g. JURA phases all map to OnTheWay).</summary>
+  public Status? StatusSnapshot { get; private set; }
+  public PrescriptionStatus? PrescriptionStatusSnapshot { get; private set; }
+  /// <summary>Discriminator for cases where multiple TG messages per target+status are needed (e.g. JURA phases all map to OnTheWay).</summary>
   public string? MessageKey { get; private set; }
   public string Message { get; private set; } = string.Empty;
   public int AttemptCount { get; private set; }
@@ -38,6 +38,15 @@ public sealed class TelegramOutboxMessage
     string message,
     DateTime nowUtc,
     string? messageKey = null)
+    => CreatePendingForOrder(orderId, chatId, statusSnapshot, message, nowUtc, messageKey);
+
+  public static TelegramOutboxMessage CreatePendingForOrder(
+    Guid orderId,
+    long chatId,
+    Status statusSnapshot,
+    string message,
+    DateTime nowUtc,
+    string? messageKey = null)
   {
     if (orderId == Guid.Empty)
       throw new DomainArgumentException("OrderId can't be empty.");
@@ -51,8 +60,48 @@ public sealed class TelegramOutboxMessage
     {
       Id = Guid.NewGuid(),
       OrderId = orderId,
+      PrescriptionId = null,
       ChatId = chatId,
       StatusSnapshot = statusSnapshot,
+      PrescriptionStatusSnapshot = null,
+      MessageKey = NormalizeOptional(messageKey, 64, "MessageKey"),
+      Message = NormalizeRequired(message, 4000, "Message"),
+      AttemptCount = 0,
+      NextAttemptAtUtc = normalizedNowUtc,
+      SentAtUtc = null,
+      State = TelegramOutboxState.Pending,
+      TelegramMessageId = null,
+      LastErrorCode = null,
+      LastErrorMessage = null,
+      CreatedAtUtc = normalizedNowUtc,
+      UpdatedAtUtc = normalizedNowUtc
+    };
+  }
+
+  public static TelegramOutboxMessage CreatePendingForPrescription(
+    Guid prescriptionId,
+    long chatId,
+    PrescriptionStatus statusSnapshot,
+    string message,
+    DateTime nowUtc,
+    string? messageKey = null)
+  {
+    if (prescriptionId == Guid.Empty)
+      throw new DomainArgumentException("PrescriptionId can't be empty.");
+
+    if (chatId == 0)
+      throw new DomainArgumentException("ChatId can't be zero.");
+
+    var normalizedNowUtc = EnsureUtc(nowUtc);
+
+    return new TelegramOutboxMessage
+    {
+      Id = Guid.NewGuid(),
+      OrderId = null,
+      PrescriptionId = prescriptionId,
+      ChatId = chatId,
+      StatusSnapshot = null,
+      PrescriptionStatusSnapshot = statusSnapshot,
       MessageKey = NormalizeOptional(messageKey, 64, "MessageKey"),
       Message = NormalizeRequired(message, 4000, "Message"),
       AttemptCount = 0,

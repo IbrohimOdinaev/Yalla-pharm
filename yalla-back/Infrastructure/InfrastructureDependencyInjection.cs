@@ -269,6 +269,7 @@ public static class DependencyInjection
     if (!oneCWorkerOnly)
     {
       services.AddHostedService<OrderStatusTelegramEnqueueHostedService>();
+      services.AddHostedService<PrescriptionStatusTelegramEnqueueHostedService>();
       services.AddHostedService<TelegramOutboxDispatcherHostedService>();
     }
 

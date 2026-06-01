@@ -134,9 +134,10 @@ public sealed class TelegramOutboxDispatcherHostedService : BackgroundService
             message.MarkFailed(failedAtUtc: nowUtc, errorCode: errorCode, errorMessage: errorMessage);
             _logger.LogWarning(
               exception,
-              "Telegram outbox dispatch permanently failed. MessageId={MessageId}, OrderId={OrderId}, ChatId={ChatId}, ErrorCode={ErrorCode}",
+              "Telegram outbox dispatch permanently failed. MessageId={MessageId}, OrderId={OrderId}, PrescriptionId={PrescriptionId}, ChatId={ChatId}, ErrorCode={ErrorCode}",
               message.Id,
               message.OrderId,
+              message.PrescriptionId,
               message.ChatId,
               errorCode);
           }

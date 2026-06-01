@@ -21,8 +21,11 @@ public sealed class TelegramOutboxMessageConfiguration : IEntityTypeConfiguratio
 
     builder.Property(x => x.OrderId)
       .HasColumnName("order_id")
-      .HasColumnType("uuid")
-      .IsRequired();
+      .HasColumnType("uuid");
+
+    builder.Property(x => x.PrescriptionId)
+      .HasColumnName("prescription_id")
+      .HasColumnType("uuid");
 
     builder.Property(x => x.ChatId)
       .HasColumnName("chat_id")
@@ -32,8 +35,12 @@ public sealed class TelegramOutboxMessageConfiguration : IEntityTypeConfiguratio
     builder.Property(x => x.StatusSnapshot)
       .HasColumnName("status_snapshot")
       .HasColumnType("integer")
-      .HasConversion<int>()
-      .IsRequired();
+      .HasConversion<int?>();
+
+    builder.Property(x => x.PrescriptionStatusSnapshot)
+      .HasColumnName("prescription_status_snapshot")
+      .HasColumnType("integer")
+      .HasConversion<int?>();
 
     builder.Property(x => x.MessageKey)
       .HasColumnName("message_key")
@@ -107,12 +114,22 @@ public sealed class TelegramOutboxMessageConfiguration : IEntityTypeConfiguratio
     builder.HasIndex(x => new { x.OrderId, x.StatusSnapshot, x.ChatId })
       .IsUnique()
       .HasDatabaseName("ux_tg_outbox_order_status_chat")
-      .HasFilter("message_key IS NULL");
+      .HasFilter("order_id IS NOT NULL AND status_snapshot IS NOT NULL AND message_key IS NULL");
 
     builder.HasIndex(x => new { x.OrderId, x.MessageKey, x.ChatId })
       .IsUnique()
       .HasDatabaseName("ux_tg_outbox_order_msgkey_chat")
-      .HasFilter("message_key IS NOT NULL");
+      .HasFilter("order_id IS NOT NULL AND message_key IS NOT NULL");
+
+    builder.HasIndex(x => new { x.PrescriptionId, x.PrescriptionStatusSnapshot, x.ChatId })
+      .IsUnique()
+      .HasDatabaseName("ux_tg_outbox_prescription_status_chat")
+      .HasFilter("prescription_id IS NOT NULL AND prescription_status_snapshot IS NOT NULL AND message_key IS NULL");
+
+    builder.HasIndex(x => new { x.PrescriptionId, x.MessageKey, x.ChatId })
+      .IsUnique()
+      .HasDatabaseName("ux_tg_outbox_prescription_msgkey_chat")
+      .HasFilter("prescription_id IS NOT NULL AND message_key IS NOT NULL");
 
     builder.HasIndex(x => new { x.State, x.NextAttemptAtUtc })
       .HasDatabaseName("ix_tg_outbox_state_next_attempt_at_utc");
