@@ -324,10 +324,11 @@ public sealed class StaffTelegramNotificationService : IStaffTelegramNotificatio
 
   private void EnsureConfigured()
   {
-    if (string.IsNullOrWhiteSpace(_options.BotToken))
-      throw new InvalidOperationException("TelegramStaffNotifications:BotToken is not configured.");
     if (string.IsNullOrWhiteSpace(NormalizeBotUsername(_options.BotUsername)))
-      throw new InvalidOperationException("TelegramStaffNotifications:BotUsername is not configured.");
+      throw new ClientErrorException(
+        errorCode: "staff_telegram_bot_username_missing",
+        detail: "Telegram-бот для уведомлений сотрудников не настроен: отсутствует BotUsername.",
+        reason: "bot_username_missing");
   }
 
   private static StaffTelegramRecipientResponse ToResponse(StaffTelegramRecipient recipient)

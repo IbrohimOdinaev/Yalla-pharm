@@ -271,7 +271,9 @@ public static class DependencyInjection
     {
       options.Enabled = !bool.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:Enabled"], out var enabled) || enabled;
       options.BotToken = config[$"{StaffTelegramNotificationOptions.SectionName}:BotToken"] ?? string.Empty;
-      options.BotUsername = config[$"{StaffTelegramNotificationOptions.SectionName}:BotUsername"] ?? string.Empty;
+      var botUsername = config[$"{StaffTelegramNotificationOptions.SectionName}:BotUsername"];
+      if (!string.IsNullOrWhiteSpace(botUsername))
+        options.BotUsername = botUsername;
       options.PublicBaseUrl = config[$"{StaffTelegramNotificationOptions.SectionName}:PublicBaseUrl"] ?? string.Empty;
       options.WebhookSecretToken = config[$"{StaffTelegramNotificationOptions.SectionName}:WebhookSecretToken"] ?? string.Empty;
       options.AutoRegisterWebhookOnStart = bool.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:AutoRegisterWebhookOnStart"], out var autoRegister)

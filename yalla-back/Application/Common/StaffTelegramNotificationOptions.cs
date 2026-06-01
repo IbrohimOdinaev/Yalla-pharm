@@ -6,7 +6,7 @@ public sealed class StaffTelegramNotificationOptions
 
   public bool Enabled { get; set; } = true;
   public string BotToken { get; set; } = string.Empty;
-  public string BotUsername { get; set; } = string.Empty;
+  public string BotUsername { get; set; } = "yalla_phamracyx_notification_bot";
   public string PublicBaseUrl { get; set; } = string.Empty;
   public string WebhookSecretToken { get; set; } = string.Empty;
   public bool AutoRegisterWebhookOnStart { get; set; }

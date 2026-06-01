@@ -74,7 +74,7 @@ services:
       - Telegram__AutoRegisterWebhookOnStart=${TELEGRAM_AUTO_REGISTER_WEBHOOK:-false}
       - TelegramStaffNotifications__Enabled=${TELEGRAM_STAFF_NOTIFICATIONS_ENABLED:-true}
       - TelegramStaffNotifications__BotToken=${TELEGRAM_STAFF_NOTIFICATIONS_BOT_TOKEN:-}
-      - TelegramStaffNotifications__BotUsername=${TELEGRAM_STAFF_NOTIFICATIONS_BOT_USERNAME:-}
+      - TelegramStaffNotifications__BotUsername=${TELEGRAM_STAFF_NOTIFICATIONS_BOT_USERNAME:-yalla_phamracyx_notification_bot}
       - TelegramStaffNotifications__PublicBaseUrl=${TELEGRAM_STAFF_NOTIFICATIONS_PUBLIC_BASE_URL:-}
       - TelegramStaffNotifications__WebhookSecretToken=${TELEGRAM_STAFF_NOTIFICATIONS_WEBHOOK_SECRET:-}
       - TelegramStaffNotifications__AutoRegisterWebhookOnStart=${TELEGRAM_STAFF_NOTIFICATIONS_AUTO_REGISTER_WEBHOOK:-false}
