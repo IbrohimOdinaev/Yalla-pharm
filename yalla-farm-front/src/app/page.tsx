@@ -132,6 +132,12 @@ export default function HomePage() {
   );
 }
 
+function formatDoruTime(value?: string): string {
+  if (!value) return "Неизвестно";
+  const [hours, minutes] = value.split(":");
+  return hours && minutes ? `${hours}:${minutes}` : value;
+}
+
 function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
   const [geoStatus, setGeoStatus] = useState<string>("Запрашиваем доступ к геолокации...");
@@ -296,23 +302,21 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-2xl bg-surface-container-low p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Широта</p>
-                      <p className="mt-1 font-mono text-xs font-bold text-on-surface">{selectedPharmacy.lat.toFixed(6)}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Открытие</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{formatDoruTime(selectedPharmacy.opensAt)}</p>
                     </div>
                     <div className="rounded-2xl bg-surface-container-low p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Долгота</p>
-                      <p className="mt-1 font-mono text-xs font-bold text-on-surface">{selectedPharmacy.lng.toFixed(6)}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Закрытие</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{formatDoruTime(selectedPharmacy.closesAt)}</p>
                     </div>
                   </div>
 
-                  <a
-                    href={`https://yandex.ru/maps/?pt=${selectedPharmacy.lng},${selectedPharmacy.lat}&z=17&l=map`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-bold text-on-primary transition active:scale-[0.98] hover:bg-primary/90"
-                  >
-                    Открыть в Яндекс Картах
-                  </a>
+                  <div className="rounded-2xl bg-surface-container-low p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Телефон аптеки</p>
+                    <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">
+                      {selectedPharmacy.pharmacyPhone || selectedPharmacy.phone || "Неизвестно"}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
