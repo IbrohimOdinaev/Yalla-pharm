@@ -964,23 +964,6 @@ function HomeContent() {
             </div>
           </section>
 
-          <section className="-mt-2">
-            <button
-              type="button"
-              onClick={() => setShowDushanbeMapModal(true)}
-              className="group flex h-[110px] w-[110px] flex-col justify-between rounded-2xl bg-surface-container p-4 text-left shadow-sm transition active:scale-95 hover:bg-surface-container-high sm:h-[124px] sm:w-[124px] lg:h-[143px] lg:w-[143px]"
-              aria-label="Открыть карту аптек Душанбе"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-on-primary shadow-card transition group-hover:scale-105">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M12 21s7-5.2 7-12a7 7 0 1 0-14 0c0 6.8 7 12 7 12z" />
-                  <circle cx="12" cy="9" r="2.4" />
-                </svg>
-              </span>
-              <span className="text-sm font-bold leading-tight text-on-surface">Аптеки на карте</span>
-            </button>
-          </section>
-
           {/* Prescription-decoding CTA — sits below the quick categories so
               the rail stays the first visual hit on the home page. Hidden for
               admin / superadmin since they don't shop. At xl+ the same CTA
@@ -1015,7 +998,14 @@ function HomeContent() {
 
           {/* Pharmacy banners */}
           <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
-          <PharmacyPickerModal open={isPickerOpen} onClose={closePicker} />
+          <PharmacyPickerModal
+            open={isPickerOpen}
+            onClose={closePicker}
+            onOpenMap={() => {
+              closePicker();
+              setShowDushanbeMapModal(true);
+            }}
+          />
 
           {/* Rails — fixed-count horizontal shelves, one per popular category.
               Each fetches independently so they flip from skeleton → content

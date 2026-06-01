@@ -10,9 +10,10 @@ import { PharmacyLogo } from "@/shared/ui";
 type Props = {
   open: boolean;
   onClose: () => void;
+  onOpenMap?: () => void;
 };
 
-export function PharmacyPickerModal({ open, onClose }: Props) {
+export function PharmacyPickerModal({ open, onClose, onOpenMap }: Props) {
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -78,6 +79,25 @@ export function PharmacyPickerModal({ open, onClose }: Props) {
           </div>
         ) : (
           <div className="p-3 space-y-2">
+            {onOpenMap ? (
+              <button
+                type="button"
+                onClick={onOpenMap}
+                className="w-full flex items-center gap-3 rounded-xl p-3 transition hover:bg-surface-container-low"
+              >
+                <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center flex-shrink-0 shadow-card">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 21s7-5.2 7-12a7 7 0 1 0-14 0c0 6.8 7 12 7 12z" />
+                    <circle cx="12" cy="9" r="2.4" />
+                  </svg>
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-bold">Аптеки на карте</p>
+                  <p className="text-xs text-on-surface-variant">Показать аптеки по Душанбе</p>
+                </div>
+              </button>
+            ) : null}
+
             {/* All pharmacies option */}
             <button
               type="button"
