@@ -302,6 +302,41 @@ public static class DependencyInjection
     });
     services.AddHttpClient<IStaffTelegramBotApi, StaffTelegramBotApi>();
 
+    services.Configure<SuperAdminTelegramNotificationOptions>(options =>
+    {
+      options.Enabled = !bool.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:Enabled"], out var enabled) || enabled;
+      options.BotToken = config[$"{SuperAdminTelegramNotificationOptions.SectionName}:BotToken"] ?? string.Empty;
+      var botUsername = config[$"{SuperAdminTelegramNotificationOptions.SectionName}:BotUsername"];
+      if (!string.IsNullOrWhiteSpace(botUsername))
+        options.BotUsername = botUsername;
+      options.PublicBaseUrl = config[$"{SuperAdminTelegramNotificationOptions.SectionName}:PublicBaseUrl"] ?? string.Empty;
+      options.WebhookSecretToken = config[$"{SuperAdminTelegramNotificationOptions.SectionName}:WebhookSecretToken"] ?? string.Empty;
+      options.AutoRegisterWebhookOnStart = bool.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:AutoRegisterWebhookOnStart"], out var autoRegister)
+        && autoRegister;
+      options.BatchSize = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:BatchSize"], out var batchSize)
+        ? batchSize
+        : 50;
+      options.PollIntervalSeconds = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:PollIntervalSeconds"], out var pollIntervalSeconds)
+        ? pollIntervalSeconds
+        : 15;
+      options.MaxAttempts = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:MaxAttempts"], out var maxAttempts)
+        ? maxAttempts
+        : 5;
+      options.RetryBackoffSeconds = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:RetryBackoffSeconds"], out var retryBackoffSeconds)
+        ? retryBackoffSeconds
+        : 30;
+      options.RetentionDays = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:RetentionDays"], out var retentionDays)
+        ? retentionDays
+        : 7;
+      options.CatchUpMaxOrderAgeHours = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:CatchUpMaxOrderAgeHours"], out var orderAgeHours)
+        ? orderAgeHours
+        : 48;
+      options.CatchUpMaxPrescriptionAgeHours = int.TryParse(config[$"{SuperAdminTelegramNotificationOptions.SectionName}:CatchUpMaxPrescriptionAgeHours"], out var prescriptionAgeHours)
+        ? prescriptionAgeHours
+        : 48;
+    });
+    services.AddHttpClient<ISuperAdminTelegramBotApi, SuperAdminTelegramBotApi>();
+
     if (!oneCWorkerOnly)
     {
       services.AddHostedService<OrderStatusTelegramEnqueueHostedService>();
@@ -310,6 +345,9 @@ public static class DependencyInjection
       services.AddHostedService<StaffTelegramNotificationEnqueueHostedService>();
       services.AddHostedService<StaffTelegramOutboxDispatcherHostedService>();
       services.AddHostedService<StaffTelegramWebhookRegistrationHostedService>();
+      services.AddHostedService<SuperAdminTelegramNotificationEnqueueHostedService>();
+      services.AddHostedService<SuperAdminTelegramOutboxDispatcherHostedService>();
+      services.AddHostedService<SuperAdminTelegramWebhookRegistrationHostedService>();
     }
 
     // WooCommerce sync

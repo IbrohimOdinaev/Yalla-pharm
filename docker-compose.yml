@@ -78,6 +78,12 @@ services:
       - TelegramStaffNotifications__PublicBaseUrl=${TELEGRAM_STAFF_NOTIFICATIONS_PUBLIC_BASE_URL:-}
       - TelegramStaffNotifications__WebhookSecretToken=${TELEGRAM_STAFF_NOTIFICATIONS_WEBHOOK_SECRET:-}
       - TelegramStaffNotifications__AutoRegisterWebhookOnStart=${TELEGRAM_STAFF_NOTIFICATIONS_AUTO_REGISTER_WEBHOOK:-false}
+      - TelegramSuperAdminNotifications__Enabled=${TELEGRAM_SUPERADMIN_NOTIFICATIONS_ENABLED:-true}
+      - TelegramSuperAdminNotifications__BotToken=${TELEGRAM_SUPERADMIN_NOTIFICATIONS_BOT_TOKEN:-}
+      - TelegramSuperAdminNotifications__BotUsername=${TELEGRAM_SUPERADMIN_NOTIFICATIONS_BOT_USERNAME:-yallapharm_superadmin_notify_bot}
+      - TelegramSuperAdminNotifications__PublicBaseUrl=${TELEGRAM_SUPERADMIN_NOTIFICATIONS_PUBLIC_BASE_URL:-}
+      - TelegramSuperAdminNotifications__WebhookSecretToken=${TELEGRAM_SUPERADMIN_NOTIFICATIONS_WEBHOOK_SECRET:-}
+      - TelegramSuperAdminNotifications__AutoRegisterWebhookOnStart=${TELEGRAM_SUPERADMIN_NOTIFICATIONS_AUTO_REGISTER_WEBHOOK:-false}
       - WooCommerce__Enabled=${WOOCOMMERCE_ENABLED:-false}
       - WooCommerce__BaseUrl=${WOOCOMMERCE_BASE_URL}
       - WooCommerce__ConsumerKey=${WOOCOMMERCE_CONSUMER_KEY}

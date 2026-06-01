@@ -150,3 +150,31 @@ export async function deleteAdminTelegramRecipient(token: string, recipientId: s
     token,
   });
 }
+
+export async function getSuperAdminTelegramRecipients(token: string): Promise<StaffTelegramRecipient[]> {
+  const response = await apiFetch<{ recipients?: StaffTelegramRecipient[] }>("/api/superadmin/telegram/recipients", { token });
+  return Array.isArray(response.recipients) ? response.recipients : [];
+}
+
+export async function startSuperAdminTelegramLink(token: string): Promise<StaffTelegramLinkStartResponse> {
+  return apiFetch<StaffTelegramLinkStartResponse>("/api/superadmin/telegram/link/start", { method: "POST", token });
+}
+
+export async function pollSuperAdminTelegramLink(token: string, nonce: string): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/api/superadmin/telegram/link/poll?nonce=${encodeURIComponent(nonce)}`, { token });
+}
+
+export async function completeSuperAdminTelegramLink(token: string, nonce: string): Promise<StaffTelegramRecipient> {
+  return apiFetch<StaffTelegramRecipient>("/api/superadmin/telegram/link/complete", {
+    method: "POST",
+    token,
+    body: { nonce },
+  });
+}
+
+export async function deleteSuperAdminTelegramRecipient(token: string, recipientId: string): Promise<void> {
+  await apiFetch<unknown>(`/api/superadmin/telegram/recipients/${encodeURIComponent(recipientId)}`, {
+    method: "DELETE",
+    token,
+  });
+}

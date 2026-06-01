@@ -25,6 +25,7 @@ public static class DependencyInjection
     services.AddScoped<IOrderStatusSmsService, OrderStatusSmsService>();
     services.AddScoped<IClientTelegramNotificationMessageService, ClientTelegramNotificationMessageService>();
     services.AddScoped<IStaffTelegramNotificationService, StaffTelegramNotificationService>();
+    services.AddScoped<ISuperAdminTelegramNotificationService, SuperAdminTelegramNotificationService>();
     services.AddScoped<IPharmacyWorkerService, PharmacyWorkerService>();
     services.AddScoped<IPrescriptionService, PrescriptionService>();
     services.AddScoped<IPharmacistService, PharmacistService>();

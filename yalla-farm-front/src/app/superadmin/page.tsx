@@ -9,7 +9,21 @@ import { formatMoney } from "@/shared/lib/format";
 import { DatePicker, Select } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
 
-import { getAdmins, createAdmin, createAdminWithPharmacy, deleteAdmin, uploadAdminAvatarForSuperAdmin, type ApiAdmin } from "@/entities/admin/api";
+import {
+  completeSuperAdminTelegramLink,
+  createAdmin,
+  createAdminWithPharmacy,
+  deleteAdmin,
+  deleteSuperAdminTelegramRecipient,
+  getAdmins,
+  getSuperAdminTelegramRecipients,
+  pollSuperAdminTelegramLink,
+  startSuperAdminTelegramLink,
+  uploadAdminAvatarForSuperAdmin,
+  type ApiAdmin,
+  type StaffTelegramLinkStartResponse,
+  type StaffTelegramRecipient,
+} from "@/entities/admin/api";
 import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon, uploadPharmacyBanner, deletePharmacyBanner } from "@/entities/pharmacy/admin-api";
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
 import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage, getHomePopularMedicinesForAdmin, updateHomePopularMedicines, type HomePopularMedicineItem } from "@/entities/medicine/admin-api";
@@ -236,6 +250,7 @@ export default function SuperAdminPage() {
           <>
             <StatsDashboard token={token} />
             <PaymentSettingsCard token={token} />
+            <SuperAdminTelegramNotificationsCard token={token} />
           </>
         ) : null}
 
@@ -285,6 +300,156 @@ const EMPTY_SUPERADMIN_DAILY_STATS: SuperAdminDailyStats = {
   dayLabel: "",
   pharmacies: [],
 };
+
+function SuperAdminTelegramNotificationsCard({ token }: { token: string }) {
+  const [recipients, setRecipients] = useState<StaffTelegramRecipient[]>([]);
+  const [session, setSession] = useState<StaffTelegramLinkStartResponse | null>(null);
+  const [status, setStatus] = useState<"idle" | "pending" | "confirmed" | "expired" | "error">("idle");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    getSuperAdminTelegramRecipients(token).then(setRecipients).catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!session || status !== "pending") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const result = await pollSuperAdminTelegramLink(token, session.nonce);
+        if (result.status === "confirmed") {
+          const recipient = await completeSuperAdminTelegramLink(token, session.nonce);
+          setRecipients((prev) => [recipient, ...prev.filter((item) => item.id !== recipient.id)]);
+          setStatus("confirmed");
+          setMsg("Telegram подключён для уведомлений SuperAdmin.");
+          clearInterval(interval);
+          setTimeout(() => {
+            setSession(null);
+            setStatus("idle");
+          }, 1200);
+        } else if (result.status === "expired" || result.status === "cancelled") {
+          setStatus("expired");
+          setMsg("Сессия привязки истекла или отменена.");
+          clearInterval(interval);
+        }
+      } catch (err) {
+        setStatus("error");
+        setMsg(err instanceof Error ? err.message : "Не удалось завершить привязку Telegram.");
+        clearInterval(interval);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [session, status, token]);
+
+  async function onStartLink() {
+    setMsg(null);
+    setStatus("pending");
+    try {
+      const nextSession = await startSuperAdminTelegramLink(token);
+      setSession(nextSession);
+      const target = nextSession.webDeepLink || nextSession.deepLink || nextSession.appDeepLink;
+      if (target) window.open(target, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setStatus("error");
+      setMsg(err instanceof Error ? err.message : "Не удалось начать привязку Telegram.");
+    }
+  }
+
+  async function onDeleteRecipient(recipientId: string) {
+    setRemovingId(recipientId);
+    setMsg(null);
+    try {
+      await deleteSuperAdminTelegramRecipient(token, recipientId);
+      setRecipients((prev) => prev.filter((item) => item.id !== recipientId));
+      setMsg("Telegram-аккаунт отключён.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Не удалось отключить Telegram.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  return (
+    <section className="stitch-card space-y-4 p-4 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Telegram</p>
+          <h2 className="mt-1 text-lg font-extrabold">Уведомления SuperAdmin</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Новые заказы, запросы на рецепт, отмены и возвраты будут приходить в подключённые Telegram-аккаунты.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="stitch-button flex-shrink-0"
+          onClick={() => void onStartLink()}
+          disabled={status === "pending"}
+        >
+          {status === "pending" ? "Ждём подтверждения..." : "Подключить Telegram"}
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {recipients.length === 0 ? (
+          <div className="rounded-2xl bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">
+            Аккаунты для уведомлений пока не подключены.
+          </div>
+        ) : (
+          recipients.map((recipient) => {
+            const title = recipient.telegramUsername
+              ? `@${recipient.telegramUsername.replace(/^@/, "")}`
+              : [recipient.telegramFirstName, recipient.telegramLastName].filter(Boolean).join(" ") || `tg:${recipient.telegramUserId}`;
+            return (
+              <div key={recipient.id} className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-black text-primary">
+                  TG
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black text-on-surface">{title}</p>
+                  <p className="text-xs text-on-surface-variant">Уведомления включены</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onDeleteRecipient(recipient.id)}
+                  disabled={removingId === recipient.id}
+                  className="rounded-full bg-secondary-soft px-3 py-2 text-xs font-black text-secondary transition hover:bg-secondary/15 disabled:opacity-50"
+                >
+                  {removingId === recipient.id ? "..." : "Отключить"}
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {session && status === "pending" ? (
+        <div className="space-y-3 rounded-2xl bg-primary-soft p-3">
+          <p className="text-sm font-bold text-primary">Подтвердите подключение в Telegram.</p>
+          <a
+            href={session.webDeepLink || session.deepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="stitch-button inline-flex w-full items-center justify-center"
+          >
+            Открыть @{session.botUsername}
+          </a>
+        </div>
+      ) : null}
+
+      {msg ? (
+        <div className={`rounded-xl p-3 text-sm ${status === "error" || status === "expired" ? "bg-red-100 text-red-700" : "bg-primary-soft text-primary"}`}>
+          {msg}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 function isWithinWindow(value: string | undefined | null, startUtcMs: number, endUtcMs: number): boolean {
   const ms = dushanbeTimeMs(value);
