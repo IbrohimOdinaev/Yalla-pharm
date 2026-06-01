@@ -189,18 +189,76 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
 
   private static async Task TruncateAllTablesAsync(ApplicationDbContext dbContext)
   {
-    // SQLite: disable FK checks, delete everything, re-enable.
+    // SQLite PRAGMA foreign_keys=OFF is connection/transaction-sensitive. Keep it as a
+    // safety belt, but delete in FK-safe order so reset does not depend on PRAGMA behavior.
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=OFF");
+    try
+    {
+      foreach (var table in BuildDeleteOrder(dbContext))
+      {
+        await dbContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{table}\"");
+      }
+    }
+    finally
+    {
+      await dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON");
+    }
+  }
+
+  private static IReadOnlyList<string> BuildDeleteOrder(ApplicationDbContext dbContext)
+  {
     var tables = dbContext.Model.GetEntityTypes()
       .Select(t => t.GetTableName())
       .Where(t => !string.IsNullOrEmpty(t))
+      .Select(t => t!)
+      .Distinct(StringComparer.Ordinal)
+      .ToHashSet(StringComparer.Ordinal);
+
+    var dependencies = dbContext.Model.GetEntityTypes()
+      .SelectMany(entity =>
+      {
+        var dependentTable = entity.GetTableName();
+        if (string.IsNullOrEmpty(dependentTable))
+          return Enumerable.Empty<(string Dependent, string Principal)>();
+
+        return entity.GetForeignKeys()
+          .Select(fk => fk.PrincipalEntityType.GetTableName())
+          .Where(principalTable =>
+            !string.IsNullOrEmpty(principalTable)
+            && !string.Equals(principalTable, dependentTable, StringComparison.Ordinal))
+          .Select(principalTable => (Dependent: dependentTable!, Principal: principalTable!));
+      })
       .Distinct()
-      .ToList();
-    foreach (var table in tables)
+      .ToHashSet();
+
+    var order = new List<string>(tables.Count);
+    var remainingTables = tables.ToHashSet(StringComparer.Ordinal);
+
+    while (remainingTables.Count > 0)
     {
-      await dbContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{table}\"");
+      // Edge direction is dependent -> principal, so tables with no incoming edge
+      // can be safely deleted now.
+      var ready = remainingTables
+        .Where(table => !dependencies.Any(dep =>
+          remainingTables.Contains(dep.Dependent)
+          && string.Equals(dep.Principal, table, StringComparison.Ordinal)))
+        .OrderBy(table => table, StringComparer.Ordinal)
+        .ToList();
+
+      if (ready.Count == 0)
+        ready.Add(remainingTables.OrderBy(table => table, StringComparer.Ordinal).First());
+
+      foreach (var table in ready)
+      {
+        order.Add(table);
+        remainingTables.Remove(table);
+        dependencies.RemoveWhere(dep =>
+          string.Equals(dep.Dependent, table, StringComparison.Ordinal)
+          || string.Equals(dep.Principal, table, StringComparison.Ordinal));
+      }
     }
-    await dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON");
+
+    return order;
   }
 
   public IServiceScope CreateScope()
