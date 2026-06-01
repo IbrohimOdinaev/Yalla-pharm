@@ -294,6 +294,10 @@ export function PharmacyMapYandex({
           },
         );
         (placemark as { __el?: HTMLElement }).__el = wrapper;
+        placemark.events.add("click", (event: any) => {
+          event.stopPropagation?.();
+          onPharmacyClickRef.current?.(pharmacy.id);
+        });
         map.geoObjects.add(placemark);
         current.set(pharmacy.id, placemark);
       }
