@@ -266,11 +266,43 @@ public static class DependencyInjection
         ? retentionDays
         : 7;
     });
+
+    services.Configure<StaffTelegramNotificationOptions>(options =>
+    {
+      options.Enabled = !bool.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:Enabled"], out var enabled) || enabled;
+      options.BotToken = config[$"{StaffTelegramNotificationOptions.SectionName}:BotToken"] ?? string.Empty;
+      options.PublicBaseUrl = config[$"{StaffTelegramNotificationOptions.SectionName}:PublicBaseUrl"] ?? string.Empty;
+      options.BatchSize = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:BatchSize"], out var batchSize)
+        ? batchSize
+        : 50;
+      options.PollIntervalSeconds = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:PollIntervalSeconds"], out var pollIntervalSeconds)
+        ? pollIntervalSeconds
+        : 15;
+      options.MaxAttempts = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:MaxAttempts"], out var maxAttempts)
+        ? maxAttempts
+        : 5;
+      options.RetryBackoffSeconds = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:RetryBackoffSeconds"], out var retryBackoffSeconds)
+        ? retryBackoffSeconds
+        : 30;
+      options.RetentionDays = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:RetentionDays"], out var retentionDays)
+        ? retentionDays
+        : 7;
+      options.CatchUpMaxOrderAgeHours = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:CatchUpMaxOrderAgeHours"], out var orderAgeHours)
+        ? orderAgeHours
+        : 48;
+      options.CatchUpMaxLookupAgeHours = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:CatchUpMaxLookupAgeHours"], out var lookupAgeHours)
+        ? lookupAgeHours
+        : 48;
+    });
+    services.AddHttpClient<IStaffTelegramBotApi, StaffTelegramBotApi>();
+
     if (!oneCWorkerOnly)
     {
       services.AddHostedService<OrderStatusTelegramEnqueueHostedService>();
       services.AddHostedService<PrescriptionStatusTelegramEnqueueHostedService>();
       services.AddHostedService<TelegramOutboxDispatcherHostedService>();
+      services.AddHostedService<StaffTelegramNotificationEnqueueHostedService>();
+      services.AddHostedService<StaffTelegramOutboxDispatcherHostedService>();
     }
 
     // WooCommerce sync

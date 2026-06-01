@@ -63,6 +63,9 @@ services:
       # Telegram bot webhooks are global per bot token. Keep prod from
       # stealing a shared staging/dev bot unless the env opts in explicitly.
       Telegram__AutoRegisterWebhookOnStart: ${TELEGRAM_AUTO_REGISTER_WEBHOOK_ON_START:-false}
+      TelegramStaffNotifications__Enabled: ${TELEGRAM_STAFF_NOTIFICATIONS_ENABLED:-true}
+      TelegramStaffNotifications__BotToken: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_TOKEN:-}
+      TelegramStaffNotifications__PublicBaseUrl: ${TELEGRAM_STAFF_NOTIFICATIONS_PUBLIC_BASE_URL:-https://pharm.yalla.tj}
     volumes:
       - one-c-exchange-prod:/data/1c-exchange:ro
     expose:

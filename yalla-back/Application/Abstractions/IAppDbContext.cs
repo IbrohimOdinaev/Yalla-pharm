@@ -31,6 +31,7 @@ public interface IAppDbContext
     DbSet<SmsVerificationSession> SmsVerificationSessions { get; }
     DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
     DbSet<TelegramOutboxMessage> TelegramOutboxMessages { get; }
+    DbSet<StaffTelegramOutboxMessage> StaffTelegramOutboxMessages { get; }
     DbSet<TelegramAuthSession> TelegramAuthSessions { get; }
     DbSet<User> Users { get; }
     DbSet<Category> Categories { get; }
