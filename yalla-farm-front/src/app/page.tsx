@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
 import { getCatalogMedicinesPaginated, getHomePopularMedicines, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
@@ -23,7 +24,12 @@ import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
 import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { DORU_DUSHANBE_INTEGRATED_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { PharmacyLogo } from "@/shared/ui";
+import type { GeoPoint } from "@/shared/lib/map";
+import type { PharmacyMarker } from "@/widgets/map/PharmacyMap";
+
+const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
 const POPULAR_QUERIES = ["Парацетамол", "Ибупрофен", "Амоксициллин", "Цитрамон", "Лоратадин", "Омепразол"];
 const ADDRESS_PROMPT_DISMISSED_KEY = "yalla.delivery.addressPromptDismissed";
@@ -126,6 +132,131 @@ export default function HomePage() {
   );
 }
 
+function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
+  const [geoStatus, setGeoStatus] = useState<string>("Запрашиваем доступ к геолокации...");
+  const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
+
+  const pharmacies = useMemo<PharmacyMarker[]>(
+    () => DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => ({
+      id: `doru-${pharmacy.id}`,
+      title: pharmacy.title,
+      address: pharmacy.landmark ? `${pharmacy.address} · ${pharmacy.landmark}` : pharmacy.address,
+      lat: pharmacy.lat,
+      lng: pharmacy.lng,
+    })),
+    [],
+  );
+
+  const selectedPharmacy = useMemo(
+    () => pharmacies.find((pharmacy) => pharmacy.id === selectedPharmacyId) ?? null,
+    [pharmacies, selectedPharmacyId],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    setGeoStatus("Запрашиваем доступ к геолокации...");
+    setSelectedPharmacyId(null);
+
+    if (!navigator.geolocation) {
+      setGeoStatus("Геолокация недоступна в этом браузере.");
+      return;
+    }
+
+    let isActive = true;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        if (!isActive) return;
+        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setGeoStatus("Ваше местоположение обновляется на карте.");
+      },
+      (error) => {
+        if (!isActive) return;
+        if (error.code === error.PERMISSION_DENIED) {
+          setGeoStatus("Доступ к геолокации заблокирован в браузере.");
+        } else {
+          setGeoStatus("Не удалось получить текущее местоположение.");
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+
+    return () => {
+      isActive = false;
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Закрыть карту" />
+      <div
+        className="relative flex h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:h-[86dvh] sm:rounded-3xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Карта аптек Душанбе"
+      >
+        <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-outline/60 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-bold text-on-surface sm:text-lg">Аптеки Душанбе</h2>
+            <p className="truncate text-xs text-on-surface-variant">
+              {DORU_DUSHANBE_INTEGRATED_PHARMACIES.length} интегрированных аптек Doru · {geoStatus}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition active:scale-95 hover:bg-surface-container-high"
+            aria-label="Закрыть"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <div className="relative min-h-0 flex-1">
+          <PharmacyMap
+            pharmacies={pharmacies}
+            userLocation={userLocation}
+            initialZoom={12}
+            onPharmacyClick={setSelectedPharmacyId}
+            className="h-full w-full"
+          />
+
+          {selectedPharmacy ? (
+            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-surface/95 p-4 shadow-float backdrop-blur sm:left-5 sm:right-auto sm:w-[360px]">
+              <p className="truncate text-sm font-bold text-on-surface">{selectedPharmacy.title}</p>
+              <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">{selectedPharmacy.address}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomeFallback() {
   return (
     <AppShell>
@@ -194,6 +325,7 @@ function HomeContent() {
 
   // Address modal — auto-open on first visit if no address saved
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showDushanbeMapModal, setShowDushanbeMapModal] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const addressChecked = useRef(false);
 
@@ -806,6 +938,7 @@ function HomeContent() {
         }}
         autoGeolocate={isFirstVisit}
       />
+      <DushanbePharmacyMapModal open={showDushanbeMapModal} onClose={() => setShowDushanbeMapModal(false)} />
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
 
           {/* Quick categories — Yandex-style horizontal rail */}
@@ -829,6 +962,23 @@ function HomeContent() {
                 </div>
               ))}
             </div>
+          </section>
+
+          <section className="-mt-2">
+            <button
+              type="button"
+              onClick={() => setShowDushanbeMapModal(true)}
+              className="group flex h-[110px] w-[110px] flex-col justify-between rounded-2xl bg-surface-container p-4 text-left shadow-sm transition active:scale-95 hover:bg-surface-container-high sm:h-[124px] sm:w-[124px] lg:h-[143px] lg:w-[143px]"
+              aria-label="Открыть карту аптек Душанбе"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-on-primary shadow-card transition group-hover:scale-105">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 21s7-5.2 7-12a7 7 0 1 0-14 0c0 6.8 7 12 7 12z" />
+                  <circle cx="12" cy="9" r="2.4" />
+                </svg>
+              </span>
+              <span className="text-sm font-bold leading-tight text-on-surface">Аптеки на карте</span>
+            </button>
           </section>
 
           {/* Prescription-decoding CTA — sits below the quick categories so

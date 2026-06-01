@@ -43,6 +43,7 @@ export type PharmacyMapProps = {
   pickMode?: boolean;
   /** New drag-to-pick mode with center pin */
   centerPinMode?: boolean;
+  initialZoom?: number;
   /** Ref callback to get imperative handle (panTo) */
   mapHandle?: (handle: PharmacyMapHandle | null) => void;
 };
@@ -70,6 +71,7 @@ export function PharmacyMapYandex({
   selectedPoint,
   pickMode = false,
   centerPinMode = false,
+  initialZoom: initialZoomProp,
   mapHandle,
 }: PharmacyMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -94,7 +96,7 @@ export function PharmacyMapYandex({
     }
     return DUSHANBE_CENTER;
   }, [centerPinMode, userLocation, selectedPoint]);
-  const initialZoom = centerPinMode ? 14 : 13;
+  const initialZoom = centerPinMode ? 14 : (initialZoomProp ?? 13);
 
   // ─── SDK + map init (one-shot per mount) ─────────────────────────────
   useEffect(() => {
