@@ -109,14 +109,16 @@ public sealed class StaffTelegramNotificationEnqueueHostedService : BackgroundSe
       from order in dbContext.Orders.AsNoTracking()
       join pharmacy in dbContext.Pharmacies.AsNoTracking() on order.PharmacyId equals pharmacy.Id
       join worker in dbContext.PharmacyWorkers.AsNoTracking() on order.PharmacyId equals worker.PharmacyId
+      join recipient in dbContext.StaffTelegramRecipients.AsNoTracking() on worker.Id equals recipient.PharmacyWorkerId
       where order.Status == Status.UnderReview
         && order.OrderPlacedAt >= cutoffPlacedAt
         && pharmacy.IsActive
         && worker.IsActive
-        && worker.TelegramId.HasValue
+        && recipient.IsActive
         && !dbContext.StaffTelegramOutboxMessages.Any(m =>
           m.OrderId == order.Id
-          && m.PharmacyWorkerId == worker.Id)
+          && m.PharmacyWorkerId == worker.Id
+          && m.ChatId == recipient.ChatId)
       orderby order.OrderPlacedAt descending
       select new
       {
@@ -127,7 +129,7 @@ public sealed class StaffTelegramNotificationEnqueueHostedService : BackgroundSe
         PharmacyTitle = pharmacy.Title,
         WorkerId = worker.Id,
         PharmacyId = pharmacy.Id,
-        ChatId = worker.TelegramId!.Value
+        recipient.ChatId
       })
       .Take(batchSize)
       .ToListAsync(cancellationToken);
@@ -169,13 +171,15 @@ public sealed class StaffTelegramNotificationEnqueueHostedService : BackgroundSe
     var candidates = await (
       from request in dbContext.ManualItemLookupRequests.AsNoTracking()
       from worker in dbContext.PharmacyWorkers.AsNoTracking()
+      join recipient in dbContext.StaffTelegramRecipients.AsNoTracking() on worker.Id equals recipient.PharmacyWorkerId
       where request.Status == ManualItemLookupRequestStatus.Open
         && request.CreatedAtUtc >= cutoffCreatedAtUtc
         && worker.IsActive
-        && worker.TelegramId.HasValue
+        && recipient.IsActive
         && !dbContext.StaffTelegramOutboxMessages.Any(m =>
           m.ManualLookupRequestId == request.Id
-          && m.PharmacyWorkerId == worker.Id)
+          && m.PharmacyWorkerId == worker.Id
+          && m.ChatId == recipient.ChatId)
       orderby request.CreatedAtUtc descending
       select new
       {
@@ -183,7 +187,7 @@ public sealed class StaffTelegramNotificationEnqueueHostedService : BackgroundSe
         request.ManualMedicineName,
         request.RequestComment,
         WorkerId = worker.Id,
-        ChatId = worker.TelegramId!.Value
+        recipient.ChatId
       })
       .Take(batchSize)
       .ToListAsync(cancellationToken);

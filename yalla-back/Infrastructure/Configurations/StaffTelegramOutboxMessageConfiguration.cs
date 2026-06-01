@@ -111,9 +111,9 @@ public sealed class StaffTelegramOutboxMessageConfiguration : IEntityTypeConfigu
         value => DateTime.SpecifyKind(value, DateTimeKind.Utc))
       .IsRequired();
 
-    builder.HasIndex(x => new { x.MessageKey, x.PharmacyWorkerId })
+    builder.HasIndex(x => new { x.MessageKey, x.PharmacyWorkerId, x.ChatId })
       .IsUnique()
-      .HasDatabaseName("ux_staff_tg_outbox_msgkey_worker");
+      .HasDatabaseName("ux_staff_tg_outbox_msgkey_worker_chat");
 
     builder.HasIndex(x => new { x.State, x.NextAttemptAtUtc })
       .HasDatabaseName("ix_staff_tg_outbox_state_next_attempt_at_utc");

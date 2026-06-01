@@ -36,6 +36,7 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<SmsOutboxMessage> SmsOutboxMessages => Set<SmsOutboxMessage>();
   public DbSet<TelegramOutboxMessage> TelegramOutboxMessages => Set<TelegramOutboxMessage>();
   public DbSet<StaffTelegramOutboxMessage> StaffTelegramOutboxMessages => Set<StaffTelegramOutboxMessage>();
+  public DbSet<StaffTelegramRecipient> StaffTelegramRecipients => Set<StaffTelegramRecipient>();
   public DbSet<TelegramAuthSession> TelegramAuthSessions => Set<TelegramAuthSession>();
   public DbSet<Category> Categories => Set<Category>();
   public DbSet<DeliveryData> DeliveryData => Set<DeliveryData>();

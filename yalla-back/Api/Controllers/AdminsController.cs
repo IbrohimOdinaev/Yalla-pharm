@@ -15,17 +15,20 @@ public sealed class AdminsController : ControllerBase
 {
   private readonly IAuthService _authService;
   private readonly IPharmacyWorkerService _pharmacyWorkerService;
+  private readonly IStaffTelegramNotificationService _staffTelegramNotificationService;
   private readonly IAppDbContext _db;
   private readonly IMedicineImageStorage _imageStorage;
 
   public AdminsController(
     IAuthService authService,
     IPharmacyWorkerService pharmacyWorkerService,
+    IStaffTelegramNotificationService staffTelegramNotificationService,
     IAppDbContext db,
     IMedicineImageStorage imageStorage)
   {
     _authService = authService;
     _pharmacyWorkerService = pharmacyWorkerService;
+    _staffTelegramNotificationService = staffTelegramNotificationService;
     _db = db;
     _imageStorage = imageStorage;
   }
@@ -136,6 +139,60 @@ public sealed class AdminsController : ControllerBase
       ?? throw new InvalidOperationException("Admin user was not found.");
 
     return Ok(admin);
+  }
+
+  [HttpGet("me/telegram/recipients")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> GetMyTelegramRecipients(CancellationToken cancellationToken)
+  {
+    var adminId = User.GetRequiredUserId();
+    var response = await _staffTelegramNotificationService.GetRecipientsAsync(adminId, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("me/telegram/link/start")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> StartMyTelegramLink(CancellationToken cancellationToken)
+  {
+    var adminId = User.GetRequiredUserId();
+    var response = await _staffTelegramNotificationService.StartLinkAsync(adminId, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpGet("me/telegram/link/poll")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> PollMyTelegramLink(
+    [FromQuery] string nonce,
+    CancellationToken cancellationToken)
+  {
+    var adminId = User.GetRequiredUserId();
+    var response = await _staffTelegramNotificationService.PollAsync(adminId, nonce, cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("me/telegram/link/complete")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> CompleteMyTelegramLink(
+    [FromBody] CompleteTelegramAuthRequest request,
+    CancellationToken cancellationToken)
+  {
+    var adminId = User.GetRequiredUserId();
+    var response = await _staffTelegramNotificationService.CompleteLinkAsync(
+      adminId,
+      request.Nonce,
+      cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpDelete("me/telegram/recipients/{recipientId:guid}")]
+  [Authorize(Roles = nameof(Role.Admin))]
+  public async Task<IActionResult> DeleteMyTelegramRecipient(
+    Guid recipientId,
+    CancellationToken cancellationToken)
+  {
+    var adminId = User.GetRequiredUserId();
+    await _staffTelegramNotificationService.DeleteRecipientAsync(adminId, recipientId, cancellationToken);
+    return NoContent();
   }
 
   [HttpPost("me/otp/request")]

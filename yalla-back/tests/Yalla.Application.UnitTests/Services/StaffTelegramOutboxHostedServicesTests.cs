@@ -37,7 +37,7 @@ public sealed class StaffTelegramOutboxHostedServicesTests
   }
 
   [Fact]
-  public async Task Enqueue_ShouldSkipWorkerWithoutTelegramId()
+  public async Task Enqueue_ShouldSkipWorkerWithoutTelegramRecipient()
   {
     using var testScope = TestDbFactory.Create();
     var db = testScope.Db;
@@ -145,8 +145,6 @@ public sealed class StaffTelegramOutboxHostedServicesTests
     var superAdmin = TestDbFactory.CreateUser("SA", "900444001", Role.SuperAdmin);
     var pharmacy = TestDbFactory.CreatePharmacy("Nishon", "Dushanbe", superAdmin.Id);
     var worker = TestDbFactory.CreateWorker("Admin", "900444002", pharmacy.Id, pharmacy);
-    if (workerTelegramId.HasValue)
-      worker.SetTelegramId(workerTelegramId.Value);
 
     var medicine = TestDbFactory.CreateMedicine("Med", $"ART-STAFF-{Guid.NewGuid():N}");
 
@@ -156,6 +154,18 @@ public sealed class StaffTelegramOutboxHostedServicesTests
     db.PharmacyWorkers.Add(worker);
     db.Medicines.Add(medicine);
     await db.SaveChangesAsync();
+
+    if (workerTelegramId.HasValue)
+    {
+      db.StaffTelegramRecipients.Add(new StaffTelegramRecipient(
+        worker.Id,
+        workerTelegramId.Value,
+        workerTelegramId.Value,
+        "admin",
+        "Admin",
+        null));
+      await db.SaveChangesAsync();
+    }
 
     var orderId = Guid.NewGuid();
     var order = new Order(
@@ -186,7 +196,6 @@ public sealed class StaffTelegramOutboxHostedServicesTests
     var superAdmin = TestDbFactory.CreateUser("SA", "900555001", Role.SuperAdmin);
     var pharmacy = TestDbFactory.CreatePharmacy("Nishon", "Dushanbe", superAdmin.Id);
     var worker = TestDbFactory.CreateWorker("Admin", "900555002", pharmacy.Id, pharmacy);
-    worker.SetTelegramId(workerTelegramId);
     var pharmacist = TestDbFactory.CreateUser("Pharmacist", "900555003", Role.Pharmacist);
     var client = TestDbFactory.CreateClient("Client", "900555004");
     var prescription = new Prescription(
@@ -209,6 +218,15 @@ public sealed class StaffTelegramOutboxHostedServicesTests
     db.ManualItemLookupRequests.Add(request);
     await db.SaveChangesAsync();
 
+    db.StaffTelegramRecipients.Add(new StaffTelegramRecipient(
+      worker.Id,
+      workerTelegramId,
+      workerTelegramId,
+      "admin",
+      "Admin",
+      null));
+    await db.SaveChangesAsync();
+
     return worker;
   }
 
@@ -216,10 +234,33 @@ public sealed class StaffTelegramOutboxHostedServicesTests
   {
     public List<(long ChatId, string Text)> SentMessages { get; } = new();
 
+    public Task<TelegramSentMessage> SendConfirmationPromptAsync(
+      long chatId,
+      string text,
+      string confirmCallbackData,
+      string cancelCallbackData,
+      string confirmButtonText,
+      string cancelButtonText,
+      CancellationToken cancellationToken = default)
+      => Task.FromResult(new TelegramSentMessage(chatId, 1));
+
+    public Task EditMessageTextAsync(long chatId, int messageId, string newText, CancellationToken cancellationToken = default)
+      => Task.CompletedTask;
+
+    public Task AnswerCallbackQueryAsync(
+      string callbackQueryId,
+      string? text = null,
+      bool showAlert = false,
+      CancellationToken cancellationToken = default)
+      => Task.CompletedTask;
+
     public Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken = default)
     {
       SentMessages.Add((chatId, text));
       return Task.CompletedTask;
     }
+
+    public Task SetWebhookAsync(string url, string secretToken, CancellationToken cancellationToken = default)
+      => Task.CompletedTask;
   }
 }

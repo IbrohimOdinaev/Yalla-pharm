@@ -234,6 +234,7 @@ builder.Services.AddHttpClient<ITelegramBotApi, TelegramBotApi>();
 builder.Services.AddScoped<ITelegramAuthService, TelegramAuthService>();
 builder.Services.AddScoped<ITelegramAuthRealtimePublisher, SignalRTelegramAuthRealtimePublisher>();
 builder.Services.AddScoped<TelegramBotUpdateHandler>();
+builder.Services.AddScoped<StaffTelegramBotUpdateHandler>();
 builder.Services.AddHostedService<TelegramAuthSessionCleanupHostedService>();
 
 var app = builder.Build();

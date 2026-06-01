@@ -271,7 +271,11 @@ public static class DependencyInjection
     {
       options.Enabled = !bool.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:Enabled"], out var enabled) || enabled;
       options.BotToken = config[$"{StaffTelegramNotificationOptions.SectionName}:BotToken"] ?? string.Empty;
+      options.BotUsername = config[$"{StaffTelegramNotificationOptions.SectionName}:BotUsername"] ?? string.Empty;
       options.PublicBaseUrl = config[$"{StaffTelegramNotificationOptions.SectionName}:PublicBaseUrl"] ?? string.Empty;
+      options.WebhookSecretToken = config[$"{StaffTelegramNotificationOptions.SectionName}:WebhookSecretToken"] ?? string.Empty;
+      options.AutoRegisterWebhookOnStart = bool.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:AutoRegisterWebhookOnStart"], out var autoRegister)
+        && autoRegister;
       options.BatchSize = int.TryParse(config[$"{StaffTelegramNotificationOptions.SectionName}:BatchSize"], out var batchSize)
         ? batchSize
         : 50;
@@ -303,6 +307,7 @@ public static class DependencyInjection
       services.AddHostedService<TelegramOutboxDispatcherHostedService>();
       services.AddHostedService<StaffTelegramNotificationEnqueueHostedService>();
       services.AddHostedService<StaffTelegramOutboxDispatcherHostedService>();
+      services.AddHostedService<StaffTelegramWebhookRegistrationHostedService>();
     }
 
     // WooCommerce sync

@@ -38,13 +38,87 @@ public sealed class StaffTelegramBotApi : IStaffTelegramBotApi
     _http.Timeout = TimeSpan.FromSeconds(20);
   }
 
+  public async Task<TelegramSentMessage> SendConfirmationPromptAsync(
+    long chatId,
+    string text,
+    string confirmCallbackData,
+    string cancelCallbackData,
+    string confirmButtonText,
+    string cancelButtonText,
+    CancellationToken cancellationToken = default)
+  {
+    var body = new SendMessageRequest
+    {
+      ChatId = chatId,
+      Text = text,
+      ReplyMarkup = new InlineKeyboardMarkup
+      {
+        InlineKeyboard =
+        [
+          [
+            new InlineKeyboardButton { Text = confirmButtonText, CallbackData = confirmCallbackData },
+            new InlineKeyboardButton { Text = cancelButtonText, CallbackData = cancelCallbackData }
+          ]
+        ]
+      }
+    };
+
+    var result = await CallAsync<MessageDto>("sendMessage", body, cancellationToken)
+      ?? throw new InvalidOperationException("Staff Telegram sendMessage returned null result.");
+
+    return new TelegramSentMessage(result.Chat?.Id ?? chatId, result.MessageId);
+  }
+
+  public async Task EditMessageTextAsync(long chatId, int messageId, string newText, CancellationToken cancellationToken = default)
+  {
+    var body = new EditMessageTextRequest
+    {
+      ChatId = chatId,
+      MessageId = messageId,
+      Text = newText,
+      ReplyMarkup = null
+    };
+    await CallAsync<JsonElement>("editMessageText", body, cancellationToken);
+  }
+
+  public async Task AnswerCallbackQueryAsync(
+    string callbackQueryId,
+    string? text = null,
+    bool showAlert = false,
+    CancellationToken cancellationToken = default)
+  {
+    var body = new AnswerCallbackQueryRequest
+    {
+      CallbackQueryId = callbackQueryId,
+      Text = text,
+      ShowAlert = showAlert
+    };
+    await CallAsync<JsonElement>("answerCallbackQuery", body, cancellationToken);
+  }
+
   public async Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken = default)
+  {
+    var body = new SendMessageRequest { ChatId = chatId, Text = text };
+    await CallAsync<JsonElement>("sendMessage", body, cancellationToken);
+  }
+
+  public async Task SetWebhookAsync(string url, string secretToken, CancellationToken cancellationToken = default)
+  {
+    var body = new SetWebhookRequest
+    {
+      Url = url,
+      SecretToken = secretToken,
+      AllowedUpdates = ["message", "callback_query"]
+    };
+    await CallAsync<JsonElement>("setWebhook", body, cancellationToken);
+  }
+
+  private async Task<TResult?> CallAsync<TResult>(string method, object body, CancellationToken cancellationToken)
   {
     if (string.IsNullOrWhiteSpace(_options.BotToken))
       throw new InvalidOperationException("Staff Telegram BotToken is not configured.");
 
-    var body = new SendMessageRequest { ChatId = chatId, Text = text };
-    var url = $"https://api.telegram.org/bot{_options.BotToken}/sendMessage";
+    var url = $"https://api.telegram.org/bot{_options.BotToken}/{method}";
 
     using var response = await _http.PostAsJsonAsync(url, body, JsonOptions, cancellationToken);
     var raw = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -58,13 +132,15 @@ public sealed class StaffTelegramBotApi : IStaffTelegramBotApi
       throw new InvalidOperationException($"Staff Telegram bot API returned HTTP {(int)response.StatusCode}: {raw}");
     }
 
-    var envelope = JsonSerializer.Deserialize<TelegramResponseEnvelope<JsonElement>>(raw, JsonOptions);
+    var envelope = JsonSerializer.Deserialize<TelegramResponseEnvelope<TResult>>(raw, JsonOptions);
     if (envelope is null || !envelope.Ok)
     {
       var description = envelope?.Description ?? raw;
       _logger.LogWarning("Staff Telegram bot API responded with error. Description={Description}", description);
       throw new InvalidOperationException($"Staff Telegram bot API error: {description}");
     }
+
+    return envelope.Result;
   }
 
   private sealed class TelegramResponseEnvelope<T>
@@ -78,5 +154,50 @@ public sealed class StaffTelegramBotApi : IStaffTelegramBotApi
   {
     public long ChatId { get; init; }
     public string Text { get; init; } = string.Empty;
+    public InlineKeyboardMarkup? ReplyMarkup { get; init; }
+  }
+
+  private sealed class EditMessageTextRequest
+  {
+    public long ChatId { get; init; }
+    public int MessageId { get; init; }
+    public string Text { get; init; } = string.Empty;
+    public InlineKeyboardMarkup? ReplyMarkup { get; init; }
+  }
+
+  private sealed class AnswerCallbackQueryRequest
+  {
+    public string CallbackQueryId { get; init; } = string.Empty;
+    public string? Text { get; init; }
+    public bool ShowAlert { get; init; }
+  }
+
+  private sealed class SetWebhookRequest
+  {
+    public string Url { get; init; } = string.Empty;
+    public string SecretToken { get; init; } = string.Empty;
+    public string[]? AllowedUpdates { get; init; }
+  }
+
+  private sealed class InlineKeyboardMarkup
+  {
+    public InlineKeyboardButton[][] InlineKeyboard { get; init; } = [];
+  }
+
+  private sealed class InlineKeyboardButton
+  {
+    public string Text { get; init; } = string.Empty;
+    public string? CallbackData { get; init; }
+  }
+
+  private sealed class MessageDto
+  {
+    [JsonPropertyName("message_id")] public int MessageId { get; init; }
+    [JsonPropertyName("chat")] public ChatDto? Chat { get; init; }
+  }
+
+  private sealed class ChatDto
+  {
+    [JsonPropertyName("id")] public long Id { get; init; }
   }
 }

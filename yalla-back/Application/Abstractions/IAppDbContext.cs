@@ -32,6 +32,7 @@ public interface IAppDbContext
     DbSet<SmsOutboxMessage> SmsOutboxMessages { get; }
     DbSet<TelegramOutboxMessage> TelegramOutboxMessages { get; }
     DbSet<StaffTelegramOutboxMessage> StaffTelegramOutboxMessages { get; }
+    DbSet<StaffTelegramRecipient> StaffTelegramRecipients { get; }
     DbSet<TelegramAuthSession> TelegramAuthSessions { get; }
     DbSet<User> Users { get; }
     DbSet<Category> Categories { get; }

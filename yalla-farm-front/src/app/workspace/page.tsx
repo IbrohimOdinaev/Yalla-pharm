@@ -8,7 +8,19 @@ import { formatMoney, formatPhone } from "@/shared/lib/format";
 import { DatePicker } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
 
-import { getAdminMe, requestAdminProfileOtp, uploadAdminAvatar, verifyAdminProfileOtp } from "@/entities/admin/api";
+import {
+  completeAdminTelegramLink,
+  deleteAdminTelegramRecipient,
+  getAdminMe,
+  getAdminTelegramRecipients,
+  pollAdminTelegramLink,
+  requestAdminProfileOtp,
+  startAdminTelegramLink,
+  uploadAdminAvatar,
+  verifyAdminProfileOtp,
+  type StaffTelegramLinkStartResponse,
+  type StaffTelegramRecipient,
+} from "@/entities/admin/api";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { getCatalogMedicinesPaginated, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
@@ -282,6 +294,11 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
   const [otpCode, setOtpCode] = useState("");
   const [otpCodeLength, setOtpCodeLength] = useState(4);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [telegramRecipients, setTelegramRecipients] = useState<StaffTelegramRecipient[]>([]);
+  const [telegramSession, setTelegramSession] = useState<StaffTelegramLinkStartResponse | null>(null);
+  const [telegramStatus, setTelegramStatus] = useState<"idle" | "pending" | "confirmed" | "expired" | "error">("idle");
+  const [telegramMsg, setTelegramMsg] = useState<string | null>(null);
+  const [removingTelegramId, setRemovingTelegramId] = useState<string | null>(null);
 
   useEffect(() => {
     getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
@@ -290,7 +307,43 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       setAdminPhone(data.phoneNumber || "");
       setAdminAvatarUrl(data.avatarUrl ?? null);
     }).catch(() => undefined);
+    refreshTelegramRecipients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (!telegramSession || telegramStatus !== "pending") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const { status } = await pollAdminTelegramLink(token, telegramSession.nonce);
+        if (status === "confirmed") {
+          const recipient = await completeAdminTelegramLink(token, telegramSession.nonce);
+          setTelegramRecipients((prev) => {
+            const rest = prev.filter((item) => item.id !== recipient.id);
+            return [recipient, ...rest];
+          });
+          setTelegramStatus("confirmed");
+          setTelegramMsg("Telegram подключён для уведомлений.");
+          clearInterval(interval);
+          setTimeout(() => {
+            setTelegramSession(null);
+            setTelegramStatus("idle");
+          }, 1200);
+        } else if (status === "expired" || status === "cancelled") {
+          setTelegramStatus("expired");
+          setTelegramMsg("Сессия привязки истекла или отменена.");
+          clearInterval(interval);
+        }
+      } catch (err) {
+        setTelegramStatus("error");
+        setTelegramMsg(err instanceof Error ? err.message : "Не удалось завершить привязку Telegram.");
+        clearInterval(interval);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [telegramSession, telegramStatus, token]);
 
   // Editing the admin's own pharmacy — never the alphabetically-first entry.
   const pharmacy = adminPharmacyId
@@ -345,6 +398,40 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       setMsg(err instanceof Error ? err.message : "Ошибка загрузки фото.");
     } finally {
       setIsUploadingAvatar(false);
+    }
+  }
+
+  function refreshTelegramRecipients() {
+    getAdminTelegramRecipients(token)
+      .then(setTelegramRecipients)
+      .catch(() => undefined);
+  }
+
+  async function onStartTelegramLink() {
+    setTelegramMsg(null);
+    setTelegramStatus("pending");
+    try {
+      const session = await startAdminTelegramLink(token);
+      setTelegramSession(session);
+      const target = session.webDeepLink || session.deepLink || session.appDeepLink;
+      if (target) window.open(target, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setTelegramStatus("error");
+      setTelegramMsg(err instanceof Error ? err.message : "Не удалось начать привязку Telegram.");
+    }
+  }
+
+  async function onDeleteTelegramRecipient(recipientId: string) {
+    setRemovingTelegramId(recipientId);
+    setTelegramMsg(null);
+    try {
+      await deleteAdminTelegramRecipient(token, recipientId);
+      setTelegramRecipients((prev) => prev.filter((item) => item.id !== recipientId));
+      setTelegramMsg("Telegram-аккаунт отключён.");
+    } catch (err) {
+      setTelegramMsg(err instanceof Error ? err.message : "Не удалось отключить Telegram.");
+    } finally {
+      setRemovingTelegramId(null);
     }
   }
 
@@ -445,6 +532,78 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
             {isSaving ? "Отправляем..." : "Получить код"}
           </button>
         </form>
+
+        <section className="stitch-card space-y-4 p-3 xs:p-4 sm:p-5">
+          <div>
+            <h2 className="text-sm font-bold xs:text-base sm:text-lg">Telegram-уведомления</h2>
+            <p className="mt-1 text-[10px] text-on-surface-variant xs:text-xs sm:text-sm">
+              Подключите один или несколько Telegram-аккаунтов для уведомлений о заказах и запросах.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {telegramRecipients.length === 0 ? (
+              <div className="rounded-2xl bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">
+                Аккаунты для уведомлений пока не подключены.
+              </div>
+            ) : (
+              telegramRecipients.map((recipient) => {
+                const title = recipient.telegramUsername
+                  ? `@${recipient.telegramUsername.replace(/^@/, "")}`
+                  : [recipient.telegramFirstName, recipient.telegramLastName].filter(Boolean).join(" ") || `tg:${recipient.telegramUserId}`;
+                return (
+                  <div key={recipient.id} className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-black text-primary">
+                      TG
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-on-surface">{title}</p>
+                      <p className="text-xs text-on-surface-variant">Уведомления включены</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void onDeleteTelegramRecipient(recipient.id)}
+                      disabled={removingTelegramId === recipient.id}
+                      className="rounded-full bg-secondary-soft px-3 py-2 text-xs font-black text-secondary transition hover:bg-secondary/15 disabled:opacity-50"
+                    >
+                      {removingTelegramId === recipient.id ? "..." : "Отключить"}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {telegramSession && telegramStatus === "pending" ? (
+            <div className="space-y-3 rounded-2xl bg-primary-soft p-3">
+              <p className="text-sm font-bold text-primary">Подтвердите подключение в Telegram.</p>
+              <a
+                href={telegramSession.webDeepLink || telegramSession.deepLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="stitch-button inline-flex w-full items-center justify-center"
+              >
+                Открыть @{telegramSession.botUsername}
+              </a>
+              <p className="text-xs text-primary/80">После подтверждения список обновится автоматически.</p>
+            </div>
+          ) : null}
+
+          {telegramMsg ? (
+            <div className={`rounded-xl p-3 text-sm ${telegramStatus === "error" || telegramStatus === "expired" ? "bg-red-100 text-red-700" : "bg-primary-soft text-primary"}`}>
+              {telegramMsg}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            className="stitch-button w-full"
+            onClick={() => void onStartTelegramLink()}
+            disabled={telegramStatus === "pending"}
+          >
+            {telegramStatus === "pending" ? "Ждём подтверждения..." : "Подключить Telegram"}
+          </button>
+        </section>
 
         {pharmacy ? (
           <section className="stitch-card space-y-4 p-3 xs:p-4 sm:p-5">
