@@ -9,7 +9,6 @@ import {
   startAssembly,
   markReady,
   markOnTheWay,
-  deleteNewOrder,
   rejectPositions,
 } from "@/entities/order/admin-api";
 import { cancelDelivery } from "@/shared/api/delivery";
@@ -55,10 +54,9 @@ type Props = {
   orderId: string;
   token: string;
   onClose: () => void;
-  onDeleted?: () => void;
 };
 
-export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Props) {
+export function AdminOrderDetailModal({ orderId, token, onClose }: Props) {
   const router = useRouter();
   const [order, setOrder] = useState<ApiOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -111,7 +109,6 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
       ontheway: order.isPickup
         ? `Отметить заказ #${order.orderId.slice(0, 8)} выданным клиенту?`
         : `Передать заказ #${order.orderId.slice(0, 8)} в доставку?`,
-      delete: `Удалить новый заказ #${order.orderId.slice(0, 8)}? Это действие необратимо.`,
     };
     if (prompts[action] && !confirm(prompts[action])) return;
 
@@ -121,12 +118,6 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
       if (action === "assembly") await startAssembly(token, order.orderId);
       if (action === "ready") await markReady(token, order.orderId);
       if (action === "ontheway") await markOnTheWay(token, order.orderId);
-      if (action === "delete") {
-        await deleteNewOrder(token, order.orderId);
-        onDeleted?.();
-        onClose();
-        return;
-      }
       loadOrder();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка выполнения действия");
@@ -183,21 +174,25 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 pt-16" onClick={onClose}>
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="stitch-card relative z-10 w-full max-w-2xl p-6 text-sm" onClick={(e) => e.stopPropagation()}>Загрузка...</div>
-      </div>
+      <>
+        <div className="fixed inset-0 z-[70] bg-black/50" onClick={onClose} />
+        <div className="pointer-events-none fixed inset-0 z-[71] flex items-start justify-center overflow-y-auto p-4 pt-16">
+          <div className="stitch-card pointer-events-auto w-full max-w-2xl p-6 text-sm">Загрузка...</div>
+        </div>
+      </>
     );
   }
 
   if (!order) {
     return (
-      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 pt-16" onClick={onClose}>
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="stitch-card relative z-10 w-full max-w-2xl p-6 text-sm text-on-surface-variant" onClick={(e) => e.stopPropagation()}>
-          {error ?? "Заказ не найден."}
+      <>
+        <div className="fixed inset-0 z-[70] bg-black/50" onClick={onClose} />
+        <div className="pointer-events-none fixed inset-0 z-[71] flex items-start justify-center overflow-y-auto p-4 pt-16">
+          <div className="stitch-card pointer-events-auto w-full max-w-2xl p-6 text-sm text-on-surface-variant">
+            {error ?? "Заказ не найден."}
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -212,9 +207,9 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
 
   return (
     <>
-      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 pt-8" onClick={onClose}>
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="stitch-card relative z-10 w-full max-w-2xl p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[70] bg-black/50" onClick={onClose} />
+      <div className="pointer-events-none fixed inset-0 z-[71] flex items-start justify-center overflow-y-auto p-4 pt-8">
+        <div className="stitch-card pointer-events-auto w-full max-w-2xl p-6 space-y-5">
           {/* Header */}
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -501,18 +496,6 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onDeleted }: Pr
             {status === "Ready" && (
               <button type="button" className="stitch-button text-sm" onClick={() => onAction("ontheway")} disabled={actionLoading}>
                 {order.isPickup ? "Выдан клиенту" : "Отправить (В пути)"}
-              </button>
-            )}
-            {status === "New" && (
-              <button
-                type="button"
-                className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200 active:scale-[0.98]"
-                onClick={() => {
-                  if (window.confirm("Удалить этот заказ?")) onAction("delete");
-                }}
-                disabled={actionLoading}
-              >
-                Удалить заказ
               </button>
             )}
           </div>

@@ -242,6 +242,12 @@ public sealed class AuthService : IAuthService
       throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
 
     var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
+    if (!string.Equals(normalizedPhoneNumber, admin.PhoneNumber, StringComparison.Ordinal))
+      throw new ClientErrorException(
+        errorCode: "admin_phone_change_requires_otp",
+        detail: "Изменение номера телефона администратора требует SMS-подтверждения.",
+        reason: "phone_change_requires_otp");
+
     var phoneTaken = await _dbContext.Users
       .AsNoTracking()
       .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber && x.Id != adminId, cancellationToken);

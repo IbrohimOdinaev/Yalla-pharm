@@ -65,8 +65,8 @@ export async function getAdmins(token: string, query = "", page = 1, pageSize = 
   return Array.isArray(response?.admins) ? response.admins : [];
 }
 
-export async function updateAdminMe(token: string, data: { name: string; phoneNumber: string }): Promise<void> {
-  await apiFetch<unknown>("/api/admins/me", { method: "PUT", token, body: data });
+export async function updateAdminMe(token: string, data: { name: string; phoneNumber: string }): Promise<ApiAdmin> {
+  return apiFetch<ApiAdmin>("/api/admins/me", { method: "PUT", token, body: data });
 }
 
 export async function requestAdminProfileOtp(

@@ -16,6 +16,7 @@ import {
   pollAdminTelegramLink,
   requestAdminProfileOtp,
   startAdminTelegramLink,
+  updateAdminMe,
   uploadAdminAvatar,
   verifyAdminProfileOtp,
   type StaffTelegramLinkStartResponse,
@@ -26,7 +27,7 @@ import { getCatalogMedicinesPaginated, liveSearch, type LiveSearchSuggestion } f
 import { getCategories } from "@/entities/category/api";
 import type { ApiCategory, ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
-import { getAdminOrders, startAssembly, markReady, markOnTheWay, deleteNewOrder, rejectPositions, adminCancelOrder } from "@/entities/order/admin-api";
+import { getAdminOrders, startAssembly, markReady, markOnTheWay, rejectPositions } from "@/entities/order/admin-api";
 import { AdminOrderDetailModal } from "@/widgets/order/AdminOrderDetailModal";
 import { computeItemsTotal, computeOriginalPaid, isOrderDataLost } from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
@@ -60,16 +61,17 @@ const TAB_META: Record<Tab, { eyebrow: string; title: string; description: strin
   },
 };
 
-const ALL_STATUSES = ["New", "UnderReview", "Preparing", "Ready", "OnTheWay", "DriverArrived", "Delivered", "PickedUp", "Cancelled", "Returned"];
+const BOARD_COLUMNS = ["New", "UnderReview", "Preparing", "Ready", "Taken", "Cancelled", "Returned"];
+const TAKEN_STATUSES = new Set(["OnTheWay", "DriverArrived", "Delivered", "PickedUp"]);
 const STATUS_LABELS: Record<string, string> = {
   New: "Новые", UnderReview: "На рассмотрении", Preparing: "Собирается",
-  Ready: "Готов", OnTheWay: "В пути", DriverArrived: "Курьер на месте",
+  Ready: "Готов", Taken: "Забран", OnTheWay: "В пути", DriverArrived: "Курьер на месте",
   Delivered: "Доставлен", PickedUp: "Забран клиентом",
   Cancelled: "Отменён", Returned: "Возврат"
 };
 const STATUS_COLORS: Record<string, string> = {
   New: "bg-tertiary", UnderReview: "bg-warning-container", Preparing: "bg-secondary-container",
-  Ready: "bg-primary", OnTheWay: "bg-tertiary", DriverArrived: "bg-tertiary",
+  Ready: "bg-primary", Taken: "bg-primary", OnTheWay: "bg-tertiary", DriverArrived: "bg-tertiary",
   Delivered: "bg-primary",
   PickedUp: "bg-primary", Cancelled: "bg-secondary", Returned: "bg-on-surface-variant"
 };
@@ -287,12 +289,14 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [adminName, setAdminName] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
+  const [savedAdminPhone, setSavedAdminPhone] = useState("");
   const [adminAvatarUrl, setAdminAvatarUrl] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [otpSessionId, setOtpSessionId] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpCodeLength, setOtpCodeLength] = useState(4);
+  const [isPhoneEditing, setIsPhoneEditing] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [telegramRecipients, setTelegramRecipients] = useState<StaffTelegramRecipient[]>([]);
   const [telegramSession, setTelegramSession] = useState<StaffTelegramLinkStartResponse | null>(null);
@@ -305,6 +309,7 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
     getAdminMe(token).then((data) => {
       setAdminName(data.name || "");
       setAdminPhone(data.phoneNumber || "");
+      setSavedAdminPhone(data.phoneNumber || "");
       setAdminAvatarUrl(data.avatarUrl ?? null);
     }).catch(() => undefined);
     refreshTelegramRecipients();
@@ -355,7 +360,38 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
     setIsSaving(true);
     setMsg(null);
     try {
-      const response = await requestAdminProfileOtp(token, { name: adminName, phoneNumber: formatPhone(adminPhone) });
+      const response = await updateAdminMe(token, { name: adminName, phoneNumber: formatPhone(savedAdminPhone || adminPhone) });
+      setAdminName(response?.name || adminName);
+      setMsg("Профиль обновлён.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function onStartPhoneChange() {
+    setMsg(null);
+    if (!isPhoneEditing) {
+      setIsPhoneEditing(true);
+      setOtpSessionId("");
+      setOtpCode("");
+      return;
+    }
+
+    const nextPhone = formatPhone(adminPhone);
+    if (!nextPhone) {
+      setMsg("Введите новый номер телефона.");
+      return;
+    }
+    if (nextPhone === formatPhone(savedAdminPhone)) {
+      setMsg("Номер не изменился.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await requestAdminProfileOtp(token, { name: adminName, phoneNumber: nextPhone });
       setOtpSessionId(response.otpSessionId);
       setOtpCodeLength(response.codeLength || 4);
       setOtpCode("");
@@ -367,6 +403,14 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
     }
   }
 
+  function onCancelPhoneChange() {
+    setAdminPhone(savedAdminPhone);
+    setIsPhoneEditing(false);
+    setOtpSessionId("");
+    setOtpCode("");
+    setMsg(null);
+  }
+
   async function onConfirmAdminOtp() {
     if (!otpSessionId) return;
     setIsSaving(true);
@@ -375,10 +419,12 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       const response = await verifyAdminProfileOtp(token, { otpSessionId, code: otpCode });
       setAdminName(response.name || "");
       setAdminPhone(response.phoneNumber || "");
+      setSavedAdminPhone(response.phoneNumber || "");
       setAdminAvatarUrl(response.avatarUrl ?? adminAvatarUrl);
+      setIsPhoneEditing(false);
       setOtpSessionId("");
       setOtpCode("");
-      setMsg("Профиль обновлён.");
+      setMsg("Номер телефона обновлён.");
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка.");
     } finally {
@@ -495,8 +541,34 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-medium text-on-surface-variant">Телефон</span>
-            <input className="stitch-input" type="tel" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} required />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                className="stitch-input flex-1"
+                type="tel"
+                value={adminPhone}
+                onChange={(e) => setAdminPhone(e.target.value)}
+                disabled={!isPhoneEditing || Boolean(otpSessionId)}
+                required
+              />
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-2xl bg-surface-container px-4 py-3 text-sm font-black text-on-surface transition hover:bg-surface-container-high disabled:opacity-60"
+                onClick={() => void onStartPhoneChange()}
+                disabled={isSaving || Boolean(otpSessionId)}
+              >
+                {isPhoneEditing ? "Отправить OTP" : "Изменить номер"}
+              </button>
+            </div>
           </label>
+          {isPhoneEditing && !otpSessionId ? (
+            <button
+              type="button"
+              className="text-xs font-bold text-on-surface-variant hover:text-secondary"
+              onClick={onCancelPhoneChange}
+            >
+              Отменить изменение номера
+            </button>
+          ) : null}
 
           {otpSessionId ? (
             <div className="space-y-2 rounded-2xl bg-surface-container-low p-3">
@@ -529,7 +601,7 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
             </div>
           ) : null}
           <button type="submit" className="stitch-button w-full" disabled={isSaving}>
-            {isSaving ? "Отправляем..." : "Получить код"}
+            {isSaving ? "Сохраняем..." : "Сохранить имя"}
           </button>
         </form>
 
@@ -1035,8 +1107,6 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
       if (action === "assembly") await startAssembly(token, orderId);
       if (action === "ready") await markReady(token, orderId);
       if (action === "ontheway") await markOnTheWay(token, orderId);
-      if (action === "delete") await deleteNewOrder(token, orderId);
-      if (action === "cancel") await adminCancelOrder(token, orderId);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка.");
@@ -1049,10 +1119,10 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
 
   // Active columns run FIFO (longest-waiting first); history columns are
   // newest-first so the most recent finalised order is at the top.
-  const HISTORY_STATUSES = new Set(["Delivered", "PickedUp", "Cancelled", "Returned"]);
+  const HISTORY_STATUSES = new Set(["Taken", "Cancelled", "Returned"]);
   const orderTime = (o: ApiOrder) => o.createdAtUtc ? new Date(o.createdAtUtc).getTime() : 0;
-  const grouped = ALL_STATUSES.reduce<Record<string, ApiOrder[]>>((acc, status) => {
-    const list = filteredOrders.filter((o) => o.status === status);
+  const grouped = BOARD_COLUMNS.reduce<Record<string, ApiOrder[]>>((acc, status) => {
+    const list = filteredOrders.filter((o) => status === "Taken" ? TAKEN_STATUSES.has(o.status) : o.status === status);
     list.sort((a, b) => HISTORY_STATUSES.has(status)
       ? orderTime(b) - orderTime(a)
       : orderTime(a) - orderTime(b)
@@ -1088,15 +1158,12 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
       {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="-mx-1 flex flex-nowrap gap-4 overflow-x-auto px-1 pb-4 snap-x snap-mandatory">
-        {ALL_STATUSES.map((status) => {
+        {BOARD_COLUMNS.map((status) => {
           const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] => {
             const a: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] = [];
             if (status === "UnderReview") a.push({ label: "Начать сборку", action: "assembly", needsConfirm: true });
             if (status === "Preparing") a.push({ label: "Собран", action: "ready", needsConfirm: true });
             if (status === "Ready") a.push({ label: order.isPickup ? "Выдан клиенту" : "В пути", action: "ontheway", needsConfirm: true });
-            // Cancellation available while the order is in-pharmacy
-            if (status === "UnderReview" || status === "Preparing" || status === "Ready")
-              a.push({ label: "Отменить", action: "cancel", danger: true });
             return a;
           };
 
@@ -1125,7 +1192,6 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
           orderId={selectedOrderId}
           token={token}
           onClose={() => { setSelectedOrderId(null); refresh(); }}
-          onDeleted={refresh}
         />
       ) : null}
     </div>

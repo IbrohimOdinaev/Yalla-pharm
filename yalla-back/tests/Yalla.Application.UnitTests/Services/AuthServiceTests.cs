@@ -156,7 +156,7 @@ public sealed class AuthServiceTests
   }
 
   [Fact]
-  public async Task UpdateAdminProfileAsync_WithValidData_UpdatesNameAndPhone()
+  public async Task UpdateAdminProfileAsync_WithValidData_UpdatesNameOnly()
   {
     using var scope = TestDbFactory.Create();
     var hasher = new PasswordHasher();
@@ -169,30 +169,32 @@ public sealed class AuthServiceTests
     var response = await service.UpdateAdminProfileAsync(admin.Id, new UpdateAdminProfileRequest
     {
       Name = "New Admin",
-      PhoneNumber = " 992111008 "
+      PhoneNumber = " 992111007 "
     });
 
     Assert.Equal("New Admin", response.Name);
-    Assert.Equal("992111008", response.PhoneNumber);
+    Assert.Equal("992111007", response.PhoneNumber);
   }
 
   [Fact]
-  public async Task UpdateAdminProfileAsync_WithTakenPhone_Throws()
+  public async Task UpdateAdminProfileAsync_WithChangedPhone_RequiresOtp()
   {
     using var scope = TestDbFactory.Create();
     var hasher = new PasswordHasher();
     var admin = new User(Guid.NewGuid(), "Admin", "992111009", hasher.HashPassword("Pass123!"), Role.Admin);
-    var other = new User(Guid.NewGuid(), "Other", "992111010", hasher.HashPassword("Pass123!"), Role.Client);
-    scope.Db.Users.AddRange(admin, other);
+    scope.Db.Users.Add(admin);
     await scope.Db.SaveChangesAsync();
 
     var service = new AuthService(scope.Db, hasher, new FakeJwtTokenProvider());
 
-    await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAdminProfileAsync(admin.Id, new UpdateAdminProfileRequest
+    var ex = await Assert.ThrowsAsync<ClientErrorException>(() => service.UpdateAdminProfileAsync(admin.Id, new UpdateAdminProfileRequest
     {
       Name = "Admin Updated",
       PhoneNumber = "992111010"
     }));
+
+    Assert.Equal("admin_phone_change_requires_otp", ex.ErrorCode);
+    Assert.Equal("phone_change_requires_otp", ex.Reason);
   }
 
   [Fact]
