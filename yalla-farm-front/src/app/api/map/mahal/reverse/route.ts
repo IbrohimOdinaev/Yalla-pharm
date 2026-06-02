@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
   const response = await requestMahal("getAddressByLocation", { lat, lng });
   if (!response.ok) {
-    return response;
+    return NextResponse.json(null, { headers: { "Cache-Control": "no-store" } });
   }
   const payload = await response.json();
   const items = Array.isArray(payload) ? payload as MahalAddressItem[] : [];

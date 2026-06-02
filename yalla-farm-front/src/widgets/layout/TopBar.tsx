@@ -47,6 +47,17 @@ type TopBarProps = {
   showPrescriptionCta?: boolean;
 };
 
+function formatAddressDisplay(address?: string): string {
+  const value = String(address ?? "").trim();
+  if (!value) return "";
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return value;
+  return parts.reverse().join(", ");
+}
+
 export function TopBar({
   title,
   backHref,
@@ -160,7 +171,8 @@ export function TopBar({
     ? `от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
     : cartDisplayPrice != null
       ? `от ${formatMoney(cartDisplayPrice)}`
-    : `${cartCount}`;
+      : `${cartCount}`;
+  const displayAddressText = formatAddressDisplay(addressText);
 
   useEffect(() => {
     if (onCartRoute || cartCount <= 0) return;
@@ -283,7 +295,7 @@ export function TopBar({
             bar has more room to breathe. Long addresses still fit
             with ellipsis; the full string lives in the title hover. */}
         <span className="truncate max-w-[84px] lg:max-w-[96px] 2xl:max-w-[140px] text-on-surface">
-          {addressTitle || addressText || "Выберите адрес"}
+          {addressTitle || displayAddressText || "Выберите адрес"}
         </span>
         <Icon name="chevron-down" size={12} className="flex-shrink-0 text-on-surface-variant" />
       </button>
@@ -341,7 +353,7 @@ export function TopBar({
           <span
             className={`min-w-0 truncate ${addressTitle ? "font-semibold text-on-surface" : "text-on-surface-variant"}`}
           >
-            {addressTitle || addressText || "Выберите адрес"}
+            {addressTitle || displayAddressText || "Выберите адрес"}
           </span>
           <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-on-surface text-surface">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -417,7 +429,7 @@ export function TopBar({
                 : `Корзина, ${cartCount} товаров`)
             : "Корзина"
         }
-        className={`h-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-primary-container active:scale-[0.98] sm:h-12 ${
+        className={`h-11 flex-shrink-0 items-center justify-center rounded-full bg-[#2F8CFF] text-white shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-[#2479E8] active:scale-[0.98] sm:h-12 ${
           cartFilled
             ? "w-auto gap-2 px-5 sm:gap-2.5 sm:px-6"
             : "w-11 gap-0 px-0 sm:w-12"
@@ -622,7 +634,7 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-primary px-7 py-0 text-on-primary shadow-card transition-[top,width,background-color,transform] ease-out will-change-[top,transform] hover:bg-primary-container active:scale-[0.98] sm:hidden"
+          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#2F8CFF] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out will-change-[top,transform] hover:bg-[#2479E8] active:scale-[0.98] sm:hidden"
           style={{
             top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
             transitionDuration: "var(--floating-cart-duration, 220ms)",

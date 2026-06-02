@@ -24,7 +24,6 @@ import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
 import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
-import { DORU_DUSHANBE_INTEGRATED_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { PharmacyLogo } from "@/shared/ui";
 import type { GeoPoint } from "@/shared/lib/map";
 import type { PharmacyMarker } from "@/widgets/map/PharmacyMap";
@@ -132,10 +131,19 @@ export default function HomePage() {
   );
 }
 
-function formatDoruTime(value?: string): string {
+function formatPharmacyTime(value?: string | null): string {
   if (!value) return "Неизвестно";
   const [hours, minutes] = value.split(":");
   return hours && minutes ? `${hours}:${minutes}` : value;
+}
+
+function pharmacyHoursLabel(pharmacy: ActivePharmacy): string {
+  if (!pharmacy.opensAt && !pharmacy.closesAt) return "Круглосуточно";
+  return `${formatPharmacyTime(pharmacy.opensAt)}-${formatPharmacyTime(pharmacy.closesAt)}`;
+}
+
+function pharmacyBannerUrl(pharmacy: ActivePharmacy): string {
+  return pharmacy.bannerUrl || (pharmacy.id ? `/api/pharmacies/banner/${pharmacy.id}/content?w=720` : "");
 }
 
 function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -143,25 +151,28 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   const [geoStatus, setGeoStatus] = useState<string>("Запрашиваем доступ к геолокации...");
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"list" | "map">("list");
+  const [activePharmacies, setActivePharmacies] = useState<ActivePharmacy[]>([]);
+  const [isLoadingPharmacies, setIsLoadingPharmacies] = useState(false);
 
   const pharmacies = useMemo<PharmacyMarker[]>(
-    () => DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => ({
-      id: `doru-${pharmacy.id}`,
-      title: pharmacy.title,
-      address: pharmacy.landmark ? `${pharmacy.address} · ${pharmacy.landmark}` : pharmacy.address,
-      lat: pharmacy.lat,
-      lng: pharmacy.lng,
-    })),
-    [],
+    () => activePharmacies
+      .filter((pharmacy) => pharmacy.latitude != null && pharmacy.longitude != null)
+      .map((pharmacy) => ({
+        id: pharmacy.id,
+        title: pharmacy.title,
+        address: pharmacy.address,
+        lat: Number(pharmacy.latitude),
+        lng: Number(pharmacy.longitude),
+      })),
+    [activePharmacies],
   );
 
   const selectedPharmacy = useMemo(
     () => {
       if (!selectedPharmacyId) return null;
-      const sourceId = selectedPharmacyId.replace(/^doru-/, "");
-      return DORU_DUSHANBE_INTEGRATED_PHARMACIES.find((pharmacy) => pharmacy.id === sourceId) ?? null;
+      return activePharmacies.find((pharmacy) => pharmacy.id === selectedPharmacyId) ?? null;
     },
-    [selectedPharmacyId],
+    [activePharmacies, selectedPharmacyId],
   );
 
   useEffect(() => {
@@ -187,6 +198,14 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
     setGeoStatus("Запрашиваем доступ к геолокации...");
     setSelectedPharmacyId(null);
     setActiveTab("list");
+    setIsLoadingPharmacies(true);
+
+    getActivePharmacies()
+      .then((items) => {
+        setActivePharmacies(items.filter((pharmacy) => pharmacy.isActive !== false));
+      })
+      .catch(() => setActivePharmacies([]))
+      .finally(() => setIsLoadingPharmacies(false));
 
     if (!navigator.geolocation) {
       setGeoStatus("Геолокация недоступна в этом браузере.");
@@ -220,10 +239,10 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-stretch justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4">
       <button type="button" className="absolute inset-0 hidden cursor-default sm:block" onClick={onClose} aria-label="Закрыть карту" />
       <div
-        className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-surface shadow-2xl sm:h-[86dvh] sm:max-w-6xl sm:rounded-3xl"
+        className="relative flex h-[calc(100dvh-1.5rem)] max-h-[780px] w-full max-w-[440px] flex-col overflow-hidden rounded-3xl bg-surface shadow-2xl sm:h-[86dvh] sm:max-w-6xl"
         role="dialog"
         aria-modal="true"
         aria-label="Карта аптек Душанбе"
@@ -233,7 +252,7 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
             <div className="min-w-0">
               <h2 className="truncate text-base font-bold text-on-surface sm:text-lg">Аптеки Душанбе</h2>
               <p className="truncate text-xs text-on-surface-variant">
-                {DORU_DUSHANBE_INTEGRATED_PHARMACIES.length} интегрированных аптек Doru · {geoStatus}
+                Аптеки для оформления заказов · {geoStatus}
               </p>
             </div>
             <button
@@ -274,37 +293,52 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
         <div className="relative min-h-0 flex-1">
           {activeTab === "list" ? (
             <div className="h-full overflow-y-auto px-4 py-4 sm:px-5">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => (
-                  <button
-                    key={pharmacy.id}
-                    type="button"
-                    onClick={() => setSelectedPharmacyId(`doru-${pharmacy.id}`)}
-                    className="overflow-hidden rounded-3xl border border-outline/60 bg-surface text-left shadow-card transition active:scale-[0.99] hover:border-primary/40 hover:shadow-glass"
-                  >
-                    <div className="relative h-24 overflow-hidden bg-primary-soft px-4 py-3 text-primary">
-                      <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10" />
-                      <div className="absolute -bottom-12 left-12 h-24 w-24 rounded-full bg-tertiary/10" />
-                      <p className="relative text-[10px] font-black uppercase tracking-wide text-primary/75">Doru #{pharmacy.id}</p>
-                      <p className="relative mt-2 line-clamp-2 text-lg font-extrabold leading-tight text-on-surface">{pharmacy.title}</p>
-                    </div>
-                    <div className="space-y-2 p-4">
-                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface">{pharmacy.address}</p>
-                      {pharmacy.landmark ? (
-                        <p className="line-clamp-2 text-xs leading-snug text-on-surface-variant">{pharmacy.landmark}</p>
-                      ) : null}
-                      <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-bold">
-                        <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
-                          {formatDoruTime(pharmacy.opensAt)}-{formatDoruTime(pharmacy.closesAt)}
-                        </span>
-                        <span className="rounded-full bg-primary-soft px-2.5 py-1 text-primary">
-                          {pharmacy.pharmacyPhone || pharmacy.phone || "Телефон неизвестен"}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              {isLoadingPharmacies ? (
+                <div className="rounded-3xl bg-surface-container-low p-6 text-center text-sm font-semibold text-on-surface-variant">
+                  Загружаем аптеки...
+                </div>
+              ) : activePharmacies.length === 0 ? (
+                <div className="rounded-3xl bg-surface-container-low p-6 text-center text-sm font-semibold text-on-surface-variant">
+                  Аптеки для заказа пока недоступны.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {activePharmacies.map((pharmacy) => {
+                    const banner = pharmacyBannerUrl(pharmacy);
+                    return (
+                      <button
+                        key={pharmacy.id}
+                        type="button"
+                        onClick={() => setSelectedPharmacyId(pharmacy.id)}
+                        className="overflow-hidden rounded-3xl border border-outline/60 bg-surface text-left shadow-card transition active:scale-[0.99] hover:border-primary/40 hover:shadow-glass"
+                      >
+                        <div className="relative h-24 overflow-hidden bg-primary-soft">
+                          {banner ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={banner} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                          ) : (
+                            <>
+                              <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10" />
+                              <div className="absolute -bottom-12 left-12 h-24 w-24 rounded-full bg-tertiary/10" />
+                            </>
+                          )}
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 py-3">
+                            <p className="line-clamp-2 text-lg font-extrabold leading-tight text-white">{pharmacy.title}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 p-4">
+                          <p className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface">{pharmacy.address}</p>
+                          <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-bold">
+                            <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
+                              {pharmacyHoursLabel(pharmacy)}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <PharmacyMap
@@ -317,7 +351,7 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
           )}
 
           {selectedPharmacy ? (
-            <div className="absolute inset-0 z-10 flex items-end justify-center bg-black/20 p-3 backdrop-blur-[1px] sm:items-center sm:p-5">
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/20 p-3 backdrop-blur-[1px] sm:p-5">
               <button
                 type="button"
                 className="absolute inset-0 cursor-default"
@@ -332,7 +366,6 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
               >
                 <div className="flex items-start justify-between gap-3 border-b border-outline/60 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-primary">Doru #{selectedPharmacy.id}</p>
                     <h3 className="mt-1 text-lg font-extrabold leading-tight text-on-surface">{selectedPharmacy.title}</h3>
                   </div>
                   <button
@@ -354,29 +387,15 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
                     <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{selectedPharmacy.address}</p>
                   </div>
 
-                  {selectedPharmacy.landmark ? (
-                    <div className="rounded-2xl bg-surface-container-low p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Ориентир</p>
-                      <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{selectedPharmacy.landmark}</p>
-                    </div>
-                  ) : null}
-
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-2xl bg-surface-container-low p-3">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Открытие</p>
-                      <p className="mt-1 text-sm font-bold text-on-surface">{formatDoruTime(selectedPharmacy.opensAt)}</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{formatPharmacyTime(selectedPharmacy.opensAt)}</p>
                     </div>
                     <div className="rounded-2xl bg-surface-container-low p-3">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Закрытие</p>
-                      <p className="mt-1 text-sm font-bold text-on-surface">{formatDoruTime(selectedPharmacy.closesAt)}</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{formatPharmacyTime(selectedPharmacy.closesAt)}</p>
                     </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-surface-container-low p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Телефон аптеки</p>
-                    <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">
-                      {selectedPharmacy.pharmacyPhone || selectedPharmacy.phone || "Неизвестно"}
-                    </p>
                   </div>
                 </div>
               </div>

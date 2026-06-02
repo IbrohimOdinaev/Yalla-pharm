@@ -44,7 +44,7 @@ export function SavedAddressEditorModal({ open, token, initial, onClose, onSaved
   }, []);
 
   const handleMapDrag = useCallback((result: GeoResult) => {
-    setAddress(result.address);
+    if (result.address.trim()) setAddress(result.address);
     setCoords({ lat: result.lat, lng: result.lng });
   }, []);
 
@@ -109,9 +109,9 @@ export function SavedAddressEditorModal({ open, token, initial, onClose, onSaved
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl mx-4 max-h-modal overflow-y-auto overscroll-contain bg-surface rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain bg-surface rounded-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-surface-container-high">
           <h2 className="text-base sm:text-lg font-bold text-on-surface">
             {initial ? "Изменить адрес" : "Новый адрес"}

@@ -24,8 +24,17 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { getMinimalImageUrl } from "@/entities/medicine/api";
+import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import { Button, Chip, EmptyState, Icon } from "@/shared/ui";
 import { OrderStatusBadge } from "@/widgets/order/OrderStatusBadge";
+import {
+  buildPaymentUrlFromTemplate,
+  PaymentMethodModal,
+  type PaymentMethodOption,
+} from "@/widgets/payment/PaymentMethodModal";
+
+const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
 
 const STATUS_LABELS: Record<string, string> = {
   New: "Новый",
@@ -80,6 +89,51 @@ function isActiveOrder(order: ApiOrder): boolean {
   return ACTIVE_STATUSES.has(order.status) || isAwaitingPayment(order);
 }
 
+function buildOrderPaymentMethods(
+  paymentSettings: PublicPaymentSettings | null,
+  amount: number,
+  dcUrl?: string,
+): PaymentMethodOption[] {
+  const methods: PaymentMethodOption[] = [];
+
+  if (dcUrl && paymentSettings?.isDcEnabled !== false) {
+    methods.push({
+      id: "dc",
+      title: "Dushanbe City",
+      subtitle: "Оплата через Dushanbe City",
+      url: dcUrl,
+    });
+  }
+
+  const alifUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
+    amount,
+  );
+  if (alifUrl && paymentSettings?.isAlifEnabled !== false) {
+    methods.push({
+      id: "alif",
+      title: "Alif Mobi",
+      subtitle: "Оплата через приложение Alif",
+      url: alifUrl,
+    });
+  }
+
+  const eskhataUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
+    amount,
+  );
+  if (eskhataUrl && paymentSettings?.isEskhataEnabled !== false) {
+    methods.push({
+      id: "eskhata",
+      title: "Эсхата",
+      subtitle: "Оплата через приложение Эсхата",
+      url: eskhataUrl,
+    });
+  }
+
+  return methods;
+}
+
 /** Pickup orders that are still in-pharmacy and haven't been handed over yet.
  * For these we compute "забрать сегодня/завтра" each render so the hint stays
  * fresh as the current time crosses the pharmacy's 30-minute cutoff. */
@@ -100,6 +154,8 @@ export default function OrdersPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [repeatingId, setRepeatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("active");
+  const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
+  const [paymentPicker, setPaymentPicker] = useState<{ orderId: string; amount: number; methods: PaymentMethodOption[] } | null>(null);
 
   // Resolve Plus-Code pharmacy addresses to human-readable Jura text.
   const pharmacyList = Object.values(pharmacyMap);
@@ -131,6 +187,10 @@ export default function OrdersPage() {
   }, [token]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  useEffect(() => {
+    getPublicPaymentSettings().then(setPaymentSettings).catch(() => undefined);
+  }, []);
 
   // Track which orders we've already returned to cart (prevent duplicates)
   const returnedOrderIds = useRef(new Set<string>());
@@ -237,6 +297,18 @@ export default function OrdersPage() {
     } finally {
       setRepeatingId(null);
     }
+  }
+
+  function openPaymentMethodPicker(order: ApiOrder) {
+    const amount = Math.max(
+      0,
+      Number(order.totalCost ?? 0)
+        || Number(order.cost ?? 0)
+        || totalsOriginalPaid(order)
+        || computeNetCost(order),
+    );
+    const methods = buildOrderPaymentMethods(paymentSettings, amount, order.paymentUrl);
+    setPaymentPicker({ orderId: order.orderId, amount, methods });
   }
 
   if (!token) {
@@ -401,7 +473,7 @@ export default function OrdersPage() {
 
               {/* Payment button + warning for awaiting orders */}
               {awaiting ? (
-                <div className="flex items-center gap-2 px-4 pb-3">
+                <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
                   {d.paymentUrl ? (
                     <a
                       href={d.paymentUrl}
@@ -412,6 +484,14 @@ export default function OrdersPage() {
                       <Button size="sm" rightIcon="arrow-right">Оплатить</Button>
                     </a>
                   ) : null}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon="settings"
+                    onClick={() => openPaymentMethodPicker(d)}
+                  >
+                    Изменить способ
+                  </Button>
                   <p className="text-[10px] font-semibold leading-tight text-warning">
                     Оплатите в течение 24ч, иначе заказ будет отменён
                   </p>
@@ -622,6 +702,16 @@ export default function OrdersPage() {
           );
         })}
       </div>
+      <PaymentMethodModal
+        open={Boolean(paymentPicker)}
+        amount={paymentPicker?.amount ?? 0}
+        methods={paymentPicker?.methods ?? []}
+        onSelect={(method) => {
+          openPaymentUrl(method.url);
+          setPaymentPicker(null);
+        }}
+        onClose={() => setPaymentPicker(null)}
+      />
     </AppShell>
   );
 }

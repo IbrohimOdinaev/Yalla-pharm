@@ -34,6 +34,51 @@ const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+9
 const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
 const DOOR_TO_DOOR_FEE = 5;
 
+function buildCheckoutPaymentMethods(
+  paymentSettings: PublicPaymentSettings | null,
+  amount: number,
+  dcUrl: string,
+): PaymentMethodOption[] {
+  const methods: PaymentMethodOption[] = [];
+
+  if (paymentSettings?.isDcEnabled !== false) {
+    methods.push({
+      id: "dc",
+      title: "Dushanbe City",
+      subtitle: "Оплата через Dushanbe City",
+      url: dcUrl,
+    });
+  }
+
+  const alifUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
+    amount,
+  );
+  if (alifUrl && paymentSettings?.isAlifEnabled !== false) {
+    methods.push({
+      id: "alif",
+      title: "Alif Mobi",
+      subtitle: "Оплата через приложение Alif",
+      url: alifUrl,
+    });
+  }
+
+  const eskhataUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
+    amount,
+  );
+  if (eskhataUrl && paymentSettings?.isEskhataEnabled !== false) {
+    methods.push({
+      id: "eskhata",
+      title: "Эсхата",
+      subtitle: "Оплата через приложение Эсхата",
+      url: eskhataUrl,
+    });
+  }
+
+  return methods;
+}
+
 export default function CheckoutPage() {
   const token = useAppSelector((s) => s.auth.token);
   const router = useRouter();
@@ -72,6 +117,7 @@ export default function CheckoutPage() {
   const [showCourierDetails, setShowCourierDetails] = useState(false);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
   const [pendingPayment, setPendingPayment] = useState<{ amount: number; dcUrl: string } | null>(null);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<PaymentMethodOption["id"]>("dc");
   const courierDetailsRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -195,46 +241,19 @@ export default function CheckoutPage() {
     && (isPickup || (hasDeliveryAddress && hasCalculatedDelivery && !isCalculating));
   const paymentMethods = useMemo<PaymentMethodOption[]>(() => {
     if (!pendingPayment) return [];
-    const amount = pendingPayment.amount;
-    const methods: PaymentMethodOption[] = [];
-
-    if (pendingPayment.dcUrl && paymentSettings?.isDcEnabled !== false) {
-      methods.push({
-        id: "dc",
-        title: "Dushanbe City",
-        subtitle: "Оплата через Dushanbe City",
-        url: pendingPayment.dcUrl,
-      });
-    }
-
-    const alifUrl = buildPaymentUrlFromTemplate(
-      paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
-      amount,
-    );
-    if (alifUrl && paymentSettings?.isAlifEnabled !== false) {
-      methods.push({
-        id: "alif",
-        title: "Alif Mobi",
-        subtitle: "Оплата через приложение Alif",
-        url: alifUrl,
-      });
-    }
-
-    const eskhataUrl = buildPaymentUrlFromTemplate(
-      paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
-      amount,
-    );
-    if (eskhataUrl && paymentSettings?.isEskhataEnabled !== false) {
-      methods.push({
-        id: "eskhata",
-        title: "Эсхата",
-        subtitle: "Оплата через приложение Эсхата",
-        url: eskhataUrl,
-      });
-    }
-
-    return methods;
+    return buildCheckoutPaymentMethods(paymentSettings, pendingPayment.amount, pendingPayment.dcUrl);
   }, [paymentSettings, pendingPayment]);
+  const checkoutPaymentMethods = useMemo(
+    () => buildCheckoutPaymentMethods(paymentSettings, totalAmount, ""),
+    [paymentSettings, totalAmount],
+  );
+
+  useEffect(() => {
+    if (checkoutPaymentMethods.length === 0) return;
+    if (!checkoutPaymentMethods.some((method) => method.id === selectedPaymentMethodId)) {
+      setSelectedPaymentMethodId(checkoutPaymentMethods[0].id);
+    }
+  }, [checkoutPaymentMethods, selectedPaymentMethodId]);
 
   async function onSubmit() {
     if (!pharmacyId) return;
@@ -332,10 +351,15 @@ export default function CheckoutPage() {
 
       const paymentUrl = String(checkout.paymentUrl || "");
       if (paymentUrl) {
-        setPendingPayment({
-          amount: Number(checkout.amount ?? checkout.cost ?? totalAmount),
-          dcUrl: paymentUrl,
-        });
+        const amount = Number(checkout.amount ?? checkout.cost ?? totalAmount);
+        const methods = buildCheckoutPaymentMethods(paymentSettings, amount, paymentUrl);
+        const selectedMethod = methods.find((method) => method.id === selectedPaymentMethodId) ?? methods[0];
+        if (selectedMethod?.url) {
+          openPaymentUrl(selectedMethod.url);
+          router.replace("/orders");
+        } else {
+          setPendingPayment({ amount, dcUrl: paymentUrl });
+        }
       } else {
         router.replace("/orders");
       }
@@ -666,6 +690,40 @@ export default function CheckoutPage() {
             maxLength={1024}
             className="w-full resize-none rounded-2xl bg-surface-container-low p-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
           />
+        </section>
+
+        <section className="rounded-3xl bg-surface-container-lowest p-4 shadow-card">
+          <div className="mb-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Способ оплаты
+            </p>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Выберите метод, который откроется после подтверждения заказа.
+            </p>
+          </div>
+          {checkoutPaymentMethods.length === 0 ? (
+            <div className="rounded-2xl bg-surface-container-low p-3 text-sm font-semibold text-on-surface-variant">
+              Сейчас нет доступных способов оплаты.
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-3">
+              {checkoutPaymentMethods.map((method) => (
+                <button
+                  key={method.id}
+                  type="button"
+                  onClick={() => setSelectedPaymentMethodId(method.id)}
+                  className={`rounded-2xl border p-3 text-left transition active:scale-[0.98] ${
+                    selectedPaymentMethodId === method.id
+                      ? "border-primary bg-primary-soft text-primary"
+                      : "border-outline/60 bg-surface-container-low text-on-surface hover:border-primary/40"
+                  }`}
+                >
+                  <span className="block text-sm font-extrabold">{method.title}</span>
+                  <span className="mt-1 block text-[11px] font-semibold opacity-75">{method.subtitle}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Summary */}
