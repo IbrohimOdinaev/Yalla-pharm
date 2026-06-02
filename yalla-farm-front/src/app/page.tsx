@@ -1034,18 +1034,55 @@ function HomeContent() {
             </div>
           </section>
 
-          {/* Prescription-decoding CTA — sits below the quick categories so
-              the rail stays the first visual hit on the home page. Hidden for
-              admin / superadmin since they don't shop. At xl+ the same CTA
-              lives inline in the header next to the pharmacy pill — hide the
-              banner there to avoid showing the entry point twice. */}
+          {/* Phone actions — compact vertical blocks directly under categories. */}
+          {!isAdminOrSA ? (
+            <div className="grid grid-cols-2 gap-3 sm:hidden">
+              <Link
+                href="/prescriptions/new"
+                className="flex min-h-[116px] flex-col justify-between rounded-2xl border border-primary/20 bg-primary-soft p-3 text-left transition active:scale-95 hover:bg-primary/15"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-on-primary shadow-card">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="9" y1="14" x2="15" y2="14" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                  </svg>
+                </span>
+                <span>
+                  <span className="block text-sm font-bold leading-tight text-on-surface">Загрузите рецепт</span>
+                  <span className="mt-1 block text-[11px] leading-tight text-on-surface-variant">Расшифровка · 3 TJS</span>
+                </span>
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setShowDushanbeMapModal(true)}
+                className="flex min-h-[116px] flex-col justify-between rounded-2xl bg-primary-soft p-3 text-left text-primary shadow-card transition active:scale-95 hover:bg-primary/15"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M20 10c0 4.5-5.5 10-8 12C9.5 20 4 14.5 4 10a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                </span>
+                <span>
+                  <span className="block text-sm font-bold leading-tight">Все аптеки</span>
+                  <span className="mt-1 block text-[11px] font-semibold leading-tight text-primary/80">Аптеки на карте</span>
+                </span>
+              </button>
+            </div>
+          ) : null}
+
+          {/* Prescription-decoding CTA for tablet/desktop below xl. At xl+
+              the same action lives inline in the header. */}
           {!isAdminOrSA ? (
             <Link
               href="/prescriptions/new"
-              className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:p-4 xl:hidden"
+              className="hidden items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:flex sm:p-4 xl:hidden"
             >
               <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card sm:h-12 sm:w-12">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                   <line x1="9" y1="14" x2="15" y2="14" />
@@ -1058,7 +1095,7 @@ function HomeContent() {
                   Фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS
                 </p>
               </div>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-primary" aria-hidden="true">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </Link>
@@ -1067,7 +1104,9 @@ function HomeContent() {
           <HeroCarousel />
 
           {/* Pharmacy banners */}
-          <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
+          <div className="hidden sm:block">
+            <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
+          </div>
           <PharmacyPickerModal
             open={isPickerOpen}
             onClose={closePicker}
