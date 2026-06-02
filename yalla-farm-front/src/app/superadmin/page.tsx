@@ -40,6 +40,7 @@ import { type ApiPrescription } from "@/entities/prescription/api";
 import { getPharmacists, registerPharmacist, deletePharmacist, type ApiPharmacist } from "@/entities/pharmacist/api";
 import { AuthedImage } from "@/shared/ui";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
+import { PrescriptionClientInfoModal } from "@/widgets/prescription/PrescriptionClientInfoModal";
 import { getRefundRequests, completeRefund } from "@/entities/refund/api";
 import {
   getPaymentSettings,
@@ -3328,6 +3329,7 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [clientInfoPrescription, setClientInfoPrescription] = useState<ApiPrescription | null>(null);
 
   // Two refresh modes:
   //   • full = "Обновить" button + first mount; toggles the loading
@@ -3471,14 +3473,23 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                       ) : null}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={busyId === p.prescriptionId}
-                    onClick={() => onConfirm(p.prescriptionId)}
-                    className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-on-primary transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
-                  >
-                    {busyId === p.prescriptionId ? "..." : "Подтвердить оплату"}
-                  </button>
+                  <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => setClientInfoPrescription(p)}
+                      className="rounded-full bg-surface-container px-4 py-2 text-xs font-bold text-on-surface transition active:scale-95 hover:bg-surface-container-high"
+                    >
+                      Инфо
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === p.prescriptionId}
+                      onClick={() => onConfirm(p.prescriptionId)}
+                      className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-on-primary transition active:scale-95 hover:bg-primary-container disabled:opacity-50"
+                    >
+                      {busyId === p.prescriptionId ? "..." : "Подтвердить оплату"}
+                    </button>
+                  </div>
                 </div>
               </li>
             );
@@ -3487,6 +3498,10 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
       )}
 
       <AuthedImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      <PrescriptionClientInfoModal
+        prescription={clientInfoPrescription}
+        onClose={() => setClientInfoPrescription(null)}
+      />
     </section>
   );
 }

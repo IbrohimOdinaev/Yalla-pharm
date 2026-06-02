@@ -13,6 +13,7 @@ import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePr
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { AuthedImage, Button } from "@/shared/ui";
+import { PrescriptionClientInfoModal } from "@/widgets/prescription/PrescriptionClientInfoModal";
 
 // Decoded prescriptions deliberately drop off the queue once the pharmacist
 // submits the checklist — they're "done" from this person's perspective and
@@ -68,6 +69,7 @@ export default function PharmacistQueuePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [clientInfoPrescription, setClientInfoPrescription] = useState<ApiPrescription | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -235,6 +237,13 @@ export default function PharmacistQueuePage() {
                           <div className="mt-3 flex items-center gap-2">
                             <Button
                               size="sm"
+                              variant="secondary"
+                              onClick={() => setClientInfoPrescription(p)}
+                            >
+                              Инфо
+                            </Button>
+                            <Button
+                              size="sm"
                               variant={status === "InQueue" ? "primary" : "secondary"}
                               loading={busyId === p.prescriptionId}
                               onClick={() => onOpenCart(p)}
@@ -251,6 +260,10 @@ export default function PharmacistQueuePage() {
             })}
           </div>
         )}
+        <PrescriptionClientInfoModal
+          prescription={clientInfoPrescription}
+          onClose={() => setClientInfoPrescription(null)}
+        />
       </div>
     </PharmacistShell>
   );
