@@ -9,6 +9,8 @@ import {
   resubmitPrescription,
   PRESCRIPTION_STATUS_LABEL_RU,
   PRESCRIPTION_CANCELLATION_REASON_LABEL_RU,
+  PRESCRIPTION_DECODE_FAILURE_FOLLOWUP_RU,
+  PRESCRIPTION_DECODE_FAILURE_REASON_LABEL_RU,
   PRESCRIPTION_TIER_LABEL_RU,
   type ApiPrescription,
 } from "@/entities/prescription/api";
@@ -395,6 +397,30 @@ export default function PrescriptionDetailPage() {
                 >
                   Переотправить рецепт
                 </Button>
+              </section>
+            ) : null}
+
+            {prescription.status === "DecodeFailed" ? (
+              <section className="space-y-3 rounded-2xl bg-secondary/10 p-4">
+                <p className="text-sm font-bold text-secondary">Рецепт отменён фармацевтом</p>
+                {prescription.decodeFailureReason ? (
+                  <>
+                    <p className="text-xs font-semibold text-secondary/80">
+                      Причина: {PRESCRIPTION_DECODE_FAILURE_REASON_LABEL_RU[prescription.decodeFailureReason]}
+                    </p>
+                    <p className="text-xs text-on-surface-variant">
+                      {PRESCRIPTION_DECODE_FAILURE_FOLLOWUP_RU[prescription.decodeFailureReason]}
+                    </p>
+                  </>
+                ) : null}
+                {prescription.decodeFailureComment ? (
+                  <div className="rounded-2xl bg-surface-container-lowest p-3 text-sm text-on-surface">
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                      Комментарий фармацевта
+                    </p>
+                    <p>{prescription.decodeFailureComment}</p>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 

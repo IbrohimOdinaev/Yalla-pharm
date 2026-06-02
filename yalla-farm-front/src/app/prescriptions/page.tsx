@@ -32,11 +32,12 @@ const STATUS_TONE: Record<PrescriptionStatus, "primary" | "warning" | "success" 
 // Decoded (готов чек-лист, ждёт оформления заказа или перевода в корзину).
 // "История" is for prescriptions whose checklist already ended up
 // somewhere: an order was placed, the items moved to the regular cart,
-// or the request was cancelled.
+// or the request was cancelled / rejected by the pharmacist.
 const HISTORY_STATUSES: ReadonlySet<PrescriptionStatus> = new Set<PrescriptionStatus>([
   "OrderPlaced",
   "MovedToCart",
   "Cancelled",
+  "DecodeFailed",
 ]);
 
 export default function MyPrescriptionsPage() {

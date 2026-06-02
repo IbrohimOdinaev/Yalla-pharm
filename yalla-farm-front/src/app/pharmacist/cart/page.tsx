@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import {
   getPharmacistPrescription,
+  markPrescriptionDecodeFailed,
   submitChecklist,
 } from "@/entities/pharmacist/api";
 import {
+  PRESCRIPTION_DECODE_FAILURE_REASON_LABEL_RU,
   PRESCRIPTION_STATUS_LABEL_RU,
   PRESCRIPTION_TIER_LABEL_RU,
   PRESCRIPTION_TIER_DESCRIPTION_RU,
   type ApiPrescription,
+  type PrescriptionDecodeFailureReason,
 } from "@/entities/prescription/api";
 import { getMedicinesByIds, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
@@ -44,6 +47,11 @@ export default function PharmacistCartPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelReasonType, setCancelReasonType] = useState<PrescriptionDecodeFailureReason>("IllegibleHandwriting");
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const [medicineCache, setMedicineCache] = useState<Record<string, ApiMedicine>>({});
   const [showManual, setShowManual] = useState(false);
@@ -74,7 +82,8 @@ export default function PharmacistCartPage() {
         // so we redirect to /pharmacist/history (read-only "Подробнее" modal)
         // instead of rendering the editable view.
         if (p.status === "Decoded" || p.status === "OrderPlaced"
-          || p.status === "MovedToCart" || p.status === "Cancelled") {
+          || p.status === "MovedToCart" || p.status === "Cancelled"
+          || p.status === "DecodeFailed") {
           setActiveId(null);
           setPrescription(null);
           router.replace("/pharmacist/history");
@@ -252,6 +261,32 @@ export default function PharmacistCartPage() {
       setError(err instanceof Error ? err.message : "Не удалось отправить чек-лист.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onCancelPrescription() {
+    if (!token || !activeId) return;
+    const comment = cancelReason.trim();
+    if (comment.length < 3) {
+      setCancelError("Напишите причину отмены.");
+      return;
+    }
+    setCancelError(null);
+    setError(null);
+    setCancelling(true);
+    try {
+      await markPrescriptionDecodeFailed(token, activeId, cancelReasonType, comment);
+      clearDraft(activeId);
+      setActiveId(null);
+      setPrescription(null);
+      setCancelReason("");
+      setCancelReasonType("IllegibleHandwriting");
+      setCancelModalOpen(false);
+      router.replace("/pharmacist");
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Не удалось отменить рецепт.");
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -470,9 +505,29 @@ export default function PharmacistCartPage() {
             </section>
 
             {prescription.status === "InReview" ? (
-              <Button size="lg" fullWidth loading={submitting} onClick={onSubmit}>
-                Отправить чек-лист клиенту
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <Button
+                  size="lg"
+                  variant="danger"
+                  fullWidth
+                  disabled={submitting || cancelling}
+                  onClick={() => {
+                    setCancelError(null);
+                    setCancelModalOpen(true);
+                  }}
+                >
+                  Отменить рецепт
+                </Button>
+                <Button
+                  size="lg"
+                  fullWidth
+                  loading={submitting}
+                  disabled={cancelling}
+                  onClick={onSubmit}
+                >
+                  Отправить чек-лист клиенту
+                </Button>
+              </div>
             ) : prescription.status === "InQueue" ? (
               <div className="rounded-2xl bg-warning-soft p-4 text-sm text-on-surface">
                 Заявка ещё в очереди. Откройте «Очередь» и нажмите «Взять в работу», чтобы продолжить.
@@ -509,6 +564,25 @@ export default function PharmacistCartPage() {
             updateItem(activeId, pairModalSourceId, { analogDraftId });
             setPairModalSourceId(null);
           }}
+        />
+
+        <CancelPrescriptionModal
+          open={cancelModalOpen}
+          reasonType={cancelReasonType}
+          reason={cancelReason}
+          error={cancelError}
+          loading={cancelling}
+          onReasonTypeChange={setCancelReasonType}
+          onReasonChange={(value) => {
+            setCancelReason(value);
+            if (cancelError) setCancelError(null);
+          }}
+          onClose={() => {
+            if (cancelling) return;
+            setCancelModalOpen(false);
+            setCancelError(null);
+          }}
+          onConfirm={onCancelPrescription}
         />
 
         <AuthedImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
@@ -862,6 +936,134 @@ function PairAnalogModal({
             })}
           </ul>
         )}
+      </div>
+    </div>
+  );
+}
+
+function CancelPrescriptionModal({
+  open,
+  reasonType,
+  reason,
+  error,
+  loading,
+  onReasonTypeChange,
+  onReasonChange,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  reasonType: PrescriptionDecodeFailureReason;
+  reason: string;
+  error: string | null;
+  loading: boolean;
+  onReasonTypeChange: (reason: PrescriptionDecodeFailureReason) => void;
+  onReasonChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+
+  const options: Array<{
+    value: PrescriptionDecodeFailureReason;
+    hint: string;
+  }> = [
+    {
+      value: "PoorImageQuality",
+      hint: "Клиент получит бесплатную повторную расшифровку.",
+    },
+    {
+      value: "IllegibleHandwriting",
+      hint: "Будет создан запрос на возврат оплаты за расшифровку.",
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4 supports-[height:100dvh]:min-h-[100dvh]"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-3xl bg-surface p-4 shadow-float"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-base font-extrabold">Отменить рецепт</h3>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Причина будет сохранена в заявке и видна клиенту.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            aria-label="Закрыть"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-image-backdrop disabled:opacity-50"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {options.map((option) => {
+            const active = reasonType === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                disabled={loading}
+                onClick={() => onReasonTypeChange(option.value)}
+                className={`w-full rounded-2xl border p-3 text-left transition active:scale-[0.99] disabled:opacity-70 ${
+                  active
+                    ? "border-primary bg-primary-soft text-on-surface"
+                    : "border-outline bg-surface-container-lowest hover:border-primary/60"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-sm font-extrabold">
+                  <span className={`h-3 w-3 rounded-full border ${active ? "border-primary bg-primary" : "border-outline"}`} />
+                  {PRESCRIPTION_DECODE_FAILURE_REASON_LABEL_RU[option.value]}
+                </span>
+                <span className="mt-1 block text-xs text-on-surface-variant">
+                  {option.hint}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <label className="mt-4 block text-sm font-bold">
+          Причина отмены
+          <textarea
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            rows={4}
+            maxLength={500}
+            disabled={loading}
+            placeholder="Например: фото размыто, не видны названия препаратов..."
+            className="mt-2 w-full resize-none rounded-2xl border border-outline bg-surface-container-lowest p-3 text-sm font-medium focus:border-primary focus:outline-none disabled:opacity-70"
+          />
+        </label>
+
+        <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-on-surface-variant">
+          <span>Минимум 3 символа</span>
+          <span>{reason.length}/500</span>
+        </div>
+
+        {error ? (
+          <div className="mt-3 rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <Button size="md" variant="secondary" disabled={loading} onClick={onClose}>
+            Назад
+          </Button>
+          <Button size="md" variant="danger" loading={loading} onClick={onConfirm}>
+            Отменить
+          </Button>
+        </div>
       </div>
     </div>
   );
