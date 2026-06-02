@@ -142,6 +142,7 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
   const [geoStatus, setGeoStatus] = useState<string>("Запрашиваем доступ к геолокации...");
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"list" | "map">("list");
 
   const pharmacies = useMemo<PharmacyMarker[]>(
     () => DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => ({
@@ -185,6 +186,7 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
     if (!open) return;
     setGeoStatus("Запрашиваем доступ к геолокации...");
     setSelectedPharmacyId(null);
+    setActiveTab("list");
 
     if (!navigator.geolocation) {
       setGeoStatus("Геолокация недоступна в этом браузере.");
@@ -218,42 +220,101 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Закрыть карту" />
+    <div className="fixed inset-0 z-[120] flex items-stretch justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <button type="button" className="absolute inset-0 hidden cursor-default sm:block" onClick={onClose} aria-label="Закрыть карту" />
       <div
-        className="relative flex h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:h-[86dvh] sm:rounded-3xl"
+        className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-surface shadow-2xl sm:h-[86dvh] sm:max-w-6xl sm:rounded-3xl"
         role="dialog"
         aria-modal="true"
         aria-label="Карта аптек Душанбе"
       >
-        <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-outline/60 px-4 py-3 sm:px-5">
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-bold text-on-surface sm:text-lg">Аптеки Душанбе</h2>
-            <p className="truncate text-xs text-on-surface-variant">
-              {DORU_DUSHANBE_INTEGRATED_PHARMACIES.length} интегрированных аптек Doru · {geoStatus}
-            </p>
+        <header className="flex flex-shrink-0 flex-col gap-3 border-b border-outline/60 px-4 py-3 sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-bold text-on-surface sm:text-lg">Аптеки Душанбе</h2>
+              <p className="truncate text-xs text-on-surface-variant">
+                {DORU_DUSHANBE_INTEGRATED_PHARMACIES.length} интегрированных аптек Doru · {geoStatus}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition active:scale-95 hover:bg-surface-container-high"
+              aria-label="Закрыть"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-container text-on-surface transition active:scale-95 hover:bg-surface-container-high"
-            aria-label="Закрыть"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+
+          <div className="grid grid-cols-2 rounded-2xl bg-surface-container-low p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("list")}
+              className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                activeTab === "list" ? "bg-surface text-on-surface shadow-card" : "text-on-surface-variant"
+              }`}
+            >
+              Список
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("map")}
+              className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                activeTab === "map" ? "bg-surface text-on-surface shadow-card" : "text-on-surface-variant"
+              }`}
+            >
+              Карта
+            </button>
+          </div>
         </header>
 
         <div className="relative min-h-0 flex-1">
-          <PharmacyMap
-            pharmacies={pharmacies}
-            userLocation={userLocation}
-            initialZoom={12}
-            onPharmacyClick={setSelectedPharmacyId}
-            className="h-full w-full"
-          />
+          {activeTab === "list" ? (
+            <div className="h-full overflow-y-auto px-4 py-4 sm:px-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => (
+                  <button
+                    key={pharmacy.id}
+                    type="button"
+                    onClick={() => setSelectedPharmacyId(`doru-${pharmacy.id}`)}
+                    className="overflow-hidden rounded-3xl border border-outline/60 bg-surface text-left shadow-card transition active:scale-[0.99] hover:border-primary/40 hover:shadow-glass"
+                  >
+                    <div className="relative h-24 overflow-hidden bg-primary-soft px-4 py-3 text-primary">
+                      <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10" />
+                      <div className="absolute -bottom-12 left-12 h-24 w-24 rounded-full bg-tertiary/10" />
+                      <p className="relative text-[10px] font-black uppercase tracking-wide text-primary/75">Doru #{pharmacy.id}</p>
+                      <p className="relative mt-2 line-clamp-2 text-lg font-extrabold leading-tight text-on-surface">{pharmacy.title}</p>
+                    </div>
+                    <div className="space-y-2 p-4">
+                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface">{pharmacy.address}</p>
+                      {pharmacy.landmark ? (
+                        <p className="line-clamp-2 text-xs leading-snug text-on-surface-variant">{pharmacy.landmark}</p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-bold">
+                        <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
+                          {formatDoruTime(pharmacy.opensAt)}-{formatDoruTime(pharmacy.closesAt)}
+                        </span>
+                        <span className="rounded-full bg-primary-soft px-2.5 py-1 text-primary">
+                          {pharmacy.pharmacyPhone || pharmacy.phone || "Телефон неизвестен"}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <PharmacyMap
+              pharmacies={pharmacies}
+              userLocation={userLocation}
+              initialZoom={12}
+              onPharmacyClick={setSelectedPharmacyId}
+              className="h-full w-full"
+            />
+          )}
 
           {selectedPharmacy ? (
             <div className="absolute inset-0 z-10 flex items-end justify-center bg-black/20 p-3 backdrop-blur-[1px] sm:items-center sm:p-5">
