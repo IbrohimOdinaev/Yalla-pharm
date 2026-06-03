@@ -22,7 +22,6 @@ import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddre
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
-import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { DORU_DUSHANBE_INTEGRATED_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { PharmacyLogo } from "@/shared/ui";
@@ -491,9 +490,9 @@ function HomeContent() {
   const isStaff = role === "Admin" || role === "SuperAdmin" || role === "Pharmacist";
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
-  // Modal flag for the "Все аптеки" picker. PharmacyBanners triggers
-  // `openPicker()` on the store, this page is what actually renders the
-  // modal — without it the click was a no-op.
+  // Legacy picker trigger. Existing UI calls `openPicker()` from the store;
+  // on the home page that now means "open the full city pharmacies map"
+  // directly, without the old intermediate picker modal.
   const isPickerOpen = usePharmacyStore((s) => s.isPickerOpen);
   const closePicker = usePharmacyStore((s) => s.closePicker);
   const searchParams = useSearchParams();
@@ -533,6 +532,12 @@ function HomeContent() {
   const [showDushanbeMapModal, setShowDushanbeMapModal] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const addressChecked = useRef(false);
+
+  useEffect(() => {
+    if (!isPickerOpen) return;
+    closePicker();
+    setShowDushanbeMapModal(true);
+  }, [isPickerOpen, closePicker]);
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
 
@@ -1242,14 +1247,6 @@ function HomeContent() {
           <div className="hidden sm:block">
             <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
           </div>
-          <PharmacyPickerModal
-            open={isPickerOpen}
-            onClose={closePicker}
-            onOpenMap={() => {
-              closePicker();
-              setShowDushanbeMapModal(true);
-            }}
-          />
 
           {/* Rails — fixed-count horizontal shelves, one per popular category.
               Each fetches independently so they flip from skeleton → content

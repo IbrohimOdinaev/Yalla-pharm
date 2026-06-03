@@ -250,7 +250,12 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain bg-surface rounded-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`relative w-full max-h-[calc(100dvh-0.75rem)] overflow-y-auto overscroll-contain bg-surface rounded-3xl shadow-2xl ${
+          view === "map" ? "max-w-4xl" : "max-w-2xl"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-surface-container-high">
           <div className="flex items-center gap-2 min-w-0">
             {view === "map" && hasAny ? (
@@ -497,7 +502,7 @@ export function AddressPickerModal({ open, onClose, autoGeolocate }: Props) {
               </p>
 
               <PharmacyMap
-                className="h-[300px] sm:h-[400px] rounded-xl overflow-hidden"
+                className="h-[390px] sm:h-[560px] rounded-xl overflow-hidden"
                 pharmacies={[]}
                 selectedPoint={localCoords}
                 centerPinMode
