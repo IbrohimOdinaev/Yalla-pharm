@@ -14,6 +14,12 @@ public interface IPaymentSettingsService
 
   Task SetPaymentMethodEnabledAsync(string method, bool isEnabled, Guid updatedByUserId, CancellationToken cancellationToken = default);
 
+  Task SetStaffCompensationRatesAsync(
+    decimal pharmacyOrderReadyFeeAmount,
+    decimal prescriptionDecodedFeeAmount,
+    Guid updatedByUserId,
+    CancellationToken cancellationToken = default);
+
   Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default);
 }
 
@@ -28,6 +34,8 @@ public sealed class PaymentSettingsSnapshot
   public bool IsDcEnabled { get; init; } = true;
   public bool IsAlifEnabled { get; init; } = true;
   public bool IsEskhataEnabled { get; init; } = true;
+  public decimal PharmacyOrderReadyFeeAmount { get; init; }
+  public decimal PrescriptionDecodedFeeAmount { get; init; }
   public DateTime UpdatedAtUtc { get; init; }
   public Guid? UpdatedByUserId { get; init; }
 }

@@ -17,9 +17,10 @@ public sealed class OrderService : IOrderService
   private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
   private readonly IJuraService? _juraService;
   private readonly IAuditLogger? _auditLogger;
+  private readonly IStaffCompensationService? _staffCompensationService;
 
   public OrderService(IAppDbContext dbContext)
-    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null, null)
+    : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null, null, null)
   {
   }
 
@@ -28,7 +29,8 @@ public sealed class OrderService : IOrderService
     ILogger<OrderService> logger,
     IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
     IJuraService? juraService = null,
-    IAuditLogger? auditLogger = null)
+    IAuditLogger? auditLogger = null,
+    IStaffCompensationService? staffCompensationService = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(logger);
@@ -41,6 +43,7 @@ public sealed class OrderService : IOrderService
     // Optional audit dependency — tests can omit it; prod DI always
     // supplies one.
     _auditLogger = auditLogger;
+    _staffCompensationService = staffCompensationService;
   }
 
   public async Task<GetAllOrdersResponse> GetAllOrdersAsync(
@@ -497,6 +500,15 @@ public sealed class OrderService : IOrderService
       var oldStatus = order.Status;
       order.NextStage(true);
       LogStatusTransition(order.Id, oldStatus, order.Status, "MarkOrderReady", worker.Id);
+
+      if (_staffCompensationService is not null)
+      {
+        await _staffCompensationService.EnsureOrderReadyEarningAsync(
+          worker.Id,
+          order.Id,
+          worker.PharmacyId,
+          cancellationToken);
+      }
 
       await _dbContext.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);

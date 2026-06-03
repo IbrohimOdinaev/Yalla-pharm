@@ -9,4 +9,5 @@ public sealed class AdminListItemResponse
   public Guid PharmacyId { get; init; }
   public string PharmacyTitle { get; init; } = string.Empty;
   public bool PharmacyIsActive { get; init; }
+  public StaffCompensationSummaryResponse? Compensation { get; init; }
 }

@@ -10,6 +10,8 @@ export type PaymentSettingsSnapshot = {
   isDcEnabled: boolean;
   isAlifEnabled: boolean;
   isEskhataEnabled: boolean;
+  pharmacyOrderReadyFeeAmount: number;
+  prescriptionDecodedFeeAmount: number;
   updatedAtUtc: string;
   updatedByUserId: string | null;
 };
@@ -64,5 +66,16 @@ export async function updatePaymentMethodEnabled(
     method: "PUT",
     token,
     body: { isEnabled },
+  });
+}
+
+export async function updateStaffCompensationRates(
+  token: string,
+  input: { pharmacyOrderReadyFeeAmount: number; prescriptionDecodedFeeAmount: number },
+): Promise<PaymentSettingsSnapshot> {
+  return apiFetch<PaymentSettingsSnapshot>("/api/payment-settings/staff-compensation-rates", {
+    method: "PUT",
+    token,
+    body: input,
   });
 }

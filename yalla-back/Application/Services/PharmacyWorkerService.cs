@@ -16,12 +16,14 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
     private readonly IAuditLogger? _auditLogger;
+    private readonly IStaffCompensationService? _staffCompensationService;
 
     public PharmacyWorkerService(
       IAppDbContext dbContext,
       IPasswordHasher passwordHasher,
       IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
-      IAuditLogger? auditLogger = null)
+      IAuditLogger? auditLogger = null,
+      IStaffCompensationService? staffCompensationService = null)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(passwordHasher);
@@ -31,6 +33,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         _passwordHasher = passwordHasher;
         _realtimeUpdatesPublisher = realtimeUpdatesPublisher;
         _auditLogger = auditLogger;
+        _staffCompensationService = staffCompensationService;
     }
 
     public async Task<RegisterPharmacyResponse> RegisterPharmacyAsync(
@@ -197,6 +200,10 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
           .Take(pageSize)
           .ToListAsync(cancellationToken);
 
+        var compensationById = _staffCompensationService is null
+          ? new Dictionary<Guid, StaffCompensationSummaryResponse>()
+          : await _staffCompensationService.GetSummariesAsync(admins.Select(x => x.Id).ToList(), cancellationToken);
+
         return new GetAdminsResponse
         {
             Page = page,
@@ -211,7 +218,8 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
                   AvatarUrl = string.IsNullOrEmpty(x.AvatarUrl) ? null : $"/api/admins/{x.Id}/avatar/content",
                   PharmacyId = x.PharmacyId,
                   PharmacyTitle = x.Pharmacy?.Title ?? string.Empty,
-                  PharmacyIsActive = x.Pharmacy?.IsActive ?? false
+                  PharmacyIsActive = x.Pharmacy?.IsActive ?? false,
+                  Compensation = compensationById.GetValueOrDefault(x.Id)
               })
               .ToList()
         };

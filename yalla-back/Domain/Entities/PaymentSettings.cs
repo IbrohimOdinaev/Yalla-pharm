@@ -26,6 +26,10 @@ public class PaymentSettings
 
   public bool IsEskhataEnabled { get; private set; } = true;
 
+  public decimal PharmacyOrderReadyFeeAmount { get; private set; }
+
+  public decimal PrescriptionDecodedFeeAmount { get; private set; }
+
   public DateTime UpdatedAtUtc { get; private set; }
 
   public Guid? UpdatedByUserId { get; private set; }
@@ -92,6 +96,22 @@ public class PaymentSettings
         throw new DomainArgumentException("Unknown payment method.");
     }
 
+    UpdatedAtUtc = DateTime.UtcNow;
+    UpdatedByUserId = updatedBy;
+  }
+
+  public void SetStaffCompensationRates(
+    decimal pharmacyOrderReadyFeeAmount,
+    decimal prescriptionDecodedFeeAmount,
+    Guid? updatedBy)
+  {
+    if (pharmacyOrderReadyFeeAmount < 0)
+      throw new DomainArgumentException("PharmacyOrderReadyFeeAmount can't be negative.");
+    if (prescriptionDecodedFeeAmount < 0)
+      throw new DomainArgumentException("PrescriptionDecodedFeeAmount can't be negative.");
+
+    PharmacyOrderReadyFeeAmount = decimal.Round(pharmacyOrderReadyFeeAmount, 2, MidpointRounding.AwayFromZero);
+    PrescriptionDecodedFeeAmount = decimal.Round(prescriptionDecodedFeeAmount, 2, MidpointRounding.AwayFromZero);
     UpdatedAtUtc = DateTime.UtcNow;
     UpdatedByUserId = updatedBy;
   }

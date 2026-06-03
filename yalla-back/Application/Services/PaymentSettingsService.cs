@@ -62,6 +62,17 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
     await _dbContext.SaveChangesAsync(cancellationToken);
   }
 
+  public async Task SetStaffCompensationRatesAsync(
+    decimal pharmacyOrderReadyFeeAmount,
+    decimal prescriptionDecodedFeeAmount,
+    Guid updatedByUserId,
+    CancellationToken cancellationToken = default)
+  {
+    var entity = await GetOrCreateSettingsAsync(cancellationToken);
+    entity.SetStaffCompensationRates(pharmacyOrderReadyFeeAmount, prescriptionDecodedFeeAmount, updatedByUserId);
+    await _dbContext.SaveChangesAsync(cancellationToken);
+  }
+
   public async Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
   {
     var entity = await _dbContext.PaymentSettings
@@ -81,6 +92,8 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
       IsDcEnabled = entity?.IsDcEnabled ?? true,
       IsAlifEnabled = entity?.IsAlifEnabled ?? true,
       IsEskhataEnabled = entity?.IsEskhataEnabled ?? true,
+      PharmacyOrderReadyFeeAmount = entity?.PharmacyOrderReadyFeeAmount ?? 0m,
+      PrescriptionDecodedFeeAmount = entity?.PrescriptionDecodedFeeAmount ?? 0m,
       UpdatedAtUtc = entity?.UpdatedAtUtc ?? DateTime.UtcNow,
       UpdatedByUserId = entity?.UpdatedByUserId
     };

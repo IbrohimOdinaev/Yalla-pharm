@@ -14,15 +14,18 @@ public sealed class PharmacistService : IPharmacistService
     private readonly IAppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IAuditLogger? _auditLogger;
+    private readonly IStaffCompensationService? _staffCompensationService;
 
     public PharmacistService(
       IAppDbContext dbContext,
       IPasswordHasher passwordHasher,
-      IAuditLogger? auditLogger = null)
+      IAuditLogger? auditLogger = null,
+      IStaffCompensationService? staffCompensationService = null)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _auditLogger = auditLogger;
+        _staffCompensationService = staffCompensationService;
     }
 
     public async Task<RegisterPharmacistResponse> RegisterAsync(
@@ -56,16 +59,24 @@ public sealed class PharmacistService : IPharmacistService
     public async Task<IReadOnlyList<PharmacistResponse>> GetAllAsync(
       CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Pharmacists
+        var pharmacists = await _dbContext.Pharmacists
           .AsNoTracking()
           .OrderBy(x => x.Name)
+          .ToListAsync(cancellationToken);
+
+        var compensationById = _staffCompensationService is null
+          ? new Dictionary<Guid, StaffCompensationSummaryResponse>()
+          : await _staffCompensationService.GetSummariesAsync(pharmacists.Select(x => x.Id).ToList(), cancellationToken);
+
+        return pharmacists
           .Select(x => new PharmacistResponse
           {
               Id = x.Id,
               Name = x.Name,
-              PhoneNumber = x.PhoneNumber
+              PhoneNumber = x.PhoneNumber,
+              Compensation = compensationById.GetValueOrDefault(x.Id)
           })
-          .ToListAsync(cancellationToken);
+          .ToList();
     }
 
     public async Task DeleteAsync(Guid pharmacistId, CancellationToken cancellationToken = default)

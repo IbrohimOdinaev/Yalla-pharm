@@ -37,6 +37,7 @@ public sealed class PrescriptionService : IPrescriptionService
     private readonly IManualItemLookupService? _manualLookupService;
     private readonly IAuditLogger? _auditLogger;
     private readonly IPrivacyPolicyService? _privacyPolicyService;
+    private readonly IStaffCompensationService? _staffCompensationService;
 
     public PrescriptionService(
       IAppDbContext dbContext,
@@ -44,7 +45,7 @@ public sealed class PrescriptionService : IPrescriptionService
       IPaymentSettingsService paymentSettingsService,
       IOptions<DushanbeCityPaymentOptions> paymentOptions,
       IRealtimeUpdatesPublisher realtimePublisher)
-      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null, auditLogger: null, privacyPolicyService: null)
+      : this(dbContext, imageStorage, paymentSettingsService, paymentOptions, realtimePublisher, manualLookupService: null, auditLogger: null, privacyPolicyService: null, staffCompensationService: null)
     {
     }
 
@@ -56,7 +57,8 @@ public sealed class PrescriptionService : IPrescriptionService
       IRealtimeUpdatesPublisher realtimePublisher,
       IManualItemLookupService? manualLookupService,
       IAuditLogger? auditLogger = null,
-      IPrivacyPolicyService? privacyPolicyService = null)
+      IPrivacyPolicyService? privacyPolicyService = null,
+      IStaffCompensationService? staffCompensationService = null)
     {
         _dbContext = dbContext;
         _imageStorage = imageStorage;
@@ -66,6 +68,7 @@ public sealed class PrescriptionService : IPrescriptionService
         _manualLookupService = manualLookupService;
         _auditLogger = auditLogger;
         _privacyPolicyService = privacyPolicyService;
+        _staffCompensationService = staffCompensationService;
     }
 
     public async Task<PrescriptionResponse> CreatePrescriptionAsync(
@@ -884,6 +887,14 @@ public sealed class PrescriptionService : IPrescriptionService
         }
 
         prescription.SubmitChecklist(request.OverallComment, items);
+
+        if (_staffCompensationService is not null)
+        {
+            await _staffCompensationService.EnsurePrescriptionDecodedEarningAsync(
+              pharmacistId,
+              prescription.Id,
+              cancellationToken);
+        }
 
         if (_auditLogger is not null)
         {

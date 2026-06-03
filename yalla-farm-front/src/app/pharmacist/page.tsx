@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { getPharmacistAll, takePrescriptionIntoReview } from "@/entities/pharmacist/api";
+import { formatMoney } from "@/shared/lib/format";
 import {
   PRESCRIPTION_STATUS_LABEL_RU,
   type ApiPrescription,
@@ -14,6 +15,7 @@ import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { AuthedImage, Button } from "@/shared/ui";
 import { PrescriptionClientInfoModal } from "@/widgets/prescription/PrescriptionClientInfoModal";
+import { getStaffCompensationMe, type StaffCompensationMe } from "@/entities/staff-compensation/api";
 
 // Decoded prescriptions deliberately drop off the queue once the pharmacist
 // submits the checklist — they're "done" from this person's perspective and
@@ -70,6 +72,7 @@ export default function PharmacistQueuePage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [clientInfoPrescription, setClientInfoPrescription] = useState<ApiPrescription | null>(null);
+  const [compensation, setCompensation] = useState<StaffCompensationMe | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -97,7 +100,12 @@ export default function PharmacistQueuePage() {
     if (!token || role !== "Pharmacist") return Promise.resolve();
     setLoading(true); setError(null);
     return getPharmacistAll(token)
-      .then(setItems)
+      .then((data) => {
+        setItems(data);
+        return getStaffCompensationMe(token)
+          .then(setCompensation)
+          .catch(() => setCompensation(null));
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить очередь."))
       .finally(() => setLoading(false));
   }, [token, role]);
@@ -191,7 +199,7 @@ export default function PharmacistQueuePage() {
         ) : null}
 
         {activeTab === "dashboard" ? (
-          <PharmacistDashboard stats={dashboardStats} loading={loading} />
+          <PharmacistDashboard stats={dashboardStats} compensation={compensation} loading={loading} />
         ) : loading ? (
           <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
             Загружаем…
@@ -271,6 +279,7 @@ export default function PharmacistQueuePage() {
 
 function PharmacistDashboard({
   stats,
+  compensation,
   loading,
 }: {
   stats: {
@@ -281,13 +290,19 @@ function PharmacistDashboard({
     commission: number;
     statusCounts: Record<PrescriptionStatus, number>;
   };
+  compensation: StaffCompensationMe | null;
   loading: boolean;
 }) {
   const cards = [
     { label: "Всего пришло", value: stats.total, hint: `UTC+5 · ${stats.dayLabel}`, tone: "text-primary" },
     { label: "Успешные", value: stats.successful, hint: "Decoded / OrderPlaced / MovedToCart", tone: "text-primary" },
     { label: "Отменённые", value: stats.cancelled, hint: "Cancelled и DecodeFailed", tone: "text-secondary" },
-    { label: "Комиссия", value: `${stats.commission.toFixed(2)} TJS`, hint: "3 TJS за успешную расшифровку", tone: "text-primary" },
+    {
+      label: "К выплате",
+      value: compensation ? formatMoney(compensation.summary.balanceAmount, compensation.summary.currency) : `${stats.commission.toFixed(2)} TJS`,
+      hint: compensation ? `${compensation.summary.earnedWorkItemsCount} расшифровок · начислено ${formatMoney(compensation.summary.earnedAmount, compensation.summary.currency)}` : "Баланс загрузится после обновления",
+      tone: "text-primary",
+    },
   ];
 
   return (

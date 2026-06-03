@@ -18,6 +18,7 @@ internal sealed class FakePaymentSettingsService : IPaymentSettingsService
   public Task SetAlifUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task SetEskhataUrlTemplateAsync(string? urlTemplate, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task SetPaymentMethodEnabledAsync(string method, bool isEnabled, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
+  public Task SetStaffCompensationRatesAsync(decimal pharmacyOrderReadyFeeAmount, decimal prescriptionDecodedFeeAmount, Guid updatedByUserId, CancellationToken ct = default) => Task.CompletedTask;
   public Task<PaymentSettingsSnapshot> GetSnapshotAsync(CancellationToken ct = default)
     => Task.FromResult(new PaymentSettingsSnapshot
     {

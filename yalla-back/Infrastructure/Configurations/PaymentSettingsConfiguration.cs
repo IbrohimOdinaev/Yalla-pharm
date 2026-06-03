@@ -54,6 +54,18 @@ public sealed class PaymentSettingsConfiguration : IEntityTypeConfiguration<Paym
       .HasDefaultValue(true)
       .IsRequired();
 
+    builder.Property(x => x.PharmacyOrderReadyFeeAmount)
+      .HasColumnName("pharmacy_order_ready_fee_amount")
+      .HasColumnType("numeric(18,2)")
+      .HasDefaultValue(0m)
+      .IsRequired();
+
+    builder.Property(x => x.PrescriptionDecodedFeeAmount)
+      .HasColumnName("prescription_decoded_fee_amount")
+      .HasColumnType("numeric(18,2)")
+      .HasDefaultValue(0m)
+      .IsRequired();
+
     builder.Property(x => x.UpdatedAtUtc)
       .HasColumnName("updated_at_utc")
       .HasColumnType("timestamp without time zone")

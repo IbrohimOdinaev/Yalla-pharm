@@ -100,4 +100,25 @@ public sealed class PaymentSettingsController : ControllerBase
   {
     public bool IsEnabled { get; init; }
   }
+
+  [HttpPut("staff-compensation-rates")]
+  public async Task<IActionResult> UpdateStaffCompensationRates(
+    [FromBody] UpdateStaffCompensationRatesRequest request,
+    CancellationToken cancellationToken)
+  {
+    var userId = User.GetRequiredUserId();
+    await _service.SetStaffCompensationRatesAsync(
+      request.PharmacyOrderReadyFeeAmount,
+      request.PrescriptionDecodedFeeAmount,
+      userId,
+      cancellationToken);
+    var snapshot = await _service.GetSnapshotAsync(cancellationToken);
+    return Ok(snapshot);
+  }
+
+  public sealed class UpdateStaffCompensationRatesRequest
+  {
+    public decimal PharmacyOrderReadyFeeAmount { get; init; }
+    public decimal PrescriptionDecodedFeeAmount { get; init; }
+  }
 }

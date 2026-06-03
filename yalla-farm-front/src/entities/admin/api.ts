@@ -1,4 +1,5 @@
 import { apiFetch } from "@/shared/api/http-client";
+import type { StaffCompensationSummary } from "@/entities/staff-compensation/api";
 
 export type ApiAdmin = {
   adminId: string;
@@ -7,6 +8,7 @@ export type ApiAdmin = {
   pharmacyId?: string;
   pharmacyTitle?: string;
   avatarUrl?: string | null;
+  compensation?: StaffCompensationSummary | null;
 };
 
 export type ApiPharmacyWorkerResponse = {

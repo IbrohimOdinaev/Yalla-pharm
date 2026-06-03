@@ -48,8 +48,14 @@ import {
   updateDcBaseUrl,
   updateEskhataUrlTemplate,
   updatePaymentMethodEnabled,
+  updateStaffCompensationRates,
   type PaymentSettingsSnapshot,
 } from "@/entities/payment-settings/api";
+import {
+  createStaffPayout,
+  type StaffCompensationSummary,
+  type StaffPayoutMethod,
+} from "@/entities/staff-compensation/api";
 import { createOneCSource, deleteOneCSource, getOneCSources, setOneCSourceActive, updateOneCSource, type OneCSource, type OneCExchangeStatus } from "@/entities/one-c/admin-api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
@@ -613,6 +619,11 @@ function PaymentSettingsCard({ token }: { token: string }) {
   const [saving, setSaving] = useState<"dc" | "alif" | "eskhata" | null>(null);
   const [toggling, setToggling] = useState<"dc" | "alif" | "eskhata" | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [staffRates, setStaffRates] = useState({
+    pharmacyOrderReadyFeeAmount: "0",
+    prescriptionDecodedFeeAmount: "0",
+  });
+  const [savingStaffRates, setSavingStaffRates] = useState(false);
 
   const load = useCallback(() => {
     getPaymentSettings(token).then((s) => {
@@ -621,6 +632,10 @@ function PaymentSettingsCard({ token }: { token: string }) {
         dc: s.dcBaseUrl ?? "",
         alif: s.alifUrlTemplate ?? "",
         eskhata: s.eskhataUrlTemplate ?? "",
+      });
+      setStaffRates({
+        pharmacyOrderReadyFeeAmount: String(s.pharmacyOrderReadyFeeAmount ?? 0),
+        prescriptionDecodedFeeAmount: String(s.prescriptionDecodedFeeAmount ?? 0),
       });
     }).catch(() => undefined);
   }, [token]);
@@ -679,6 +694,33 @@ function PaymentSettingsCard({ token }: { token: string }) {
       setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
     } finally {
       setToggling(null);
+    }
+  }
+
+  async function saveStaffRates() {
+    const orderRate = Number(staffRates.pharmacyOrderReadyFeeAmount);
+    const prescriptionRate = Number(staffRates.prescriptionDecodedFeeAmount);
+    if (!Number.isFinite(orderRate) || orderRate < 0 || !Number.isFinite(prescriptionRate) || prescriptionRate < 0) {
+      setMsg("Ставки должны быть неотрицательными числами.");
+      return;
+    }
+    setSavingStaffRates(true);
+    setMsg(null);
+    try {
+      const updated = await updateStaffCompensationRates(token, {
+        pharmacyOrderReadyFeeAmount: orderRate,
+        prescriptionDecodedFeeAmount: prescriptionRate,
+      });
+      setSnapshot(updated);
+      setStaffRates({
+        pharmacyOrderReadyFeeAmount: String(updated.pharmacyOrderReadyFeeAmount ?? 0),
+        prescriptionDecodedFeeAmount: String(updated.prescriptionDecodedFeeAmount ?? 0),
+      });
+      setMsg("Ставки сотрудников обновлены.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
+    } finally {
+      setSavingStaffRates(false);
     }
   }
 
@@ -809,6 +851,48 @@ function PaymentSettingsCard({ token }: { token: string }) {
             </div>
           );
         })}
+      </div>
+      <div className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold">Оплата сотрудников</h3>
+            <p className="text-[10px] text-on-surface-variant">
+              Ставка фиксируется в момент готового заказа или расшифрованного рецепта.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="stitch-button px-4 py-2 text-xs"
+            disabled={savingStaffRates}
+            onClick={saveStaffRates}
+          >
+            {savingStaffRates ? "Сохраняем..." : "Сохранить ставки"}
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="space-y-1 text-xs font-semibold">
+            <span>За готовый заказ, TJS</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="stitch-input"
+              value={staffRates.pharmacyOrderReadyFeeAmount}
+              onChange={(e) => setStaffRates((current) => ({ ...current, pharmacyOrderReadyFeeAmount: e.target.value }))}
+            />
+          </label>
+          <label className="space-y-1 text-xs font-semibold">
+            <span>За расшифрованный рецепт, TJS</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="stitch-input"
+              value={staffRates.prescriptionDecodedFeeAmount}
+              onChange={(e) => setStaffRates((current) => ({ ...current, prescriptionDecodedFeeAmount: e.target.value }))}
+            />
+          </label>
+        </div>
       </div>
       {msg ? <p className={`text-[11px] ${msg.includes("Ошибка") || msg.includes("must") ? "text-red-600" : "text-primary"}`}>{msg}</p> : null}
     </div>
@@ -1086,6 +1170,184 @@ function formatBytes(value: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+type StaffPayoutTarget = {
+  staffUserId: string;
+  name: string;
+  roleLabel: string;
+  compensation: StaffCompensationSummary;
+};
+
+function StaffCompensationBadge({
+  compensation,
+  onPayout,
+}: {
+  compensation?: StaffCompensationSummary | null;
+  onPayout?: () => void;
+}) {
+  if (!compensation) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+      <span className="rounded-full bg-primary-soft px-2 py-1 font-bold text-primary">
+        {compensation.earnedWorkItemsCount} раб.
+      </span>
+      <span className="rounded-full bg-surface-container px-2 py-1 font-bold">
+        заработано {formatMoney(compensation.earnedAmount, compensation.currency)}
+      </span>
+      <span className="rounded-full bg-surface-container px-2 py-1 font-bold text-on-surface-variant">
+        выплачено {formatMoney(compensation.paidAmount, compensation.currency)}
+      </span>
+      <span className="rounded-full bg-green-100 px-2 py-1 font-bold text-green-700">
+        баланс {formatMoney(compensation.balanceAmount, compensation.currency)}
+      </span>
+      {onPayout && compensation.balanceAmount > 0 ? (
+        <button
+          type="button"
+          className="rounded-full bg-primary px-3 py-1 font-bold text-on-primary transition active:scale-95"
+          onClick={onPayout}
+        >
+          Оплатить
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function StaffPayoutModal({
+  token,
+  target,
+  onClose,
+  onDone,
+}: {
+  token: string;
+  target: StaffPayoutTarget | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<StaffPayoutMethod>("Cash");
+  const [note, setNote] = useState("");
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!target) return;
+    setAmount(String(target.compensation.balanceAmount));
+    setMethod("Cash");
+    setNote("");
+    setReceipt(null);
+    setError(null);
+  }, [target]);
+
+  if (!target) return null;
+  const currentTarget = target;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      setError("Введите сумму выплаты.");
+      return;
+    }
+    if (value > currentTarget.compensation.balanceAmount) {
+      setError("Сумма не должна превышать баланс сотрудника.");
+      return;
+    }
+    if (method === "Transfer" && !receipt) {
+      setError("Для перевода прикрепите фото чека.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createStaffPayout(token, {
+        staffUserId: currentTarget.staffUserId,
+        amount: value,
+        method,
+        note: note.trim() || undefined,
+        receipt,
+      });
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось провести выплату.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+      <form className="w-full max-w-md rounded-3xl bg-surface p-5 shadow-xl" onSubmit={onSubmit}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-extrabold">Выплата сотруднику</h3>
+            <p className="text-xs text-on-surface-variant">
+              {target.name} · {target.roleLabel} · баланс {formatMoney(target.compensation.balanceAmount, target.compensation.currency)}
+            </p>
+          </div>
+          <button type="button" className="rounded-full bg-surface-container px-3 py-1 text-sm font-bold" onClick={onClose}>×</button>
+        </div>
+        <div className="mt-4 space-y-3">
+          <label className="block space-y-1 text-xs font-semibold">
+            <span>Сумма</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              max={target.compensation.balanceAmount}
+              className="stitch-input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`rounded-2xl px-3 py-3 text-sm font-bold ${method === "Cash" ? "bg-primary text-on-primary" : "bg-surface-container"}`}
+              onClick={() => setMethod("Cash")}
+            >
+              Наличка
+            </button>
+            <button
+              type="button"
+              className={`rounded-2xl px-3 py-3 text-sm font-bold ${method === "Transfer" ? "bg-primary text-on-primary" : "bg-surface-container"}`}
+              onClick={() => setMethod("Transfer")}
+            >
+              Перевод
+            </button>
+          </div>
+          {method === "Transfer" ? (
+            <label className="block space-y-1 text-xs font-semibold">
+              <span>Фото чека</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="block w-full rounded-2xl bg-surface-container p-3 text-xs"
+                onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          ) : null}
+          <label className="block space-y-1 text-xs font-semibold">
+            <span>Комментарий</span>
+            <textarea
+              className="stitch-input min-h-20 resize-y"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Например: аванс за неделю"
+            />
+          </label>
+          {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
+          <button type="submit" disabled={submitting} className="stitch-button w-full">
+            {submitting ? "Проводим..." : "Подтвердить выплату"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 /* ── Pharmacies & Admins Tab ── */
 
 function PharmaciesTab({ token }: { token: string }) {
@@ -1094,6 +1356,7 @@ function PharmaciesTab({ token }: { token: string }) {
   const [oneCSources, setOneCSources] = useState<OneCSource[]>([]);
   const [query, setQuery] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [payoutTarget, setPayoutTarget] = useState<StaffPayoutTarget | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback((q = "") => {
@@ -1249,6 +1512,15 @@ function PharmaciesTab({ token }: { token: string }) {
                   <p className="font-bold truncate">{admin.name}</p>
                   <p className="text-xs text-on-surface-variant truncate">{admin.phoneNumber} {admin.pharmacyTitle ? `· ${admin.pharmacyTitle}` : ""}</p>
                   <p className="text-[10px] text-on-surface-variant font-mono break-all">{admin.adminId}</p>
+                  <StaffCompensationBadge
+                    compensation={admin.compensation}
+                    onPayout={admin.compensation ? () => setPayoutTarget({
+                      staffUserId: admin.adminId,
+                      name: admin.name,
+                      roleLabel: admin.pharmacyTitle ? `Админ · ${admin.pharmacyTitle}` : "Админ аптеки",
+                      compensation: admin.compensation!,
+                    }) : undefined}
+                  />
                 </div>
               </div>
               <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={async () => {
@@ -1280,6 +1552,12 @@ function PharmaciesTab({ token }: { token: string }) {
 
       {/* Clients section (merged from ClientsTab) */}
       <ClientsSection token={token} />
+      <StaffPayoutModal
+        token={token}
+        target={payoutTarget}
+        onClose={() => setPayoutTarget(null)}
+        onDone={() => load(query)}
+      />
     </div>
   );
 }
@@ -3513,6 +3791,7 @@ function PharmacistsSection({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [payoutTarget, setPayoutTarget] = useState<StaffPayoutTarget | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -3571,6 +3850,15 @@ function PharmacistsSection({ token }: { token: string }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold">{ph.name}</p>
                 <p className="text-xs text-on-surface-variant">+{ph.phoneNumber}</p>
+                <StaffCompensationBadge
+                  compensation={ph.compensation}
+                  onPayout={ph.compensation ? () => setPayoutTarget({
+                    staffUserId: ph.id,
+                    name: ph.name,
+                    roleLabel: "Фармацевт",
+                    compensation: ph.compensation!,
+                  }) : undefined}
+                />
               </div>
               <button
                 type="button"
@@ -3583,6 +3871,12 @@ function PharmacistsSection({ token }: { token: string }) {
           ))}
         </ul>
       )}
+      <StaffPayoutModal
+        token={token}
+        target={payoutTarget}
+        onClose={() => setPayoutTarget(null)}
+        onDone={load}
+      />
     </section>
   );
 }

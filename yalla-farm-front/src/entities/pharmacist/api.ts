@@ -1,9 +1,11 @@
 import { apiFetch } from "@/shared/api/http-client";
+import type { StaffCompensationSummary } from "@/entities/staff-compensation/api";
 
 export type ApiPharmacist = {
   id: string;
   name: string;
   phoneNumber: string;
+  compensation?: StaffCompensationSummary | null;
 };
 
 export async function getPharmacists(token: string): Promise<ApiPharmacist[]> {

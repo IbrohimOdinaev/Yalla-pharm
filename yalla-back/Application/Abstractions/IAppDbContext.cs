@@ -41,6 +41,8 @@ public interface IAppDbContext
     DbSet<DeliveryData> DeliveryData { get; }
     DbSet<ClientAddress> ClientAddresses { get; }
     DbSet<PaymentSettings> PaymentSettings { get; }
+    DbSet<StaffCompensationEarning> StaffCompensationEarnings { get; }
+    DbSet<StaffCompensationPayout> StaffCompensationPayouts { get; }
     DbSet<SyncState> SyncStates { get; }
     DbSet<AuditLogEntry> AuditLogs { get; }
     DbSet<ClientConsentHistory> ClientConsentHistory { get; }

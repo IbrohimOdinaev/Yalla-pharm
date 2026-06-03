@@ -35,6 +35,7 @@ import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
+import { getStaffCompensationMe, type StaffCompensationMe } from "@/entities/staff-compensation/api";
 
 type Tab = "dashboard" | "profile" | "offers" | "orders";
 
@@ -303,6 +304,7 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
   const [telegramStatus, setTelegramStatus] = useState<"idle" | "pending" | "confirmed" | "expired" | "error">("idle");
   const [telegramMsg, setTelegramMsg] = useState<string | null>(null);
   const [removingTelegramId, setRemovingTelegramId] = useState<string | null>(null);
+  const [compensation, setCompensation] = useState<StaffCompensationMe | null>(null);
 
   useEffect(() => {
     getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
@@ -312,6 +314,7 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       setSavedAdminPhone(data.phoneNumber || "");
       setAdminAvatarUrl(data.avatarUrl ?? null);
     }).catch(() => undefined);
+    getStaffCompensationMe(token).then(setCompensation).catch(() => setCompensation(null));
     refreshTelegramRecipients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -675,6 +678,39 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
           >
             {telegramStatus === "pending" ? "Ждём подтверждения..." : "Подключить Telegram"}
           </button>
+        </section>
+
+        <section className="stitch-card space-y-4 p-3 xs:p-4 sm:p-5">
+          <div>
+            <h2 className="text-sm font-bold xs:text-base sm:text-lg">Заработок</h2>
+            <p className="mt-1 text-[10px] text-on-surface-variant xs:text-xs sm:text-sm">
+              Считаются заказы, которые вы довели до статуса “Готов”.
+            </p>
+          </div>
+          {compensation ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-2xl bg-surface-container-low p-4">
+                <p className="text-2xl font-black text-primary">{compensation.summary.earnedWorkItemsCount}</p>
+                <p className="text-xs font-bold uppercase text-on-surface-variant">готовых заказов</p>
+              </div>
+              <div className="rounded-2xl bg-surface-container-low p-4">
+                <p className="text-2xl font-black text-primary">{formatMoney(compensation.summary.balanceAmount, compensation.summary.currency)}</p>
+                <p className="text-xs font-bold uppercase text-on-surface-variant">к выплате</p>
+              </div>
+              <div className="rounded-2xl bg-surface-container-low p-4">
+                <p className="text-lg font-black">{formatMoney(compensation.summary.earnedAmount, compensation.summary.currency)}</p>
+                <p className="text-xs font-bold uppercase text-on-surface-variant">начислено</p>
+              </div>
+              <div className="rounded-2xl bg-surface-container-low p-4">
+                <p className="text-lg font-black">{formatMoney(compensation.summary.paidAmount, compensation.summary.currency)}</p>
+                <p className="text-xs font-bold uppercase text-on-surface-variant">выплачено</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">
+              Данные заработка пока недоступны.
+            </div>
+          )}
         </section>
 
         {pharmacy ? (

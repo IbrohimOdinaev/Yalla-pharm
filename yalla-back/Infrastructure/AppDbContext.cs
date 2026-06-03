@@ -44,6 +44,8 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<DeliveryData> DeliveryData => Set<DeliveryData>();
   public DbSet<ClientAddress> ClientAddresses => Set<ClientAddress>();
   public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
+  public DbSet<StaffCompensationEarning> StaffCompensationEarnings => Set<StaffCompensationEarning>();
+  public DbSet<StaffCompensationPayout> StaffCompensationPayouts => Set<StaffCompensationPayout>();
   public DbSet<SyncState> SyncStates => Set<SyncState>();
   public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
   public DbSet<ClientConsentHistory> ClientConsentHistory => Set<ClientConsentHistory>();
