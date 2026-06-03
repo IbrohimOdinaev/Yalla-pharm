@@ -24,6 +24,7 @@ import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
 import { PharmacyPickerModal } from "@/widgets/pharmacy/PharmacyPickerModal";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
+import { DORU_DUSHANBE_INTEGRATED_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { PharmacyLogo } from "@/shared/ui";
 import type { GeoPoint } from "@/shared/lib/map";
 import type { PharmacyMarker } from "@/widgets/map/PharmacyMap";
@@ -142,8 +143,48 @@ function pharmacyHoursLabel(pharmacy: ActivePharmacy): string {
   return `${formatPharmacyTime(pharmacy.opensAt)}-${formatPharmacyTime(pharmacy.closesAt)}`;
 }
 
-function pharmacyBannerUrl(pharmacy: ActivePharmacy): string {
-  return pharmacy.bannerUrl || (pharmacy.id ? `/api/pharmacies/banner/${pharmacy.id}/content?w=720` : "");
+type DushanbeMapPharmacy = {
+  id: string;
+  title: string;
+  address: string;
+  landmark?: string | null;
+  phone?: string | null;
+  opensAt?: string | null;
+  closesAt?: string | null;
+  bannerUrl?: string | null;
+  lat: number;
+  lng: number;
+};
+
+function buildDushanbeMapPharmacies(activePharmacies: ActivePharmacy[]): DushanbeMapPharmacy[] {
+  const items: DushanbeMapPharmacy[] = DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => ({
+    id: `doru-${pharmacy.id}`,
+    title: pharmacy.title,
+    address: pharmacy.address,
+    landmark: pharmacy.landmark ?? null,
+    phone: pharmacy.pharmacyPhone || pharmacy.phone || null,
+    opensAt: pharmacy.opensAt ?? null,
+    closesAt: pharmacy.closesAt ?? null,
+    lat: pharmacy.lat,
+    lng: pharmacy.lng,
+  }));
+
+  for (const pharmacy of activePharmacies) {
+    if (pharmacy.isActive === false || pharmacy.latitude == null || pharmacy.longitude == null) continue;
+    items.push({
+      id: `admin-${pharmacy.id}`,
+      title: pharmacy.title,
+      address: pharmacy.address,
+      phone: null,
+      opensAt: pharmacy.opensAt ?? null,
+      closesAt: pharmacy.closesAt ?? null,
+      bannerUrl: pharmacy.bannerUrl ?? (pharmacy.id ? `/api/pharmacies/banner/${pharmacy.id}/content?w=720` : null),
+      lat: Number(pharmacy.latitude),
+      lng: Number(pharmacy.longitude),
+    });
+  }
+
+  return items;
 }
 
 function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -152,27 +193,30 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"list" | "map">("list");
   const [activePharmacies, setActivePharmacies] = useState<ActivePharmacy[]>([]);
-  const [isLoadingPharmacies, setIsLoadingPharmacies] = useState(false);
+
+  const mapPharmacies = useMemo(
+    () => buildDushanbeMapPharmacies(activePharmacies),
+    [activePharmacies],
+  );
 
   const pharmacies = useMemo<PharmacyMarker[]>(
-    () => activePharmacies
-      .filter((pharmacy) => pharmacy.latitude != null && pharmacy.longitude != null)
+    () => mapPharmacies
       .map((pharmacy) => ({
         id: pharmacy.id,
         title: pharmacy.title,
         address: pharmacy.address,
-        lat: Number(pharmacy.latitude),
-        lng: Number(pharmacy.longitude),
+        lat: pharmacy.lat,
+        lng: pharmacy.lng,
       })),
-    [activePharmacies],
+    [mapPharmacies],
   );
 
   const selectedPharmacy = useMemo(
     () => {
       if (!selectedPharmacyId) return null;
-      return activePharmacies.find((pharmacy) => pharmacy.id === selectedPharmacyId) ?? null;
+      return mapPharmacies.find((pharmacy) => pharmacy.id === selectedPharmacyId) ?? null;
     },
-    [activePharmacies, selectedPharmacyId],
+    [mapPharmacies, selectedPharmacyId],
   );
 
   useEffect(() => {
@@ -198,14 +242,12 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
     setGeoStatus("Запрашиваем доступ к геолокации...");
     setSelectedPharmacyId(null);
     setActiveTab("list");
-    setIsLoadingPharmacies(true);
 
     getActivePharmacies()
       .then((items) => {
         setActivePharmacies(items.filter((pharmacy) => pharmacy.isActive !== false));
       })
-      .catch(() => setActivePharmacies([]))
-      .finally(() => setIsLoadingPharmacies(false));
+      .catch(() => setActivePharmacies([]));
 
     if (!navigator.geolocation) {
       setGeoStatus("Геолокация недоступна в этом браузере.");
@@ -293,18 +335,14 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
         <div className="relative min-h-0 flex-1">
           {activeTab === "list" ? (
             <div className="h-full overflow-y-auto px-4 py-4 sm:px-5">
-              {isLoadingPharmacies ? (
-                <div className="rounded-3xl bg-surface-container-low p-6 text-center text-sm font-semibold text-on-surface-variant">
-                  Загружаем аптеки...
-                </div>
-              ) : activePharmacies.length === 0 ? (
+              {mapPharmacies.length === 0 ? (
                 <div className="rounded-3xl bg-surface-container-low p-6 text-center text-sm font-semibold text-on-surface-variant">
                   Аптеки для заказа пока недоступны.
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {activePharmacies.map((pharmacy) => {
-                    const banner = pharmacyBannerUrl(pharmacy);
+                  {mapPharmacies.map((pharmacy) => {
+                    const banner = pharmacy.bannerUrl || "";
                     return (
                       <button
                         key={pharmacy.id}
@@ -332,6 +370,11 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
                             <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
                               {pharmacyHoursLabel(pharmacy)}
                             </span>
+                            {pharmacy.phone ? (
+                              <span className="rounded-full bg-primary-soft px-2.5 py-1 text-primary">
+                                {pharmacy.phone}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </button>
@@ -387,6 +430,13 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
                     <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{selectedPharmacy.address}</p>
                   </div>
 
+                  {selectedPharmacy.landmark ? (
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Ориентир</p>
+                      <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{selectedPharmacy.landmark}</p>
+                    </div>
+                  ) : null}
+
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-2xl bg-surface-container-low p-3">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Открытие</p>
@@ -396,6 +446,11 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
                       <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Закрытие</p>
                       <p className="mt-1 text-sm font-bold text-on-surface">{formatPharmacyTime(selectedPharmacy.closesAt)}</p>
                     </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-surface-container-low p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Телефон аптеки</p>
+                    <p className="mt-1 text-sm font-bold text-on-surface">{selectedPharmacy.phone || "Неизвестно"}</p>
                   </div>
                 </div>
               </div>
