@@ -16,7 +16,7 @@ import {
   type ApiPrescription,
   type PrescriptionDecodeFailureReason,
 } from "@/entities/prescription/api";
-import { getMedicinesByIds, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicinesByIds, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { useActivePrescriptionStore } from "@/features/pharmacist/model/activePrescriptionStore";
 import { usePrescriptionDraftStore, type DraftItem } from "@/features/pharmacist/model/prescriptionDraftStore";
@@ -621,7 +621,7 @@ function DraftRow({
   onPair: () => void;
 }) {
   const med = it.medicineId ? medicineCache[it.medicineId] : undefined;
-  const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+  const imgUrl = med ? resolveMedicineImageUrl(med, 240) : DEFAULT_MEDICINE_IMAGE_URL;
   const title = med ? getMedicineDisplayName(med) : it.displayTitle;
   const wrapperClass =
     role === "analog"
@@ -642,14 +642,8 @@ function DraftRow({
       ) : null}
       <div className="flex items-center gap-3">
         <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop xs:h-14 xs:w-14">
-          {imgUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
-              <Icon name="pharmacy" size={18} />
-            </div>
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -897,7 +891,7 @@ function PairAnalogModal({
           <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
             {candidates.map((c) => {
               const med = c.medicineId ? medicineCache[c.medicineId] : undefined;
-              const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+              const imgUrl = med ? resolveMedicineImageUrl(med, 240) : DEFAULT_MEDICINE_IMAGE_URL;
               const title = med ? getMedicineDisplayName(med) : c.displayTitle;
               const isCurrent = sourceItem.analogDraftId === c.draftId;
               return (
@@ -910,14 +904,8 @@ function PairAnalogModal({
                     }`}
                   >
                     <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop">
-                      {imgUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
-                          <Icon name="pharmacy" size={18} />
-                        </div>
-                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-full w-full object-contain mix-blend-multiply" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-2 text-sm font-bold leading-tight">{title}</p>

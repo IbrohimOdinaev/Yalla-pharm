@@ -27,7 +27,7 @@ import {
 import { getAllPharmacies, updatePharmacy, deletePharmacy, uploadPharmacyIcon, deletePharmacyIcon, uploadPharmacyBanner, deletePharmacyBanner } from "@/entities/pharmacy/admin-api";
 import type { ActivePharmacy } from "@/entities/pharmacy/api";
 import { getAllMedicines, createMedicine, updateMedicine, deleteMedicine, uploadMedicineImage, getHomePopularMedicinesForAdmin, updateHomePopularMedicines, type HomePopularMedicineItem } from "@/entities/medicine/admin-api";
-import { getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getMedicineById, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getCategories, flattenCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
 import { getClients, deleteClient } from "@/entities/client/admin-api";
@@ -2019,12 +2019,13 @@ function MedicinesTab({ token }: { token: string }) {
               {popularItems.map((item, index) => (
                 <div key={item.medicineId} className="flex items-center gap-3 rounded-xl border border-outline/60 p-2">
                   <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop">
-                    {resolveMedicineImageUrl(item.medicine) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={resolveMedicineImageUrl(item.medicine)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">&mdash;</div>
-                    )}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveMedicineImageUrl(item.medicine) || DEFAULT_MEDICINE_IMAGE_URL}
+                      alt=""
+                      onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                      className="h-full w-full object-contain mix-blend-multiply"
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{index + 1}. {getMedicineDisplayName(item.medicine)}</p>
@@ -2099,12 +2100,13 @@ function MedicinesTab({ token }: { token: string }) {
               >
                 <div className="flex gap-3 p-3">
                   <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-image-backdrop">
-                    {resolveMedicineImageUrl(m) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={resolveMedicineImageUrl(m)} alt="" className="h-full w-full object-contain mix-blend-multiply" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] text-on-surface-variant">&mdash;</div>
-                    )}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveMedicineImageUrl(m) || DEFAULT_MEDICINE_IMAGE_URL}
+                      alt=""
+                      onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                      className="h-full w-full object-contain mix-blend-multiply"
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm truncate">{getMedicineDisplayName(m)}</p>

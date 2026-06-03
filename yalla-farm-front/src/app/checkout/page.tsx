@@ -13,7 +13,7 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getMyProfile } from "@/entities/client/api";
 import { removeFromBasket } from "@/entities/basket/api";
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
@@ -594,7 +594,7 @@ export default function CheckoutPage() {
             {checkoutItems.map((item) => {
               const med = medicineMap[item.medicineId];
               const name = med ? getMedicineDisplayName(med) : item.medicineId;
-              const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+              const imgUrl = med ? resolveMedicineImageUrl(med, 240) : DEFAULT_MEDICINE_IMAGE_URL;
               const enough = item.hasEnoughQuantity;
               const partial = item.isFound && !enough && item.foundQuantity > 0;
               const missing = !item.isFound || item.foundQuantity <= 0;
@@ -623,18 +623,13 @@ export default function CheckoutPage() {
                     disabled={missing}
                     className="h-4 w-4 flex-shrink-0 accent-primary disabled:cursor-not-allowed"
                   />
-                  {imgUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={imgUrl}
-                      alt=""
-                      className={`h-12 w-12 flex-shrink-0 rounded-xl bg-image-backdrop object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-image-backdrop text-on-surface-variant/40">
-                      <Icon name="bag" size={20} />
-                    </div>
-                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imgUrl}
+                    alt=""
+                    onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                    className={`h-12 w-12 flex-shrink-0 rounded-xl bg-image-backdrop object-contain mix-blend-multiply ${missing ? "grayscale" : ""}`}
+                  />
                   <div className="min-w-0 flex-1">
                     <p className={`truncate text-sm font-bold ${missing ? "line-through text-on-surface-variant" : ""}`}>
                       {name}

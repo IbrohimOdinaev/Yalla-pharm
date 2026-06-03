@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getGuestBasketPreview } from "@/entities/basket/api";
 import {
   getMyPrescriptions,
@@ -776,7 +776,7 @@ function PharmacySelectPageInner() {
                           {(option.items ?? []).map((item) => {
                             const med = medicineMap[item.medicineId];
                             const name = med ? getMedicineDisplayName(med) : item.medicineId;
-                            const imgUrl = med ? resolveMedicineImageUrl(med, 240) : "";
+                            const imgUrl = med ? resolveMedicineImageUrl(med, 240) : DEFAULT_MEDICINE_IMAGE_URL;
 
                             const enough = item.hasEnoughQuantity;
                             const partial = item.isFound && !enough;
@@ -790,12 +790,8 @@ function PharmacySelectPageInner() {
                                 onClick={(e) => { e.stopPropagation(); openProductPage(med, item.medicineId); }}
                                 className={`flex w-full items-center gap-2 rounded-lg p-1 text-left text-xs transition active:scale-95 hover:bg-surface-container-low ${missing ? "opacity-50" : ""}`}
                               >
-                                {imgUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high object-contain mix-blend-multiply" />
-                                ) : (
-                                  <div className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high" />
-                                )}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={imgUrl} alt="" onError={(event) => showDefaultMedicineImage(event.currentTarget)} className="h-8 w-8 flex-shrink-0 rounded bg-surface-container-high object-contain mix-blend-multiply" />
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate font-semibold">
                                     {name}
