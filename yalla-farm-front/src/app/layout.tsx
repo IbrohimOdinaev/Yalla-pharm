@@ -27,10 +27,10 @@ export const metadata: Metadata = {
   description: "Онлайн-аптека Душанбе: доставка лекарств",
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/logo-icon.png?v=2", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.png",
+    shortcut: "/logo-icon.png?v=2",
+    apple: "/logo-icon.png?v=2",
   },
 };
 

@@ -610,6 +610,8 @@ function StatsDashboard({ token }: { token: string }) {
 
 function PaymentSettingsCard({ token }: { token: string }) {
   const [snapshot, setSnapshot] = useState<PaymentSettingsSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [inputs, setInputs] = useState({
     dc: "",
     alif: "",
@@ -625,20 +627,29 @@ function PaymentSettingsCard({ token }: { token: string }) {
   });
   const [savingStaffRates, setSavingStaffRates] = useState(false);
 
+  const applySnapshot = useCallback((s: PaymentSettingsSnapshot) => {
+    setSnapshot(s);
+    setInputs({
+      dc: s.dcBaseUrl ?? "",
+      alif: s.alifUrlTemplate ?? "",
+      eskhata: s.eskhataUrlTemplate ?? "",
+    });
+    setStaffRates({
+      pharmacyOrderReadyFeeAmount: String(s.pharmacyOrderReadyFeeAmount ?? 0),
+      prescriptionDecodedFeeAmount: String(s.prescriptionDecodedFeeAmount ?? 0),
+    });
+  }, []);
+
   const load = useCallback(() => {
-    getPaymentSettings(token).then((s) => {
-      setSnapshot(s);
-      setInputs({
-        dc: s.dcBaseUrl ?? "",
-        alif: s.alifUrlTemplate ?? "",
-        eskhata: s.eskhataUrlTemplate ?? "",
-      });
-      setStaffRates({
-        pharmacyOrderReadyFeeAmount: String(s.pharmacyOrderReadyFeeAmount ?? 0),
-        prescriptionDecodedFeeAmount: String(s.prescriptionDecodedFeeAmount ?? 0),
-      });
-    }).catch(() => undefined);
-  }, [token]);
+    setLoading(true);
+    setLoadError(null);
+    getPaymentSettings(token)
+      .then(applySnapshot)
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : "Не удалось загрузить настройки платежей.");
+      })
+      .finally(() => setLoading(false));
+  }, [applySnapshot, token]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -657,12 +668,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
         : kind === "alif"
           ? await updateAlifUrlTemplate(token, trimmed || null)
           : await updateEskhataUrlTemplate(token, trimmed || null);
-      setSnapshot(updated);
-      setInputs({
-        dc: updated.dcBaseUrl ?? "",
-        alif: updated.alifUrlTemplate ?? "",
-        eskhata: updated.eskhataUrlTemplate ?? "",
-      });
+      applySnapshot(updated);
       setEditing(null);
       setMsg("Настройки платежей обновлены.");
     } catch (err) {
@@ -683,12 +689,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
     setMsg(null);
     try {
       const updated = await updatePaymentMethodEnabled(token, kind, isEnabled);
-      setSnapshot(updated);
-      setInputs({
-        dc: updated.dcBaseUrl ?? "",
-        alif: updated.alifUrlTemplate ?? "",
-        eskhata: updated.eskhataUrlTemplate ?? "",
-      });
+      applySnapshot(updated);
       setMsg(isEnabled ? `${label} включён.` : `${label} отключён.`);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
@@ -711,11 +712,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
         pharmacyOrderReadyFeeAmount: orderRate,
         prescriptionDecodedFeeAmount: prescriptionRate,
       });
-      setSnapshot(updated);
-      setStaffRates({
-        pharmacyOrderReadyFeeAmount: String(updated.pharmacyOrderReadyFeeAmount ?? 0),
-        prescriptionDecodedFeeAmount: String(updated.prescriptionDecodedFeeAmount ?? 0),
-      });
+      applySnapshot(updated);
       setMsg("Ставки сотрудников обновлены.");
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Ошибка сохранения.");
@@ -726,7 +723,27 @@ function PaymentSettingsCard({ token }: { token: string }) {
 
   if (!snapshot) {
     return (
-      <div className="stitch-card p-3 text-xs text-on-surface-variant">Загружаем настройки платежей...</div>
+      <div className="stitch-card p-3 xs:p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm xs:text-base sm:text-lg font-bold">Платежи</h2>
+            <p className="text-[10px] xs:text-xs text-on-surface-variant">
+              Эти настройки должны оставаться на Dashboard. Если они не загрузились, ниже показана причина.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="stitch-button-secondary px-4 py-2 text-xs"
+            disabled={loading}
+            onClick={load}
+          >
+            {loading ? "Загружаем..." : "Повторить"}
+          </button>
+        </div>
+        <div className={`mt-3 rounded-xl p-3 text-xs font-semibold ${loadError ? "bg-red-50 text-red-700" : "bg-surface-container-low text-on-surface-variant"}`}>
+          {loadError ?? "Загружаем настройки платежей..."}
+        </div>
+      </div>
     );
   }
 
