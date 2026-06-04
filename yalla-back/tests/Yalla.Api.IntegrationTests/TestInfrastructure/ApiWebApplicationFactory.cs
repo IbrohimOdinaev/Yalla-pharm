@@ -110,6 +110,7 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
         ["SmsVerification:RequestRateLimitPerMinute"] = "1000",
         ["SmsVerification:VerifyRateLimitPerMinute"] = "1000",
         ["SmsVerification:ResendRateLimitPerMinute"] = "1000",
+        ["Auth:LoginRateLimitPerMinute"] = "1000",
         ["OsonSms:UseStub"] = "true",
         ["SmsOutbox:Enabled"] = "false",
         ["Jura:BaseUrl"] = "",

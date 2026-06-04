@@ -48,6 +48,7 @@ public interface IAppDbContext
     DbSet<ClientConsentHistory> ClientConsentHistory { get; }
     DbSet<PendingRefund> PendingRefunds { get; }
     DbSet<HomePopularMedicine> HomePopularMedicines { get; }
+    DbSet<PharmacyWithdrawalRequest> PharmacyWithdrawalRequests { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

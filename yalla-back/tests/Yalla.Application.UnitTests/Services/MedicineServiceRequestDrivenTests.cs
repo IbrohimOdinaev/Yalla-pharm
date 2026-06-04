@@ -115,6 +115,27 @@ public class MedicineServiceRequestDrivenTests
   }
 
   [Fact]
+  public async Task UpdateMedicineAsync_UpdatesDescriptionAsPlainText()
+  {
+    using var scope = TestDbFactory.Create();
+    var medicine = TestDbFactory.CreateMedicine("Old", "OLD-DESC");
+    medicine.SetDescription("Old description");
+    scope.Db.Medicines.Add(medicine);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new MedicineService(scope.Db);
+    var response = await service.UpdateMedicineAsync(new UpdateMedicineRequest
+    {
+      MedicineId = medicine.Id,
+      Title = "Old",
+      Articul = "OLD-DESC",
+      Description = "<b>New</b>\n<script>alert(1)</script>"
+    });
+
+    Assert.Equal("New\nalert(1)", response.Medicine.Description);
+  }
+
+  [Fact]
   public async Task DeleteMedicineAsync_ThrowsWhenMedicineMissing()
   {
     using var scope = TestDbFactory.Create();

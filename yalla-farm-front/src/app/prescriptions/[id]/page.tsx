@@ -17,7 +17,7 @@ import {
 import { DEFAULT_MEDICINE_IMAGE_URL, getMedicinesByIds, getMedicineDisplayName, getCheapestPrice, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
+import { isAllowedPaymentUrl, openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
@@ -332,16 +332,15 @@ export default function PrescriptionDetailPage() {
                 <p className="text-xs text-on-surface-variant">
                   Откройте ссылку ниже и оплатите расшифровку. Как только платёж придёт, заявка автоматически отправится фармацевту.
                 </p>
-                {prescription.paymentUrl ? (
-                  <a
-                    href={prescription.paymentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                {prescription.paymentUrl && isAllowedPaymentUrl(prescription.paymentUrl) ? (
+                  <button
+                    type="button"
+                    onClick={() => openPaymentUrl(prescription.paymentUrl || "")}
                     className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-card transition active:scale-95 hover:bg-primary-container"
                   >
                     <Icon name="bolt" size={14} />
                     Оплатить 3 TJS
-                  </a>
+                  </button>
                 ) : (
                   <p className="text-xs text-secondary">
                     Не удалось получить платёжную ссылку. Обновите страницу или попробуйте позже.

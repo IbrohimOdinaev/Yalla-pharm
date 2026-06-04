@@ -81,10 +81,6 @@ builder.Services.AddCors(options =>
     });
 });
 builder.Services.AddSignalR();
-var smsVerificationSection = builder.Configuration.GetSection(SmsVerificationOptions.SectionName);
-var requestRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("RequestRateLimitPerMinute") ?? 10);
-var verifyRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("VerifyRateLimitPerMinute") ?? 30);
-var resendRateLimitPerMinute = Math.Max(1, smsVerificationSection.GetValue<int?>("ResendRateLimitPerMinute") ?? 10);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -107,40 +103,64 @@ builder.Services.AddRateLimiter(options =>
     };
 
     options.AddPolicy("sms-register-request", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
+    {
+        var permitLimit = GetRateLimitPermitLimit(context, "SmsVerification:RequestRateLimitPerMinute", 10);
+        return RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: BuildRateLimitPartitionKey(context, "sms-register-request"),
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = requestRateLimitPerMinute,
+                PermitLimit = permitLimit,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0,
                 AutoReplenishment = true
-            }));
+            });
+    });
 
     options.AddPolicy("sms-register-verify", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
+    {
+        var permitLimit = GetRateLimitPermitLimit(context, "SmsVerification:VerifyRateLimitPerMinute", 30);
+        return RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: BuildRateLimitPartitionKey(context, "sms-register-verify"),
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = verifyRateLimitPerMinute,
+                PermitLimit = permitLimit,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0,
                 AutoReplenishment = true
-            }));
+            });
+    });
 
     options.AddPolicy("sms-register-resend", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
+    {
+        var permitLimit = GetRateLimitPermitLimit(context, "SmsVerification:ResendRateLimitPerMinute", 10);
+        return RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: BuildRateLimitPartitionKey(context, "sms-register-resend"),
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = resendRateLimitPerMinute,
+                PermitLimit = permitLimit,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0,
                 AutoReplenishment = true
-            }));
+            });
+    });
+
+    options.AddPolicy("auth-login", context =>
+    {
+        var permitLimit = GetRateLimitPermitLimit(context, "Auth:LoginRateLimitPerMinute", 20);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: BuildRateLimitPartitionKey(context, "auth-login"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permitLimit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
 });
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -527,6 +547,12 @@ static string BuildRateLimitPartitionKey(HttpContext context, string policyName)
 
     var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown-ip";
     return $"{policyName}:{ip}";
+}
+
+static int GetRateLimitPermitLimit(HttpContext context, string configurationKey, int defaultValue)
+{
+    var configuration = context.RequestServices.GetService<IConfiguration>();
+    return Math.Max(1, configuration?.GetValue<int?>(configurationKey) ?? defaultValue);
 }
 
 public partial class Program { }

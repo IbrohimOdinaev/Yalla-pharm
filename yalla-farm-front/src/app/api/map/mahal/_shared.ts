@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 const MAHAL_BASE_URL = "https://platform.mahal.tj/api/services";
-const FALLBACK_TEST_TOKEN = "b831b2ab-8498-4d17-8e4b-7f396a6e1f54";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -17,7 +16,7 @@ function getToken() {
   return (
     process.env.MAHAL_API_TOKEN
     ?? process.env.NEXT_PUBLIC_MAHAL_API_TOKEN
-    ?? FALLBACK_TEST_TOKEN
+    ?? ""
   );
 }
 
@@ -108,8 +107,16 @@ function formatMahalItem(item: unknown): MahalAddressItem | null {
 }
 
 export async function requestMahal(path: "getAddress" | "getAddressByLocation", params: Record<string, string>) {
+  const token = getToken();
+  if (!token) {
+    return NextResponse.json(
+      { message: "MAHAL_API_TOKEN is not configured." },
+      { status: 503 },
+    );
+  }
+
   const url = new URL(`${MAHAL_BASE_URL}/${path}`);
-  url.searchParams.set("token", getToken());
+  url.searchParams.set("token", token);
   for (const [key, value] of Object.entries(params)) {
     if (value.trim()) url.searchParams.set(key, value);
   }

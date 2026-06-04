@@ -33,6 +33,7 @@ const ADMIN_ITEMS: StaffNavItem[] = [
   { label: "Предложения", href: "/workspace#offers", icon: "bag", group: "Рабочее место" },
   { label: "Заказы", href: "/workspace#orders", icon: "orders", group: "Рабочее место" },
   { label: "Запросы", href: "/workspace/lookups", icon: "search", group: "Рабочее место" },
+  { label: "Финансы", href: "/workspace#finance", icon: "coin", group: "Рабочее место" },
 ];
 
 const SUPERADMIN_ITEMS: StaffNavItem[] = [
@@ -42,6 +43,7 @@ const SUPERADMIN_ITEMS: StaffNavItem[] = [
   { label: "Логи", href: "/superadmin#logs", icon: "list", group: "Система" },
   { label: "Заказы", href: "/superadmin#orders", icon: "orders", group: "Операции" },
   { label: "Рецепты", href: "/superadmin#prescriptions", icon: "orders", group: "Операции" },
+  { label: "Финансы", href: "/superadmin#finance", icon: "coin", group: "Операции" },
 ];
 
 const PHARMACIST_ITEMS: StaffNavItem[] = [

@@ -15,6 +15,7 @@ import {
 } from "@/entities/auth/api";
 import { connectTelegramAuthHub } from "@/shared/lib/telegramAuthHub";
 import { consumeGuestCheckoutIntent } from "@/shared/lib/guest-intent";
+import { normalizeLocalRedirect } from "@/shared/lib/safeRedirect";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { AppShell } from "@/widgets/layout/AppShell";
@@ -103,9 +104,7 @@ function LoginContent() {
   function applyCredentialsAndRedirect(token: string, role: string, userId: string) {
     dispatch(setCredentials({ token, role, userId }));
     const hadCheckoutIntent = consumeGuestCheckoutIntent();
-    if (redirectTo) router.push(redirectTo);
-    else if (hadCheckoutIntent) router.push("/checkout");
-    else router.push("/");
+    router.push(normalizeLocalRedirect(redirectTo, hadCheckoutIntent ? "/checkout" : "/"));
   }
 
   async function onRequestOtp(e: FormEvent<HTMLFormElement>) {

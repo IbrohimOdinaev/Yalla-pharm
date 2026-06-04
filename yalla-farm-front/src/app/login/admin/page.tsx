@@ -9,6 +9,7 @@ import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
 import { decodeJwt } from "@/shared/lib/jwt";
 import { ApiError } from "@/shared/api/http-client";
+import { normalizeLocalRedirect } from "@/shared/lib/safeRedirect";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { Button, Icon, IconButton } from "@/shared/ui";
@@ -111,11 +112,12 @@ function AdminLoginContent() {
         pharmacyId: claims.pharmacyId,
       }));
 
-      if (redirectTo) router.push(redirectTo);
-      else if (role === "Admin") router.push("/workspace");
-      else if (role === "SuperAdmin") router.push("/superadmin");
-      else if (role === "Pharmacist") router.push("/pharmacist");
-      else router.push("/");
+      const fallbackRedirect =
+        role === "Admin" ? "/workspace"
+          : role === "SuperAdmin" ? "/superadmin"
+            : role === "Pharmacist" ? "/pharmacist"
+              : "/";
+      router.push(normalizeLocalRedirect(redirectTo, fallbackRedirect));
     } catch (err) {
       setError(loginErrorMessage(err));
     } finally {

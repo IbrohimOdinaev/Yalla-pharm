@@ -28,6 +28,7 @@ function mockProductFetch() {
                   { name: "Дозировка", option: "100мг" },
                   { name: "Форма", option: "Таблетки" },
                 ],
+                description: "<script>alert(1)</script>Описание",
                 offers: [
                   { pharmacyId: "p1", pharmacyTitle: "Аптека Центр", stockQuantity: 10, price: 15.5 },
                   { pharmacyId: "p2", pharmacyTitle: "Аптека Юг", stockQuantity: 5, price: 12.0 },
@@ -86,6 +87,13 @@ describe("ProductDetailsPage", () => {
     renderWithProviders(<ProductDetailsPage />);
     expect(await screen.findByText("Аптека Центр")).toBeInTheDocument();
     expect(screen.getByText("Аптека Юг")).toBeInTheDocument();
+  });
+
+  it("renders medicine description as text, not HTML", async () => {
+    mockProductFetch();
+    const { container } = renderWithProviders(<ProductDetailsPage />);
+    expect(await screen.findByText("<script>alert(1)</script>Описание")).toBeInTheDocument();
+    expect(container.querySelector("script")).toBeNull();
   });
 
   it("renders the «В корзину» CTA", async () => {

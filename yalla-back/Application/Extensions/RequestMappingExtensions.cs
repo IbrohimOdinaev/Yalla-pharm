@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Yalla.Application.Abstractions;
+using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Domain.Entities;
 using Yalla.Domain.Exceptions;
@@ -22,7 +23,7 @@ public static class RequestMappingExtensions
         medicine.SetBarcode(request.Barcode);
 
         if (!string.IsNullOrEmpty(request.Description))
-            medicine.SetDescription(request.Description);
+            medicine.SetDescription(UserInputPolicy.NormalizePlainText(request.Description));
 
         if (request.CategoryId.HasValue)
             medicine.SetCategoryId(request.CategoryId.Value);
@@ -122,6 +123,8 @@ public static class RequestMappingExtensions
         medicine.SetTitle(request.Title.Trim());
         medicine.SetArticul(request.Articul?.Trim());
         medicine.SetBarcode(request.Barcode);
+        if (request.Description is not null)
+            medicine.SetDescription(UserInputPolicy.NormalizePlainText(request.Description));
         medicine.SetCategoryId(request.CategoryId);
 
     }

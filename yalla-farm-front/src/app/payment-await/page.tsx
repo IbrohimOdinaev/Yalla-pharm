@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
-import { openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { getOrderById } from "@/entities/order/api";
 import { usePaymentIntentLiveState } from "@/features/checkout/model/usePaymentIntentLiveState";
 import type { ApiOrder } from "@/shared/types/api";
@@ -142,10 +142,15 @@ function PaymentAwaitContent() {
 
         {/* Actions */}
         <div className="flex flex-col gap-2 sm:flex-row">
-          {paymentUrl ? (
-            <a href={paymentUrl} target="_blank" rel="noreferrer" className="flex-1">
-              <Button size="md" fullWidth rightIcon="arrow-right">Открыть в новом окне</Button>
-            </a>
+          {paymentUrl && isAllowedPaymentUrl(paymentUrl) ? (
+            <Button
+              size="md"
+              fullWidth
+              rightIcon="arrow-right"
+              onClick={() => openPaymentUrl(paymentUrl)}
+            >
+              Открыть в новом окне
+            </Button>
           ) : null}
           <Button variant="secondary" size="md" fullWidth leftIcon="orders" onClick={() => router.push("/orders")}>
             Мои заказы

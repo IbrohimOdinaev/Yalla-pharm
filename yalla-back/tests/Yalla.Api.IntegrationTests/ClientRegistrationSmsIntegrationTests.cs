@@ -106,6 +106,30 @@ public sealed class ClientRegistrationSmsIntegrationTests : ApiTestBase
   }
 
   [Fact]
+  public async Task Register_DirectWithSkip_WhenBypassDisabled_ShouldReturnBadRequest()
+  {
+    using var factory = new ApiWebApplicationFactory(new Dictionary<string, string?>
+    {
+      ["SmsVerification:AllowRegistrationBypass"] = "false"
+    });
+    await factory.ResetDatabaseAsync();
+    using var client = factory.CreateApiClient();
+
+    var response = await client.PostAsJsonAsync("/api/clients/register", new
+    {
+      Name = "Bypass Disabled User",
+      PhoneNumber = NextPhoneNumber(),
+      Password = "Pass123!",
+      SkipPhoneVerification = true
+    });
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    var payload = await ReadJsonAsync(response);
+    Assert.Equal("phone_verification_bypass_disabled", payload.GetProperty("errorCode").GetString());
+    Assert.Equal("bypass_disabled", payload.GetProperty("reason").GetString());
+  }
+
+  [Fact]
   public async Task RegisterVerify_WithInvalidCode_ShouldFailAndDecreaseAttempts()
   {
     using var client = CreateClient();

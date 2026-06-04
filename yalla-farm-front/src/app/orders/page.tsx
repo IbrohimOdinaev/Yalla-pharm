@@ -17,7 +17,7 @@ import { usePharmacyAddresses } from "@/features/pharmacy/model/usePharmacyAddre
 import { getPickupAvailability } from "@/features/pharmacy/model/pharmacyHours";
 import type { ApiOrder } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
+import { isAllowedPaymentUrl, openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -33,8 +33,8 @@ import {
   type PaymentMethodOption,
 } from "@/widgets/payment/PaymentMethodModal";
 
-const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
-const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
+const FALLBACK_ALIF_URL_TEMPLATE = "";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "";
 
 const STATUS_LABELS: Record<string, string> = {
   New: "Новый",
@@ -474,15 +474,10 @@ export default function OrdersPage() {
               {/* Payment button + warning for awaiting orders */}
               {awaiting ? (
                 <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-                  {d.paymentUrl ? (
-                    <a
-                      href={d.paymentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-shrink-0"
-                    >
-                      <Button size="sm" rightIcon="arrow-right">Оплатить</Button>
-                    </a>
+                  {d.paymentUrl && isAllowedPaymentUrl(d.paymentUrl) ? (
+                    <Button size="sm" rightIcon="arrow-right" onClick={() => openPaymentUrl(d.paymentUrl || "")}>
+                      Оплатить
+                    </Button>
                   ) : null}
                   <Button
                     size="sm"

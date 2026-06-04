@@ -19,8 +19,8 @@ import { Button, Icon, Input } from "@/shared/ui";
 
 const MAX_PHOTOS = 2;
 const ACCEPTED = "image/png,image/jpeg,image/jpg,image/webp";
-const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
-const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
+const FALLBACK_ALIF_URL_TEMPLATE = "";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "";
 
 // Guest-flow draft: stashed in localStorage when an unauthenticated user
 // hits "Отправить рецепт", so after they finish /login we can drop them

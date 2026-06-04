@@ -36,8 +36,16 @@ import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadg
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 import { getStaffCompensationMe, type StaffCompensationMe } from "@/entities/staff-compensation/api";
+import {
+  createPharmacyWithdrawalRequest,
+  getAdminPharmacyFinance,
+  withdrawalBankValue,
+  withdrawalStatusLabel,
+  type PharmacyFinanceResponse,
+  type PharmacyWithdrawalRequest,
+} from "@/entities/pharmacy-finance/api";
 
-type Tab = "dashboard" | "profile" | "offers" | "orders";
+type Tab = "dashboard" | "profile" | "offers" | "orders" | "finance";
 
 const TAB_META: Record<Tab, { eyebrow: string; title: string; description: string }> = {
   dashboard: {
@@ -59,6 +67,11 @@ const TAB_META: Record<Tab, { eyebrow: string; title: string; description: strin
     eyebrow: "Order Board",
     title: "Заказы",
     description: "Операционная доска заказов по статусам с действиями для сборки и доставки.",
+  },
+  finance: {
+    eyebrow: "Pharmacy Finance",
+    title: "Финансы",
+    description: "Баланс аптеки, заявки на вывод средств и история выплат.",
   },
 };
 
@@ -123,6 +136,7 @@ export default function WorkspacePage() {
       if (h === "dashboard") setActiveTab("dashboard");
       else if (h === "offers") setActiveTab("offers");
       else if (h === "orders") setActiveTab("orders");
+      else if (h === "finance") setActiveTab("finance");
       else if (h === "profile" || h === "pharmacy") setActiveTab("profile");
       else setActiveTab("dashboard");
     }
@@ -221,6 +235,7 @@ export default function WorkspacePage() {
         {activeTab === "profile" ? <PharmacyTab token={token} onLogout={onLogout} /> : null}
         {activeTab === "offers" ? <OffersTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} onStatsRefresh={refreshDailyStats} /> : null}
+        {activeTab === "finance" ? <FinanceTab token={token} /> : null}
       </div>
     </StaffShell>
   );
@@ -280,6 +295,160 @@ function DashboardTab({
         ))}
       </div>
     </section>
+  );
+}
+
+function FinanceTab({ token }: { token: string }) {
+  const [finance, setFinance] = useState<PharmacyFinanceResponse | null>(null);
+  const [selectedBank, setSelectedBank] = useState<"DushanbeCity" | "Alif" | "Eskhata">("DushanbeCity");
+  const [walletPhone, setWalletPhone] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const loadFinance = useCallback(() => {
+    getAdminPharmacyFinance(token)
+      .then(setFinance)
+      .catch((err) => setMessage(err instanceof Error ? err.message : "Не удалось загрузить финансы."));
+  }, [token]);
+
+  useEffect(() => {
+    loadFinance();
+  }, [loadFinance]);
+
+  async function onCreateWithdrawal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!finance || finance.summary.availableAmount <= 0) return;
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      await createPharmacyWithdrawalRequest(token, {
+        bank: selectedBank,
+        walletPhoneNumber: walletPhone,
+      });
+      setWalletPhone("");
+      setMessage("Заявка на вывод создана.");
+      loadFinance();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Не удалось создать заявку.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const summary = finance?.summary;
+  const requests = finance?.withdrawalRequests ?? [];
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <FinanceMetric label="Всего по заказам" value={formatMoney(summary?.totalOrderAmount ?? 0, summary?.currency ?? "TJS")} hint="Завершённые заказы без доставки" />
+        <FinanceMetric label="Доступно" value={formatMoney(summary?.availableAmount ?? 0, summary?.currency ?? "TJS")} hint="Можно запросить сейчас" emphasis />
+        <FinanceMetric label="Ожидает" value={formatMoney(summary?.pendingWithdrawalAmount ?? 0, summary?.currency ?? "TJS")} hint="Новые заявки на вывод" />
+        <FinanceMetric label="Выплачено" value={formatMoney(summary?.completedWithdrawalAmount ?? 0, summary?.currency ?? "TJS")} hint={`${summary?.completedOrdersCount ?? 0} завершённых заказов`} />
+      </div>
+
+      <form className="stitch-card space-y-4 p-4 sm:p-5" onSubmit={onCreateWithdrawal}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-base font-black">Запросить вывод средств</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              К выводу будет отправлена вся доступная сумма: {formatMoney(summary?.availableAmount ?? 0, summary?.currency ?? "TJS")}.
+            </p>
+          </div>
+          <button
+            type="submit"
+            className="stitch-button sm:min-w-[180px]"
+            disabled={isSubmitting || !summary || summary.availableAmount <= 0 || walletPhone.trim().length < 9}
+          >
+            {isSubmitting ? "Отправляем..." : "Запросить"}
+          </button>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[240px_1fr]">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-on-surface-variant">Банк</span>
+            <select
+              className="stitch-input"
+              value={selectedBank}
+              onChange={(e) => setSelectedBank(e.target.value as "DushanbeCity" | "Alif" | "Eskhata")}
+            >
+              <option value="DushanbeCity">Dushanbe City</option>
+              <option value="Alif">Alif</option>
+              <option value="Eskhata">Эсхата</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-on-surface-variant">Номер кошелька</span>
+            <input
+              className="stitch-input"
+              inputMode="tel"
+              value={walletPhone}
+              onChange={(e) => setWalletPhone(e.target.value.replace(/[^\d+]/g, "").slice(0, 16))}
+              placeholder="+992900000000"
+              required
+            />
+          </label>
+        </div>
+
+        {message ? (
+          <div className={`rounded-xl p-3 text-sm font-semibold ${message.includes("создана") ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
+            {message}
+          </div>
+        ) : null}
+      </form>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-black">История заявок</h2>
+            <p className="text-xs text-on-surface-variant">Новые и выполненные заявки по вашей аптеке.</p>
+          </div>
+          <button type="button" className="rounded-xl bg-surface-container px-3 py-2 text-xs font-black" onClick={loadFinance}>
+            Обновить
+          </button>
+        </div>
+        <div className="space-y-2">
+          {requests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок пока нет.</p>
+          ) : (
+            requests.map((request) => <AdminWithdrawalCard key={request.id} request={request} />)
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function FinanceMetric({ label, value, hint, emphasis = false }: { label: string; value: string; hint: string; emphasis?: boolean }) {
+  return (
+    <div className="stitch-card min-h-[124px] p-4">
+      <p className={`text-2xl font-black ${emphasis ? "text-primary" : "text-on-surface"}`}>{value}</p>
+      <p className="mt-3 text-xs font-black uppercase tracking-wider text-on-surface-variant">{label}</p>
+      <p className="mt-1 text-xs text-on-surface-variant">{hint}</p>
+    </div>
+  );
+}
+
+function AdminWithdrawalCard({ request }: { request: PharmacyWithdrawalRequest }) {
+  const statusLabel = withdrawalStatusLabel(request.status);
+  const isCompleted = statusLabel === "Выполненный";
+  return (
+    <article className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-black">{formatMoney(request.amount, request.currency)} · {request.bankLabel || withdrawalBankValue(request.bank)}</p>
+          <p className="mt-0.5 text-xs text-on-surface-variant">
+            Кошелёк: {request.walletPhoneNumber} · {new Date(request.createdAtUtc).toLocaleString("ru-RU")}
+          </p>
+          {request.superAdminComment ? (
+            <p className="mt-1 text-xs text-on-surface-variant">{request.superAdminComment}</p>
+          ) : null}
+        </div>
+        <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-black ${isCompleted ? "bg-primary-soft text-primary" : "bg-warning-container text-on-surface"}`}>
+          {statusLabel}
+        </span>
+      </div>
+    </article>
   );
 }
 

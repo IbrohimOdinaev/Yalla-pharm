@@ -51,6 +51,7 @@ public class AppDbContext : DbContext, IAppDbContext
   public DbSet<ClientConsentHistory> ClientConsentHistory => Set<ClientConsentHistory>();
   public DbSet<PendingRefund> PendingRefunds => Set<PendingRefund>();
   public DbSet<HomePopularMedicine> HomePopularMedicines => Set<HomePopularMedicine>();
+  public DbSet<PharmacyWithdrawalRequest> PharmacyWithdrawalRequests => Set<PharmacyWithdrawalRequest>();
   public DbSet<IntegrationSource> IntegrationSources => Set<IntegrationSource>();
   public DbSet<MedicineBarcode> MedicineBarcodes => Set<MedicineBarcode>();
   public DbSet<ExternalProductLink> ExternalProductLinks => Set<ExternalProductLink>();

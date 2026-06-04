@@ -15,6 +15,7 @@ public class RequestMappingExtensionsTests
         {
             Title = "  Aspirin  ",
             Articul = "  ART-1  ",
+            Description = "<script>alert(1)</script>Use after meal",
             Atributes =
           [
             new MedicineAtributeRequest { Type = AttributeType.ReleaseForm, Value = "pill" }
@@ -25,6 +26,7 @@ public class RequestMappingExtensionsTests
 
         Assert.Equal("Aspirin", medicine.Title);
         Assert.Equal("ART-1", medicine.Articul);
+        Assert.Equal("alert(1)Use after meal", medicine.Description);
         Assert.Single(medicine.Atributes);
     }
 
@@ -79,13 +81,15 @@ public class RequestMappingExtensionsTests
         {
             MedicineId = medicine.Id,
             Title = " New title ",
-            Articul = " NEW-1 "
+            Articul = " NEW-1 ",
+            Description = "&lt;img src=x onerror=alert(1)&gt;Updated"
         };
 
         request.ApplyToDomain(medicine);
 
         Assert.Equal("New title", medicine.Title);
         Assert.Equal("NEW-1", medicine.Articul);
+        Assert.Equal("Updated", medicine.Description);
     }
 
     [Fact]

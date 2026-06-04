@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState, type ChangeEvent, 
 import { useAppSelector } from "@/shared/lib/redux";
 import { apiFetch } from "@/shared/api/http-client";
 import { formatMoney } from "@/shared/lib/format";
+import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { DatePicker, Select } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
 
@@ -56,6 +57,13 @@ import {
   type StaffCompensationSummary,
   type StaffPayoutMethod,
 } from "@/entities/staff-compensation/api";
+import {
+  completePharmacyWithdrawalRequest,
+  getSuperAdminPharmacyWithdrawals,
+  withdrawalBankValue,
+  withdrawalStatusLabel,
+  type PharmacyWithdrawalRequest,
+} from "@/entities/pharmacy-finance/api";
 import { createOneCSource, deleteOneCSource, getOneCSources, setOneCSourceActive, updateOneCSource, type OneCSource, type OneCExchangeStatus } from "@/entities/one-c/admin-api";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
@@ -67,7 +75,7 @@ import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
 
-type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions";
+type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions" | "finance";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
@@ -228,7 +236,7 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "pharmacies" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions") setActiveTab(h);
+      if (h === "pharmacies" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions" || h === "finance") setActiveTab(h);
       else setActiveTab("dashboard");
     }
     syncHash();
@@ -266,8 +274,206 @@ export default function SuperAdminPage() {
         {activeTab === "logs" ? <OneCLogsTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
         {activeTab === "prescriptions" ? <PrescriptionsTab token={token} /> : null}
+        {activeTab === "finance" ? <FinanceTab token={token} /> : null}
       </div>
     </StaffShell>
+  );
+}
+
+function FinanceTab({ token }: { token: string }) {
+  const [requests, setRequests] = useState<PharmacyWithdrawalRequest[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const loadRequests = useCallback(() => {
+    getSuperAdminPharmacyWithdrawals(token)
+      .then((data) => setRequests(data.withdrawalRequests ?? []))
+      .catch((err) => setMessage(err instanceof Error ? err.message : "Не удалось загрузить заявки."));
+  }, [token]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  const active = requests.filter((request) => withdrawalStatusLabel(request.status) === "Новый");
+  const completed = requests.filter((request) => withdrawalStatusLabel(request.status) === "Выполненный");
+  const activeAmount = active.reduce((sum, request) => sum + request.amount, 0);
+  const completedAmount = completed.reduce((sum, request) => sum + request.amount, 0);
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <FinanceSummaryCard label="Новые заявки" value={String(active.length)} hint={formatMoney(activeAmount, "TJS")} />
+        <FinanceSummaryCard label="Выполнено" value={String(completed.length)} hint={formatMoney(completedAmount, "TJS")} />
+        <FinanceSummaryCard label="Всего заявок" value={String(requests.length)} hint="По всем аптекам" />
+      </div>
+
+      {message ? (
+        <div className={`rounded-2xl p-3 text-sm font-semibold ${message.includes("подтверждена") ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
+          {message}
+        </div>
+      ) : null}
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black">Заявки на вывод средств аптек</h2>
+            <p className="text-sm text-on-surface-variant">
+              Откройте deeplink, переведите сумму, прикрепите скрин чека и подтвердите заявку.
+            </p>
+          </div>
+          <button type="button" className="rounded-xl bg-surface-container px-4 py-2 text-sm font-black" onClick={loadRequests}>
+            Обновить
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {requests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок пока нет.</p>
+          ) : (
+            requests.map((request) => (
+              <SuperAdminWithdrawalCard
+                key={request.id}
+                token={token}
+                request={request}
+                onDone={(text) => {
+                  setMessage(text);
+                  loadRequests();
+                }}
+              />
+            ))
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function FinanceSummaryCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="stitch-card p-4">
+      <p className="text-3xl font-black text-primary">{value}</p>
+      <p className="mt-2 text-xs font-black uppercase tracking-wider text-on-surface-variant">{label}</p>
+      <p className="mt-1 text-sm font-semibold">{hint}</p>
+    </div>
+  );
+}
+
+function SuperAdminWithdrawalCard({
+  token,
+  request,
+  onDone,
+}: {
+  token: string;
+  request: PharmacyWithdrawalRequest;
+  onDone: (message: string) => void;
+}) {
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [comment, setComment] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const statusLabel = withdrawalStatusLabel(request.status);
+  const isCompleted = statusLabel === "Выполненный";
+  const bank = request.bankLabel || withdrawalBankValue(request.bank);
+
+  async function onComplete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!receipt || isCompleted) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await completePharmacyWithdrawalRequest(token, {
+        withdrawalRequestId: request.id,
+        receipt,
+        comment,
+      });
+      setReceipt(null);
+      setComment("");
+      onDone("Заявка подтверждена.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось подтвердить заявку.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <article className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${isCompleted ? "bg-primary-soft text-primary" : "bg-warning-container text-on-surface"}`}>
+              {statusLabel}
+            </span>
+            <span className="rounded-full bg-surface-container px-3 py-1 text-xs font-black">{bank}</span>
+            <span className="text-sm font-black">{formatMoney(request.amount, request.currency)}</span>
+          </div>
+          <div>
+            <h3 className="text-base font-black">{request.pharmacyTitle}</h3>
+            <p className="text-xs text-on-surface-variant">
+              Admin: {request.requestedByAdminName || request.requestedByAdminId} · {request.requestedByAdminPhoneNumber}
+            </p>
+            <p className="text-xs text-on-surface-variant">
+              Кошелёк: {request.walletPhoneNumber} · создана {formatDushanbeDateTime(request.createdAtUtc)}
+            </p>
+            {request.completedAtUtc ? (
+              <p className="text-xs text-primary">Выполнена {formatDushanbeDateTime(request.completedAtUtc)}</p>
+            ) : null}
+          </div>
+          {request.superAdminComment ? (
+            <p className="rounded-xl bg-surface-container-low p-2 text-xs text-on-surface-variant">{request.superAdminComment}</p>
+          ) : null}
+          {request.receiptImageUrl ? (
+            <div className="mt-2 h-40 w-full max-w-xs overflow-hidden rounded-2xl border border-outline/60 bg-surface-container-low">
+              <AuthedImage
+                src={request.receiptImageUrl}
+                alt="Чек выплаты"
+                className="h-full w-full object-cover"
+                lazy
+                fallback={<div className="flex h-full w-full items-center justify-center text-xs font-semibold text-on-surface-variant">Загрузка чека...</div>}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="w-full space-y-3 xl:max-w-md">
+          {!isCompleted ? (
+            <>
+              <button
+                type="button"
+                className="stitch-button w-full"
+                disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
+                onClick={() => openPaymentUrl(request.deepLinkUrl)}
+              >
+                Открыть deeplink для оплаты
+              </button>
+              <form className="space-y-3" onSubmit={onComplete}>
+                <PrettyFileInput
+                  label="Скрин чека"
+                  accept="image/png,image/jpeg,image/webp"
+                  required
+                  clearAfterChange={false}
+                  onFileChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
+                />
+                <input
+                  className="stitch-input"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  placeholder="Комментарий / номер операции"
+                />
+                {error ? <p className="text-xs font-semibold text-red-600">{error}</p> : null}
+                <button type="submit" className="stitch-button w-full" disabled={isSubmitting || !receipt}>
+                  {isSubmitting ? "Подтверждаем..." : "Подтвердить выполнение"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="rounded-2xl bg-primary-soft p-3 text-sm font-semibold text-primary">
+              Выплата сохранена в истории.
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 

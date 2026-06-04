@@ -36,6 +36,39 @@ public static class UserInputPolicy
       throw new DomainArgumentException(validationError);
   }
 
+  public static string NormalizePlainText(string? value)
+  {
+    if (string.IsNullOrEmpty(value))
+      return string.Empty;
+
+    var decoded = System.Net.WebUtility.HtmlDecode(value);
+    var output = new System.Text.StringBuilder(decoded.Length);
+    var insideTag = false;
+
+    foreach (var character in decoded)
+    {
+      if (character == '<')
+      {
+        insideTag = true;
+        continue;
+      }
+
+      if (insideTag)
+      {
+        if (character == '>')
+          insideTag = false;
+        continue;
+      }
+
+      if (character == '\0')
+        continue;
+
+      output.Append(character);
+    }
+
+    return output.ToString().Trim();
+  }
+
   public static string? ValidatePhoneNumber(string? phoneNumber, string fieldName)
   {
     if (string.IsNullOrWhiteSpace(phoneNumber))

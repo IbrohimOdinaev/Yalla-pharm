@@ -23,6 +23,7 @@ public sealed class AuthController : ControllerBase
 
   [HttpPost("login")]
   [AllowAnonymous]
+  [EnableRateLimiting("auth-login")]
   public async Task<IActionResult> Login(
     [FromBody] LoginRequest request,
     CancellationToken cancellationToken)
@@ -33,6 +34,7 @@ public sealed class AuthController : ControllerBase
 
   [HttpPost("admin/login")]
   [AllowAnonymous]
+  [EnableRateLimiting("auth-login")]
   public async Task<IActionResult> AdminLogin(
     [FromBody] LoginRequest request,
     CancellationToken cancellationToken)
@@ -43,6 +45,7 @@ public sealed class AuthController : ControllerBase
 
   [HttpPost("super-admin/login")]
   [AllowAnonymous]
+  [EnableRateLimiting("auth-login")]
   public async Task<IActionResult> SuperAdminLogin(
     [FromBody] LoginRequest request,
     CancellationToken cancellationToken)
@@ -53,6 +56,7 @@ public sealed class AuthController : ControllerBase
 
   [HttpPost("pharmacist/login")]
   [AllowAnonymous]
+  [EnableRateLimiting("auth-login")]
   public async Task<IActionResult> PharmacistLogin(
     [FromBody] LoginRequest request,
     CancellationToken cancellationToken)

@@ -17,19 +17,22 @@ public sealed class ClientsController : ControllerBase
   private readonly ITelegramAuthService _telegramAuthService;
   private readonly IClientAddressService _addressService;
   private readonly IPrivacyPolicyService _privacyPolicyService;
+  private readonly IWebHostEnvironment _environment;
 
   public ClientsController(
     IClientService clientService,
     IAuthService authService,
     ITelegramAuthService telegramAuthService,
     IClientAddressService addressService,
-    IPrivacyPolicyService privacyPolicyService)
+    IPrivacyPolicyService privacyPolicyService,
+    IWebHostEnvironment environment)
   {
     _clientService = clientService;
     _authService = authService;
     _telegramAuthService = telegramAuthService;
     _addressService = addressService;
     _privacyPolicyService = privacyPolicyService;
+    _environment = environment;
   }
 
   [HttpPost("register")]
@@ -38,6 +41,18 @@ public sealed class ClientsController : ControllerBase
     [FromBody] RegisterClientRequest request,
     CancellationToken cancellationToken)
   {
+    if (request.SkipPhoneVerification
+        && !_environment.IsDevelopment()
+        && !string.Equals(_environment.EnvironmentName, "IntegrationTests", StringComparison.Ordinal))
+    {
+      return BadRequest(new
+      {
+        errorCode = "phone_verification_required",
+        reason = "bypass_not_allowed",
+        detail = "Регистрация без подтверждения телефона недоступна в текущем окружении."
+      });
+    }
+
     var response = await _clientService.RegisterClientAsync(request, cancellationToken);
     return Ok(response);
   }

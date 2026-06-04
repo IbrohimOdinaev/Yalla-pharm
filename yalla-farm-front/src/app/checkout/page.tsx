@@ -30,8 +30,8 @@ import {
   type PaymentMethodOption,
 } from "@/widgets/payment/PaymentMethodModal";
 
-const FALLBACK_ALIF_URL_TEMPLATE = "https://alifmobi.page.link/toMobi?account=+992926406699&summa={amount}&_imcp=1";
-const FALLBACK_ESKHATA_URL_TEMPLATE = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM";
+const FALLBACK_ALIF_URL_TEMPLATE = "";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "";
 const DOOR_TO_DOOR_FEE = 5;
 
 function buildCheckoutPaymentMethods(

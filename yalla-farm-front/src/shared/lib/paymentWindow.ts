@@ -9,8 +9,19 @@ export function preparePaymentWindow(): Window | null {
   return paymentWindow;
 }
 
+const ALLOWED_PAYMENT_PROTOCOLS = new Set(["http:", "https:", "dushanbecity:", "alifmobi:", "eskhata:"]);
+
+export function isAllowedPaymentUrl(paymentUrl: string): boolean {
+  try {
+    const parsed = new URL(paymentUrl);
+    return ALLOWED_PAYMENT_PROTOCOLS.has(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
 export function openPaymentUrl(paymentUrl: string, paymentWindow?: Window | null): boolean {
-  if (typeof window === "undefined" || !paymentUrl) {
+  if (typeof window === "undefined" || !paymentUrl || !isAllowedPaymentUrl(paymentUrl)) {
     paymentWindow?.close();
     return false;
   }
@@ -22,4 +33,3 @@ export function openPaymentUrl(paymentUrl: string, paymentWindow?: Window | null
 
   return Boolean(window.open(paymentUrl, "_blank", "noopener,noreferrer"));
 }
-

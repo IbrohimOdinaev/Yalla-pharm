@@ -240,10 +240,9 @@ export default function ProductDetailsPage() {
             ) : null}
 
             {medicine.description ? (
-              <div
-                className="prose prose-sm max-w-none text-sm leading-relaxed text-on-surface-variant"
-                dangerouslySetInnerHTML={{ __html: medicine.description }}
-              />
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-on-surface-variant">
+                {medicine.description}
+              </p>
             ) : null}
           </section>
 

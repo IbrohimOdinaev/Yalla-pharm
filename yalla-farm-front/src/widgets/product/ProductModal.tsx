@@ -320,7 +320,7 @@ function ProductModalInner() {
                   {medicine.description ? (
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-bold mb-2">О товаре</h4>
-                      <div className="text-xs text-on-surface-variant prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: medicine.description }} />
+                      <p className="whitespace-pre-wrap text-xs text-on-surface-variant">{medicine.description}</p>
                     </div>
                   ) : null}
 
