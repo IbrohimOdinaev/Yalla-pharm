@@ -9,6 +9,6 @@ public sealed class WooCommerceOptions
     public string ConsumerKey { get; set; } = string.Empty;
     public string ConsumerSecret { get; set; } = string.Empty;
     public string WebhookSecret { get; set; } = string.Empty;
-    public Guid PharmacyId { get; set; } = Guid.Empty;
+    public Guid? PharmacyId { get; set; }
     public int PollIntervalMinutes { get; set; } = 10;
 }

@@ -39,7 +39,7 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
             return 0;
         }
 
-        if (_options.PharmacyId == Guid.Empty)
+        if (!_options.PharmacyId.HasValue || _options.PharmacyId.Value == Guid.Empty)
         {
             _logger.LogWarning("WC backfill skipped: PharmacyId not configured");
             return 0;
@@ -131,7 +131,7 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
             return;
         }
 
-        if (_options.PharmacyId == Guid.Empty)
+        if (!_options.PharmacyId.HasValue || _options.PharmacyId.Value == Guid.Empty)
         {
             _logger.LogWarning("WooCommerce polling skipped: PharmacyId not configured");
             return;
@@ -192,7 +192,13 @@ public sealed class WooCommerceSyncService : IWooCommerceSyncService
 
     private async Task<int> SyncBatchAsync(List<WooCommerceWebhookPayload> products, CancellationToken ct)
     {
-        var pharmacyId = _options.PharmacyId;
+        if (!_options.PharmacyId.HasValue || _options.PharmacyId.Value == Guid.Empty)
+        {
+            _logger.LogWarning("WooCommerce sync skipped: PharmacyId not configured");
+            return 0;
+        }
+
+        var pharmacyId = _options.PharmacyId.Value;
         var ids = products.Where(p => p.Id > 0).Select(p => p.Id).Distinct().ToList();
         if (ids.Count == 0) return 0;
 

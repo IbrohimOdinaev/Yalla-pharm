@@ -18,10 +18,14 @@ public sealed class ElasticsearchReindexHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Wait for Elasticsearch to be ready
+        // Wait for OpenSearch to join the Docker network and finish warming
+        // up. The compose healthcheck can pass before DNS/socket pressure on a
+        // small VPS has settled, so keep this worker patient and let the API
+        // serve SQL-backed search meanwhile.
         await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
-        for (var attempt = 0; attempt < 10; attempt++)
+        const int maxAttempts = 40;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             try
             {
@@ -33,7 +37,12 @@ public sealed class ElasticsearchReindexHostedService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Elasticsearch reindex attempt {Attempt} failed: {Message}, retrying in 15s", attempt + 1, ex.Message);
+                _logger.LogWarning(
+                    ex,
+                    "Elasticsearch reindex attempt {Attempt}/{MaxAttempts} failed: {Message}, retrying in 15s",
+                    attempt + 1,
+                    maxAttempts,
+                    ex.Message);
                 await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
             }
         }
