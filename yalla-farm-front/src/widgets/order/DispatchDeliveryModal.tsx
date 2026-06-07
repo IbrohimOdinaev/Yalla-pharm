@@ -6,17 +6,19 @@ import {
   getDeliveryTariffs,
   dispatchDelivery,
   calculateDelivery,
+  type DispatchDeliveryResponse,
   type DeliveryTariff,
 } from "@/shared/api/delivery";
 import type { ApiOrder } from "@/shared/types/api";
 import { DispatchRouteMap } from "@/widgets/map/DispatchRouteMap";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 
 type Props = {
   open: boolean;
   token: string;
   order: ApiOrder;
   onClose: () => void;
-  onDispatched: () => void;
+  onDispatched: (response: DispatchDeliveryResponse) => void | Promise<void>;
 };
 
 export function DispatchDeliveryModal({ open, token, order, onClose, onDispatched }: Props) {
@@ -28,6 +30,8 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
   const [liveCost, setLiveCost] = useState<number | null>(null);
   const [liveDistance, setLiveDistance] = useState<number | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+
+  useBodyScrollLock(open);
 
   const fromPoint = useMemo(() => {
     if (order.fromLatitude != null && order.fromLongitude != null) {
@@ -94,8 +98,8 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
     setError(null);
     setIsDispatching(true);
     try {
-      await dispatchDelivery(token, order.orderId, selectedTariffId);
-      onDispatched();
+      const response = await dispatchDelivery(token, order.orderId, selectedTariffId);
+      await onDispatched(response);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось вызвать доставку.");

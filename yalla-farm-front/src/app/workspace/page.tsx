@@ -29,13 +29,19 @@ import type { ApiCategory, ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
 import { getAdminOrders, startAssembly, markReady, markOnTheWay, rejectPositions } from "@/entities/order/admin-api";
 import { AdminOrderDetailModal } from "@/widgets/order/AdminOrderDetailModal";
+import { DispatchDeliveryModal } from "@/widgets/order/DispatchDeliveryModal";
 import { computeItemsTotal, computeOriginalPaid, isOrderDataLost } from "@/entities/order/totals";
 import { useOrderStatusLive } from "@/features/orders/model/useOrderStatusLive";
 import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { DeliveryBadge, deliveryBorderClass } from "@/widgets/order/DeliveryBadge";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
-import { getStaffCompensationMe, type StaffCompensationMe } from "@/entities/staff-compensation/api";
+import {
+  createStaffPayoutRequest,
+  getStaffCompensationMe,
+  type StaffCompensationMe,
+  type StaffPayoutBank,
+} from "@/entities/staff-compensation/api";
 import {
   createPharmacyWithdrawalRequest,
   getAdminPharmacyFinance,
@@ -75,10 +81,10 @@ const TAB_META: Record<Tab, { eyebrow: string; title: string; description: strin
   },
 };
 
-const BOARD_COLUMNS = ["New", "UnderReview", "Preparing", "Ready", "Taken", "Cancelled", "Returned"];
+const BOARD_COLUMNS = ["UnderReview", "Preparing", "Ready", "Taken", "Cancelled", "Returned"];
 const TAKEN_STATUSES = new Set(["OnTheWay", "DriverArrived", "Delivered", "PickedUp"]);
 const STATUS_LABELS: Record<string, string> = {
-  New: "Новые", UnderReview: "На рассмотрении", Preparing: "Собирается",
+  New: "На рассмотрении", UnderReview: "На рассмотрении", Preparing: "Собирается",
   Ready: "Готов", Taken: "Забран", OnTheWay: "В пути", DriverArrived: "Курьер на месте",
   Delivered: "Доставлен", PickedUp: "Забран клиентом",
   Cancelled: "Отменён", Returned: "Возврат"
@@ -452,6 +458,95 @@ function AdminWithdrawalCard({ request }: { request: PharmacyWithdrawalRequest }
   );
 }
 
+function StaffPayoutRequestBox({
+  token,
+  compensation,
+  onCreated,
+}: {
+  token: string;
+  compensation: StaffCompensationMe;
+  onCreated: () => void;
+}) {
+  const [bank, setBank] = useState<StaffPayoutBank>("DushanbeCity");
+  const [walletPhone, setWalletPhone] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const requests = compensation.recentPayoutRequests ?? [];
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setIsSubmitting(true);
+    try {
+      await createStaffPayoutRequest(token, { bank, walletPhoneNumber: walletPhone });
+      setWalletPhone("");
+      setMessage("Заявка на выплату создана.");
+      onCreated();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Не удалось создать заявку.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-2xl bg-surface-container-low p-3">
+      <form className="space-y-3" onSubmit={onSubmit}>
+        <div>
+          <p className="text-sm font-black">Запросить выплату зарплаты</p>
+          <p className="text-xs text-on-surface-variant">
+            К выплате будет отправлена вся доступная сумма: {formatMoney(compensation.summary.balanceAmount, compensation.summary.currency)}.
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[180px_1fr]">
+          <select className="stitch-input" value={bank} onChange={(event) => setBank(event.target.value as StaffPayoutBank)}>
+            <option value="DushanbeCity">Dushanbe City</option>
+            <option value="Alif">Alif</option>
+            <option value="Eskhata">Эсхата</option>
+          </select>
+          <input
+            className="stitch-input"
+            inputMode="tel"
+            value={walletPhone}
+            onChange={(event) => setWalletPhone(event.target.value.replace(/[^\d+]/g, "").slice(0, 16))}
+            placeholder="+992900000000"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          className="stitch-button w-full"
+          disabled={isSubmitting || compensation.summary.balanceAmount <= 0 || walletPhone.trim().length < 9}
+        >
+          {isSubmitting ? "Отправляем..." : "Запросить выплату"}
+        </button>
+        {message ? (
+          <p className={`rounded-xl p-2 text-xs font-semibold ${message.includes("создана") ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
+            {message}
+          </p>
+        ) : null}
+      </form>
+
+      {requests.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-black uppercase text-on-surface-variant">Мои заявки</p>
+          {requests.slice(0, 5).map((request) => (
+            <div key={request.id} className="rounded-xl bg-surface-container-lowest p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold">{formatMoney(request.amount, request.currency)} · {request.bankLabel}</span>
+                <span className={request.status === "Completed" ? "text-primary" : "text-warning"}>
+                  {request.status === "Completed" ? "Выполненный" : "Новый"}
+                </span>
+              </div>
+              <p className="mt-0.5 text-on-surface-variant">{new Date(request.createdAtUtc).toLocaleString("ru-RU")}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ── Pharmacy Tab ── */
 
 function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void }) {
@@ -475,6 +570,10 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
   const [removingTelegramId, setRemovingTelegramId] = useState<string | null>(null);
   const [compensation, setCompensation] = useState<StaffCompensationMe | null>(null);
 
+  const refreshCompensation = useCallback(() => {
+    getStaffCompensationMe(token).then(setCompensation).catch(() => setCompensation(null));
+  }, [token]);
+
   useEffect(() => {
     getActivePharmacies(token).then(setPharmacies).catch(() => undefined);
     getAdminMe(token).then((data) => {
@@ -483,10 +582,10 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       setSavedAdminPhone(data.phoneNumber || "");
       setAdminAvatarUrl(data.avatarUrl ?? null);
     }).catch(() => undefined);
-    getStaffCompensationMe(token).then(setCompensation).catch(() => setCompensation(null));
+    refreshCompensation();
     refreshTelegramRecipients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, refreshCompensation]);
 
   useEffect(() => {
     if (!telegramSession || telegramStatus !== "pending") return;
@@ -874,12 +973,23 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
                 <p className="text-lg font-black">{formatMoney(compensation.summary.paidAmount, compensation.summary.currency)}</p>
                 <p className="text-xs font-bold uppercase text-on-surface-variant">выплачено</p>
               </div>
+              <div className="rounded-2xl bg-surface-container-low p-4 sm:col-span-2">
+                <p className="text-lg font-black">{formatMoney(compensation.summary.pendingPayoutAmount ?? 0, compensation.summary.currency)}</p>
+                <p className="text-xs font-bold uppercase text-on-surface-variant">в новых заявках</p>
+              </div>
             </div>
           ) : (
             <div className="rounded-2xl bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">
               Данные заработка пока недоступны.
             </div>
           )}
+          {compensation ? (
+            <StaffPayoutRequestBox
+              token={token}
+              compensation={compensation}
+              onCreated={refreshCompensation}
+            />
+          ) : null}
         </section>
 
         {pharmacy ? (
@@ -1270,6 +1380,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [deliveryOrder, setDeliveryOrder] = useState<ApiOrder | null>(null);
 
   // Deep-link: /workspace?orderId=X auto-opens modal on mount.
   useEffect(() => {
@@ -1318,6 +1429,16 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
     }
   }
 
+  async function onDeliveryDispatched(orderId: string) {
+    await markOnTheWay(token, orderId);
+    refresh();
+  }
+
+  function openDeliveryDispatch(order: ApiOrder) {
+    setSelectedOrderId(null);
+    setDeliveryOrder(order);
+  }
+
   const filteredOrders = dateFilter
     ? orders.filter((o) => o.createdAtUtc && new Date(o.createdAtUtc).toISOString().slice(0, 10) === dateFilter)
     : orders;
@@ -1327,7 +1448,11 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
   const HISTORY_STATUSES = new Set(["Taken", "Cancelled", "Returned"]);
   const orderTime = (o: ApiOrder) => o.createdAtUtc ? new Date(o.createdAtUtc).getTime() : 0;
   const grouped = BOARD_COLUMNS.reduce<Record<string, ApiOrder[]>>((acc, status) => {
-    const list = filteredOrders.filter((o) => status === "Taken" ? TAKEN_STATUSES.has(o.status) : o.status === status);
+    const list = filteredOrders.filter((o) => {
+      if (status === "Taken") return TAKEN_STATUSES.has(o.status);
+      if (status === "UnderReview") return o.status === "New" || o.status === "UnderReview";
+      return o.status === status;
+    });
     list.sort((a, b) => HISTORY_STATUSES.has(status)
       ? orderTime(b) - orderTime(a)
       : orderTime(a) - orderTime(b)
@@ -1366,9 +1491,11 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
         {BOARD_COLUMNS.map((status) => {
           const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] => {
             const a: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] = [];
-            if (status === "UnderReview") a.push({ label: "Начать сборку", action: "assembly", needsConfirm: true });
+            if (status === "UnderReview" && (order.status === "New" || order.status === "UnderReview")) a.push({ label: "Начать сборку", action: "assembly", needsConfirm: true });
             if (status === "Preparing") a.push({ label: "Собран", action: "ready", needsConfirm: true });
-            if (status === "Ready") a.push({ label: order.isPickup ? "Выдан клиенту" : "В пути", action: "ontheway", needsConfirm: true });
+            if (status === "Ready") a.push(order.isPickup
+              ? { label: "Выдан клиенту", action: "ontheway", needsConfirm: true }
+              : { label: "В пути", action: "dispatchDelivery" });
             return a;
           };
 
@@ -1383,7 +1510,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
               </div>
               <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                 {grouped[status].map((order) => (
-                  <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} onSelect={setSelectedOrderId} actions={actions(order)} onAction={onAction} />
+                  <OrderCard key={order.orderId} order={order} token={token} onRefresh={refresh} onSelect={setSelectedOrderId} onRequestDispatch={openDeliveryDispatch} actions={actions(order)} onAction={onAction} />
                 ))}
                 {grouped[status].length === 0 && <p className="text-xs text-on-surface-variant text-center py-4">Пусто</p>}
               </div>
@@ -1396,7 +1523,18 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
         <AdminOrderDetailModal
           orderId={selectedOrderId}
           token={token}
+          onRequestDispatch={openDeliveryDispatch}
           onClose={() => { setSelectedOrderId(null); refresh(); }}
+        />
+      ) : null}
+
+      {deliveryOrder ? (
+        <DispatchDeliveryModal
+          open={true}
+          token={token}
+          order={deliveryOrder}
+          onClose={() => { setDeliveryOrder(null); refresh(); }}
+          onDispatched={() => onDeliveryDispatched(deliveryOrder.orderId)}
         />
       ) : null}
     </div>
@@ -1410,6 +1548,7 @@ function OrderCard({
   token,
   onRefresh,
   onSelect,
+  onRequestDispatch,
 }: {
   order: ApiOrder;
   actions: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[];
@@ -1417,6 +1556,7 @@ function OrderCard({
   token?: string;
   onRefresh?: () => void;
   onSelect?: (orderId: string) => void;
+  onRequestDispatch?: (order: ApiOrder) => void;
 }) {
   const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
   const [isRejecting, setIsRejecting] = useState(false);
@@ -1528,6 +1668,10 @@ function OrderCard({
               type="button"
               className={`rounded-lg px-3 py-1 text-xs font-bold ${a.danger ? "bg-red-100 text-red-700" : "bg-primary text-on-primary"}`}
               onClick={() => {
+                if (a.action === "dispatchDelivery") {
+                  onRequestDispatch?.(order);
+                  return;
+                }
                 if (a.danger && !confirm(`Подтвердите: ${a.label.toLowerCase()} заказ #${order.orderId.slice(0, 8)}?`)) return;
                 if (a.needsConfirm && !confirm(`${a.label}? Статус заказа #${order.orderId.slice(0, 8)} изменится.`)) return;
                 onAction(a.action, order.orderId);

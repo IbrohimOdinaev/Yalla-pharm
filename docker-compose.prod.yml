@@ -44,6 +44,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env.prod
+    depends_on:
+      opensearch:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # Required-or-die. Compose refuses to start if any of these is
@@ -80,6 +83,38 @@ services:
     expose:
       - "8080"
 
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: yalla-opensearch-prod
+    restart: unless-stopped
+    environment:
+      - cluster.name=yalla-search-prod
+      - node.name=os-prod-1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx1024m
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    expose:
+      - "9200"
+    volumes:
+      - opensearch-prod-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - yalla-net
+
   one-c-worker:
     image: ghcr.io/${IMAGE_OWNER:-yalla-co}/pharm-api:${TAG:-latest}
     container_name: pharm-one-c-worker-prod
@@ -99,9 +134,6 @@ services:
       OneCImport__ExchangeDirectory: /data/1c-exchange
       OneCImport__PollIntervalSeconds: ${ONE_C_IMPORT_POLL_INTERVAL_SECONDS:-30}
       OneCImport__StableFileSeconds: ${ONE_C_IMPORT_STABLE_FILE_SECONDS:-30}
-      OneCImport__DefaultSourceToken: ${ONE_C_IMPORT_DEFAULT_SOURCE_TOKEN:-}
-      OneCImport__DefaultSourceName: ${ONE_C_IMPORT_DEFAULT_SOURCE_NAME:-1C}
-      OneCImport__DefaultPharmacyId: ${ONE_C_IMPORT_DEFAULT_PHARMACY_ID:-00000000-0000-0000-0000-000000000000}
       SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-pharm.yalla.tj}
     volumes:
       - one-c-exchange-prod:/data/1c-exchange
@@ -117,3 +149,4 @@ networks:
 
 volumes:
   one-c-exchange-prod:
+  opensearch-prod-data:

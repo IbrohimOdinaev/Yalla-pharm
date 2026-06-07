@@ -1,6 +1,7 @@
 "use client";
 
 import { formatMoney } from "@/shared/lib/format";
+import { openPaymentQrWindow } from "@/shared/lib/paymentQr";
 import { Icon } from "@/shared/ui";
 
 export type PaymentMethodId = "dc" | "alif" | "eskhata";
@@ -35,6 +36,8 @@ const methodStyles: Record<PaymentMethodId, { label: string; className: string }
   },
 };
 
+const qrSupportedMethods = new Set<PaymentMethodId>(["dc", "alif", "eskhata"]);
+
 export function buildPaymentUrlFromTemplate(template: string | null | undefined, amount: number) {
   const source = String(template ?? "")
     .trim()
@@ -66,6 +69,8 @@ export function buildPaymentUrlFromTemplate(template: string | null | undefined,
 export function PaymentMethodModal({ open, amount, methods, onSelect, onClose }: Props) {
   if (!open) return null;
 
+  const amountLabel = `К оплате: ${formatMoney(amount)}`;
+
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4">
       <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-[28px] bg-surface p-5 shadow-2xl">
@@ -93,22 +98,49 @@ export function PaymentMethodModal({ open, amount, methods, onSelect, onClose }:
             </div>
           ) : methods.map((method) => {
             const style = methodStyles[method.id];
+            const canOpenQr = qrSupportedMethods.has(method.id);
             return (
-              <button
+              <div
                 key={method.id}
-                type="button"
-                onClick={() => onSelect(method)}
-                className="flex w-full items-center gap-3 rounded-2xl border border-outline/60 bg-surface-container-lowest p-3 text-left transition hover:border-accent hover:bg-accent-soft/40"
+                className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3"
               >
-                <span className={`grid h-12 w-12 flex-shrink-0 place-items-center rounded-2xl font-display text-base font-black ${style.className}`}>
-                  {style.label}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-display text-sm font-extrabold text-on-surface">{method.title}</span>
-                  <span className="mt-0.5 block text-xs text-on-surface-variant">{method.subtitle}</span>
-                </span>
-                <Icon name="arrow-right" size={18} />
-              </button>
+                <div className="flex items-center gap-3">
+                  <span className={`grid h-12 w-12 flex-shrink-0 place-items-center rounded-2xl font-display text-base font-black ${style.className}`}>
+                    {style.label}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-sm font-extrabold text-on-surface">{method.title}</span>
+                    <span className="mt-0.5 block text-xs text-on-surface-variant">{method.subtitle}</span>
+                  </span>
+                </div>
+                <div className={`mt-3 grid gap-2 ${canOpenQr ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(method)}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-extrabold text-white transition hover:bg-primary-press"
+                  >
+                    Открыть
+                    <Icon name="arrow-right" size={16} />
+                  </button>
+                  {canOpenQr ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void openPaymentQrWindow({
+                          deepLinkUrl: method.url,
+                          title: `${method.title}: QR для оплаты`,
+                          amountLabel,
+                          walletLabel: method.subtitle,
+                        });
+                      }}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-outline/70 bg-surface px-4 text-sm font-extrabold text-on-surface transition hover:border-primary/50 hover:text-primary"
+                    >
+                      <Icon name="grid" size={16} />
+                      QR
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             );
           })}
         </div>

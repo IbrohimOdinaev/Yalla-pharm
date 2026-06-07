@@ -79,7 +79,8 @@ public sealed class PharmacyFinanceServiceTests
 
     Assert.Equal(120m, withdrawal.Amount);
     Assert.Equal(PharmacyWithdrawalStatus.New, withdrawal.Status);
-    Assert.Contains("alifmobi.page.link", withdrawal.DeepLinkUrl);
+    Assert.Contains("alifmobi:///toMobi", withdrawal.DeepLinkUrl);
+    Assert.Contains("account=%2B992900000001", withdrawal.DeepLinkUrl);
 
     var finance = await service.GetForAdminAsync(admin.Id, pharmacy.Id);
     Assert.Equal(0m, finance.Summary.AvailableAmount);

@@ -12,7 +12,6 @@ import {
   rejectPositions,
 } from "@/entities/order/admin-api";
 import { cancelDelivery } from "@/shared/api/delivery";
-import { DispatchDeliveryModal } from "@/widgets/order/DispatchDeliveryModal";
 import {
   computeOriginalPaid,
   computeItemsTotal,
@@ -54,16 +53,16 @@ type Props = {
   orderId: string;
   token: string;
   onClose: () => void;
+  onRequestDispatch?: (order: ApiOrder) => void;
 };
 
-export function AdminOrderDetailModal({ orderId, token, onClose }: Props) {
+export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispatch }: Props) {
   const router = useRouter();
   const [order, setOrder] = useState<ApiOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
-  const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
 
   const loadOrder = useCallback(() => {
     if (!token) return;
@@ -478,12 +477,7 @@ export function AdminOrderDetailModal({ orderId, token, onClose }: Props) {
                 Готов к выдаче
               </button>
             )}
-            {status === "Ready" && !order.isPickup && !order.juraOrderId && (
-              <button type="button" className="stitch-button text-sm" onClick={() => setDispatchModalOpen(true)} disabled={actionLoading}>
-                Вызвать доставку
-              </button>
-            )}
-            {!order.isPickup && order.juraOrderId != null && (status === "Ready" || status === "OnTheWay") && (
+            {!order.isPickup && order.juraOrderId != null && status === "OnTheWay" && (
               <button
                 type="button"
                 className="rounded-xl bg-red-100 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-200 active:scale-[0.98]"
@@ -494,23 +488,24 @@ export function AdminOrderDetailModal({ orderId, token, onClose }: Props) {
               </button>
             )}
             {status === "Ready" && (
-              <button type="button" className="stitch-button text-sm" onClick={() => onAction("ontheway")} disabled={actionLoading}>
-                {order.isPickup ? "Выдан клиенту" : "Отправить (В пути)"}
+              <button
+                type="button"
+                className="stitch-button text-sm"
+                onClick={() => {
+                  if (order.isPickup) onAction("ontheway");
+                  else {
+                    onClose();
+                    onRequestDispatch?.(order);
+                  }
+                }}
+                disabled={actionLoading}
+              >
+                {order.isPickup ? "Выдан клиенту" : "Перевод в статус В пути и вызов курьера"}
               </button>
             )}
           </div>
         </div>
       </div>
-
-      {!order.isPickup && (
-        <DispatchDeliveryModal
-          open={dispatchModalOpen}
-          token={token}
-          order={order}
-          onClose={() => setDispatchModalOpen(false)}
-          onDispatched={loadOrder}
-        />
-      )}
     </>
   );
 }

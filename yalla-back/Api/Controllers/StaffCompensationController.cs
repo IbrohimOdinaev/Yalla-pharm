@@ -2,6 +2,7 @@ using Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Yalla.Application.Abstractions;
+using Yalla.Application.DTO.Request;
 using Yalla.Application.Services;
 using Yalla.Domain.Enums;
 
@@ -84,6 +85,56 @@ public sealed class StaffCompensationController : ControllerBase
     }
   }
 
+  [HttpPost("payout-requests")]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.Pharmacist)}")]
+  public async Task<IActionResult> CreatePayoutRequest(
+    [FromBody] CreateStaffPayoutRequestRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _service.CreatePayoutRequestAsync(
+      User.GetRequiredUserId(),
+      request,
+      cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpGet("payout-requests")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> GetPayoutRequests(CancellationToken cancellationToken)
+  {
+    var response = await _service.GetPayoutRequestsForSuperAdminAsync(cancellationToken);
+    return Ok(new { payoutRequests = response });
+  }
+
+  [HttpPost("payout-requests/{payoutRequestId:guid}/complete")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> CompletePayoutRequest(
+    Guid payoutRequestId,
+    [FromForm] CompleteStaffPayoutRequestForm request,
+    CancellationToken cancellationToken)
+  {
+    if (request.Receipt is null || request.Receipt.Length <= 0)
+      throw new InvalidOperationException("Для подтверждения выплаты нужно прикрепить фото чека.");
+
+    var receiptImageKey = await UploadReceiptAsync(payoutRequestId, request.Receipt, cancellationToken);
+    try
+    {
+      var response = await _service.CompletePayoutRequestAsync(
+        User.GetRequiredUserId(),
+        payoutRequestId,
+        receiptImageKey,
+        request.Note,
+        cancellationToken);
+      return Ok(response);
+    }
+    catch
+    {
+      try { await _imageStorage.DeleteAsync(receiptImageKey, cancellationToken); }
+      catch { /* best-effort cleanup */ }
+      throw;
+    }
+  }
+
   [HttpGet("payouts/{payoutId:guid}/receipt/content")]
   [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.Admin)},{nameof(Role.Pharmacist)}")]
   public async Task<IActionResult> GetPayoutReceiptContent(
@@ -93,6 +144,18 @@ public sealed class StaffCompensationController : ControllerBase
     var userId = User.GetRequiredUserId();
     var role = User.GetRequiredRole();
     var content = await _service.GetPayoutReceiptContentAsync(payoutId, userId, role, cancellationToken);
+    return File(content.Content, content.ContentType);
+  }
+
+  [HttpGet("payout-requests/{payoutRequestId:guid}/receipt/content")]
+  [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.Admin)},{nameof(Role.Pharmacist)}")]
+  public async Task<IActionResult> GetPayoutRequestReceiptContent(
+    Guid payoutRequestId,
+    CancellationToken cancellationToken)
+  {
+    var userId = User.GetRequiredUserId();
+    var role = User.GetRequiredRole();
+    var content = await _service.GetPayoutRequestReceiptContentAsync(payoutRequestId, userId, role, cancellationToken);
     return File(content.Content, content.ContentType);
   }
 
@@ -138,6 +201,12 @@ public sealed class StaffCompensationController : ControllerBase
     public Guid StaffUserId { get; init; }
     public decimal Amount { get; init; }
     public string? Method { get; init; }
+    public string? Note { get; init; }
+    public IFormFile? Receipt { get; init; }
+  }
+
+  public sealed class CompleteStaffPayoutRequestForm
+  {
     public string? Note { get; init; }
     public IFormFile? Receipt { get; init; }
   }

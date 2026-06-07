@@ -7,6 +7,7 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { apiFetch } from "@/shared/api/http-client";
 import { formatMoney } from "@/shared/lib/format";
 import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { openPaymentQrWindow } from "@/shared/lib/paymentQr";
 import { DatePicker, Select } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
 
@@ -53,8 +54,12 @@ import {
   type PaymentSettingsSnapshot,
 } from "@/entities/payment-settings/api";
 import {
+  completeStaffPayoutRequest,
   createStaffPayout,
+  getStaffPayoutRequests,
+  staffPayoutRequestStatusLabel,
   type StaffCompensationSummary,
+  type StaffCompensationPayoutRequest,
   type StaffPayoutMethod,
 } from "@/entities/staff-compensation/api";
 import {
@@ -74,6 +79,10 @@ import type { PharmacyMapHandle } from "@/widgets/map/PharmacyMap";
 import dynamic from "next/dynamic";
 
 const PharmacyMap = dynamic(() => import("@/widgets/map/PharmacyMap").then((m) => m.PharmacyMap), { ssr: false });
+
+function supportsGeneratedPaymentQr(deepLinkUrl: string): boolean {
+  return Boolean(deepLinkUrl.trim());
+}
 
 type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions" | "finance";
 
@@ -281,12 +290,19 @@ export default function SuperAdminPage() {
 }
 
 function FinanceTab({ token }: { token: string }) {
-  const [requests, setRequests] = useState<PharmacyWithdrawalRequest[]>([]);
+  const [pharmacyRequests, setPharmacyRequests] = useState<PharmacyWithdrawalRequest[]>([]);
+  const [staffRequests, setStaffRequests] = useState<StaffCompensationPayoutRequest[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadRequests = useCallback(() => {
-    getSuperAdminPharmacyWithdrawals(token)
-      .then((data) => setRequests(data.withdrawalRequests ?? []))
+    Promise.all([
+      getSuperAdminPharmacyWithdrawals(token),
+      getStaffPayoutRequests(token),
+    ])
+      .then(([pharmacyData, staffData]) => {
+        setPharmacyRequests(pharmacyData.withdrawalRequests ?? []);
+        setStaffRequests(staffData);
+      })
       .catch((err) => setMessage(err instanceof Error ? err.message : "Не удалось загрузить заявки."));
   }, [token]);
 
@@ -294,17 +310,22 @@ function FinanceTab({ token }: { token: string }) {
     loadRequests();
   }, [loadRequests]);
 
-  const active = requests.filter((request) => withdrawalStatusLabel(request.status) === "Новый");
-  const completed = requests.filter((request) => withdrawalStatusLabel(request.status) === "Выполненный");
-  const activeAmount = active.reduce((sum, request) => sum + request.amount, 0);
-  const completedAmount = completed.reduce((sum, request) => sum + request.amount, 0);
+  const activePharmacyRequests = pharmacyRequests.filter((request) => withdrawalStatusLabel(request.status) === "Новый");
+  const completedPharmacyRequests = pharmacyRequests.filter((request) => withdrawalStatusLabel(request.status) === "Выполненный");
+  const activeStaffRequests = staffRequests.filter((request) => staffPayoutRequestStatusLabel(request.status) === "Новый");
+  const completedStaffRequests = staffRequests.filter((request) => staffPayoutRequestStatusLabel(request.status) === "Выполненный");
+  const activeCount = activePharmacyRequests.length + activeStaffRequests.length;
+  const completedCount = completedPharmacyRequests.length + completedStaffRequests.length;
+  const activeAmount = [...activePharmacyRequests, ...activeStaffRequests].reduce((sum, request) => sum + request.amount, 0);
+  const completedAmount = [...completedPharmacyRequests, ...completedStaffRequests].reduce((sum, request) => sum + request.amount, 0);
+  const totalCount = pharmacyRequests.length + staffRequests.length;
 
   return (
     <section className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <FinanceSummaryCard label="Новые заявки" value={String(active.length)} hint={formatMoney(activeAmount, "TJS")} />
-        <FinanceSummaryCard label="Выполнено" value={String(completed.length)} hint={formatMoney(completedAmount, "TJS")} />
-        <FinanceSummaryCard label="Всего заявок" value={String(requests.length)} hint="По всем аптекам" />
+        <FinanceSummaryCard label="Новые заявки" value={String(activeCount)} hint={formatMoney(activeAmount, "TJS")} />
+        <FinanceSummaryCard label="Выполнено" value={String(completedCount)} hint={formatMoney(completedAmount, "TJS")} />
+        <FinanceSummaryCard label="Всего заявок" value={String(totalCount)} hint="Аптеки и сотрудники" />
       </div>
 
       {message ? (
@@ -327,11 +348,43 @@ function FinanceTab({ token }: { token: string }) {
         </div>
 
         <div className="space-y-3">
-          {requests.length === 0 ? (
+          {pharmacyRequests.length === 0 ? (
             <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок пока нет.</p>
           ) : (
-            requests.map((request) => (
+            pharmacyRequests.map((request) => (
               <SuperAdminWithdrawalCard
+                key={request.id}
+                token={token}
+                request={request}
+                onDone={(text) => {
+                  setMessage(text);
+                  loadRequests();
+                }}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black">Заявки на выплату зарплаты</h2>
+            <p className="text-sm text-on-surface-variant">
+              Admin и фармацевты запрашивают доступный баланс; после подтверждения сумма списывается из зарплатного баланса.
+            </p>
+          </div>
+          <button type="button" className="rounded-xl bg-surface-container px-4 py-2 text-sm font-black" onClick={loadRequests}>
+            Обновить
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {staffRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок сотрудников пока нет.</p>
+          ) : (
+            staffRequests.map((request) => (
+              <SuperAdminStaffPayoutRequestCard
                 key={request.id}
                 token={token}
                 request={request}
@@ -374,6 +427,7 @@ function SuperAdminWithdrawalCard({
   const statusLabel = withdrawalStatusLabel(request.status);
   const isCompleted = statusLabel === "Выполненный";
   const bank = request.bankLabel || withdrawalBankValue(request.bank);
+  const canOpenQr = supportsGeneratedPaymentQr(request.deepLinkUrl);
 
   async function onComplete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -438,14 +492,33 @@ function SuperAdminWithdrawalCard({
         <div className="w-full space-y-3 xl:max-w-md">
           {!isCompleted ? (
             <>
-              <button
-                type="button"
-                className="stitch-button w-full"
-                disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
-                onClick={() => openPaymentUrl(request.deepLinkUrl)}
-              >
-                Открыть deeplink для оплаты
-              </button>
+              <div className={`grid gap-2 ${canOpenQr ? "sm:grid-cols-2" : ""}`}>
+                <button
+                  type="button"
+                  className="stitch-button w-full"
+                  disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
+                  onClick={() => openPaymentUrl(request.deepLinkUrl)}
+                >
+                  Открыть deeplink
+                </button>
+                {canOpenQr ? (
+                  <button
+                    type="button"
+                    className="stitch-button-secondary w-full"
+                    disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
+                    onClick={() => {
+                      void openPaymentQrWindow({
+                        deepLinkUrl: request.deepLinkUrl,
+                        title: `${bank} · ${request.pharmacyTitle}`,
+                        amountLabel: `Сумма: ${formatMoney(request.amount, request.currency)}`,
+                        walletLabel: `Кошелёк: ${request.walletPhoneNumber}`,
+                      });
+                    }}
+                  >
+                    Открыть QR для скана
+                  </button>
+                ) : null}
+              </div>
               <form className="space-y-3" onSubmit={onComplete}>
                 <PrettyFileInput
                   label="Скрин чека"
@@ -469,6 +542,146 @@ function SuperAdminWithdrawalCard({
           ) : (
             <div className="rounded-2xl bg-primary-soft p-3 text-sm font-semibold text-primary">
               Выплата сохранена в истории.
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SuperAdminStaffPayoutRequestCard({
+  token,
+  request,
+  onDone,
+}: {
+  token: string;
+  request: StaffCompensationPayoutRequest;
+  onDone: (message: string) => void;
+}) {
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [note, setNote] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const statusLabel = staffPayoutRequestStatusLabel(request.status);
+  const isCompleted = statusLabel === "Выполненный";
+  const roleLabel = request.staffRole === "Pharmacist" ? "Фармацевт" : "Admin";
+  const canOpenQr = supportsGeneratedPaymentQr(request.deepLinkUrl);
+
+  async function onComplete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!receipt || isCompleted) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await completeStaffPayoutRequest(token, {
+        payoutRequestId: request.id,
+        receipt,
+        note,
+      });
+      setReceipt(null);
+      setNote("");
+      onDone("Заявка сотрудника подтверждена.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось подтвердить заявку.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <article className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${isCompleted ? "bg-primary-soft text-primary" : "bg-warning-container text-on-surface"}`}>
+              {statusLabel}
+            </span>
+            <span className="rounded-full bg-surface-container px-3 py-1 text-xs font-black">{request.bankLabel}</span>
+            <span className="rounded-full bg-surface-container px-3 py-1 text-xs font-black">{roleLabel}</span>
+            <span className="text-sm font-black">{formatMoney(request.amount, request.currency)}</span>
+          </div>
+          <div>
+            <h3 className="text-base font-black">{request.staffName || request.staffUserId}</h3>
+            <p className="text-xs text-on-surface-variant">
+              {request.pharmacyTitle ? `Аптека: ${request.pharmacyTitle} · ` : ""}{request.staffPhoneNumber}
+            </p>
+            <p className="text-xs text-on-surface-variant">
+              Кошелёк: {request.walletPhoneNumber} · создана {formatDushanbeDateTime(request.createdAtUtc)}
+            </p>
+            {request.completedAtUtc ? (
+              <p className="text-xs text-primary">Выполнена {formatDushanbeDateTime(request.completedAtUtc)}</p>
+            ) : null}
+          </div>
+          {request.note ? (
+            <p className="rounded-xl bg-surface-container-low p-2 text-xs text-on-surface-variant">{request.note}</p>
+          ) : null}
+          {request.receiptImageUrl ? (
+            <div className="mt-2 h-40 w-full max-w-xs overflow-hidden rounded-2xl border border-outline/60 bg-surface-container-low">
+              <AuthedImage
+                src={request.receiptImageUrl}
+                alt="Чек выплаты зарплаты"
+                className="h-full w-full object-cover"
+                lazy
+                fallback={<div className="flex h-full w-full items-center justify-center text-xs font-semibold text-on-surface-variant">Загрузка чека...</div>}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="w-full space-y-3 xl:max-w-md">
+          {!isCompleted ? (
+            <>
+              <div className={`grid gap-2 ${canOpenQr ? "sm:grid-cols-2" : ""}`}>
+                <button
+                  type="button"
+                  className="stitch-button w-full"
+                  disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
+                  onClick={() => openPaymentUrl(request.deepLinkUrl)}
+                >
+                  Открыть deeplink
+                </button>
+                {canOpenQr ? (
+                  <button
+                    type="button"
+                    className="stitch-button-secondary w-full"
+                    disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
+                    onClick={() => {
+                      void openPaymentQrWindow({
+                        deepLinkUrl: request.deepLinkUrl,
+                        title: `${request.bankLabel} · ${request.staffName || request.staffUserId}`,
+                        amountLabel: `Сумма: ${formatMoney(request.amount, request.currency)}`,
+                        walletLabel: `Кошелёк: ${request.walletPhoneNumber}`,
+                      });
+                    }}
+                  >
+                    Открыть QR для скана
+                  </button>
+                ) : null}
+              </div>
+              <form className="space-y-3" onSubmit={onComplete}>
+                <PrettyFileInput
+                  label="Скрин чека"
+                  accept="image/png,image/jpeg,image/webp"
+                  required
+                  clearAfterChange={false}
+                  onFileChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
+                />
+                <input
+                  className="stitch-input"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Комментарий / номер операции"
+                />
+                {error ? <p className="text-xs font-semibold text-red-600">{error}</p> : null}
+                <button type="submit" className="stitch-button w-full" disabled={isSubmitting || !receipt}>
+                  {isSubmitting ? "Подтверждаем..." : "Подтвердить выполнение"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="rounded-2xl bg-primary-soft p-3 text-sm font-semibold text-primary">
+              Выплата сохранена в истории зарплаты.
             </div>
           )}
         </div>
@@ -970,7 +1183,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
       value: snapshot.alifUrlTemplate,
       effective: snapshot.alifUrlTemplateEffective,
       isEnabled: snapshot.isAlifEnabled !== false,
-      placeholder: "https://alifmobi.page.link/toMobi?account=...&summa={amount}",
+      placeholder: "alifmobi:///toMobi?account=%2B992...&summa={amount}",
     },
     {
       kind: "eskhata" as const,

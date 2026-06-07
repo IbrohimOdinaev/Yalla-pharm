@@ -15,7 +15,12 @@ import { useSignalREvent } from "@/shared/lib/useSignalR";
 import { PharmacistShell } from "@/widgets/layout/PharmacistShell";
 import { AuthedImage, Button } from "@/shared/ui";
 import { PrescriptionClientInfoModal } from "@/widgets/prescription/PrescriptionClientInfoModal";
-import { getStaffCompensationMe, type StaffCompensationMe } from "@/entities/staff-compensation/api";
+import {
+  createStaffPayoutRequest,
+  getStaffCompensationMe,
+  type StaffCompensationMe,
+  type StaffPayoutBank,
+} from "@/entities/staff-compensation/api";
 
 // Decoded prescriptions deliberately drop off the queue once the pharmacist
 // submits the checklist — they're "done" from this person's perspective and
@@ -199,7 +204,7 @@ export default function PharmacistQueuePage() {
         ) : null}
 
         {activeTab === "dashboard" ? (
-          <PharmacistDashboard stats={dashboardStats} compensation={compensation} loading={loading} />
+          <PharmacistDashboard stats={dashboardStats} compensation={compensation} loading={loading} onRequestCreated={load} />
         ) : loading ? (
           <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">
             Загружаем…
@@ -281,6 +286,7 @@ function PharmacistDashboard({
   stats,
   compensation,
   loading,
+  onRequestCreated,
 }: {
   stats: {
     dayLabel: string;
@@ -292,6 +298,7 @@ function PharmacistDashboard({
   };
   compensation: StaffCompensationMe | null;
   loading: boolean;
+  onRequestCreated: () => Promise<void>;
 }) {
   const cards = [
     { label: "Всего пришло", value: stats.total, hint: `UTC+5 · ${stats.dayLabel}`, tone: "text-primary" },
@@ -323,6 +330,13 @@ function PharmacistDashboard({
         ))}
       </div>
 
+      {compensation ? (
+        <PharmacistPayoutRequestCard
+          compensation={compensation}
+          onRequestCreated={onRequestCreated}
+        />
+      ) : null}
+
       <div className="stitch-card p-4 sm:p-5">
         <h2 className="text-base font-black">Статусы за сегодня</h2>
         <p className="mt-1 text-sm text-on-surface-variant">
@@ -340,6 +354,91 @@ function PharmacistDashboard({
         </div>
       </div>
     </section>
+  );
+}
+
+function PharmacistPayoutRequestCard({
+  compensation,
+  onRequestCreated,
+}: {
+  compensation: StaffCompensationMe;
+  onRequestCreated: () => Promise<void>;
+}) {
+  const token = useAppSelector((s) => s.auth.token);
+  const [bank, setBank] = useState<StaffPayoutBank>("DushanbeCity");
+  const [walletPhone, setWalletPhone] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const requests = compensation.recentPayoutRequests ?? [];
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      await createStaffPayoutRequest(token, { bank, walletPhoneNumber: walletPhone });
+      setWalletPhone("");
+      setMessage("Заявка на выплату создана.");
+      await onRequestCreated();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Не удалось создать заявку.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="stitch-card space-y-4 p-4 sm:p-5">
+      <div>
+        <h2 className="text-base font-black">Выплата зарплаты</h2>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Доступно: {formatMoney(compensation.summary.balanceAmount, compensation.summary.currency)}. В новых заявках: {formatMoney(compensation.summary.pendingPayoutAmount ?? 0, compensation.summary.currency)}.
+        </p>
+      </div>
+      <form className="grid gap-3 md:grid-cols-[180px_1fr_auto]" onSubmit={onSubmit}>
+        <select className="stitch-input" value={bank} onChange={(event) => setBank(event.target.value as StaffPayoutBank)}>
+          <option value="DushanbeCity">Dushanbe City</option>
+          <option value="Alif">Alif</option>
+          <option value="Eskhata">Эсхата</option>
+        </select>
+        <input
+          className="stitch-input"
+          inputMode="tel"
+          value={walletPhone}
+          onChange={(event) => setWalletPhone(event.target.value.replace(/[^\d+]/g, "").slice(0, 16))}
+          placeholder="+992900000000"
+          required
+        />
+        <Button
+          type="submit"
+          size="md"
+          loading={isSubmitting}
+          disabled={compensation.summary.balanceAmount <= 0 || walletPhone.trim().length < 9}
+        >
+          Запросить
+        </Button>
+      </form>
+      {message ? (
+        <p className={`rounded-xl p-2 text-xs font-semibold ${message.includes("создана") ? "bg-primary-soft text-primary" : "bg-red-100 text-red-700"}`}>
+          {message}
+        </p>
+      ) : null}
+      {requests.length > 0 ? (
+        <div className="space-y-2">
+          {requests.slice(0, 5).map((request) => (
+            <div key={request.id} className="rounded-xl bg-surface-container-low p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold">{formatMoney(request.amount, request.currency)} · {request.bankLabel}</span>
+                <span className={request.status === "Completed" ? "text-primary" : "text-warning"}>
+                  {request.status === "Completed" ? "Выполненный" : "Новый"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

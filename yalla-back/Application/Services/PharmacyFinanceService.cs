@@ -261,8 +261,8 @@ public sealed class PharmacyFinanceService : IPharmacyFinanceService
     return bank switch
     {
       PharmacyWithdrawalBank.DushanbeCity => $"dushanbecity://transfer?phone={phone}&amount={amountText}",
-      PharmacyWithdrawalBank.Alif => $"https://alifmobi.page.link/toMobi?account=%2B{phone}&summa={amountText}&_imcp=1",
-      PharmacyWithdrawalBank.Eskhata => $"eskhata://transfer?phone={phone}&amount={amountText}",
+      PharmacyWithdrawalBank.Alif => $"alifmobi:///toMobi?account=%2B{phone}&summa={amountText}&_imcp=1",
+      PharmacyWithdrawalBank.Eskhata => $"eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/{phone}/{amountText}/DA00126FM",
       _ => throw new ArgumentOutOfRangeException(nameof(bank), bank, null)
     };
   }

@@ -1,4 +1,5 @@
 using Yalla.Application.Abstractions;
+using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Domain.Enums;
 
@@ -38,8 +39,29 @@ public interface IStaffCompensationService
     string? note,
     CancellationToken cancellationToken = default);
 
+  Task<StaffCompensationPayoutRequestResponse> CreatePayoutRequestAsync(
+    Guid staffUserId,
+    CreateStaffPayoutRequestRequest request,
+    CancellationToken cancellationToken = default);
+
+  Task<IReadOnlyList<StaffCompensationPayoutRequestResponse>> GetPayoutRequestsForSuperAdminAsync(
+    CancellationToken cancellationToken = default);
+
+  Task<StaffCompensationPayoutRequestResponse> CompletePayoutRequestAsync(
+    Guid superAdminId,
+    Guid payoutRequestId,
+    string receiptImageKey,
+    string? note,
+    CancellationToken cancellationToken = default);
+
   Task<ManualLookupImageContent> GetPayoutReceiptContentAsync(
     Guid payoutId,
+    Guid requesterId,
+    Role requesterRole,
+    CancellationToken cancellationToken = default);
+
+  Task<ManualLookupImageContent> GetPayoutRequestReceiptContentAsync(
+    Guid payoutRequestId,
     Guid requesterId,
     Role requesterRole,
     CancellationToken cancellationToken = default);

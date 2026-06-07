@@ -43,6 +43,7 @@ public interface IAppDbContext
     DbSet<PaymentSettings> PaymentSettings { get; }
     DbSet<StaffCompensationEarning> StaffCompensationEarnings { get; }
     DbSet<StaffCompensationPayout> StaffCompensationPayouts { get; }
+    DbSet<StaffCompensationPayoutRequest> StaffCompensationPayoutRequests { get; }
     DbSet<SyncState> SyncStates { get; }
     DbSet<AuditLogEntry> AuditLogs { get; }
     DbSet<ClientConsentHistory> ClientConsentHistory { get; }

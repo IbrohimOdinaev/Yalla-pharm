@@ -81,12 +81,15 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
     var dbUrl = entity?.DcBaseUrl;
     var alifTemplate = entity?.AlifUrlTemplate;
     var eskhataTemplate = entity?.EskhataUrlTemplate;
+    var alifTemplateEffective = string.IsNullOrWhiteSpace(alifTemplate) || IsLegacyBrokenAlifTemplate(alifTemplate)
+      ? _options.AlifUrlTemplate
+      : alifTemplate;
     return new PaymentSettingsSnapshot
     {
       DcBaseUrl = dbUrl,
       DcBaseUrlEffective = string.IsNullOrWhiteSpace(dbUrl) ? _options.BaseUrl : dbUrl,
       AlifUrlTemplate = alifTemplate,
-      AlifUrlTemplateEffective = string.IsNullOrWhiteSpace(alifTemplate) ? _options.AlifUrlTemplate : alifTemplate,
+      AlifUrlTemplateEffective = alifTemplateEffective,
       EskhataUrlTemplate = eskhataTemplate,
       EskhataUrlTemplateEffective = string.IsNullOrWhiteSpace(eskhataTemplate) ? _options.EskhataUrlTemplate : eskhataTemplate,
       IsDcEnabled = entity?.IsDcEnabled ?? true,
@@ -98,6 +101,9 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
       UpdatedByUserId = entity?.UpdatedByUserId
     };
   }
+
+  private static bool IsLegacyBrokenAlifTemplate(string urlTemplate)
+    => urlTemplate.Contains("alifmobi.page.link/toMobi", StringComparison.OrdinalIgnoreCase);
 
   private async Task<PaymentSettings> GetOrCreateSettingsAsync(CancellationToken cancellationToken)
   {

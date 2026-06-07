@@ -7,10 +7,10 @@ describe("paymentWindow", () => {
   });
 
   it("allows http, https, and Eskhata deep links", () => {
-    expect(isAllowedPaymentUrl("https://alifmobi.page.link/toMobi?summa=10")).toBe(true);
+    expect(isAllowedPaymentUrl("https://pay.expresspay.tj/qr/index.php?s=10")).toBe(true);
     expect(isAllowedPaymentUrl("http://pay.example.test/order/1")).toBe(true);
     expect(isAllowedPaymentUrl("dushanbecity://transfer?phone=992900000001&amount=10.00")).toBe(true);
-    expect(isAllowedPaymentUrl("alifmobi://transfer?phone=992900000001&amount=10.00")).toBe(true);
+    expect(isAllowedPaymentUrl("alifmobi:///toMobi?account=%2B992900000001&summa=10.00&_imcp=1")).toBe(true);
     expect(isAllowedPaymentUrl("eskhata://service/id/account/10/code")).toBe(true);
   });
 
