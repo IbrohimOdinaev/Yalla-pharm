@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +9,6 @@ using Yalla.Infrastructure.Payments;
 using Yalla.Infrastructure.Security;
 using Yalla.Infrastructure.Sms;
 using Yalla.Infrastructure.Storage;
-using Yalla.Infrastructure.WooCommerce;
 using Yalla.Infrastructure.Jura;
 using Yalla.Infrastructure.OneC;
 using Yalla.Infrastructure.Search;
@@ -349,22 +346,6 @@ public static class DependencyInjection
       services.AddHostedService<SuperAdminTelegramOutboxDispatcherHostedService>();
       services.AddHostedService<SuperAdminTelegramWebhookRegistrationHostedService>();
     }
-
-    // WooCommerce sync
-    services.Configure<WooCommerceOptions>(config.GetSection(WooCommerceOptions.SectionName));
-    services.AddHttpClient<IWooCommerceSyncService, WooCommerceSyncService>((sp, client) =>
-    {
-      client.Timeout = TimeSpan.FromSeconds(30);
-      var opts = sp.GetRequiredService<IOptions<WooCommerceOptions>>().Value;
-      if (!string.IsNullOrEmpty(opts.ConsumerKey) && !string.IsNullOrEmpty(opts.ConsumerSecret))
-      {
-        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{opts.ConsumerKey}:{opts.ConsumerSecret}"));
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
-      }
-    });
-    // WooCommerce automatic polling is intentionally disabled. WordPress is no
-    // longer the source of truth for offers, and polling can write offers for
-    // deleted/unmapped pharmacies.
 
     services.Configure<OneCImportOptions>(config.GetSection(OneCImportOptions.SectionName));
     if (oneCWorkerOnly || IsOneCImportEnabled(config))

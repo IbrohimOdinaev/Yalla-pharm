@@ -16,18 +16,15 @@ public sealed class MedicinesController : ControllerBase
   private readonly IMedicineService _medicineService;
   private readonly IMedicineSearchEngine _searchEngine;
   private readonly IImageResizer _imageResizer;
-  private readonly IWooCommerceSyncService _wooSyncService;
 
   public MedicinesController(
     IMedicineService medicineService,
     IMedicineSearchEngine searchEngine,
-    IImageResizer imageResizer,
-    IWooCommerceSyncService wooSyncService)
+    IImageResizer imageResizer)
   {
     _medicineService = medicineService;
     _searchEngine = searchEngine;
     _imageResizer = imageResizer;
-    _wooSyncService = wooSyncService;
   }
 
   // Snap caller-requested widths to a small fixed set so Cloudflare/CDN caches
@@ -246,21 +243,6 @@ public sealed class MedicinesController : ControllerBase
   {
     await _searchEngine.ReindexAllAsync(cancellationToken);
     return Ok(new { message = "Reindex completed" });
-  }
-
-  /// <summary>
-  /// One-shot full-catalog WooCommerce sweep — paginates every WC product
-  /// and writes title/slug onto matching medicines. Run this once after the
-  /// AddMedicineSlug migration so existing rows acquire their slug without
-  /// waiting for an upstream price/stock change to trigger the regular poll.
-  /// Idempotent: re-running is safe (just rewrites the same fields).
-  /// </summary>
-  [HttpPost("backfill-from-woocommerce")]
-  [Authorize(Roles = nameof(Role.SuperAdmin))]
-  public async Task<IActionResult> BackfillFromWooCommerce(CancellationToken cancellationToken)
-  {
-    var synced = await _wooSyncService.BackfillCatalogAsync(cancellationToken);
-    return Ok(new { message = "Backfill completed", synced });
   }
 
   [HttpPost("images")]

@@ -8,7 +8,7 @@ namespace Api.Startup;
 /// app builds — any missing or malformed *critical* setting throws a
 /// descriptive exception so misconfigured deploys die immediately instead
 /// of crashing later under load with a confusing stack trace. Optional
-/// integrations (Telegram, OsonSMS, WooCommerce, JURA, DushanbeCity)
+/// integrations (Telegram, OsonSMS, JURA, DushanbeCity)
 /// only emit warnings — the app stays up but those features degrade.
 /// </summary>
 public static class EnvironmentValidator
@@ -49,8 +49,6 @@ public static class EnvironmentValidator
         // ── Warn-only: app starts, but the listed feature is broken ──────
         WarnIfMissing(configuration, "Telegram:BotToken",
           "Telegram bot will not work (auth-via-Telegram, status push notifications).", logger);
-
-        WarnIfWooCommerceMisconfigured(configuration, logger);
 
         WarnIfOsonSmsMisconfigured(configuration, logger);
 
@@ -123,13 +121,4 @@ public static class EnvironmentValidator
           authMode);
     }
 
-    private static void WarnIfWooCommerceMisconfigured(IConfiguration configuration, ILogger logger)
-    {
-        var enabled = string.Equals(configuration["WooCommerce:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
-        if (!enabled)
-            return;
-
-        WarnIfMissing(configuration, "WooCommerce:ConsumerKey",
-          "WooCommerce sync (catalog import + price/stock webhook) will not work.", logger);
-    }
 }

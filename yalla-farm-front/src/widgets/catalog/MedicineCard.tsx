@@ -170,8 +170,8 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
   }
 
   const name = getMedicineDisplayName(medicine);
-  // Prefer the human-readable slug from WooCommerce — falls back to the GUID
-  // for medicines that haven't synced yet. /product/[id] resolves either.
+  // Prefer the human-readable slug and fall back to the GUID.
+  // /product/[id] resolves either.
   const productKey = medicine.slug || medicine.id;
   const productHref = `/product/${productKey}`;
 

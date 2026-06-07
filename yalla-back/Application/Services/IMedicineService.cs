@@ -52,7 +52,7 @@ public interface IMedicineService
     CancellationToken cancellationToken = default);
 
   /// <summary>
-  /// Lookup by URL-friendly slug (sourced from WooCommerce). Returns the
+  /// Lookup by URL-friendly catalog slug. Returns the
   /// same shape as GetMedicineByIdAsync — a unified response keeps the
   /// front-end product page agnostic about whether it received an id or
   /// a slug. Throws if the slug is unknown / inactive (mirrors id lookup).

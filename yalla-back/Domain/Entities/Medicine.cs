@@ -21,10 +21,9 @@ public class Medicine
     public int? WooCommerceId { get; private set; }
 
     /// <summary>
-    /// URL-friendly slug, sourced from the WooCommerce product `slug` field
-    /// (kebab-case latin, e.g. "hichoma-orig-zard-6"). Used for SEO routes
-    /// like /product/{slug}. Optional — medicines created via admin without
-    /// a WC link won't have one. Unique when present.
+    /// URL-friendly catalog slug (kebab-case latin, e.g.
+    /// "hichoma-orig-zard-6"). Used for SEO routes like /product/{slug}.
+    /// Optional for legacy/admin-created medicines. Unique when present.
     /// </summary>
     public string? Slug { get; private set; }
 

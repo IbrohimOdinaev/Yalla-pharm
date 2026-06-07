@@ -47,12 +47,6 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
     SetIfUnset("MinIo__AccessKey", "test-access");
     SetIfUnset("MinIo__SecretKey", "test-secret");
     SetIfUnset("MinIo__BucketName", "test-bucket");
-    // WooCommerce hosted service binds Guid-typed options; supply a valid
-    // placeholder so the options binder doesn't crash on construction.
-    SetIfUnset("WooCommerce__PharmacyId", "00000000-0000-0000-0000-000000000000");
-    SetIfUnset("WooCommerce__BaseUrl", "");
-    SetIfUnset("WooCommerce__ConsumerKey", "");
-    SetIfUnset("WooCommerce__ConsumerSecret", "");
     // Stub payment provider needs a base URL containing the `?A=` query
     // parameter so it can extract the receiver-account number that the
     // PaymentIntent constructor requires (non-empty). Production keeps
