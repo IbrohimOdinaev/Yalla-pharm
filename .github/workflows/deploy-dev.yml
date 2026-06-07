@@ -30,7 +30,10 @@ jobs:
           set -e
           cd "$DEPLOY_DIR"
           git fetch origin develop
-          git checkout ${{ github.event.workflow_run.head_sha }}
+          git reset --hard
+          git clean -fd -e .env.dev -e .env.prod
+          git checkout --detach ${{ github.event.workflow_run.head_sha }}
+          git reset --hard ${{ github.event.workflow_run.head_sha }}
 
       - name: Ensure docker network
         run: |

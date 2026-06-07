@@ -26,7 +26,10 @@ jobs:
           set -e
           cd "$DEPLOY_DIR"
           git fetch origin master
-          git checkout origin/master
+          git reset --hard
+          git clean -fd -e .env.dev -e .env.prod
+          git checkout --detach origin/master
+          git reset --hard origin/master
 
       - name: Ensure docker network
         run: |

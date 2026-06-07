@@ -50,8 +50,7 @@ public static class EnvironmentValidator
         WarnIfMissing(configuration, "Telegram:BotToken",
           "Telegram bot will not work (auth-via-Telegram, status push notifications).", logger);
 
-        WarnIfMissing(configuration, "WooCommerce:ConsumerKey",
-          "WooCommerce sync (catalog import + price/stock webhook) will not work.", logger);
+        WarnIfWooCommerceMisconfigured(configuration, logger);
 
         WarnIfOsonSmsMisconfigured(configuration, logger);
 
@@ -122,5 +121,15 @@ public static class EnvironmentValidator
         logger.LogWarning(
           "OsonSms:AuthMode has unsupported value '{AuthMode}'. Allowed values: Bearer, Hash. OTP login + status SMS will fail at runtime.",
           authMode);
+    }
+
+    private static void WarnIfWooCommerceMisconfigured(IConfiguration configuration, ILogger logger)
+    {
+        var enabled = string.Equals(configuration["WooCommerce:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+        if (!enabled)
+            return;
+
+        WarnIfMissing(configuration, "WooCommerce:ConsumerKey",
+          "WooCommerce sync (catalog import + price/stock webhook) will not work.", logger);
     }
 }
