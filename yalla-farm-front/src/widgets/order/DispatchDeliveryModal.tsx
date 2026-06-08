@@ -46,6 +46,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
     }
     return null;
   }, [order.toLatitude, order.toLongitude]);
+  const hasRoutePoints = fromPoint != null && toPoint != null;
 
   useEffect(() => {
     if (!open) return;
@@ -127,6 +128,11 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
 
         <div className="p-4 space-y-4">
           {error && <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div>}
+          {!hasRoutePoints && (
+            <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">
+              Координаты маршрута не определены. Проверьте адрес аптеки и адрес клиента перед вызовом курьера.
+            </div>
+          )}
 
           {/* Map — provider switch lives inside DispatchRouteMap. */}
           <div className="rounded-xl overflow-hidden border border-surface-container-high">
@@ -212,7 +218,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
           <button
             type="button"
             onClick={onConfirm}
-            disabled={isDispatching || isLoadingTariffs}
+            disabled={isDispatching || isLoadingTariffs || !hasRoutePoints}
             className="stitch-button flex-1 py-3"
           >
             {isDispatching ? "Отправка…" : "Подтвердить"}

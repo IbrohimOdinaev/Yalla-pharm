@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Yalla.Application.Abstractions;
 using Yalla.Application.DTO.Request;
+using Yalla.Application.DTO.Response;
 using Yalla.Application.Services;
 using Yalla.Application.UnitTests.TestInfrastructure;
 using Yalla.Domain.Entities;
@@ -221,6 +224,50 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task DispatchDeliveryAsync_CreatesJuraOrderAndMovesReadyToOnTheWay()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.Ready);
+    var deliveryData = new DeliveryData(
+      order.Id,
+      "Pharmacy",
+      "Pharmacy address",
+      38.5737,
+      68.7738,
+      "Client",
+      "Client address",
+      38.5598,
+      68.7870);
+    deliveryData.SetDeliveryCost(15m, 2.4);
+    scope.Db.DeliveryData.Add(deliveryData);
+    await scope.Db.SaveChangesAsync();
+
+    var service = new OrderService(
+      scope.Db,
+      NullLogger<OrderService>.Instance,
+      new NoOpRealtimeUpdatesPublisher(),
+      new FakeJuraService());
+
+    var response = await service.DispatchDeliveryAsync(new DispatchDeliveryRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id,
+      TariffId = 1
+    });
+
+    var saved = await scope.Db.Orders
+      .Include(x => x.DeliveryData)
+      .AsNoTracking()
+      .FirstAsync(x => x.Id == order.Id);
+
+    Assert.False(response.AlreadyDispatched);
+    Assert.Equal(123456, response.JuraOrderId);
+    Assert.Equal(Status.OnTheWay, saved.Status);
+    Assert.Equal(123456, saved.DeliveryData?.JuraOrderId);
+  }
+
+  [Fact]
   public async Task MoveOrderToNextStatusBySuperAdminAsync_MovesNewToUnderReview()
   {
     using var scope = TestDbFactory.Create();
@@ -408,5 +455,60 @@ public class OrderServiceTests
     scope.Db.Orders.Add(order);
     await scope.Db.SaveChangesAsync();
     return order;
+  }
+
+  private sealed class FakeJuraService : IJuraService
+  {
+    public Task<List<JuraAddressSuggestion>> SearchAddressAsync(string text, CancellationToken ct)
+    {
+      return Task.FromResult(new List<JuraAddressSuggestion>());
+    }
+
+    public Task<JuraCalculateResult> CalculateDeliveryAsync(
+      JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
+    {
+      return Task.FromResult(new JuraCalculateResult { Amount = 15m, Distance = 2.4 });
+    }
+
+    public Task<JuraCreateOrderResult> CreateDeliveryOrderAsync(
+      JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
+    {
+      return Task.FromResult(new JuraCreateOrderResult
+      {
+        OrderId = 123456,
+        Status = "created",
+        StatusId = 1,
+        PerformerDeviceId = 987,
+        PerformerFirstName = "Driver",
+        PerformerLastName = "One",
+        PerformerPhone = "992900000000",
+        RecipientCode = "1234"
+      });
+    }
+
+    public Task<JuraOrderStatusResult> GetOrderStatusAsync(long juraOrderId, CancellationToken ct)
+    {
+      return Task.FromResult(new JuraOrderStatusResult { OrderId = juraOrderId, Status = "created", StatusId = 1 });
+    }
+
+    public Task<JuraDriverPositionResult> GetDriverPositionAsync(long deviceId, CancellationToken ct)
+    {
+      return Task.FromResult(new JuraDriverPositionResult { DeviceId = deviceId, Lat = 38.57, Lng = 68.77 });
+    }
+
+    public Task CancelOrderAsync(long juraOrderId, string reason, CancellationToken ct)
+    {
+      return Task.CompletedTask;
+    }
+
+    public Task<List<JuraTariff>> GetTariffsAsync(CancellationToken ct)
+    {
+      return Task.FromResult(new List<JuraTariff>());
+    }
+
+    public Task<string?> GetReceiptCodeAsync(long juraOrderId, CancellationToken ct)
+    {
+      return Task.FromResult<string?>("1234");
+    }
   }
 }

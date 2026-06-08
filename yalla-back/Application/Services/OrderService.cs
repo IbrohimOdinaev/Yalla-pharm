@@ -563,10 +563,25 @@ public sealed class OrderService : IOrderService
 
       var deliveryData = order.DeliveryData
         ?? throw new InvalidOperationException($"Order '{order.Id}' has no delivery data.");
+      ValidateDeliveryDataForDispatch(deliveryData, order.Id);
 
       if (deliveryData.JuraOrderId.HasValue)
       {
-        await transaction.RollbackAsync(cancellationToken);
+        var repairedStatus = false;
+        if (order.Status == Status.Ready)
+        {
+          order.MarkOnTheWayFromDelivery();
+          await _dbContext.SaveChangesAsync(cancellationToken);
+          repairedStatus = true;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        if (repairedStatus)
+        {
+          await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+            order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+        }
+
         return new DispatchDeliveryResponse
         {
           OrderId = order.Id,
@@ -629,6 +644,7 @@ public sealed class OrderService : IOrderService
         {
           deliveryData.SetRecipientCode(result.RecipientCode);
         }
+        order.MarkOnTheWayFromDelivery();
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -665,6 +681,9 @@ public sealed class OrderService : IOrderService
         "JURA delivery dispatched for order {OrderId} by worker {WorkerId}, JURA order {JuraOrderId}",
         order.Id, worker.Id, result.OrderId);
 
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+
       return new DispatchDeliveryResponse
       {
         OrderId = order.Id,
@@ -682,6 +701,31 @@ public sealed class OrderService : IOrderService
       try { await transaction.RollbackAsync(CancellationToken.None); } catch { /* ignored */ }
       throw;
     }
+  }
+
+  private static void ValidateDeliveryDataForDispatch(DeliveryData deliveryData, Guid orderId)
+  {
+    if (string.IsNullOrWhiteSpace(deliveryData.FromTitle)
+        || string.IsNullOrWhiteSpace(deliveryData.FromAddress)
+        || string.IsNullOrWhiteSpace(deliveryData.ToTitle)
+        || string.IsNullOrWhiteSpace(deliveryData.ToAddress)
+        || !IsValidCoordinate(deliveryData.FromLatitude, deliveryData.FromLongitude)
+        || !IsValidCoordinate(deliveryData.ToLatitude, deliveryData.ToLongitude))
+    {
+      throw new InvalidOperationException(
+        $"Order '{orderId}' has incomplete delivery route data. Recreate or edit the delivery address before dispatching courier.");
+    }
+  }
+
+  private static bool IsValidCoordinate(double lat, double lng)
+  {
+    return double.IsFinite(lat)
+      && double.IsFinite(lng)
+      && lat >= -90
+      && lat <= 90
+      && lng >= -180
+      && lng <= 180
+      && (Math.Abs(lat) > double.Epsilon || Math.Abs(lng) > double.Epsilon);
   }
 
   public async Task<CancelDeliveryResponse> CancelDeliveryAsync(
