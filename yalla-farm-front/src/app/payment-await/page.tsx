@@ -6,11 +6,65 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
 import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { getOrderById } from "@/entities/order/api";
+import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import { usePaymentIntentLiveState } from "@/features/checkout/model/usePaymentIntentLiveState";
 import type { ApiOrder } from "@/shared/types/api";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { Button, Icon } from "@/shared/ui";
+import {
+  buildPaymentUrlFromTemplate,
+  type PaymentMethodOption,
+} from "@/widgets/payment/PaymentMethodModal";
+import { PaymentQrPanel } from "@/widgets/payment/PaymentQrPanel";
+
+const FALLBACK_ALIF_URL_TEMPLATE = "";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "";
+
+function buildPaymentMethods(
+  paymentSettings: PublicPaymentSettings | null,
+  amount: number,
+  dcUrl: string,
+): PaymentMethodOption[] {
+  const methods: PaymentMethodOption[] = [];
+
+  if (dcUrl && paymentSettings?.isDcEnabled !== false) {
+    methods.push({
+      id: "dc",
+      title: "Dushanbe City",
+      subtitle: "Оплата через Dushanbe City",
+      url: dcUrl,
+    });
+  }
+
+  const alifUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
+    amount,
+  );
+  if (alifUrl && paymentSettings?.isAlifEnabled !== false) {
+    methods.push({
+      id: "alif",
+      title: "Alif Mobi",
+      subtitle: "Оплата через приложение Alif",
+      url: alifUrl,
+    });
+  }
+
+  const eskhataUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
+    amount,
+  );
+  if (eskhataUrl && paymentSettings?.isEskhataEnabled !== false) {
+    methods.push({
+      id: "eskhata",
+      title: "Эсхата",
+      subtitle: "Оплата через приложение Эсхата",
+      url: eskhataUrl,
+    });
+  }
+
+  return methods;
+}
 
 export default function PaymentAwaitPage() {
   return (
@@ -29,11 +83,16 @@ function PaymentAwaitContent() {
   const paymentIntentId = searchParams.get("paymentIntentId") ?? "";
 
   const [order, setOrder] = useState<ApiOrder | null>(null);
+  const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
 
   useEffect(() => {
     if (!token || !orderId) return;
     getOrderById(token, orderId).then(setOrder).catch(() => undefined);
   }, [token, orderId]);
+
+  useEffect(() => {
+    getPublicPaymentSettings().then(setPaymentSettings).catch(() => undefined);
+  }, []);
 
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   useEffect(() => {
@@ -58,12 +117,6 @@ function PaymentAwaitContent() {
   }, [liveState, router]);
 
   const paymentUrl = order?.paymentUrl;
-  const [openedPaymentUrl, setOpenedPaymentUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!paymentUrl || openedPaymentUrl === paymentUrl) return;
-    setOpenedPaymentUrl(paymentUrl);
-    openPaymentUrl(paymentUrl);
-  }, [openedPaymentUrl, paymentUrl]);
 
   if (!orderId && !paymentIntentId) {
     return (
@@ -75,8 +128,9 @@ function PaymentAwaitContent() {
     );
   }
 
-  const amount = order?.cost ?? 0;
+  const amount = order?.totalCost ?? order?.cost ?? 0;
   const currency = order?.currency ?? "TJS";
+  const paymentMethods = paymentUrl ? buildPaymentMethods(paymentSettings, amount, paymentUrl) : [];
   const mins = secondsLeft !== null ? Math.floor(secondsLeft / 60) : null;
   const secs = secondsLeft !== null ? secondsLeft % 60 : null;
   const progress = secondsLeft !== null && order?.paymentExpiresAtUtc
@@ -120,16 +174,22 @@ function PaymentAwaitContent() {
           </div>
         </section>
 
-        {/* Payment page is external and must stay outside the app shell. */}
-        {paymentUrl ? (
-          <section className="rounded-3xl bg-surface-container-lowest p-6 text-center shadow-card">
-            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Icon name="bolt" size={22} />
-            </span>
-            <p className="text-sm font-bold text-on-surface">Dushanbe City открыт в новой вкладке</p>
-            <p className="mt-1 text-xs text-on-surface-variant">
-              Если браузер заблокировал открытие, нажмите кнопку ниже.
-            </p>
+        {paymentMethods.length > 0 ? (
+          <section className="space-y-3 rounded-3xl bg-surface-container-low p-4 shadow-card">
+            <div>
+              <p className="text-sm font-bold text-on-surface">Оплатите по QR или откройте приложение</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                QR сформирован из deeplink выбранного способа оплаты.
+              </p>
+            </div>
+            {paymentMethods.map((method) => (
+              <PaymentQrPanel
+                key={method.id}
+                method={method}
+                amount={amount}
+                onOpen={() => openPaymentUrl(method.url)}
+              />
+            ))}
           </section>
         ) : (
           <section className="rounded-3xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">

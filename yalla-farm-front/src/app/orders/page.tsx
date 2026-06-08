@@ -17,7 +17,7 @@ import { usePharmacyAddresses } from "@/features/pharmacy/model/usePharmacyAddre
 import { getPickupAvailability } from "@/features/pharmacy/model/pharmacyHours";
 import type { ApiOrder } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { isAllowedPaymentUrl, openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
+import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -278,7 +278,6 @@ export default function OrdersPage() {
   async function onRepeat(order: ApiOrder) {
     if (!token) return;
     if (!confirm("Повторить заказ? Будет создан новый заказ с теми же позициями. Корзина не изменится.")) return;
-    const paymentWindow = preparePaymentWindow();
     setRepeatingId(order.orderId);
     try {
       const response = await repeatOrder(token, order.orderId, {
@@ -289,10 +288,15 @@ export default function OrdersPage() {
       const updated = await getClientOrderHistory(token);
       setOrders(updated);
       const paymentUrl = String(response?.paymentUrl ?? "");
-      if (paymentUrl) openPaymentUrl(paymentUrl, paymentWindow);
-      else paymentWindow?.close();
+      if (paymentUrl) {
+        const amount = Number(response?.amount ?? response?.cost ?? order.totalCost ?? order.cost ?? 0);
+        setPaymentPicker({
+          orderId: response?.orderId ?? response?.reservedOrderId ?? order.orderId,
+          amount,
+          methods: buildOrderPaymentMethods(paymentSettings, amount, paymentUrl),
+        });
+      }
     } catch (err) {
-      paymentWindow?.close();
       setError(err instanceof Error ? err.message : "Не удалось повторить заказ.");
     } finally {
       setRepeatingId(null);
@@ -475,7 +479,7 @@ export default function OrdersPage() {
               {awaiting ? (
                 <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
                   {d.paymentUrl && isAllowedPaymentUrl(d.paymentUrl) ? (
-                    <Button size="sm" rightIcon="arrow-right" onClick={() => openPaymentUrl(d.paymentUrl || "")}>
+                    <Button size="sm" rightIcon="arrow-right" onClick={() => openPaymentMethodPicker(d)}>
                       Оплатить
                     </Button>
                   ) : null}

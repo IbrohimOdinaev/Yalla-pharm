@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { buildPaymentQrValue } from "@/shared/lib/paymentQrPayload";
 
 type PaymentQrWindowInput = {
   deepLinkUrl: string;
@@ -6,31 +7,6 @@ type PaymentQrWindowInput = {
   amountLabel?: string;
   walletLabel?: string;
 };
-
-function normalizePhone(value: string | null): string {
-  return String(value ?? "").replace(/\D/g, "");
-}
-
-function buildQrPayloadUrl(deepLinkUrl: string): string {
-  try {
-    const parsed = new URL(deepLinkUrl);
-    if (parsed.protocol === "alifmobi:" && typeof window !== "undefined" && window.location.origin) {
-      const phone = normalizePhone(parsed.searchParams.get("account"));
-      const amount = parsed.searchParams.get("summa")?.trim();
-      if (phone && amount) {
-        const redirectUrl = new URL("/api/payment/deeplink", window.location.origin);
-        redirectUrl.searchParams.set("provider", "alif");
-        redirectUrl.searchParams.set("phone", phone);
-        redirectUrl.searchParams.set("amount", amount);
-        return redirectUrl.toString();
-      }
-    }
-  } catch {
-    return deepLinkUrl;
-  }
-
-  return deepLinkUrl;
-}
 
 function escapeHtml(value: string): string {
   return value
@@ -146,7 +122,7 @@ export async function openPaymentQrWindow(input: PaymentQrWindowInput): Promise<
   writeWindowHtml(paymentWindow, renderLoadingHtml(input.title));
 
   try {
-    const qrDataUrl = await QRCode.toDataURL(buildQrPayloadUrl(input.deepLinkUrl), {
+    const qrDataUrl = await QRCode.toDataURL(buildPaymentQrValue(input.deepLinkUrl), {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 720,

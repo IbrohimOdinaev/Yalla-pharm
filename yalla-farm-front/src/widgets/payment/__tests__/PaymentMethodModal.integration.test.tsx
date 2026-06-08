@@ -3,14 +3,10 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/render";
 import { PaymentMethodModal } from "@/widgets/payment/PaymentMethodModal";
-import { openPaymentQrWindow } from "@/shared/lib/paymentQr";
-
-vi.mock("@/shared/lib/paymentQr", () => ({
-  openPaymentQrWindow: vi.fn().mockResolvedValue(true),
-}));
+import { buildPaymentQrValue } from "@/shared/lib/paymentQrPayload";
 
 describe("PaymentMethodModal", () => {
-  it("opens a generated QR window for QR-supported payment methods", () => {
+  it("renders an inline QR for payment methods", () => {
     const onSelect = vi.fn();
 
     const method = {
@@ -30,18 +26,14 @@ describe("PaymentMethodModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /qr/i }));
-
+    const card = screen.getByText("Эсхата").closest("div");
+    expect(card).not.toBeNull();
+    expect(screen.getByTitle("Эсхата: QR для оплаты")).toBeInTheDocument();
+    expect(screen.getAllByText("120.00 TJS").length).toBeGreaterThanOrEqual(1);
     expect(onSelect).not.toHaveBeenCalled();
-    expect(openPaymentQrWindow).toHaveBeenCalledWith({
-      deepLinkUrl: method.url,
-      title: "Эсхата: QR для оплаты",
-      amountLabel: "К оплате: 120.00 TJS",
-      walletLabel: "Кошелек Эсхата",
-    });
   });
 
-  it("opens generated QR action for Alif deeplinks", () => {
+  it("encodes Alif QR through the deeplink redirect endpoint", () => {
     const url = "alifmobi:///toMobi?account=%2B992900000001&summa=120.00&_imcp=1";
 
     renderWithProviders(
@@ -61,14 +53,9 @@ describe("PaymentMethodModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /qr/i }));
-
-    expect(openPaymentQrWindow).toHaveBeenCalledWith({
-      deepLinkUrl: url,
-      title: "Alif Mobi: QR для оплаты",
-      amountLabel: "К оплате: 120.00 TJS",
-      walletLabel: "Кошелек Alif",
-    });
+    expect(screen.getByTitle("Alif Mobi: QR для оплаты")).toBeInTheDocument();
+    expect(buildPaymentQrValue(url)).toContain("/api/payment/deeplink?provider=alif");
+    expect(buildPaymentQrValue(url)).toContain("phone=992900000001");
   });
 
   it("keeps the direct open action for payment methods", () => {
@@ -90,7 +77,7 @@ describe("PaymentMethodModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /открыть/i }));
+    fireEvent.click(screen.getByRole("button", { name: /открыть оплату/i }));
 
     expect(onSelect).toHaveBeenCalledWith(method);
   });

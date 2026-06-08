@@ -352,14 +352,7 @@ export default function CheckoutPage() {
       const paymentUrl = String(checkout.paymentUrl || "");
       if (paymentUrl) {
         const amount = Number(checkout.amount ?? checkout.cost ?? totalAmount);
-        const methods = buildCheckoutPaymentMethods(paymentSettings, amount, paymentUrl);
-        const selectedMethod = methods.find((method) => method.id === selectedPaymentMethodId) ?? methods[0];
-        if (selectedMethod?.url) {
-          openPaymentUrl(selectedMethod.url);
-          router.replace("/orders");
-        } else {
-          setPendingPayment({ amount, dcUrl: paymentUrl });
-        }
+        setPendingPayment({ amount, dcUrl: paymentUrl });
       } else {
         router.replace("/orders");
       }

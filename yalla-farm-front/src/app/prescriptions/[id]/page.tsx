@@ -15,13 +15,68 @@ import {
   type ApiPrescription,
 } from "@/entities/prescription/api";
 import { DEFAULT_MEDICINE_IMAGE_URL, getMedicinesByIds, getMedicineDisplayName, getCheapestPrice, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { isAllowedPaymentUrl, openPaymentUrl, preparePaymentWindow } from "@/shared/lib/paymentWindow";
+import { openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
+import {
+  buildPaymentUrlFromTemplate,
+  PaymentMethodModal,
+  type PaymentMethodOption,
+} from "@/widgets/payment/PaymentMethodModal";
+import { PaymentQrPanel } from "@/widgets/payment/PaymentQrPanel";
 import { AuthedImage, Button, Chip, Icon } from "@/shared/ui";
+
+const FALLBACK_ALIF_URL_TEMPLATE = "";
+const FALLBACK_ESKHATA_URL_TEMPLATE = "";
+
+function buildPrescriptionPaymentMethods(
+  paymentSettings: PublicPaymentSettings | null,
+  amount: number,
+  dcUrl: string,
+): PaymentMethodOption[] {
+  const methods: PaymentMethodOption[] = [];
+
+  if (dcUrl && paymentSettings?.isDcEnabled !== false) {
+    methods.push({
+      id: "dc",
+      title: "Dushanbe City",
+      subtitle: "Оплата через Dushanbe City",
+      url: dcUrl,
+    });
+  }
+
+  const alifUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.alifUrlTemplateEffective ?? FALLBACK_ALIF_URL_TEMPLATE,
+    amount,
+  );
+  if (alifUrl && paymentSettings?.isAlifEnabled !== false) {
+    methods.push({
+      id: "alif",
+      title: "Alif Mobi",
+      subtitle: "Оплата через приложение Alif",
+      url: alifUrl,
+    });
+  }
+
+  const eskhataUrl = buildPaymentUrlFromTemplate(
+    paymentSettings?.eskhataUrlTemplateEffective ?? FALLBACK_ESKHATA_URL_TEMPLATE,
+    amount,
+  );
+  if (eskhataUrl && paymentSettings?.isEskhataEnabled !== false) {
+    methods.push({
+      id: "eskhata",
+      title: "Эсхата",
+      subtitle: "Оплата через приложение Эсхата",
+      url: eskhataUrl,
+    });
+  }
+
+  return methods;
+}
 
 export default function PrescriptionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -35,6 +90,8 @@ export default function PrescriptionDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<"order" | "cart" | null>(null);
   const [resubmitting, setResubmitting] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<{ prescriptionId: string; amount: number; dcUrl: string } | null>(null);
+  const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
   const [medicineCache, setMedicineCache] = useState<Record<string, ApiMedicine>>({});
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   // Client-edited per-item quantities. Keyed by `PrescriptionChecklistItem.id`.
@@ -120,10 +177,21 @@ export default function PrescriptionDetailPage() {
     return () => { cancelled = true; };
   }, [token]);
 
+  useEffect(() => {
+    getPublicPaymentSettings().then(setPaymentSettings).catch(() => undefined);
+  }, []);
+
   const prescription = useMemo(
     () => all?.find((p) => p.prescriptionId === id) ?? null,
     [all, id]
   );
+  const prescriptionPaymentAmount = Number(prescription?.paymentAmount ?? 3);
+  const prescriptionPaymentMethods = prescription?.paymentUrl
+    ? buildPrescriptionPaymentMethods(paymentSettings, prescriptionPaymentAmount, prescription.paymentUrl)
+    : [];
+  const pendingPaymentMethods = pendingPayment
+    ? buildPrescriptionPaymentMethods(paymentSettings, pendingPayment.amount, pendingPayment.dcUrl)
+    : [];
 
   // Pull medicine details for every catalog-bound item via a single batch
   // round-trip. Previously N parallel GETs added perceptible latency even
@@ -332,15 +400,17 @@ export default function PrescriptionDetailPage() {
                 <p className="text-xs text-on-surface-variant">
                   Откройте ссылку ниже и оплатите расшифровку. Как только платёж придёт, заявка автоматически отправится фармацевту.
                 </p>
-                {prescription.paymentUrl && isAllowedPaymentUrl(prescription.paymentUrl) ? (
-                  <button
-                    type="button"
-                    onClick={() => openPaymentUrl(prescription.paymentUrl || "")}
-                    className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-card transition active:scale-95 hover:bg-primary-container"
-                  >
-                    <Icon name="bolt" size={14} />
-                    Оплатить 3 TJS
-                  </button>
+                {prescriptionPaymentMethods.length > 0 ? (
+                  <div className="space-y-3">
+                    {prescriptionPaymentMethods.map((method) => (
+                      <PaymentQrPanel
+                        key={method.id}
+                        method={method}
+                        amount={prescriptionPaymentAmount}
+                        onOpen={() => openPaymentUrl(method.url)}
+                      />
+                    ))}
+                  </div>
                 ) : (
                   <p className="text-xs text-secondary">
                     Не удалось получить платёжную ссылку. Обновите страницу или попробуйте позже.
@@ -372,7 +442,6 @@ export default function PrescriptionDetailPage() {
                   loading={resubmitting}
                   onClick={async () => {
                     if (!token) return;
-                    const paymentWindow = preparePaymentWindow();
                     setResubmitting(true);
                     setError(null);
                     try {
@@ -381,13 +450,15 @@ export default function PrescriptionDetailPage() {
                       // from the backend response) so the user lands on the live
                       // unpaid state instead of the cancelled-history view.
                       if (created.paymentUrl) {
-                        openPaymentUrl(created.paymentUrl, paymentWindow);
+                        setPendingPayment({
+                          prescriptionId: created.prescriptionId,
+                          amount: Number(created.paymentAmount ?? 3),
+                          dcUrl: created.paymentUrl,
+                        });
                         return;
                       }
-                      paymentWindow?.close();
                       router.push(`/prescriptions/${created.prescriptionId}`);
                     } catch (err) {
-                      paymentWindow?.close();
                       setError(err instanceof Error ? err.message : "Не удалось переотправить рецепт.");
                     } finally {
                       setResubmitting(false);
@@ -601,6 +672,22 @@ export default function PrescriptionDetailPage() {
           </>
         )}
       </div>
+      <PaymentMethodModal
+        open={Boolean(pendingPayment)}
+        amount={pendingPayment?.amount ?? 0}
+        methods={pendingPaymentMethods}
+        onSelect={(method) => {
+          openPaymentUrl(method.url);
+          const targetId = pendingPayment?.prescriptionId;
+          setPendingPayment(null);
+          if (targetId) router.push(`/prescriptions/${targetId}`);
+        }}
+        onClose={() => {
+          const targetId = pendingPayment?.prescriptionId;
+          setPendingPayment(null);
+          if (targetId) router.push(`/prescriptions/${targetId}`);
+        }}
+      />
       <AuthedImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </AppShell>
   );
