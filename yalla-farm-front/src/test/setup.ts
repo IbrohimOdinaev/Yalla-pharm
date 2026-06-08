@@ -4,6 +4,7 @@ import { cleanup } from "@testing-library/react";
 
 process.env.NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL ??= "http://localhost:5000/hubs/updates";
 process.env.NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL ??= "http://localhost:5000/hubs/telegram-auth";
+process.env.NEXT_PUBLIC_SIGNALR_ENABLED ??= "false";
 
 if (typeof window !== "undefined") {
   Object.defineProperty(window, "scrollTo", {

@@ -28,7 +28,10 @@ function mockAdminFetch(orders: Record<string, unknown>[] = [
     if (requestUrl.includes("/api/delivery/tariffs")) {
       return Promise.resolve(
         new Response(
-          JSON.stringify([{ id: 1, name: "Стандарт", divisionId: 10 }]),
+          JSON.stringify([
+            { id: 1, name: "Курьер на авто", divisionId: 10 },
+            { id: 2, name: "Велокурьер", divisionId: 11 },
+          ]),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
       );
@@ -181,7 +184,8 @@ describe("WorkspacePage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "В пути" }));
 
     expect(await screen.findByRole("heading", { name: "Вызвать доставку" })).toBeInTheDocument();
-    expect(screen.getByText("Стандарт")).toBeInTheDocument();
+    expect(screen.getByText("Курьер на авто")).toBeInTheDocument();
+    expect(screen.queryByText("Велокурьер")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Подтвердить" }));
 
