@@ -116,6 +116,24 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
   }
 
   [Fact]
+  public async Task Orders_StartAssembly_ForNew_ShouldMoveToPreparing()
+  {
+    using var client = await CreateAuthorizedClientAsync(TestActor.Admin1);
+
+    var response = await client.PostAsJsonAsync("/api/orders/assembly/start", new
+    {
+      OrderId = ApiTestData.OrderNewId
+    });
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var scope = Factory.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var order = await dbContext.Orders.AsNoTracking().FirstAsync(x => x.Id == ApiTestData.OrderNewId);
+    Assert.Equal(Status.Preparing, order.Status);
+  }
+
+  [Fact]
   public async Task Orders_MarkReady_ForUnderReview_ShouldReturnBadRequest()
   {
     using var client = await CreateAuthorizedClientAsync(TestActor.Admin1);

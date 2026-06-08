@@ -54,6 +54,23 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task StartOrderAssemblyAsync_MovesNewToPreparing()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.New);
+
+    var service = new OrderService(scope.Db);
+    var response = await service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id
+    });
+
+    Assert.Equal(Status.Preparing, response.Status);
+  }
+
+  [Fact]
   public async Task StartOrderAssemblyAsync_ThrowsForWrongStatus()
   {
     using var scope = TestDbFactory.Create();

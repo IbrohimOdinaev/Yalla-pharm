@@ -17,11 +17,12 @@ export async function connectTelegramAuthHub(
   const url = env.signalRTelegramAuthHubUrl.startsWith("http")
     ? env.signalRTelegramAuthHubUrl
     : `${env.apiBaseUrl}${env.signalRTelegramAuthHubUrl}`;
-  const forcedTransport = process.env.NODE_ENV === "test" ? undefined : HttpTransportType.LongPolling;
+  const forcedTransport = process.env.NODE_ENV === "test" ? undefined : HttpTransportType.WebSockets;
 
   const conn = new HubConnectionBuilder()
     .withUrl(url, {
       ...(forcedTransport ? { transport: forcedTransport } : {}),
+      ...(forcedTransport === HttpTransportType.WebSockets ? { skipNegotiation: true } : {}),
     })
     .withAutomaticReconnect([0, 1000, 3000, 5000])
     .configureLogging(LogLevel.Warning)

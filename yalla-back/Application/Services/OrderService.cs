@@ -321,11 +321,13 @@ public sealed class OrderService : IOrderService
       var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
       var order = await GetTrackedOrderForWorkerOrThrowAsync(request.OrderId, worker.PharmacyId, cancellationToken);
 
-      if (order.Status != Status.UnderReview)
+      if (order.Status is not (Status.New or Status.UnderReview))
         throw new InvalidOperationException(
-          $"Order '{order.Id}' must be in status '{Status.UnderReview}' to start assembly.");
+          $"Order '{order.Id}' must be in status '{Status.New}' or '{Status.UnderReview}' to start assembly.");
 
       var oldStatus = order.Status;
+      if (order.Status == Status.New)
+        order.NextStage(true);
       order.NextStage(true);
       LogStatusTransition(order.Id, oldStatus, order.Status, "StartOrderAssembly", worker.Id);
 

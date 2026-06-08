@@ -40,6 +40,7 @@ public static class ApiTestData
   public static readonly Guid OrderOnTheWayId = Guid.Parse("90000000-0000-0000-0000-000000000004");
   public static readonly Guid OrderCancelableId = Guid.Parse("90000000-0000-0000-0000-000000000005");
   public static readonly Guid OrderPharmacy2Id = Guid.Parse("90000000-0000-0000-0000-000000000006");
+  public static readonly Guid OrderNewId = Guid.Parse("90000000-0000-0000-0000-000000000007");
 
   public static readonly Guid OrderPositionUnderReviewId = Guid.Parse("91000000-0000-0000-0000-000000000001");
   public static readonly Guid OrderPositionPreparingId = Guid.Parse("91000000-0000-0000-0000-000000000002");
@@ -47,6 +48,7 @@ public static class ApiTestData
   public static readonly Guid OrderPositionOnTheWayId = Guid.Parse("91000000-0000-0000-0000-000000000004");
   public static readonly Guid OrderPositionCancelableId = Guid.Parse("91000000-0000-0000-0000-000000000005");
   public static readonly Guid OrderPositionPharmacy2Id = Guid.Parse("91000000-0000-0000-0000-000000000006");
+  public static readonly Guid OrderPositionNewId = Guid.Parse("91000000-0000-0000-0000-000000000007");
 
   public const string DefaultPassword = "Pass123!";
   public const string SuperAdminPhone = "900000001";
@@ -243,6 +245,17 @@ public static class ApiTestData
       12m,
       1);
 
+    var orderNew = CreateOrder(
+      OrderNewId,
+      OrderPositionNewId,
+      Client1Id,
+      client1.PhoneNumber,
+      Pharmacy1Id,
+      medicine1,
+      1,
+      10m,
+      0);
+
     var refundRequest = new RefundRequest(
       OrderOnTheWayId,
       Client1Id,
@@ -265,7 +278,8 @@ public static class ApiTestData
       orderReady,
       orderOnTheWay,
       orderCancelable,
-      orderPharmacy2);
+      orderPharmacy2,
+      orderNew);
     dbContext.RefundRequests.Add(refundRequest);
 
     await dbContext.SaveChangesAsync();
