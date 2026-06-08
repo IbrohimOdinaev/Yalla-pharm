@@ -1,0 +1,37 @@
+# ============================================
+# Shared edge proxy for dev + prod stacks.
+#
+# Run this once on a host that has both application networks:
+#   docker network create yalla-net-dev
+#   docker network create yalla-net-prod
+#   docker compose -f docker-compose.proxy.yml up -d
+#
+# This proxy owns ports 80/443. Do not publish 80/443 from the dev/prod
+# application compose files on the same host.
+# ============================================
+
+name: yalla-pharm-proxy
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: yalla-pharm-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./deploy/certbot/www:/var/www/certbot:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - yalla-net-dev
+      - yalla-net-prod
+
+networks:
+  yalla-net-dev:
+    external: true
+    name: yalla-net-dev
+  yalla-net-prod:
+    external: true
+    name: yalla-net-prod
