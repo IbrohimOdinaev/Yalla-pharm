@@ -14,6 +14,10 @@ export async function connectTelegramAuthHub(
   nonce: string,
   handlers: TelegramAuthHubHandlers,
 ): Promise<HubConnection> {
+  if (!env.signalREnabled) {
+    throw new Error("SignalR is disabled.");
+  }
+
   const url = env.signalRTelegramAuthHubUrl.startsWith("http")
     ? env.signalRTelegramAuthHubUrl
     : `${env.apiBaseUrl}${env.signalRTelegramAuthHubUrl}`;

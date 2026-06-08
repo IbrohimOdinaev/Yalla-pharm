@@ -25,6 +25,7 @@ function build(): HubConnection {
 
 export async function ensureSignalRConnection(accessToken?: string | null): Promise<HubConnection | null> {
   if (typeof window === "undefined") return null;
+  if (!env.signalREnabled) return null;
 
   // Hub is [Authorize]-gated; without a token the backend returns 401 on every
   // WebSocket handshake and retries flood the console. Bail early for guests.

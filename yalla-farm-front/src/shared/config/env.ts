@@ -1,7 +1,13 @@
 import { getRuntimeConfigValue } from "./runtime-config";
 
+function getBooleanRuntimeConfigValue(key: Parameters<typeof getRuntimeConfigValue>[0], fallback: boolean): boolean {
+  const raw = getRuntimeConfigValue(key, fallback ? "true" : "false").trim().toLowerCase();
+  return !["false", "0", "no", "off"].includes(raw);
+}
+
 export const env = {
   apiBaseUrl: getRuntimeConfigValue("NEXT_PUBLIC_API_BASE_URL"),
+  signalREnabled: getBooleanRuntimeConfigValue("NEXT_PUBLIC_SIGNALR_ENABLED", true),
   signalRUpdatesHubUrl: getRuntimeConfigValue("NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL", "/hubs/updates"),
   signalRTelegramAuthHubUrl: getRuntimeConfigValue(
     "NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL",
@@ -53,7 +59,7 @@ export function validateEnv(): { errors: string[]; warnings: string[] } {
     );
   }
 
-  if (!env.signalRUpdatesHubUrl || !env.signalRTelegramAuthHubUrl) {
+  if (env.signalREnabled && (!env.signalRUpdatesHubUrl || !env.signalRTelegramAuthHubUrl)) {
     warnings.push(
       "SignalR hub URLs missing; realtime cart / Telegram-auth flows will be disabled.",
     );
