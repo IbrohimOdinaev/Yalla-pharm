@@ -137,7 +137,7 @@ public sealed class JuraService : IJuraService
       phone = normalizedPhone,
       allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
-      to_address = new[] { ToJuraAddressPayload(to) }
+      to_addresses = new[] { ToJuraAddressPayload(to) }
     };
 
     var legacyBody = new
@@ -145,7 +145,7 @@ public sealed class JuraService : IJuraService
       pay_type_id = _options.DefaultPayTypeId,
       allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
-      to_address = new[] { ToJuraAddressPayload(to) }
+      to_addresses = new[] { ToJuraAddressPayload(to) }
     };
 
     _logger.LogInformation("Creating JURA delivery order from {From} to {To}", from.Title, to.Title);

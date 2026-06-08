@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
@@ -123,6 +124,13 @@ public sealed class JuraServiceTests
     Assert.Equal("1074", result.RecipientCode);
     Assert.Equal("/api/v2/integration/orders/create", handler.Requests[1].PathAndQuery);
     Assert.Equal("/api/v2/external-api/orders/create?tariff_id=37&phone=992000000003&pay_type_id=243115", handler.Requests[2].PathAndQuery);
+
+    using var integrationBody = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
+    using var legacyBody = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
+    Assert.True(integrationBody.RootElement.TryGetProperty("to_addresses", out _));
+    Assert.False(integrationBody.RootElement.TryGetProperty("to_address", out _));
+    Assert.True(legacyBody.RootElement.TryGetProperty("to_addresses", out _));
+    Assert.False(legacyBody.RootElement.TryGetProperty("to_address", out _));
   }
 
   [Fact]
@@ -214,20 +222,24 @@ public sealed class JuraServiceTests
   {
     private readonly Queue<HttpResponseMessage> _responses;
     public List<Uri> Requests { get; } = [];
+    public List<string?> Bodies { get; } = [];
 
     public SequenceMessageHandler(params HttpResponseMessage[] responses)
     {
       _responses = new Queue<HttpResponseMessage>(responses);
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
       Requests.Add(request.RequestUri ?? throw new InvalidOperationException("Request URI is missing."));
+      Bodies.Add(request.Content is null
+        ? null
+        : await request.Content.ReadAsStringAsync(cancellationToken));
 
       if (_responses.Count == 0)
         throw new InvalidOperationException($"Unexpected request: {request.Method} {request.RequestUri}");
 
-      return Task.FromResult(_responses.Dequeue());
+      return _responses.Dequeue();
     }
   }
 }

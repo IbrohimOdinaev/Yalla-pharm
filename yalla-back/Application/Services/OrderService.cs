@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -620,13 +621,26 @@ public sealed class OrderService : IOrderService
       // is what the client was quoted (Order.PaymentAmount is locked to it). JURA
       // will bill us per the chosen tariff; if it differs from the checkout quote,
       // that's an operational cost for the pharmacy, not the client.
-      var result = await _juraService.CreateDeliveryOrderAsync(
-        from,
-        to,
-        request.TariffId,
-        clientPhone,
-        cancellationToken,
-        deliverToDoor: deliveryData.DeliverToDoor);
+      JuraCreateOrderResult result;
+      try
+      {
+        result = await _juraService.CreateDeliveryOrderAsync(
+          from,
+          to,
+          request.TariffId,
+          clientPhone,
+          cancellationToken,
+          deliverToDoor: deliveryData.DeliverToDoor);
+      }
+      catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+      {
+        _logger.LogError(ex, "JURA delivery dispatch failed for order {OrderId}", order.Id);
+        throw new ClientErrorException(
+          "jura_dispatch_failed",
+          "Не удалось вызвать курьера JURA. Проверьте тариф и адрес доставки, затем повторите попытку.",
+          "jura_dispatch_failed",
+          502);
+      }
 
       // ─── Orphan-protection ───
       // JURA has now created the delivery order. If we fail to persist locally,

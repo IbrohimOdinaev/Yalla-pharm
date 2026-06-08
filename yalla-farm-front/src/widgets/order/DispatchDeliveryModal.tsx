@@ -21,6 +21,10 @@ type Props = {
   onDispatched: (response: DispatchDeliveryResponse) => void | Promise<void>;
 };
 
+function isAutoTariff(tariff: DeliveryTariff): boolean {
+  return /авто|auto|car/i.test(tariff.name);
+}
+
 export function DispatchDeliveryModal({ open, token, order, onClose, onDispatched }: Props) {
   const [tariffs, setTariffs] = useState<DeliveryTariff[]>([]);
   const [selectedTariffId, setSelectedTariffId] = useState<number | null>(null);
@@ -54,8 +58,12 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
     setIsLoadingTariffs(true);
     getDeliveryTariffs(token)
       .then((list) => {
-        setTariffs(list);
-        if (list.length > 0) setSelectedTariffId(list[0].id);
+        const autoTariffs = list.filter(isAutoTariff);
+        setTariffs(autoTariffs);
+        setSelectedTariffId(autoTariffs[0]?.id ?? null);
+        if (autoTariffs.length === 0) {
+          setError("Тариф «Курьер на авто» сейчас недоступен.");
+        }
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Не удалось загрузить тарифы.");
@@ -182,7 +190,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
             {isLoadingTariffs ? (
               <p className="text-sm text-on-surface-variant">Загрузка тарифов…</p>
             ) : tariffs.length === 0 ? (
-              <p className="text-sm text-on-surface-variant">Нет доступных тарифов — будет использован тариф по умолчанию.</p>
+              <p className="text-sm text-on-surface-variant">Тариф «Курьер на авто» недоступен.</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {tariffs.map((t) => {
@@ -218,7 +226,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
           <button
             type="button"
             onClick={onConfirm}
-            disabled={isDispatching || isLoadingTariffs || !hasRoutePoints}
+            disabled={isDispatching || isLoadingTariffs || !hasRoutePoints || selectedTariffId == null}
             className="stitch-button flex-1 py-3"
           >
             {isDispatching ? "Отправка…" : "Подтвердить"}
