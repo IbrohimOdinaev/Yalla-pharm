@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import QRCode from "react-qr-code";
 import { useSearchParams } from "next/navigation";
 import { formatMoney } from "@/shared/lib/format";
 import { buildPaymentQrDescription, buildPaymentQrValue } from "@/shared/lib/paymentQrPayload";
@@ -37,12 +37,11 @@ function PaymentQrContent() {
         {allowed ? (
           <>
             <div className="mx-auto mt-5 grid w-fit place-items-center rounded-3xl border border-outline/60 bg-white p-4">
-              <QRCodeSVG
+              <QRCode
                 value={qrValue}
                 size={280}
-                level="M"
-                marginSize={2}
-                fgColor="#1A1C1B"
+                level="Q"
+                fgColor="#000000"
                 bgColor="#FFFFFF"
                 title={`${title}: QR для оплаты`}
               />
