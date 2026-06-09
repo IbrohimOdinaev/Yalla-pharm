@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney } from "@/shared/lib/format";
+import { buildPaymentQrDescription, buildPaymentQrValue } from "@/shared/lib/paymentQrPayload";
 import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
 import { Button, Icon } from "@/shared/ui";
 
@@ -20,6 +21,8 @@ function PaymentQrContent() {
   const subtitle = params.get("subtitle")?.trim() || "";
   const amount = readAmount(params.get("amount"));
   const allowed = isAllowedPaymentUrl(paymentUrl);
+  const qrValue = buildPaymentQrValue(paymentUrl);
+  const qrDescription = buildPaymentQrDescription(paymentUrl);
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-surface-container-low px-4 py-8">
@@ -35,7 +38,7 @@ function PaymentQrContent() {
           <>
             <div className="mx-auto mt-5 grid w-fit place-items-center rounded-3xl border border-outline/60 bg-white p-4">
               <QRCodeSVG
-                value={paymentUrl}
+                value={qrValue}
                 size={280}
                 level="M"
                 marginSize={2}
@@ -45,7 +48,7 @@ function PaymentQrContent() {
               />
             </div>
             <p className="mt-4 text-xs leading-relaxed text-on-surface-variant">
-              Отсканируйте QR телефоном или откройте оплату на этом устройстве.
+              {qrDescription}
             </p>
             <Button
               size="md"

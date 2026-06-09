@@ -51,7 +51,7 @@ describe("openPaymentQrWindow", () => {
     expect(writes.at(-1)).toContain("Открыть оплату");
   });
 
-  it("encodes Alif QR as the direct deeplink without a redirect endpoint", async () => {
+  it("encodes Alif QR as the direct deeplink without an amount", async () => {
     toDataURLMock.mockResolvedValue("data:image/png;base64,qr");
     const { writes } = mockQrWindow();
     const deepLinkUrl = "alifmobi:///toMobi?account=%2B992900000001&summa=120.00&_imcp=1";
@@ -63,7 +63,7 @@ describe("openPaymentQrWindow", () => {
 
     expect(result).toBe(true);
     expect(toDataURLMock).toHaveBeenCalledWith(
-      "alifmobi:///toMobi?account=%2B992900000001&summa=120.00&_imcp=1",
+      "alifmobi:///toMobi?account=%2B992900000001&_imcp=1",
       expect.objectContaining({ width: 720 }),
     );
     expect(writes.at(-1)).toContain("alifmobi:///toMobi?account=%2B992900000001&amp;summa=120.00&amp;_imcp=1");
