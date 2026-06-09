@@ -24,8 +24,20 @@ import { Button, Icon, Chip } from "@/shared/ui";
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
 
+function getTelegramAuthLink(session: StartTelegramAuthResponse, preferWebLink: boolean): string {
+  if (preferWebLink) {
+    return session.webDeepLink || session.deepLink || session.appDeepLink || "";
+  }
+  return session.appDeepLink || session.deepLink || session.webDeepLink || "";
+}
+
 function openTelegramAuthLink(session: StartTelegramAuthResponse, target?: Window | null) {
-  const deepLink = session.appDeepLink || session.deepLink;
+  const deepLink = getTelegramAuthLink(session, Boolean(target));
+  if (!deepLink) {
+    target?.close();
+    return;
+  }
+
   if (target && !target.closed) {
     try {
       target.location.href = deepLink;
