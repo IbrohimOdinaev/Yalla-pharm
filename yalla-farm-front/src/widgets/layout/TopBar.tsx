@@ -258,7 +258,7 @@ export function TopBar({
   };
 
   // ── HOME MODE: Yandex-style bar. lg+ keeps the single-row layout with
-  //    inline address/pharmacy pills; below lg switches to a two-row layout
+  //    inline address/action pills; below lg switches to a two-row layout
   //    (logo + full address + profile / full-width search). The pharmacy
   //    selector moves out of the header on mobile and lives as the last
   //    card in PharmacyBanners.
@@ -373,11 +373,11 @@ export function TopBar({
       </>
     );
     const desktopSearchClass =
-      "ml-4 lg:ml-6 flex h-12 min-w-0 flex-none items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest lg:w-[clamp(360px,38vw,560px)] xl:w-[clamp(520px,42vw,720px)]";
+      "ml-4 flex h-12 min-w-[220px] flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:ml-6 xl:min-w-[360px] 2xl:max-w-[720px]";
 
-    // Stable explicit width: the search no longer flexes when neighbouring
-    // controls appear/change, so switching page tabs does not make the pill
-    // visually jump.
+    // Desktop search flexes inside the single-line header. A minimum width
+    // keeps the input readable while letting the action buttons stay inline
+    // on 1440-1680px laptop/browser-devtools viewports.
     const DesktopSearch = !hideSearch ? (
       onSearchClick ? (
         <button
@@ -579,21 +579,17 @@ export function TopBar({
               (flush against the address pill); cart + profile sit at the
               right edge separated by a flex-1 spacer. */}
           <div className="hidden lg:block">
-            <div className="flex h-[62px] items-center gap-2 min-[1720px]:h-[66px] min-[1720px]:gap-3">
+            <div className="flex h-[66px] min-w-0 items-center gap-2 2xl:gap-3">
               {LogoLink}
               {DesktopSearch}
               <div className="flex flex-shrink-0 items-center gap-2">
                 {DesktopAddressPill}
-                {renderPrescriptionPill("hidden min-[1720px]:flex")}
+                {renderPrescriptionPill("hidden xl:flex")}
               </div>
               <span className="flex-1" />
               {LatestActivity}
-              {!onCartRoute ? renderCartButton("hidden min-[1720px]:inline-flex") : null}
-              {renderProfileButton(menuRefDesktop)}
-            </div>
-            <div className="flex items-center justify-end gap-2 pb-3 min-[1720px]:hidden">
-              {renderPrescriptionPill()}
               {!onCartRoute ? renderCartButton("inline-flex") : null}
+              {renderProfileButton(menuRefDesktop)}
             </div>
           </div>
 
