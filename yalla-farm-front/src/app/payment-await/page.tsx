@@ -4,7 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { formatMoney } from "@/shared/lib/format";
-import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { isAllowedPaymentUrl } from "@/shared/lib/paymentWindow";
+import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
 import { getOrderById } from "@/entities/order/api";
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import { usePaymentIntentLiveState } from "@/features/checkout/model/usePaymentIntentLiveState";
@@ -177,9 +178,9 @@ function PaymentAwaitContent() {
         {paymentMethods.length > 0 ? (
           <section className="space-y-3 rounded-3xl bg-surface-container-low p-4 shadow-card">
             <div>
-              <p className="text-sm font-bold text-on-surface">Оплатите по QR или откройте приложение</p>
+              <p className="text-sm font-bold text-on-surface">Выберите способ оплаты</p>
               <p className="mt-1 text-xs text-on-surface-variant">
-                QR сформирован из deeplink выбранного способа оплаты.
+                На телефоне откроется приложение оплаты, на компьютере — отдельная вкладка с QR.
               </p>
             </div>
             {paymentMethods.map((method) => (
@@ -187,7 +188,12 @@ function PaymentAwaitContent() {
                 key={method.id}
                 method={method}
                 amount={amount}
-                onOpen={() => openPaymentUrl(method.url)}
+                onOpen={() => openPaymentForCurrentDevice({
+                  url: method.url,
+                  title: method.title,
+                  subtitle: method.subtitle,
+                  amount,
+                })}
               />
             ))}
           </section>
@@ -207,7 +213,11 @@ function PaymentAwaitContent() {
               size="md"
               fullWidth
               rightIcon="arrow-right"
-              onClick={() => openPaymentUrl(paymentUrl)}
+              onClick={() => openPaymentForCurrentDevice({
+                url: paymentUrl,
+                title: "Оплата",
+                amount,
+              })}
             >
               Открыть в новом окне
             </Button>

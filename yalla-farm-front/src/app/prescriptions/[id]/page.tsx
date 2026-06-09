@@ -18,7 +18,7 @@ import { DEFAULT_MEDICINE_IMAGE_URL, getMedicinesByIds, getMedicineDisplayName, 
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AuthedImageLightbox } from "@/widgets/prescription/AuthedImageLightbox";
@@ -407,7 +407,12 @@ export default function PrescriptionDetailPage() {
                         key={method.id}
                         method={method}
                         amount={prescriptionPaymentAmount}
-                        onOpen={() => openPaymentUrl(method.url)}
+                        onOpen={() => openPaymentForCurrentDevice({
+                          url: method.url,
+                          title: method.title,
+                          subtitle: method.subtitle,
+                          amount: prescriptionPaymentAmount,
+                        })}
                       />
                     ))}
                   </div>
@@ -677,7 +682,12 @@ export default function PrescriptionDetailPage() {
         amount={pendingPayment?.amount ?? 0}
         methods={pendingPaymentMethods}
         onSelect={(method) => {
-          openPaymentUrl(method.url);
+          openPaymentForCurrentDevice({
+            url: method.url,
+            title: method.title,
+            subtitle: method.subtitle,
+            amount: pendingPayment?.amount ?? 0,
+          });
           const targetId = pendingPayment?.prescriptionId;
           setPendingPayment(null);
           if (targetId) router.push(`/prescriptions/${targetId}`);

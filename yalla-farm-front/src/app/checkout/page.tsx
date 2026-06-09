@@ -8,7 +8,7 @@ import { apiFetch } from "@/shared/api/http-client";
 import { calculateDelivery } from "@/shared/api/delivery";
 import { buildCheckoutIdempotencyKey } from "@/shared/lib/idempotency";
 import { formatMoney } from "@/shared/lib/format";
-import { openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
@@ -748,7 +748,12 @@ export default function CheckoutPage() {
         amount={pendingPayment?.amount ?? 0}
         methods={paymentMethods}
         onSelect={(method) => {
-          openPaymentUrl(method.url);
+          openPaymentForCurrentDevice({
+            url: method.url,
+            title: method.title,
+            subtitle: method.subtitle,
+            amount: pendingPayment?.amount ?? 0,
+          });
           setPendingPayment(null);
           router.replace("/orders");
         }}

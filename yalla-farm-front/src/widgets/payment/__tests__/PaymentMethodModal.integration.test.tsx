@@ -3,10 +3,9 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/render";
 import { PaymentMethodModal } from "@/widgets/payment/PaymentMethodModal";
-import { buildPaymentQrValue } from "@/shared/lib/paymentQrPayload";
 
 describe("PaymentMethodModal", () => {
-  it("renders an inline QR for payment methods", () => {
+  it("renders payment methods without inline QR codes", () => {
     const onSelect = vi.fn();
 
     const method = {
@@ -28,12 +27,12 @@ describe("PaymentMethodModal", () => {
 
     const card = screen.getByText("Эсхата").closest("div");
     expect(card).not.toBeNull();
-    expect(screen.getByTitle("Эсхата: QR для оплаты")).toBeInTheDocument();
+    expect(screen.queryByTitle("Эсхата: QR для оплаты")).not.toBeInTheDocument();
     expect(screen.getAllByText("120.00 TJS").length).toBeGreaterThanOrEqual(1);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("encodes Alif QR through the deeplink redirect endpoint", () => {
+  it("renders Alif as a direct payment action", () => {
     const url = "alifmobi:///toMobi?account=%2B992900000001&summa=120.00&_imcp=1";
 
     renderWithProviders(
@@ -53,9 +52,8 @@ describe("PaymentMethodModal", () => {
       />,
     );
 
-    expect(screen.getByTitle("Alif Mobi: QR для оплаты")).toBeInTheDocument();
-    expect(buildPaymentQrValue(url)).toContain("/api/payment/deeplink?provider=alif");
-    expect(buildPaymentQrValue(url)).toContain("phone=992900000001");
+    expect(screen.getByText("Alif Mobi")).toBeInTheDocument();
+    expect(screen.queryByTitle("Alif Mobi: QR для оплаты")).not.toBeInTheDocument();
   });
 
   it("keeps the direct open action for payment methods", () => {

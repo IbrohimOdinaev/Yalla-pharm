@@ -6,7 +6,7 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { createPrescription } from "@/entities/prescription/api";
 import { getPrivacyPolicyStatus } from "@/entities/legal/api";
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
-import { openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { PrivacyPolicyAcceptanceModal } from "@/widgets/legal/PrivacyPolicyAcceptanceModal";
@@ -729,7 +729,12 @@ export default function NewPrescriptionPage() {
         amount={pendingPayment?.amount ?? 0}
         methods={paymentMethods}
         onSelect={(method) => {
-          openPaymentUrl(method.url);
+          openPaymentForCurrentDevice({
+            url: method.url,
+            title: method.title,
+            subtitle: method.subtitle,
+            amount: pendingPayment?.amount ?? 0,
+          });
           setPendingPayment(null);
           router.replace("/prescriptions");
         }}

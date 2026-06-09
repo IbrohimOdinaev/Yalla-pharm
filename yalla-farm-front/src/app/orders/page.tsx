@@ -17,7 +17,8 @@ import { usePharmacyAddresses } from "@/features/pharmacy/model/usePharmacyAddre
 import { getPickupAvailability } from "@/features/pharmacy/model/pharmacyHours";
 import type { ApiOrder } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
-import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
+import { isAllowedPaymentUrl } from "@/shared/lib/paymentWindow";
+import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -706,7 +707,12 @@ export default function OrdersPage() {
         amount={paymentPicker?.amount ?? 0}
         methods={paymentPicker?.methods ?? []}
         onSelect={(method) => {
-          openPaymentUrl(method.url);
+          openPaymentForCurrentDevice({
+            url: method.url,
+            title: method.title,
+            subtitle: method.subtitle,
+            amount: paymentPicker?.amount ?? 0,
+          });
           setPaymentPicker(null);
         }}
         onClose={() => setPaymentPicker(null)}
