@@ -1,5 +1,3 @@
-import { formatMoney } from "@/shared/lib/format";
-import { openPaymentQrWindow } from "@/shared/lib/paymentQr";
 import { openPaymentUrl } from "@/shared/lib/paymentWindow";
 
 type ResponsivePaymentInput = {
@@ -14,15 +12,18 @@ function shouldShowDesktopQrPage(): boolean {
   return window.matchMedia("(min-width: 1024px) and (hover: hover) and (pointer: fine)").matches;
 }
 
+function buildPaymentQrPageUrl(input: ResponsivePaymentInput): string {
+  const url = new URL("/payment-qr", window.location.origin);
+  url.searchParams.set("url", input.url);
+  url.searchParams.set("title", input.title);
+  url.searchParams.set("amount", String(input.amount));
+  if (input.subtitle) url.searchParams.set("subtitle", input.subtitle);
+  return url.toString();
+}
+
 export function openPaymentForCurrentDevice(input: ResponsivePaymentInput): boolean {
   if (shouldShowDesktopQrPage()) {
-    void openPaymentQrWindow({
-      deepLinkUrl: input.url,
-      title: input.title,
-      amountLabel: `Сумма: ${formatMoney(input.amount)}`,
-      walletLabel: input.subtitle,
-    });
-    return true;
+    return Boolean(window.open(buildPaymentQrPageUrl(input), "_blank", "noopener,noreferrer"));
   }
 
   return openPaymentUrl(input.url);

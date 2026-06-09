@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
-import { openPaymentQrWindow } from "@/shared/lib/paymentQr";
 import { openPaymentUrl } from "@/shared/lib/paymentWindow";
-
-vi.mock("@/shared/lib/paymentQr", () => ({
-  openPaymentQrWindow: vi.fn(),
-}));
 
 vi.mock("@/shared/lib/paymentWindow", () => ({
   openPaymentUrl: vi.fn(),
@@ -38,6 +33,7 @@ describe("openPaymentForCurrentDevice", () => {
 
   it("opens a QR page on desktop-class devices", () => {
     mockDesktopPaymentSurface(true);
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window);
 
     expect(openPaymentForCurrentDevice({
       url: "alifmobi:///toMobi?account=%2B992900000001&summa=120.00",
@@ -46,17 +42,19 @@ describe("openPaymentForCurrentDevice", () => {
       amount: 120,
     })).toBe(true);
 
-    expect(openPaymentQrWindow).toHaveBeenCalledWith({
-      deepLinkUrl: "alifmobi:///toMobi?account=%2B992900000001&summa=120.00",
-      title: "Alif Mobi",
-      amountLabel: "Сумма: 120.00 TJS",
-      walletLabel: "Оплата через приложение Alif",
-    });
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/payment-qr?url=alifmobi%3A%2F%2F%2FtoMobi"),
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(openSpy.mock.calls[0][0]).toContain("title=Alif+Mobi");
+    expect(openSpy.mock.calls[0][0]).toContain("amount=120");
     expect(openPaymentUrl).not.toHaveBeenCalled();
   });
 
   it("opens the payment link directly on mobile/tablet-class devices", () => {
     mockDesktopPaymentSurface(false);
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window);
     vi.mocked(openPaymentUrl).mockReturnValue(true);
 
     expect(openPaymentForCurrentDevice({
@@ -66,6 +64,6 @@ describe("openPaymentForCurrentDevice", () => {
     })).toBe(true);
 
     expect(openPaymentUrl).toHaveBeenCalledWith("dushanbecity://transfer?phone=992900000001&amount=120.00");
-    expect(openPaymentQrWindow).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 });
