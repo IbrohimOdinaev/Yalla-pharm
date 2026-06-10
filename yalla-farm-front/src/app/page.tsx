@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
 import { getCatalogMedicinesPaginated, getHomePopularMedicines, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
@@ -184,6 +185,54 @@ function buildDushanbeMapPharmacies(activePharmacies: ActivePharmacy[]): Dushanb
   }
 
   return items;
+}
+
+function PharmacyIntegrationBanner() {
+  return (
+    <section className="overflow-hidden rounded-3xl border border-outline/60 bg-surface-container-low shadow-card">
+      <Link
+        href="/for-pharmacies"
+        className="group grid min-h-[220px] grid-cols-1 transition active:scale-[0.99] sm:min-h-[260px] lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]"
+      >
+        <div className="relative z-10 flex flex-col justify-between gap-5 p-5 sm:p-7 lg:p-8">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-black text-primary">
+              <span className="h-2 w-2 rounded-full bg-secondary" />
+              Для аптек Душанбе
+            </div>
+            <h2 className="mt-4 max-w-xl font-display text-2xl font-black leading-tight text-on-surface sm:text-3xl lg:text-4xl">
+              Подключите аптеку к Yalla Pharm
+            </h2>
+            <p className="mt-3 max-w-lg text-sm font-medium leading-relaxed text-on-surface-variant sm:text-base">
+              Интегрируем каталог, остатки и заказы, чтобы клиенты видели ваши товары онлайн и оформляли покупки быстрее.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-black text-on-primary transition group-hover:bg-primary-container">
+              Оставить заявку
+            </span>
+            <span className="text-xs font-bold text-on-surface-variant sm:text-sm">
+              Каталог · остатки · кабинет аптеки
+            </span>
+          </div>
+        </div>
+
+        <div className="relative min-h-[170px] overflow-hidden sm:min-h-[220px] lg:min-h-full">
+          <Image
+            src="/pharmacy-integration-banner.png"
+            alt="Фармацевт работает с цифровым каталогом аптеки на планшете"
+            fill
+            priority
+            unoptimized
+            sizes="(min-width: 1024px) 58vw, 100vw"
+            className="object-cover object-center transition duration-500 group-hover:scale-[1.03]"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent lg:bg-gradient-to-r lg:from-surface-container-low lg:via-transparent lg:to-transparent" />
+        </div>
+      </Link>
+    </section>
+  );
 }
 
 function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -1173,6 +1222,8 @@ function HomeContent() {
               ))}
             </div>
           </section>
+
+          <PharmacyIntegrationBanner />
 
           {/* Phone actions — compact vertical blocks directly under categories. */}
           {!isAdminOrSA ? (
