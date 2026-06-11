@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: deploy-prod
@@ -35,6 +36,13 @@ jobs:
         run: |
           docker network inspect yalla-net-prod >/dev/null 2>&1 \
             || docker network create yalla-net-prod
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull images
         run: |
