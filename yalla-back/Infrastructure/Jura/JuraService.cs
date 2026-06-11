@@ -12,10 +12,8 @@ namespace Yalla.Infrastructure.Jura;
 
 public sealed class JuraService : IJuraService
 {
-  private const string IntegrationOrdersBasePath = "/api/v2/integration/orders";
-  private const string IntegrationTraccarBasePath = "/api/v2/integration/traccar";
-  private const string LegacyOrdersBasePath = "/api/v2/external-api/orders";
-  private const string LegacyTraccarBasePath = "/api/v2/external-api/traccar";
+  private const string ExternalOrdersBasePath = "/api/v2/external-api/orders";
+  private const string ExternalTraccarBasePath = "/api/v2/external-api/traccar";
 
   private readonly HttpClient _http;
   private readonly JuraOptions _options;
@@ -44,7 +42,7 @@ public sealed class JuraService : IJuraService
   public async Task<List<JuraAddressSuggestion>> SearchAddressAsync(string text, CancellationToken ct)
   {
     var response = await SendWithAuthAsync(HttpMethod.Get,
-      $"/api/v2/external-api/orders/address/search?text={Uri.EscapeDataString(text)}&division_id={_options.DivisionId}",
+      $"{ExternalOrdersBasePath}/address/search?text={Uri.EscapeDataString(text)}",
       null,
       ct,
       ensureSuccess: false,
@@ -85,28 +83,16 @@ public sealed class JuraService : IJuraService
       query += $"&phone={Uri.EscapeDataString(normalizedPhone)}";
     query = AppendAllowancesQuery(query, deliverToDoor);
 
-    var integrationBody = new
+    var body = new
     {
-      tariff_id = effectiveTariffId,
-      phone = normalizedPhone,
-      allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
       to_addresses = new[] { ToJuraAddressPayload(to) }
     };
 
-    var legacyBody = new
-    {
-      allowances = BuildAllowancesPayload(deliverToDoor),
-      from_address = ToJuraAddressPayload(from),
-      to_addresses = new[] { ToJuraAddressPayload(to) }
-    };
-
-    var response = await SendWithIntegrationFallbackAsync(
+    var response = await SendWithAuthAsync(
       HttpMethod.Post,
-      $"{IntegrationOrdersBasePath}/calculate",
-      $"{LegacyOrdersBasePath}/calculate?{query}",
-      integrationBody,
-      legacyBody,
+      $"{ExternalOrdersBasePath}/calculate?{query}",
+      body,
       ct);
 
     var result = await response.Content.ReadFromJsonAsync<JuraCalculateResponse>(JsonOptions, ct);
@@ -125,41 +111,28 @@ public sealed class JuraService : IJuraService
   {
     var effectiveTariffId = tariffId ?? _options.DefaultTariffId;
     var normalizedPhone = NormalizeJuraPhone(clientPhone);
-    var query = $"tariff_id={effectiveTariffId}";
-    if (!string.IsNullOrEmpty(normalizedPhone))
-      query += $"&phone={Uri.EscapeDataString(normalizedPhone)}";
-    query = AppendAllowancesQuery(query, deliverToDoor);
 
-    var integrationBody = new
+    var body = new
     {
+      division_id = _options.DivisionId,
       tariff_id = effectiveTariffId,
-      pay_type_id = _options.DefaultPayTypeId,
       phone = normalizedPhone,
-      allowances = BuildAllowancesPayload(deliverToDoor),
-      from_address = ToJuraAddressPayload(from),
-      to_addresses = new[] { ToJuraAddressPayload(to) }
-    };
-
-    var legacyBody = new
-    {
       pay_type_id = _options.DefaultPayTypeId,
-      allowances = BuildAllowancesPayload(deliverToDoor),
       from_address = ToJuraAddressPayload(from),
-      to_addresses = new[] { ToJuraAddressPayload(to) }
+      to_address = new[] { ToJuraAddressPayload(to) },
+      allowances = BuildCreateAllowancesPayload(deliverToDoor)
     };
 
     _logger.LogInformation("Creating JURA delivery order from {From} to {To}", from.Title, to.Title);
 
-    var response = await SendWithIntegrationFallbackAsync(
+    var response = await SendWithAuthAsync(
       HttpMethod.Post,
-      $"{IntegrationOrdersBasePath}/create",
-      $"{LegacyOrdersBasePath}/create?{query}&pay_type_id={_options.DefaultPayTypeId}",
-      integrationBody,
-      legacyBody,
+      $"{ExternalOrdersBasePath}/create",
+      body,
       ct);
 
     var result = await response.Content.ReadFromJsonAsync<JuraCreateOrderResponse>(JsonOptions, ct);
-    var data = result?.Data ?? result;
+    var data = result?.Data ?? result?.Result ?? result;
     if (data == null)
       throw new InvalidOperationException("JURA create order returned null response");
 
@@ -187,6 +160,17 @@ public sealed class JuraService : IJuraService
       : null;
   }
 
+  private static JuraCreateAllowancePayload[]? BuildCreateAllowancesPayload(bool deliverToDoor)
+  {
+    return deliverToDoor
+      ? [new JuraCreateAllowancePayload(
+          JuraDeliveryConstants.DoorToDoorAllowanceId,
+          1,
+          "custom_type",
+          "Увеличить стоимость")]
+      : null;
+  }
+
   private static string AppendAllowancesQuery(string query, bool deliverToDoor)
   {
     var payload = BuildAllowancesPayload(deliverToDoor);
@@ -198,16 +182,15 @@ public sealed class JuraService : IJuraService
   }
 
   private sealed record JuraAllowancePayload(int AllowanceId, int Value);
+  private sealed record JuraCreateAllowancePayload(int Id, decimal Price, string Type, string Name);
 
   // ─── Order Status ───
 
   public async Task<JuraOrderStatusResult> GetOrderStatusAsync(long juraOrderId, CancellationToken ct)
   {
-    var response = await SendWithIntegrationFallbackAsync(
+    var response = await SendWithAuthAsync(
       HttpMethod.Get,
-      $"{IntegrationOrdersBasePath}/status?order_id={juraOrderId}",
-      $"{LegacyOrdersBasePath}/status?order_id={juraOrderId}",
-      null,
+      $"{ExternalOrdersBasePath}/status?order_id={juraOrderId}",
       null,
       ct);
 
@@ -231,11 +214,9 @@ public sealed class JuraService : IJuraService
 
   public async Task<JuraDriverPositionResult> GetDriverPositionAsync(long deviceId, CancellationToken ct)
   {
-    var response = await SendWithIntegrationFallbackAsync(
+    var response = await SendWithAuthAsync(
       HttpMethod.Get,
-      $"{IntegrationTraccarBasePath}/position?device_id={deviceId}",
-      $"{LegacyTraccarBasePath}/position?device_id={deviceId}",
-      null,
+      $"{ExternalTraccarBasePath}/position?device_id={deviceId}",
       null,
       ct);
 
@@ -257,7 +238,7 @@ public sealed class JuraService : IJuraService
     _logger.LogInformation("Cancelling JURA order {OrderId}, reason: {Reason}", juraOrderId, reason);
 
     await SendWithAuthAsync(HttpMethod.Post,
-      $"/api/v2/external-api/orders/cancel?order_id={juraOrderId}&reason_cancel_order={Uri.EscapeDataString(reason)}",
+      $"{ExternalOrdersBasePath}/cancel?order_id={juraOrderId}&reason_cancel_order={Uri.EscapeDataString(reason)}",
       null, ct);
   }
 
@@ -266,10 +247,10 @@ public sealed class JuraService : IJuraService
   public async Task<string?> GetReceiptCodeAsync(long juraOrderId, CancellationToken ct)
   {
     var response = await SendWithAuthAsync(HttpMethod.Get,
-      $"/api/v2/external-api/orders/receipt-code?order_id={juraOrderId}", null, ct);
+      $"{ExternalOrdersBasePath}/receipt-code?order_id={juraOrderId}", null, ct);
 
-    var result = await response.Content.ReadFromJsonAsync<JuraDataResponse<JuraReceiptCodeData>>(JsonOptions, ct);
-    return result?.Data?.ReceiptCode;
+    var result = await response.Content.ReadFromJsonAsync<JuraReceiptCodeResponse>(JsonOptions, ct);
+    return result?.Data?.ReceiptCode ?? result?.ReceiptCode;
   }
 
   // ─── Tariffs ───
@@ -361,49 +342,6 @@ public sealed class JuraService : IJuraService
 
     return response;
   }
-
-  private async Task<HttpResponseMessage> SendWithIntegrationFallbackAsync(
-    HttpMethod method,
-    string integrationUrl,
-    string legacyUrl,
-    object? integrationBody,
-    object? legacyBody,
-    CancellationToken ct)
-  {
-    var response = await SendWithAuthAsync(
-      method,
-      integrationUrl,
-      integrationBody,
-      ct,
-      ensureSuccess: false,
-      ignoreNotFoundFailure: true);
-
-    if (response.StatusCode != HttpStatusCode.NotFound)
-    {
-      response.EnsureSuccessStatusCode();
-      return response;
-    }
-
-    var responseText = await response.Content.ReadAsStringAsync(ct);
-    if (!IsRouteMissingResponse(responseText))
-    {
-      response.Content = new StringContent(responseText, System.Text.Encoding.UTF8, "application/json");
-      response.EnsureSuccessStatusCode();
-      return response;
-    }
-
-    response.Dispose();
-    _logger.LogInformation(
-      "JURA integration endpoint {Method} {IntegrationUrl} is unavailable; falling back to {LegacyUrl}",
-      method.Method,
-      integrationUrl,
-      legacyUrl);
-
-    return await SendWithAuthAsync(method, legacyUrl, legacyBody, ct);
-  }
-
-  private static bool IsRouteMissingResponse(string responseText) =>
-    responseText.Contains("Requested URL not found", StringComparison.OrdinalIgnoreCase);
 
   private async Task<string> GetTokenAsync(CancellationToken ct)
   {
@@ -497,6 +435,7 @@ public sealed class JuraService : IJuraService
   {
     public bool Success { get; set; }
     public JuraCreateOrderResponse? Data { get; set; }
+    public JuraCreateOrderResponse? Result { get; set; }
     public long Id { get; set; }
     public long OrderId { get; set; }
     public int StatusId { get; set; }
@@ -541,8 +480,9 @@ public sealed class JuraService : IJuraService
     public int DivisionId { get; set; }
   }
 
-  private sealed class JuraReceiptCodeData
+  private sealed class JuraReceiptCodeResponse
   {
+    public JuraReceiptCodeResponse? Data { get; set; }
     public long OrderId { get; set; }
     public string? ReceiptCode { get; set; }
   }

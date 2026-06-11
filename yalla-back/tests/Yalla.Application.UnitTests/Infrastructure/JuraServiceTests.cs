@@ -11,11 +11,10 @@ namespace Yalla.Application.UnitTests.Infrastructure;
 public sealed class JuraServiceTests
 {
   [Fact]
-  public async Task CalculateDeliveryAsync_FallsBackToLegacyEndpoint_WhenIntegrationEndpointIsMissing()
+  public async Task CalculateDeliveryAsync_UsesExternalApiCalculateEndpoint()
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Text(HttpStatusCode.NotFound, "Requested URL not found!"),
       Json(HttpStatusCode.OK, """{"amount":17,"distance":2.31}"""));
     var service = CreateService(handler);
 
@@ -29,16 +28,14 @@ public sealed class JuraServiceTests
     Assert.Equal(17m, result.Amount);
     Assert.Equal(2.31, result.Distance);
     Assert.Equal("/api/v2/login", handler.Requests[0].PathAndQuery);
-    Assert.Equal("/api/v2/integration/orders/calculate", handler.Requests[1].PathAndQuery);
-    Assert.Equal("/api/v2/external-api/orders/calculate?tariff_id=37&phone=992000000000", handler.Requests[2].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/orders/calculate?tariff_id=37&phone=992000000000", handler.Requests[1].PathAndQuery);
   }
 
   [Fact]
-  public async Task CalculateDeliveryAsync_WithDoorToDoor_SendsAllowanceToLegacyEndpoint()
+  public async Task CalculateDeliveryAsync_WithDoorToDoor_SendsAllowanceInQuery()
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Text(HttpStatusCode.NotFound, "Requested URL not found!"),
       Json(HttpStatusCode.OK, """{"amount":22,"distance":2.31}"""));
     var service = CreateService(handler);
 
@@ -50,7 +47,7 @@ public sealed class JuraServiceTests
       CancellationToken.None,
       deliverToDoor: true);
 
-    var decodedQuery = Uri.UnescapeDataString(handler.Requests[2].Query);
+    var decodedQuery = Uri.UnescapeDataString(handler.Requests[1].Query);
     Assert.Contains("""allowances=[{"allowance_id":17,"value":1}]""", decodedQuery);
   }
 
@@ -88,19 +85,18 @@ public sealed class JuraServiceTests
     Assert.Equal("poi", suggestion.Type);
     Assert.Equal(38.580832, suggestion.Lat);
     Assert.Equal(68.786342, suggestion.Lng);
-    Assert.Equal("/api/v2/external-api/orders/address/search?text=Alif&division_id=6", handler.Requests[1].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/orders/address/search?text=Alif", handler.Requests[1].PathAndQuery);
   }
 
   [Fact]
-  public async Task CreateDeliveryOrderAsync_SendsCorporatePayTypeIdAndParsesWrappedResponse()
+  public async Task CreateDeliveryOrderAsync_SendsExternalApiBodyAndParsesResultWrapper()
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Text(HttpStatusCode.NotFound, "Requested URL not found!"),
       Json(HttpStatusCode.OK, """
       {
         "message": "Заказ успешно создан",
-        "data": {
+        "result": {
           "id": 42106901,
           "status": "Поступило",
           "status_id": 1,
@@ -122,27 +118,26 @@ public sealed class JuraServiceTests
     Assert.Equal(1, result.StatusId);
     Assert.Equal("Поступило", result.Status);
     Assert.Equal("1074", result.RecipientCode);
-    Assert.Equal("/api/v2/integration/orders/create", handler.Requests[1].PathAndQuery);
-    Assert.Equal("/api/v2/external-api/orders/create?tariff_id=37&phone=992000000003&pay_type_id=243115", handler.Requests[2].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[1].PathAndQuery);
 
-    using var integrationBody = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
-    using var legacyBody = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
-    Assert.True(integrationBody.RootElement.TryGetProperty("to_addresses", out _));
-    Assert.False(integrationBody.RootElement.TryGetProperty("to_address", out _));
-    Assert.True(legacyBody.RootElement.TryGetProperty("to_addresses", out _));
-    Assert.False(legacyBody.RootElement.TryGetProperty("to_address", out _));
+    using var body = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
+    Assert.Equal(6, body.RootElement.GetProperty("division_id").GetInt32());
+    Assert.Equal(37, body.RootElement.GetProperty("tariff_id").GetInt32());
+    Assert.Equal("992000000003", body.RootElement.GetProperty("phone").GetString());
+    Assert.Equal(243115, body.RootElement.GetProperty("pay_type_id").GetInt64());
+    Assert.True(body.RootElement.TryGetProperty("to_address", out _));
+    Assert.False(body.RootElement.TryGetProperty("to_addresses", out _));
   }
 
   [Fact]
-  public async Task CreateDeliveryOrderAsync_WithDoorToDoor_SendsAllowanceToLegacyEndpoint()
+  public async Task CreateDeliveryOrderAsync_WithDoorToDoor_SendsAllowanceInBody()
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Text(HttpStatusCode.NotFound, "Requested URL not found!"),
       Json(HttpStatusCode.OK, """
       {
         "message": "Заказ успешно создан",
-        "data": {
+        "result": {
           "id": 42106901,
           "status": "Поступило",
           "status_id": 1
@@ -159,12 +154,15 @@ public sealed class JuraServiceTests
       CancellationToken.None,
       deliverToDoor: true);
 
-    var decodedQuery = Uri.UnescapeDataString(handler.Requests[2].Query);
-    Assert.Contains("""allowances=[{"allowance_id":17,"value":1}]""", decodedQuery);
+    using var body = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
+    var allowance = body.RootElement.GetProperty("allowances")[0];
+    Assert.Equal(17, allowance.GetProperty("id").GetInt32());
+    Assert.Equal(1m, allowance.GetProperty("price").GetDecimal());
+    Assert.Equal("custom_type", allowance.GetProperty("type").GetString());
   }
 
   [Fact]
-  public async Task GetDriverPositionAsync_ReadsLatitudeLongitude_FromIntegrationResponse()
+  public async Task GetDriverPositionAsync_ReadsLatitudeLongitude_FromExternalApiResponse()
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
@@ -176,7 +174,21 @@ public sealed class JuraServiceTests
     Assert.Equal(12345, result.DeviceId);
     Assert.Equal(38.573255, result.Lat);
     Assert.Equal(68.786378, result.Lng);
-    Assert.Equal("/api/v2/integration/traccar/position?device_id=12345", handler.Requests[1].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/traccar/position?device_id=12345", handler.Requests[1].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task GetReceiptCodeAsync_ParsesUnwrappedExternalApiResponse()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.OK, """{"order_id":20619905,"receipt_code":"9300"}"""));
+    var service = CreateService(handler);
+
+    var result = await service.GetReceiptCodeAsync(20619905, CancellationToken.None);
+
+    Assert.Equal("9300", result);
+    Assert.Equal("/api/v2/external-api/orders/receipt-code?order_id=20619905", handler.Requests[1].PathAndQuery);
   }
 
   private static JuraService CreateService(HttpMessageHandler handler, IJuraHealthState? health = null)
