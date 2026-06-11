@@ -724,15 +724,32 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
       .catch(() => undefined);
   }
 
+  function getTelegramAppLink(value: StaffTelegramLinkStartResponse): string {
+    return value.appDeepLink || value.deepLink || value.webDeepLink || "";
+  }
+
+  function getTelegramWebLink(value: StaffTelegramLinkStartResponse): string {
+    return value.webDeepLink || value.deepLink || value.appDeepLink || "";
+  }
+
   async function onStartTelegramLink() {
     setTelegramMsg(null);
     setTelegramStatus("pending");
+    const targetWindow = window.open("about:blank", "_blank");
     try {
       const session = await startAdminTelegramLink(token);
       setTelegramSession(session);
-      const target = session.webDeepLink || session.deepLink || session.appDeepLink;
-      if (target) window.open(target, "_blank", "noopener,noreferrer");
+      const target = getTelegramAppLink(session);
+      if (targetWindow && !targetWindow.closed && target) {
+        targetWindow.opener = null;
+        targetWindow.location.href = target;
+      } else if (target) {
+        window.location.href = target;
+      } else {
+        targetWindow?.close();
+      }
     } catch (err) {
+      targetWindow?.close();
       setTelegramStatus("error");
       setTelegramMsg(err instanceof Error ? err.message : "Не удалось начать привязку Telegram.");
     }
@@ -921,13 +938,23 @@ function PharmacyTab({ token, onLogout }: { token: string; onLogout: () => void 
             <div className="space-y-3 rounded-2xl bg-primary-soft p-3">
               <p className="text-sm font-bold text-primary">Подтвердите подключение в Telegram.</p>
               <a
-                href={telegramSession.webDeepLink || telegramSession.deepLink}
+                href={getTelegramAppLink(telegramSession)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="stitch-button inline-flex w-full items-center justify-center"
               >
                 Открыть @{telegramSession.botUsername}
               </a>
+              {telegramSession.webDeepLink ? (
+                <a
+                  href={getTelegramWebLink(telegramSession)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center text-xs font-bold text-primary underline-offset-4 hover:underline"
+                >
+                  Открыть через браузер
+                </a>
+              ) : null}
               <p className="text-xs text-primary/80">После подтверждения список обновится автоматически.</p>
             </div>
           ) : null}

@@ -738,6 +738,14 @@ function SuperAdminTelegramNotificationsCard({ token }: { token: string }) {
     getSuperAdminTelegramRecipients(token).then(setRecipients).catch(() => undefined);
   }, [token]);
 
+  function getTelegramAppLink(value: StaffTelegramLinkStartResponse): string {
+    return value.appDeepLink || value.deepLink || value.webDeepLink || "";
+  }
+
+  function getTelegramWebLink(value: StaffTelegramLinkStartResponse): string {
+    return value.webDeepLink || value.deepLink || value.appDeepLink || "";
+  }
+
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -776,12 +784,21 @@ function SuperAdminTelegramNotificationsCard({ token }: { token: string }) {
   async function onStartLink() {
     setMsg(null);
     setStatus("pending");
+    const targetWindow = window.open("about:blank", "_blank");
     try {
       const nextSession = await startSuperAdminTelegramLink(token);
       setSession(nextSession);
-      const target = nextSession.webDeepLink || nextSession.deepLink || nextSession.appDeepLink;
-      if (target) window.open(target, "_blank", "noopener,noreferrer");
+      const target = getTelegramAppLink(nextSession);
+      if (targetWindow && !targetWindow.closed && target) {
+        targetWindow.opener = null;
+        targetWindow.location.href = target;
+      } else if (target) {
+        window.location.href = target;
+      } else {
+        targetWindow?.close();
+      }
     } catch (err) {
+      targetWindow?.close();
       setStatus("error");
       setMsg(err instanceof Error ? err.message : "Не удалось начать привязку Telegram.");
     }
@@ -858,13 +875,23 @@ function SuperAdminTelegramNotificationsCard({ token }: { token: string }) {
         <div className="space-y-3 rounded-2xl bg-primary-soft p-3">
           <p className="text-sm font-bold text-primary">Подтвердите подключение в Telegram.</p>
           <a
-            href={session.webDeepLink || session.deepLink}
+            href={getTelegramAppLink(session)}
             target="_blank"
             rel="noopener noreferrer"
             className="stitch-button inline-flex w-full items-center justify-center"
           >
             Открыть @{session.botUsername}
           </a>
+          {session.webDeepLink ? (
+            <a
+              href={getTelegramWebLink(session)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-center text-xs font-bold text-primary underline-offset-4 hover:underline"
+            >
+              Открыть через браузер
+            </a>
+          ) : null}
         </div>
       ) : null}
 
