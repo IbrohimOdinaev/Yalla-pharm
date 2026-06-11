@@ -59,6 +59,16 @@ services:
       Elasticsearch__Url: ${ELASTICSEARCH_URL:-http://opensearch:9200}
       Elasticsearch__MedicineIndex: ${ELASTICSEARCH_INDEX:-medicines}
       SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-dev-pharm.yalla.tj}
+      TelegramStaffNotifications__BotToken: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_TOKEN:-}
+      TelegramStaffNotifications__BotUsername: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_USERNAME:-yalla_pharm_dev_staff_notify_bot}
+      TelegramStaffNotifications__PublicBaseUrl: ${TELEGRAM_STAFF_NOTIFICATIONS_PUBLIC_BASE_URL:-https://dev-pharm.yalla.tj}
+      TelegramStaffNotifications__WebhookSecretToken: ${TELEGRAM_STAFF_NOTIFICATIONS_WEBHOOK_SECRET:-}
+      TelegramStaffNotifications__AutoRegisterWebhookOnStart: "true"
+      TelegramSuperAdminNotifications__BotToken: ${TELEGRAM_SUPERADMIN_NOTIFICATIONS_BOT_TOKEN:-}
+      TelegramSuperAdminNotifications__BotUsername: ${TELEGRAM_SUPERADMIN_NOTIFICATIONS_BOT_USERNAME:-yalla_pharm_superadmin_bot}
+      TelegramSuperAdminNotifications__PublicBaseUrl: ${TELEGRAM_SUPERADMIN_NOTIFICATIONS_PUBLIC_BASE_URL:-https://dev-pharm.yalla.tj}
+      TelegramSuperAdminNotifications__WebhookSecretToken: ${TELEGRAM_SUPERADMIN_NOTIFICATIONS_WEBHOOK_SECRET:-}
+      TelegramSuperAdminNotifications__AutoRegisterWebhookOnStart: "true"
     volumes:
       - one-c-exchange-dev:/data/1c-exchange:ro
     expose:
