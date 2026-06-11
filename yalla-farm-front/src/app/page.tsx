@@ -191,7 +191,7 @@ function PharmacyIntegrationBanner() {
   return (
     <section className="overflow-hidden rounded-3xl border border-outline/60 bg-surface-container-low shadow-card">
       <Link
-        href="https://yallapharm.vercel.app"
+        href="/for-pharmacies"
         className="group grid min-h-[220px] grid-cols-1 transition active:scale-[0.99] sm:min-h-[260px] lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]"
       >
         <div className="relative z-10 flex flex-col justify-between gap-5 p-5 sm:p-7 lg:p-8">

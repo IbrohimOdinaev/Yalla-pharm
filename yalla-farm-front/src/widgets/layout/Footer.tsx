@@ -74,7 +74,7 @@ export function Footer() {
   return (
     <footer className="mt-12 border-t border-outline/70 bg-surface-container-low">
       <div className="mx-auto w-[90%] py-10">
-        <div className="grid gap-8 sm:grid-cols-2 sm:gap-10 lg:grid-cols-5">
+        <div className="grid gap-8 sm:grid-cols-2 sm:gap-10 lg:grid-cols-6">
           {/* Brand */}
           <div className="sm:col-span-2">
             <div className="flex items-center gap-2.5">
@@ -146,6 +146,10 @@ export function Footer() {
             <FooterLink href="/orders">Мои заказы</FooterLink>
             <FooterLink href="/profile">Профиль</FooterLink>
             <FooterLink href="/login">Вход</FooterLink>
+          </FooterColumn>
+
+          <FooterColumn title="Партнёрам">
+            <FooterLink href="/for-pharmacies">Информация для партнёров</FooterLink>
           </FooterColumn>
 
           <FooterColumn title="Контакты">
