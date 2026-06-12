@@ -310,7 +310,7 @@ FOODTECH-ПЛАТФОРМЫ YALLA V2
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 md:px-8 md:py-10">
+      <main className="page-reveal flex-1 max-w-7xl w-full mx-auto px-4 py-6 md:px-8 md:py-10">
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8 relative overflow-hidden shadow-xl">
           <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
           <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">

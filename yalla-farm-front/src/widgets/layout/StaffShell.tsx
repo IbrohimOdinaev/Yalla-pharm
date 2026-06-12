@@ -314,7 +314,7 @@ export function StaffShell({
           </div>
         </header>
         <main className="flex-1 px-3 pb-8 pt-4 sm:px-6 lg:px-8 lg:pt-6">
-          <div className={`mx-auto w-full ${contentClassName}`}>{children}</div>
+          <div className={`page-reveal mx-auto w-full ${contentClassName}`}>{children}</div>
         </main>
       </div>
 

@@ -20,7 +20,7 @@ function PaymentQrContent() {
   const allowed = isAllowedPaymentUrl(paymentUrl);
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-surface-container-low px-4 py-8">
+    <main className="page-reveal flex min-h-dvh items-center justify-center bg-surface-container-low px-4 py-8">
       <PaymentQrCard
         paymentUrl={paymentUrl}
         title={title}
@@ -35,7 +35,7 @@ function PaymentQrContent() {
 
 export default function PaymentQrPage() {
   return (
-    <Suspense fallback={<main className="p-6 text-sm">Загрузка QR...</main>}>
+    <Suspense fallback={<main className="page-reveal p-6 text-sm">Загрузка QR...</main>}>
       <PaymentQrContent />
     </Suspense>
   );

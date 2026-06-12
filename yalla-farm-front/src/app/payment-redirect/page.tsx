@@ -23,7 +23,7 @@ export default async function PaymentRedirectPage({ searchParams }: PaymentRedir
   const isCustomScheme = isAllowed && !/^https?:\/\//i.test(target);
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-surface p-4 text-on-surface">
+    <main className="page-reveal flex min-h-dvh items-center justify-center bg-surface p-4 text-on-surface">
       <section className="w-full max-w-sm rounded-3xl border border-outline/60 bg-surface-container-lowest p-5 text-center shadow-xl">
         <h1 className="font-display text-lg font-extrabold">Открываем оплату</h1>
         <p className="mt-2 text-sm text-on-surface-variant">
