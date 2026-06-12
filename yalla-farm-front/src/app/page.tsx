@@ -858,6 +858,32 @@ function HomeContent() {
     return () => window.clearTimeout(focusTimer);
   }, [view]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      document.querySelectorAll(".home-reveal").forEach((element) => element.classList.add("visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1 },
+    );
+
+    const elements = document.querySelectorAll(".home-reveal:not(.visible)");
+    elements.forEach((element) => observer.observe(element));
+
+    return () => observer.disconnect();
+  }, [view, railCategoryRefs, railMeds, isAdminOrSA]);
+
   // Match quick category label to actual category via keywords, then
   // navigate to its dedicated /catalog/[slug] page (SEO).
   function onQuickCategoryClick(label: string) {
@@ -1195,7 +1221,7 @@ function HomeContent() {
       <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
 
           {/* Quick categories — Yandex-style horizontal rail */}
-          <section>
+          <section className="home-reveal">
             <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
               {QUICK_CATEGORIES.map((cat) => (
                 <div key={cat.label} className="flex-shrink-0">
@@ -1217,11 +1243,13 @@ function HomeContent() {
             </div>
           </section>
 
-          <PharmacyIntegrationBanner />
+          <div className="home-reveal home-reveal-delay-1">
+            <PharmacyIntegrationBanner />
+          </div>
 
           {/* Phone actions — compact vertical blocks directly under categories. */}
           {!isAdminOrSA ? (
-            <div className="grid grid-cols-2 gap-3 sm:hidden">
+            <div className="home-reveal home-reveal-delay-2 grid grid-cols-2 gap-3 sm:hidden">
               <Link
                 href="/prescriptions/new"
                 className="flex min-h-[116px] flex-col justify-between rounded-2xl border border-primary/20 bg-primary-soft p-3 text-left transition active:scale-95 hover:bg-primary/15"
@@ -1264,7 +1292,7 @@ function HomeContent() {
           {!isAdminOrSA ? (
             <Link
               href="/prescriptions/new"
-              className="hidden items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:flex sm:p-4 xl:hidden"
+              className="home-reveal home-reveal-delay-2 hidden items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:flex sm:p-4 xl:hidden"
             >
               <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card sm:h-12 sm:w-12">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1286,10 +1314,12 @@ function HomeContent() {
             </Link>
           ) : null}
 
-          <HeroCarousel />
+          <div className="home-reveal home-reveal-delay-2">
+            <HeroCarousel />
+          </div>
 
           {/* Pharmacy banners */}
-          <div className="hidden sm:block">
+          <div className="home-reveal home-reveal-delay-3 hidden sm:block">
             <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
           </div>
 
@@ -1300,27 +1330,31 @@ function HomeContent() {
               "Все →" navigates to the dedicated /catalog/[slug] route so
               search engines can index each category page. */}
           <div className="space-y-8 sm:space-y-12">
-            {HOME_RAILS.map((spec) => {
+            {HOME_RAILS.map((spec, index) => {
               const ref = railCategoryRefs[spec.id];
               // Keyword-defined rail that found no matching category → drop it.
               if (spec.keywords !== null && (ref === undefined || !ref.id)) return null;
               const meds = railMeds[spec.id];
               const target = ref?.slug ? `/catalog/${ref.slug}` : "/catalog";
               return (
-                <MedicineRail
+                <div
                   key={spec.id}
-                  title={spec.title}
-                  accent={spec.accent}
-                  medicines={meds ?? []}
-                  isLoading={meds === undefined}
-                  onViewAll={() => navRouter.push(target)}
-                />
+                  className={`home-reveal home-reveal-delay-${Math.min((index % 3) + 1, 5)}`}
+                >
+                  <MedicineRail
+                    title={spec.title}
+                    accent={spec.accent}
+                    medicines={meds ?? []}
+                    isLoading={meds === undefined}
+                    onViewAll={() => navRouter.push(target)}
+                  />
+                </div>
               );
             })}
           </div>
 
           {/* Footer CTA to the full catalog */}
-          <div className="flex justify-center pt-4">
+          <div className="home-reveal home-reveal-delay-2 flex justify-center pt-4">
             <Link
               href="/catalog"
               className="rounded-full bg-surface-container px-6 py-3 text-sm font-bold text-on-surface transition active:scale-95 hover:bg-surface-container-high"

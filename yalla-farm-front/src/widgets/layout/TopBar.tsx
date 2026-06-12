@@ -266,10 +266,11 @@ export function TopBar({
     const LogoBlock = (
       <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-icon.png" alt="Yalla" className="h-9 w-9 flex-shrink-0 object-contain sm:h-10 sm:w-10" />
-        <span className="hidden whitespace-nowrap font-display text-[17px] font-black text-[#D8484B] lg:block">
-          Yalla Pharm
-        </span>
+        <img
+          src="/for-pharmacies-assets/yal.png"
+          alt="Yalla Pharm"
+          className="-my-4 h-20 w-auto flex-shrink-0 object-contain sm:-my-5 sm:h-24"
+        />
       </>
     );
 
@@ -319,32 +320,14 @@ export function TopBar({
       </Link>
     ) : null;
 
-    // Mobile header column next to the logo — two stacked, INDEPENDENTLY
-    // clickable rows so the brand label opens "/" while the address row opens
-    // the address picker. Previously a single button wrapped both, which made
-    // tapping "Yalla Pharm" trigger the address modal.
+    // Mobile header column next to the logo. Keep the address picker separate
+    // so tapping the logo can still navigate home.
     const MobileBrandAndAddress = (
       <div className="-mx-1 flex min-w-0 flex-1 flex-col items-start px-1 py-0.5">
-        {onLogoClick ? (
-          <button
-            type="button"
-            onClick={onLogoClick}
-            className="rounded font-display text-base font-black leading-tight text-[#D8484B] transition active:bg-surface-container-low/70 xs:text-lg sm:text-xl"
-          >
-            Yalla Pharm
-          </button>
-        ) : (
-          <Link
-            href="/"
-            className="rounded font-display text-base font-black leading-tight text-[#D8484B] transition active:bg-surface-container-low/70 xs:text-lg sm:text-xl"
-          >
-            Yalla Pharm
-          </Link>
-        )}
         <button
           type="button"
           onClick={onAddressClick}
-          className="mt-0.5 flex w-full min-w-0 items-center gap-1 rounded text-[11px] xs:text-xs sm:text-sm transition active:bg-surface-container-low/70"
+          className="flex w-full min-w-0 items-center gap-1 rounded text-[11px] xs:text-xs sm:text-sm transition active:bg-surface-container-low/70"
           title={addressTitle ? addressText : undefined}
         >
           {/* Pin icon — makes the row read as an address even when only a

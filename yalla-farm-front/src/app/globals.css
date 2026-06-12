@@ -97,6 +97,35 @@ button {
   animation: fadeInDown 0.15s ease-out;
 }
 
+/* Home-page scroll reveal mirrors the pharmacy landing animation while
+   keeping the class scoped away from the landing's standalone CSS. */
+.home-reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.home-reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.home-reveal-delay-1 { transition-delay: 0.1s; }
+.home-reveal-delay-2 { transition-delay: 0.2s; }
+.home-reveal-delay-3 { transition-delay: 0.3s; }
+.home-reveal-delay-4 { transition-delay: 0.4s; }
+.home-reveal-delay-5 { transition-delay: 0.5s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .home-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;

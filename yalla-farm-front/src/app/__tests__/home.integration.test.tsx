@@ -38,7 +38,7 @@ describe("HomePage", () => {
     stubEmptyFetch();
     renderWithProviders(<HomePage />);
     await waitFor(() => {
-      expect(screen.getAllByText("Yalla Pharm").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByAltText("Yalla Pharm").length).toBeGreaterThanOrEqual(1);
     });
   });
 });

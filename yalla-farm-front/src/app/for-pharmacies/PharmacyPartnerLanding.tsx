@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   BarChart3,
   ClipboardCheck,
@@ -215,14 +216,13 @@ export function PharmacyPartnerLanding() {
     <>
       {/* NAVBAR */}
       <nav>
-        <button
-          type="button"
+        <Link
+          href="/"
           className="nav-logo"
-          aria-label="Обновить страницу"
-          onClick={() => window.location.reload()}
+          aria-label="На главную Yalla Pharm"
         >
           <Image src={partnerAsset("yal.png")} alt="Yalla Pharm" width={240} height={76} />
-        </button>
+        </Link>
         <ul className="nav-links">
           <li>
             <a href="#how">Как работает</a>
