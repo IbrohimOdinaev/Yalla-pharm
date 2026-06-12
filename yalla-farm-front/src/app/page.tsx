@@ -1218,7 +1218,7 @@ function HomeContent() {
         autoGeolocate={isFirstVisit}
       />
       <DushanbePharmacyMapModal open={showDushanbeMapModal} onClose={() => setShowDushanbeMapModal(false)} />
-      <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
+      <div className="space-y-6 sm:space-y-8 overflow-x-clip">
 
           {/* Quick categories — Yandex-style horizontal rail */}
           <section className="home-reveal">
