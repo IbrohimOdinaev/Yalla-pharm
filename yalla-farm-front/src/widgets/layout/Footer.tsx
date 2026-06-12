@@ -77,13 +77,14 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 sm:gap-10 lg:grid-cols-6">
           {/* Brand */}
           <div className="sm:col-span-2">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-icon.png" alt="Yalla Pharm" className="h-9 w-9 object-contain" />
-              </span>
-              <span className="font-display text-lg font-black text-[#D8484B]">Yalla Pharm</span>
-            </div>
+            <Link href="/" className="inline-flex items-center" aria-label="Yalla Pharm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/for-pharmacies-assets/yal.png"
+                alt="Yalla Pharm"
+                className="-my-3 h-16 w-auto object-contain"
+              />
+            </Link>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-on-surface-variant">
               Онлайн-аптека Душанбе. Тысячи лекарств из самых крупных аптек с доставкой за 30–45 минут.
             </p>

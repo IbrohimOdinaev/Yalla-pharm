@@ -1,6 +1,6 @@
 "use client";
 
-import QRCode from "react-qr-code";
+import { QRCode } from "antd";
 import { formatMoney } from "@/shared/lib/format";
 import { buildPaymentQrDescription, buildPaymentQrValue } from "@/shared/lib/paymentQrPayload";
 import { Button, Icon } from "@/shared/ui";
@@ -29,14 +29,17 @@ export function PaymentQrCard({ paymentUrl, title, subtitle, amount, allowed, on
 
       {allowed ? (
         <>
-          <div className="mx-auto mt-5 grid w-fit place-items-center rounded-3xl border border-outline/60 bg-white p-4">
+          <div
+            className="mx-auto mt-5 grid w-fit place-items-center rounded-3xl border border-outline/60 bg-white p-4"
+            aria-label={`${title}: QR для оплаты`}
+          >
             <QRCode
               value={qrValue}
               size={280}
-              level="Q"
-              fgColor="#000000"
+              errorLevel="Q"
+              color="#111827"
               bgColor="#FFFFFF"
-              title={`${title}: QR для оплаты`}
+              bordered={false}
             />
           </div>
           <p className="mt-4 text-xs leading-relaxed text-on-surface-variant">
