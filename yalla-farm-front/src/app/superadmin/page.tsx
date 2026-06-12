@@ -34,6 +34,7 @@ import { getCategories, flattenCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/shared/types/api";
 import { getClients, deleteClient } from "@/entities/client/admin-api";
 import type { ApiClient } from "@/shared/types/api";
+import { getUsers, type ApiUserListItem, type ApiUserRole } from "@/entities/user/admin-api";
 import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
 import { computeItemsTotal, computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
@@ -84,7 +85,7 @@ function supportsGeneratedPaymentQr(deepLinkUrl: string): boolean {
   return Boolean(deepLinkUrl.trim());
 }
 
-type Tab = "dashboard" | "pharmacies" | "medicines" | "logs" | "orders" | "prescriptions" | "finance";
+type Tab = "dashboard" | "pharmacies" | "users" | "medicines" | "logs" | "orders" | "prescriptions" | "finance";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
@@ -245,7 +246,7 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "pharmacies" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions" || h === "finance") setActiveTab(h);
+      if (h === "pharmacies" || h === "users" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions" || h === "finance") setActiveTab(h);
       else setActiveTab("dashboard");
     }
     syncHash();
@@ -279,6 +280,7 @@ export default function SuperAdminPage() {
         ) : null}
 
         {activeTab === "pharmacies" ? <PharmaciesTab token={token} /> : null}
+        {activeTab === "users" ? <UsersTab token={token} /> : null}
         {activeTab === "medicines" ? <MedicinesTab token={token} /> : null}
         {activeTab === "logs" ? <OneCLogsTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
@@ -286,6 +288,257 @@ export default function SuperAdminPage() {
         {activeTab === "finance" ? <FinanceTab token={token} /> : null}
       </div>
     </StaffShell>
+  );
+}
+
+const USER_ROLE_FILTERS: Array<{ value: "" | ApiUserRole; label: string }> = [
+  { value: "", label: "Все" },
+  { value: "Client", label: "Клиенты" },
+  { value: "Admin", label: "Admin" },
+  { value: "Pharmacist", label: "Фармацевты" },
+  { value: "SuperAdmin", label: "SuperAdmin" },
+];
+
+function normalizeUserRole(role: ApiUserRole): "Client" | "Admin" | "SuperAdmin" | "Pharmacist" {
+  if (role === 0 || role === "Client") return "Client";
+  if (role === 1 || role === "Admin") return "Admin";
+  if (role === 2 || role === "SuperAdmin") return "SuperAdmin";
+  return "Pharmacist";
+}
+
+function userRoleLabel(role: ApiUserRole): string {
+  const normalized = normalizeUserRole(role);
+  if (normalized === "Client") return "Клиент";
+  if (normalized === "Admin") return "Admin";
+  if (normalized === "SuperAdmin") return "SuperAdmin";
+  return "Фармацевт";
+}
+
+function genderLabel(value: ApiUserListItem["gender"]): string {
+  if (value === 1 || value === "Male") return "Мужской";
+  if (value === 2 || value === "Female") return "Женский";
+  return "Не указан";
+}
+
+function userOrderStatusLabel(status: string | number): string {
+  const value = String(status);
+  const map: Record<string, string> = {
+    "0": "Новый",
+    "1": "На рассмотрении",
+    "2": "Собирается",
+    "3": "Готов",
+    "4": "В пути",
+    "5": "Доставлен",
+    "6": "Отменён",
+    "7": "Возврат",
+    "8": "Забран",
+    "9": "Курьер на месте",
+    New: "Новый",
+    UnderReview: "На рассмотрении",
+    Preparing: "Собирается",
+    Ready: "Готов",
+    OnTheWay: "В пути",
+    Delivered: "Доставлен",
+    Cancelled: "Отменён",
+    Returned: "Возврат",
+    PickedUp: "Забран",
+    DriverArrived: "Курьер на месте",
+  };
+  return map[value] ?? value;
+}
+
+function passwordVisibilityText(user: Pick<ApiUserListItem, "authType" | "hasPasswordLogin">): string {
+  if (!user.hasPasswordLogin) {
+    return user.authType === "Telegram" ? "Вход через Telegram" : "Вход по OTP/SMS";
+  }
+  return "Задан, хранится как BCrypt hash";
+}
+
+function CredentialBlock({ login, passwordText }: { login: string; passwordText: string }) {
+  return (
+    <div className="mt-2 grid gap-1 rounded-xl bg-surface-container-low p-2 text-[11px]">
+      <p><span className="font-black text-on-surface">Логин:</span> <span className="font-mono">{login ? `+${login}` : "—"}</span></p>
+      <p><span className="font-black text-on-surface">Пароль:</span> {passwordText}</p>
+    </div>
+  );
+}
+
+function UsersTab({ token }: { token: string }) {
+  const [users, setUsers] = useState<ApiUserListItem[]>([]);
+  const [roleFilter, setRoleFilter] = useState<"" | ApiUserRole>("");
+  const [query, setQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback((nextQuery = query, nextRole = roleFilter) => {
+    setLoading(true);
+    setError(null);
+    return getUsers(token, { query: nextQuery, role: nextRole, page: 1, pageSize: 150 })
+      .then((response) => {
+        setUsers(response.users ?? []);
+        setTotalCount(response.totalCount ?? 0);
+      })
+      .catch((err) => {
+        setUsers([]);
+        setTotalCount(0);
+        setError(err instanceof Error ? err.message : "Не удалось загрузить пользователей.");
+      })
+      .finally(() => setLoading(false));
+  }, [token, query, roleFilter]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  function onSearchChange(value: string) {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { void load(value, roleFilter); }, 300);
+  }
+
+  function onRoleChange(value: "" | ApiUserRole) {
+    setRoleFilter(value);
+    void load(query, value);
+  }
+
+  const staffCount = users.filter((user) => {
+    const role = normalizeUserRole(user.role);
+    return role === "Admin" || role === "Pharmacist";
+  }).length;
+  const clientCount = users.filter((user) => normalizeUserRole(user.role) === "Client").length;
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Реестр пользователей</h2>
+        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">
+          Просмотр клиентов, админов, фармацевтов и SuperAdmin-аккаунтов. Пароли не выводятся открытым текстом, потому что backend хранит только hash.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <FinanceSummaryCard label="Всего" value={String(totalCount)} hint="по текущему фильтру" />
+        <FinanceSummaryCard label="Работники" value={String(staffCount)} hint="Admin + фармацевты" />
+        <FinanceSummaryCard label="Клиенты" value={String(clientCount)} hint="в загруженной выборке" />
+      </div>
+
+      <div className="stitch-card space-y-3 p-3">
+        <input
+          className="stitch-input w-full"
+          placeholder="Поиск по имени, телефону или Telegram..."
+          value={query}
+          onChange={(event) => onSearchChange(event.target.value)}
+        />
+        <div className="flex flex-wrap gap-2">
+          {USER_ROLE_FILTERS.map((item) => (
+            <button
+              key={String(item.value)}
+              type="button"
+              onClick={() => onRoleChange(item.value)}
+              className={`rounded-full px-3 py-2 text-xs font-black transition ${
+                roleFilter === item.value
+                  ? "bg-primary text-white"
+                  : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error ? <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div> : null}
+      {loading ? <div className="rounded-2xl bg-surface-container-low p-6 text-sm text-on-surface-variant">Загружаем пользователей...</div> : null}
+
+      <div className="space-y-2">
+        {!loading && users.map((user) => {
+          const expanded = expandedId === user.userId;
+          const role = normalizeUserRole(user.role);
+          return (
+            <article key={user.userId} className="stitch-card overflow-hidden">
+              <button
+                type="button"
+                className="flex w-full items-start justify-between gap-3 p-3 text-left"
+                onClick={() => setExpandedId(expanded ? null : user.userId)}
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <AuthedImage
+                    src={user.avatarUrl ?? null}
+                    alt=""
+                    className="h-11 w-11 rounded-full object-cover"
+                    fallback={<span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-xs font-black text-primary">{(user.name || userRoleLabel(user.role)).slice(0, 2).toUpperCase()}</span>}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-black">{user.name || "Без имени"}</p>
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-black text-primary">{userRoleLabel(user.role)}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${user.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {user.isActive ? "Активен" : "Отключён"}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-on-surface-variant">+{user.phoneNumber || "—"}</p>
+                    <p className="text-[10px] font-mono text-on-surface-variant break-all">{user.userId}</p>
+                    {(role === "Admin" || role === "Pharmacist" || role === "SuperAdmin") ? (
+                      <CredentialBlock login={user.phoneNumber} passwordText={passwordVisibilityText(user)} />
+                    ) : null}
+                  </div>
+                </div>
+                <span className="rounded-full bg-surface-container px-2 py-1 text-xs font-bold text-on-surface-variant">
+                  {expanded ? "Скрыть" : "Подробнее"}
+                </span>
+              </button>
+
+              {expanded ? (
+                <div className="border-t border-outline/60 p-3">
+                  <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                    <InfoTile label="Роль" value={userRoleLabel(user.role)} />
+                    <InfoTile label="Тип входа" value={user.authType || "—"} />
+                    <InfoTile label="Пароль" value={passwordVisibilityText(user)} />
+                    <InfoTile label="Пол" value={genderLabel(user.gender)} />
+                    <InfoTile label="Дата рождения" value={user.dateOfBirth || "—"} />
+                    <InfoTile label="Telegram ID" value={user.telegramId ? String(user.telegramId) : "—"} />
+                    <InfoTile label="Telegram username" value={user.telegramUsername ? `@${user.telegramUsername}` : "—"} />
+                    <InfoTile label="Аптека" value={user.pharmacyTitle || "—"} />
+                    <InfoTile label="ID аптеки" value={user.pharmacyId || "—"} />
+                    <InfoTile label="Статус аптеки" value={user.pharmacyIsActive == null ? "—" : user.pharmacyIsActive ? "Активна" : "Отключена"} />
+                    <InfoTile label="Заказов" value={String(user.ordersCount ?? user.orders?.length ?? 0)} />
+                    <InfoTile label="Отключён" value={user.deactivatedAtUtc ? formatDushanbeDateTime(user.deactivatedAtUtc) : "—"} />
+                    <InfoTile label="Причина отключения" value={user.deactivationReason || "—"} wide />
+                  </div>
+
+                  {user.orders?.length ? (
+                    <div className="mt-3">
+                      <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Последние заказы</p>
+                      <div className="space-y-1">
+                        {user.orders.slice(0, 8).map((order) => (
+                          <div key={order.orderId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-container-low p-2 text-xs">
+                            <span className="font-mono text-[10px]">{order.orderId}</span>
+                            <span>{userOrderStatusLabel(order.status)}</span>
+                            <span>{formatDushanbeDateTime(order.orderPlacedAt)}</span>
+                            <span className="font-black">{formatMoney(order.cost, "TJS")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+        {!loading && users.length === 0 ? <div className="text-sm text-on-surface-variant">Пользователи не найдены.</div> : null}
+      </div>
+    </section>
+  );
+}
+
+function InfoTile({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={`rounded-xl bg-surface-container-low p-2 ${wide ? "sm:col-span-2 lg:col-span-3" : ""}`}>
+      <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">{label}</p>
+      <p className="mt-1 break-words font-bold text-on-surface">{value}</p>
+    </div>
   );
 }
 
@@ -1975,6 +2228,7 @@ function PharmaciesTab({ token }: { token: string }) {
                   <p className="font-bold truncate">{admin.name}</p>
                   <p className="text-xs text-on-surface-variant truncate">{admin.phoneNumber} {admin.pharmacyTitle ? `· ${admin.pharmacyTitle}` : ""}</p>
                   <p className="text-[10px] text-on-surface-variant font-mono break-all">{admin.adminId}</p>
+                  <CredentialBlock login={admin.phoneNumber} passwordText="Задан, хранится как BCrypt hash" />
                   <StaffCompensationBadge
                     compensation={admin.compensation}
                     onPayout={admin.compensation ? () => setPayoutTarget({
@@ -4313,6 +4567,7 @@ function PharmacistsSection({ token }: { token: string }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold">{ph.name}</p>
                 <p className="text-xs text-on-surface-variant">+{ph.phoneNumber}</p>
+                <CredentialBlock login={ph.phoneNumber} passwordText="Задан, хранится как BCrypt hash" />
                 <StaffCompensationBadge
                   compensation={ph.compensation}
                   onPayout={ph.compensation ? () => setPayoutTarget({

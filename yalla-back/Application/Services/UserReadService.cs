@@ -32,6 +32,15 @@ public sealed class UserReadService : IUserReadService
     if (request.Role.HasValue)
       query = query.Where(x => x.Role == request.Role.Value);
 
+    var normalizedQuery = request.Query.Trim();
+    if (!string.IsNullOrWhiteSpace(normalizedQuery))
+    {
+      query = query.Where(x =>
+        x.Name.Contains(normalizedQuery)
+        || x.PhoneNumber.Contains(normalizedQuery)
+        || (x.TelegramUsername != null && x.TelegramUsername.Contains(normalizedQuery)));
+    }
+
     var totalCount = await query.CountAsync(cancellationToken);
 
     var users = await query
@@ -86,6 +95,17 @@ public sealed class UserReadService : IUserReadService
             Name = user.Name,
             PhoneNumber = user.PhoneNumber,
             Role = user.Role,
+            IsActive = user.IsActive,
+            AuthType = GetAuthType(user.PasswordHash),
+            HasPasswordLogin = IsPasswordLogin(user.PasswordHash),
+            AvatarUrl = user.AvatarUrl,
+            Gender = user.Gender,
+            DateOfBirth = user.DateOfBirth?.ToString("yyyy-MM-dd"),
+            TelegramId = user.TelegramId,
+            TelegramUsername = user.TelegramUsername,
+            DeactivatedAtUtc = user.DeactivatedAtUtc,
+            DeactivatedByUserId = user.DeactivatedByUserId,
+            DeactivationReason = user.DeactivationReason,
             PharmacyId = admin?.PharmacyId,
             PharmacyTitle = admin?.Pharmacy?.Title ?? string.Empty,
             PharmacyIsActive = admin?.Pharmacy?.IsActive,
@@ -95,5 +115,16 @@ public sealed class UserReadService : IUserReadService
         })
         .ToList()
     };
+  }
+
+  private static bool IsPasswordLogin(string passwordHash)
+    => !string.Equals(passwordHash, "OTP_AUTH", StringComparison.Ordinal)
+      && !string.Equals(passwordHash, "TELEGRAM_AUTH", StringComparison.Ordinal);
+
+  private static string GetAuthType(string passwordHash)
+  {
+    if (string.Equals(passwordHash, "OTP_AUTH", StringComparison.Ordinal)) return "OTP";
+    if (string.Equals(passwordHash, "TELEGRAM_AUTH", StringComparison.Ordinal)) return "Telegram";
+    return "Password";
   }
 }
