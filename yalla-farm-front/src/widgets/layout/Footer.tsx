@@ -149,7 +149,7 @@ export function Footer() {
           </FooterColumn>
 
           <FooterColumn title="Партнёрам">
-            <FooterLink href="/for-pharmacies">Информация для партнёров</FooterLink>
+            <FooterLink href="/for-pharmacies">Подключить свою аптеку</FooterLink>
           </FooterColumn>
 
           <FooterColumn title="Контакты">

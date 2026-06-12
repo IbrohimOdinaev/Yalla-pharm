@@ -79,6 +79,12 @@ function buildCheckoutPaymentMethods(
   return methods;
 }
 
+function checkoutPaymentIcon(methodId: string): "card" | "phone" | "cash" {
+  if (methodId === "dc") return "card";
+  if (methodId === "alif") return "phone";
+  return "cash";
+}
+
 export default function CheckoutPage() {
   const token = useAppSelector((s) => s.auth.token);
   const router = useRouter();
@@ -694,20 +700,29 @@ export default function CheckoutPage() {
               Сейчас нет доступных способов оплаты.
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2">
               {checkoutPaymentMethods.map((method) => (
                 <button
                   key={method.id}
                   type="button"
                   onClick={() => setSelectedPaymentMethodId(method.id)}
-                  className={`rounded-2xl border p-3 text-left transition active:scale-[0.98] ${
+                  className={`flex min-h-[86px] flex-col items-start justify-between rounded-2xl border p-2 text-left transition active:scale-[0.98] sm:min-h-[104px] sm:p-3 ${
                     selectedPaymentMethodId === method.id
                       ? "border-primary bg-primary-soft text-primary"
                       : "border-outline/60 bg-surface-container-low text-on-surface hover:border-primary/40"
                   }`}
                 >
-                  <span className="block text-sm font-extrabold">{method.title}</span>
-                  <span className="mt-1 block text-[11px] font-semibold opacity-75">{method.subtitle}</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-lowest shadow-sm">
+                    <Icon name={checkoutPaymentIcon(method.id)} size={17} />
+                  </span>
+                  <span>
+                    <span className="block break-words text-[11px] font-extrabold leading-tight sm:text-sm">
+                      {method.title}
+                    </span>
+                    <span className="mt-1 hidden text-[11px] font-semibold leading-tight opacity-75 sm:block">
+                      {method.subtitle}
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -718,7 +733,6 @@ export default function CheckoutPage() {
         <CartSummary
           rows={summaryRows}
           total={totalAmount}
-          hint={!isPickup && deliveryCost != null ? "Доставим за 30–45 мин" : undefined}
         />
 
         {/* Confirm CTA — anchored at the very bottom of the order card. Sits

@@ -196,24 +196,18 @@ function PharmacyIntegrationBanner() {
       >
         <div className="relative z-10 flex flex-col justify-between gap-5 p-5 sm:p-7 lg:p-8">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-black text-primary">
-              <span className="h-2 w-2 rounded-full bg-secondary" />
-              Для аптек Душанбе
-            </div>
-            <h2 className="mt-4 max-w-xl font-display text-2xl font-black leading-tight text-on-surface sm:text-3xl lg:text-4xl">
+            <h2 className="max-w-xl font-display text-2xl font-black leading-tight text-on-surface sm:text-3xl lg:text-4xl">
               Подключите аптеку к Yalla Pharm
             </h2>
-            <p className="mt-3 max-w-lg text-sm font-medium leading-relaxed text-on-surface-variant sm:text-base">
-              Интегрируем каталог, остатки и заказы, чтобы клиенты видели ваши товары онлайн и оформляли покупки быстрее.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-black text-on-primary transition group-hover:bg-primary-container">
               Оставить заявку
             </span>
-            <span className="text-xs font-bold text-on-surface-variant sm:text-sm">
-              Каталог · остатки · кабинет аптеки
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-black text-primary">
+              <span className="h-2 w-2 rounded-full bg-secondary" />
+              Для аптек Душанбе
             </span>
           </div>
         </div>
