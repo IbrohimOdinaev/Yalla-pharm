@@ -792,10 +792,13 @@ function LatestClientActivityButton() {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const [activity, setActivity] = useState<LatestClientActivity | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(() => {
+    setLoaded(false);
     if (!token || role !== "Client") {
       setActivity(null);
+      setLoaded(true);
       return;
     }
 
@@ -824,6 +827,7 @@ function LatestClientActivityButton() {
         (a, b) => new Date(b.createdAtUtc).getTime() - new Date(a.createdAtUtc).getTime(),
       )[0] ?? null;
       setActivity(latest);
+      setLoaded(true);
     });
 
     return () => {
@@ -842,7 +846,18 @@ function LatestClientActivityButton() {
   useSignalREvent("OrderStatusChanged", load, clientSignalRToken);
   useSignalREvent("PrescriptionUpdated", load, clientSignalRToken);
 
-  if (!token || role !== "Client" || !activity) return null;
+  if (!token || role !== "Client") return null;
+
+  if (!activity) {
+    return (
+      <span
+        aria-hidden="true"
+        className={`flex h-[46px] w-[74px] flex-shrink-0 items-center justify-center transition-opacity duration-150 sm:h-[50px] ${
+          loaded ? "hidden" : "invisible"
+        }`}
+      />
+    );
+  }
 
   const meta = activityMeta(activity);
   const degrees = Math.max(0, Math.min(1, meta.progress)) * 360;
@@ -852,7 +867,7 @@ function LatestClientActivityButton() {
       href={meta.href}
       title={`Последний статус: ${meta.label}`}
       aria-label={`Последний статус: ${meta.label}`}
-      className="flex max-w-[74px] flex-shrink-0 flex-col items-center gap-0.5 transition active:scale-95"
+      className="flex h-[46px] w-[74px] flex-shrink-0 flex-col items-center gap-0.5 transition active:scale-95 sm:h-[50px]"
     >
       <span
         className="relative flex h-9 w-9 items-center justify-center rounded-full p-[2px] sm:h-10 sm:w-10"
