@@ -10,10 +10,29 @@ export type PharmacyMarker = {
   id: string;
   title: string;
   address: string;
+  landmark?: string | null;
+  phone?: string | null;
+  opensAt?: string | null;
+  closesAt?: string | null;
+  regionName?: string | null;
+  updatedAt?: string | null;
+  status?: string | null;
+  lastSync?: string | null;
+  delivery?: number | null;
+  foundItemsInCheck?: number | null;
+  checkItemsTotal?: number | null;
+  integrated?: boolean;
   lat: number;
   lng: number;
   iconUrl?: string | null;
   cost?: number;
+};
+
+type RenderMarker = PharmacyMarker & {
+  markerKind?: "pharmacy" | "cluster";
+  count?: number;
+  integratedCount?: number;
+  pharmacyIds?: string[];
 };
 
 export type PharmacyMapHandle = {
@@ -44,6 +63,7 @@ export type PharmacyMapProps = {
   /** New drag-to-pick mode with center pin */
   centerPinMode?: boolean;
   initialZoom?: number;
+  clusterMarkers?: boolean;
   /** Ref callback to get imperative handle (panTo) */
   mapHandle?: (handle: PharmacyMapHandle | null) => void;
 };
@@ -72,6 +92,7 @@ export function PharmacyMapYandex({
   pickMode = false,
   centerPinMode = false,
   initialZoom: initialZoomProp,
+  clusterMarkers = false,
   mapHandle,
 }: PharmacyMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -97,6 +118,11 @@ export function PharmacyMapYandex({
     return DUSHANBE_CENTER;
   }, [centerPinMode, userLocation, selectedPoint]);
   const initialZoom = centerPinMode ? 14 : (initialZoomProp ?? 13);
+  const [mapZoom, setMapZoom] = useState(initialZoom);
+  const renderedPharmacies = useMemo<RenderMarker[]>(
+    () => clusterMarkers ? clusterPharmacyMarkers(pharmacies, mapZoom) : pharmacies,
+    [clusterMarkers, pharmacies, mapZoom],
+  );
 
   // ─── SDK + map init (one-shot per mount) ─────────────────────────────
   useEffect(() => {
@@ -147,6 +173,10 @@ export function PharmacyMapYandex({
           }
         });
         map.events.add("boundschange", () => {
+          const nextZoom = map.getZoom?.();
+          if (typeof nextZoom === "number") {
+            setMapZoom(nextZoom);
+          }
           if (!centerPinMode || !onCenterChange) return;
           const c = map.getCenter();
           if (!Array.isArray(c)) return;
@@ -223,7 +253,7 @@ export function PharmacyMapYandex({
     if (!ymaps || !map) return;
 
     const current = markersRef.current;
-    const nextIds = new Set(pharmacies.map((p) => p.id));
+    const nextIds = new Set(renderedPharmacies.map((p) => p.id));
 
     // Drop markers no longer in the list.
     for (const [id, marker] of current) {
@@ -234,16 +264,25 @@ export function PharmacyMapYandex({
     }
 
     // Add / update remaining.
-    for (const pharmacy of pharmacies) {
+    for (const pharmacy of renderedPharmacies) {
       const existing = current.get(pharmacy.id);
+      const handleClick = () => {
+        if (pharmacy.markerKind === "cluster") {
+          map.setCenter(
+            [pharmacy.lat, pharmacy.lng],
+            Math.min(17, Math.max(map.getZoom?.() ?? mapZoom, mapZoom) + 2),
+            { duration: 300 },
+          );
+          return;
+        }
+        onPharmacyClickRef.current?.(pharmacy.id);
+      };
       if (existing) {
         existing.geometry.setCoordinates([pharmacy.lat, pharmacy.lng]);
         const el = (existing as { __el?: HTMLElement }).__el;
         if (el) {
           el.innerHTML = "";
-          el.appendChild(createPinElement(pharmacy, () => {
-            onPharmacyClickRef.current?.(pharmacy.id);
-          }));
+          el.appendChild(createPinElement(pharmacy, handleClick));
         }
       } else {
         // Per-pharmacy layout class so each marker keeps its own DOM
@@ -253,9 +292,7 @@ export function PharmacyMapYandex({
         // coord — the layout's element top-left is at the anchor by
         // default, so we shift our content by (-50%, -100%) on top.
         const wrapper = document.createElement("div");
-        wrapper.appendChild(createPinElement(pharmacy, () => {
-          onPharmacyClickRef.current?.(pharmacy.id);
-        }));
+        wrapper.appendChild(createPinElement(pharmacy, handleClick));
 
         const Layout = ymaps.templateLayoutFactory.createClass(
           '<div class="yalla-pharmacy-marker" style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);will-change:transform;"></div>',
@@ -283,7 +320,7 @@ export function PharmacyMapYandex({
             // anchored at bottom-center via the (-50%, -100%) translate.
             iconShape: {
               type: "Rectangle",
-              coordinates: [[-100, -56], [100, 0]],
+              coordinates: pharmacy.markerKind === "cluster" ? [[-32, -32], [32, 32]] : [[-110, -70], [260, 20]],
             },
             // Cheaper price paints in front when bubbles overlap.
             zIndex: typeof pharmacy.cost === "number" && pharmacy.cost > 0
@@ -296,13 +333,13 @@ export function PharmacyMapYandex({
         (placemark as { __el?: HTMLElement }).__el = wrapper;
         placemark.events.add("click", (event: any) => {
           event.stopPropagation?.();
-          onPharmacyClickRef.current?.(pharmacy.id);
+          handleClick();
         });
         map.geoObjects.add(placemark);
         current.set(pharmacy.id, placemark);
       }
     }
-  }, [isLoaded, pharmacies]);
+  }, [isLoaded, mapZoom, renderedPharmacies]);
 
   useEffect(() => {
     const current = markersRef.current;
@@ -443,8 +480,60 @@ const PILL_BORDER = "rgba(15, 23, 42, 0.10)";
 const PILL_SHADOW = "0 6px 20px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.06)";
 const PRICE_BG = "#EEF3F4";
 const PRICE_INK = "#1A1C1B";
+const INTEGRATED_GREEN = "#16A34A";
 
-function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLElement {
+function getClusterCellSize(zoom: number): number {
+  if (zoom >= 15) return 0;
+  if (zoom <= 10) return 0.06;
+  if (zoom <= 11) return 0.04;
+  if (zoom <= 12) return 0.024;
+  if (zoom <= 13) return 0.014;
+  return 0.007;
+}
+
+function clusterPharmacyMarkers(pharmacies: PharmacyMarker[], zoom: number): RenderMarker[] {
+  const cellSize = getClusterCellSize(zoom);
+  if (!cellSize || pharmacies.length < 40) return pharmacies;
+
+  const buckets = new Map<string, PharmacyMarker[]>();
+  for (const pharmacy of pharmacies) {
+    const key = `${Math.round(pharmacy.lat / cellSize)}:${Math.round(pharmacy.lng / cellSize)}`;
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(pharmacy);
+    else buckets.set(key, [pharmacy]);
+  }
+
+  const rendered: RenderMarker[] = [];
+  for (const [key, bucket] of buckets) {
+    if (bucket.length === 1) {
+      rendered.push(bucket[0]);
+      continue;
+    }
+    const lat = bucket.reduce((sum, pharmacy) => sum + pharmacy.lat, 0) / bucket.length;
+    const lng = bucket.reduce((sum, pharmacy) => sum + pharmacy.lng, 0) / bucket.length;
+    const integratedCount = bucket.filter((pharmacy) => pharmacy.integrated).length;
+    rendered.push({
+      id: `cluster-${zoom.toFixed(1)}-${key}`,
+      title: `${bucket.length} аптек`,
+      address: integratedCount ? `${integratedCount} интегрированных` : "Активные аптеки",
+      lat,
+      lng,
+      markerKind: "cluster",
+      count: bucket.length,
+      integratedCount,
+      integrated: integratedCount === bucket.length,
+      pharmacyIds: bucket.map((pharmacy) => pharmacy.id),
+    });
+  }
+
+  return rendered;
+}
+
+function createPinElement(pharmacy: RenderMarker, onClick: () => void): HTMLElement {
+  if (pharmacy.markerKind === "cluster") {
+    return createClusterElement(pharmacy, onClick);
+  }
+
   const iconSrc = pharmacy.iconUrl
     ? pharmacy.iconUrl.startsWith("http")
       ? pharmacy.iconUrl
@@ -490,10 +579,16 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
   pill.addEventListener("mouseenter", () => {
     pill.style.transform = "scale(1.06)";
     pill.style.boxShadow = "0 10px 28px rgba(15, 23, 42, 0.24), 0 1px 2px rgba(15, 23, 42, 0.08)";
+    tooltip.style.opacity = "1";
+    tooltip.style.transform = "translate(0, -4px)";
+    tooltip.style.pointerEvents = "auto";
   });
   pill.addEventListener("mouseleave", () => {
     pill.style.transform = "";
     pill.style.boxShadow = PILL_SHADOW;
+    tooltip.style.opacity = "0";
+    tooltip.style.transform = "translate(6px, -4px)";
+    tooltip.style.pointerEvents = "none";
   });
 
   // Avatar — circular, fixed 28px, border-only when there's a real photo
@@ -503,7 +598,7 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
     width: "28px",
     height: "28px",
     borderRadius: "9999px",
-    background: "#F1F5F9",
+    background: pharmacy.integrated ? "#DCFCE7" : "#F1F5F9",
     overflow: "hidden",
     flexShrink: "0",
     display: "flex",
@@ -524,7 +619,7 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
     avatar.appendChild(img);
   } else {
     avatar.innerHTML =
-      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>';
+      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${pharmacy.integrated ? INTEGRATED_GREEN : "#0369a1"}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v15"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>`;
   }
   pill.appendChild(avatar);
 
@@ -537,7 +632,7 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
     fontSize: "12px",
     fontWeight: "700",
     lineHeight: "1.2",
-    color: "#1A1816",
+    color: pharmacy.integrated ? "#166534" : "#1A1816",
     maxWidth: "140px",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -566,6 +661,9 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
 
   root.appendChild(pill);
 
+  const tooltip = createPharmacyTooltip(pharmacy);
+  root.appendChild(tooltip);
+
   // Tail — centred under the pill, points down to the geo coord. SVG
   // gives us a single shape (filled triangle + matching shadow) that
   // doesn't have the seam two CSS borders would on retina screens.
@@ -584,4 +682,165 @@ function createPinElement(pharmacy: PharmacyMarker, onClick: () => void): HTMLEl
   root.appendChild(tail);
 
   return root;
+}
+
+function createClusterElement(cluster: RenderMarker, onClick: () => void): HTMLElement {
+  const root = document.createElement("button");
+  root.type = "button";
+  root.setAttribute("aria-label", `Показать ${cluster.count ?? 0} аптек на карте`);
+  const integratedCount = cluster.integratedCount ?? 0;
+  const isAllIntegrated = integratedCount > 0 && integratedCount === cluster.count;
+  Object.assign(root.style, {
+    position: "relative",
+    width: "54px",
+    height: "54px",
+    borderRadius: "9999px",
+    border: "3px solid #FFFFFF",
+    background: isAllIntegrated ? INTEGRATED_GREEN : integratedCount > 0 ? "#2F80ED" : "#64748B",
+    color: "#FFFFFF",
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.24), 0 2px 5px rgba(15, 23, 42, 0.12)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "column",
+    fontFamily: "Inter, system-ui, sans-serif",
+    cursor: "pointer",
+    transformOrigin: "50% 100%",
+    transition: "transform 150ms ease-out, box-shadow 150ms ease-out",
+  } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+  root.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick();
+  });
+  root.addEventListener("mouseenter", () => {
+    root.style.transform = "scale(1.08)";
+    root.style.boxShadow = "0 16px 36px rgba(15, 23, 42, 0.30), 0 2px 6px rgba(15, 23, 42, 0.14)";
+    tooltip.style.opacity = "1";
+    tooltip.style.transform = "translate(0, -50%)";
+  });
+  root.addEventListener("mouseleave", () => {
+    root.style.transform = "";
+    root.style.boxShadow = "0 12px 30px rgba(15, 23, 42, 0.24), 0 2px 5px rgba(15, 23, 42, 0.12)";
+    tooltip.style.opacity = "0";
+    tooltip.style.transform = "translate(6px, -50%)";
+  });
+
+  const count = document.createElement("span");
+  count.textContent = String(cluster.count ?? 0);
+  Object.assign(count.style, {
+    fontSize: "18px",
+    fontWeight: "900",
+    lineHeight: "1",
+  } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+  root.appendChild(count);
+
+  if (integratedCount > 0) {
+    const integrated = document.createElement("span");
+    integrated.textContent = `${integratedCount} зел.`;
+    Object.assign(integrated.style, {
+      marginTop: "3px",
+      fontSize: "9px",
+      fontWeight: "900",
+      lineHeight: "1",
+      opacity: "0.92",
+    } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+    root.appendChild(integrated);
+  }
+
+  const tooltip = document.createElement("div");
+  tooltip.textContent = integratedCount
+    ? `${cluster.count ?? 0} аптек в участке, ${integratedCount} интегрированных`
+    : `${cluster.count ?? 0} аптек в участке`;
+  Object.assign(tooltip.style, {
+    position: "absolute",
+    left: "calc(100% + 10px)",
+    top: "50%",
+    width: "190px",
+    transform: "translate(6px, -50%)",
+    opacity: "0",
+    pointerEvents: "none",
+    borderRadius: "14px",
+    background: "#FFFFFF",
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 14px 34px rgba(15, 23, 42, 0.22)",
+    color: "#1A1816",
+    padding: "9px 10px",
+    fontSize: "12px",
+    fontWeight: "800",
+    lineHeight: "1.35",
+    transition: "opacity 150ms ease-out, transform 150ms ease-out",
+    zIndex: "20",
+  } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+  root.appendChild(tooltip);
+
+  return root;
+}
+
+function createPharmacyTooltip(pharmacy: RenderMarker): HTMLElement {
+  const tooltip = document.createElement("div");
+  Object.assign(tooltip.style, {
+    position: "absolute",
+    left: "calc(100% + 10px)",
+    top: "-4px",
+    width: "260px",
+    maxWidth: "min(260px, 70vw)",
+    borderRadius: "18px",
+    background: "#FFFFFF",
+    border: `1px solid ${pharmacy.integrated ? "rgba(22, 163, 74, 0.35)" : "rgba(15, 23, 42, 0.10)"}`,
+    boxShadow: "0 16px 40px rgba(15, 23, 42, 0.24), 0 2px 6px rgba(15, 23, 42, 0.08)",
+    color: "#1A1816",
+    opacity: "0",
+    pointerEvents: "none",
+    padding: "12px",
+    transform: "translate(6px, -4px)",
+    transition: "opacity 150ms ease-out, transform 150ms ease-out",
+    zIndex: "30",
+    fontFamily: "Inter, system-ui, sans-serif",
+  } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+
+  const badge = pharmacy.integrated ? "Интегрирована" : "Активная";
+  const infoRows = [
+    ["Адрес", pharmacy.address],
+    ["Ориентир", pharmacy.landmark],
+    ["Телефон", pharmacy.phone],
+    ["Время", formatHours(pharmacy.opensAt, pharmacy.closesAt)],
+    ["Синхронизация", pharmacy.lastSync],
+    ["Доставка", pharmacy.delivery == null ? null : String(pharmacy.delivery)],
+    ["Товаров в проверке", pharmacy.foundItemsInCheck == null ? null : String(pharmacy.foundItemsInCheck)],
+    ["Сумма проверки", pharmacy.checkItemsTotal == null ? null : String(pharmacy.checkItemsTotal)],
+    ["Статус", [pharmacy.status, pharmacy.updatedAt].filter(Boolean).join(" · ")],
+  ].filter(([, value]) => Boolean(value));
+
+  tooltip.innerHTML = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;">
+      <strong style="font-size:13px;line-height:1.25;font-weight:900;color:#111827;">${escapeHtml(pharmacy.title)}</strong>
+      <span style="flex-shrink:0;border-radius:999px;background:${pharmacy.integrated ? "#DCFCE7" : "#F1F5F9"};color:${pharmacy.integrated ? "#166534" : "#475569"};padding:3px 7px;font-size:9px;font-weight:900;text-transform:uppercase;">${badge}</span>
+    </div>
+    <div style="display:grid;gap:6px;">
+      ${infoRows.map(([label, value]) => `
+        <div>
+          <div style="font-size:9px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#64748B;">${escapeHtml(label ?? "")}</div>
+          <div style="margin-top:1px;font-size:12px;font-weight:700;line-height:1.35;color:#1F2937;">${escapeHtml(value ?? "")}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  return tooltip;
+}
+
+function formatHours(opensAt?: string | null, closesAt?: string | null): string | null {
+  if (!opensAt && !closesAt) return null;
+  const open = opensAt ? opensAt.slice(0, 5) : "??:??";
+  const close = closesAt ? closesAt.slice(0, 5) : "??:??";
+  return `${open}-${close}`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }

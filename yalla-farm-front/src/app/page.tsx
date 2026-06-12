@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -24,7 +25,7 @@ import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
 import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
-import { DORU_DUSHANBE_INTEGRATED_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
+import { DORU_DUSHANBE_ACTIVE_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { PharmacyLogo } from "@/shared/ui";
 import type { GeoPoint } from "@/shared/lib/map";
 import type { PharmacyMarker } from "@/widgets/map/PharmacyMap";
@@ -138,7 +139,7 @@ function formatPharmacyTime(value?: string | null): string {
   return hours && minutes ? `${hours}:${minutes}` : value;
 }
 
-function pharmacyHoursLabel(pharmacy: ActivePharmacy): string {
+function pharmacyHoursLabel(pharmacy: { opensAt?: string | null; closesAt?: string | null }): string {
   if (!pharmacy.opensAt && !pharmacy.closesAt) return "Круглосуточно";
   return `${formatPharmacyTime(pharmacy.opensAt)}-${formatPharmacyTime(pharmacy.closesAt)}`;
 }
@@ -151,13 +152,21 @@ type DushanbeMapPharmacy = {
   phone?: string | null;
   opensAt?: string | null;
   closesAt?: string | null;
+  regionName?: string | null;
+  updatedAt?: string | null;
+  status?: string | null;
+  lastSync?: string | null;
+  delivery?: number | null;
+  foundItemsInCheck?: number | null;
+  checkItemsTotal?: number | null;
+  integrated: boolean;
   bannerUrl?: string | null;
   lat: number;
   lng: number;
 };
 
 function buildDushanbeMapPharmacies(activePharmacies: ActivePharmacy[]): DushanbeMapPharmacy[] {
-  const items: DushanbeMapPharmacy[] = DORU_DUSHANBE_INTEGRATED_PHARMACIES.map((pharmacy) => ({
+  const items: DushanbeMapPharmacy[] = DORU_DUSHANBE_ACTIVE_PHARMACIES.map((pharmacy) => ({
     id: `doru-${pharmacy.id}`,
     title: pharmacy.title,
     address: pharmacy.address,
@@ -165,12 +174,28 @@ function buildDushanbeMapPharmacies(activePharmacies: ActivePharmacy[]): Dushanb
     phone: pharmacy.pharmacyPhone || pharmacy.phone || null,
     opensAt: pharmacy.opensAt ?? null,
     closesAt: pharmacy.closesAt ?? null,
+    regionName: pharmacy.regionName ?? null,
+    updatedAt: pharmacy.updatedAt ?? null,
+    status: pharmacy.status ?? null,
+    lastSync: pharmacy.lastSync ?? null,
+    delivery: pharmacy.delivery ?? null,
+    foundItemsInCheck: pharmacy.foundItemsInCheck ?? null,
+    checkItemsTotal: pharmacy.checkItemsTotal ?? null,
+    integrated: pharmacy.integrated,
     lat: pharmacy.lat,
     lng: pharmacy.lng,
   }));
 
+  const knownByCoordinate = new Set(
+    items.map((pharmacy) => `${pharmacy.title.toLowerCase()}|${pharmacy.lat.toFixed(5)}|${pharmacy.lng.toFixed(5)}`),
+  );
+
   for (const pharmacy of activePharmacies) {
     if (pharmacy.isActive === false || pharmacy.latitude == null || pharmacy.longitude == null) continue;
+    const lat = Number(pharmacy.latitude);
+    const lng = Number(pharmacy.longitude);
+    const coordinateKey = `${pharmacy.title.toLowerCase()}|${lat.toFixed(5)}|${lng.toFixed(5)}`;
+    if (knownByCoordinate.has(coordinateKey)) continue;
     items.push({
       id: `admin-${pharmacy.id}`,
       title: pharmacy.title,
@@ -178,9 +203,10 @@ function buildDushanbeMapPharmacies(activePharmacies: ActivePharmacy[]): Dushanb
       phone: null,
       opensAt: pharmacy.opensAt ?? null,
       closesAt: pharmacy.closesAt ?? null,
+      integrated: true,
       bannerUrl: pharmacy.bannerUrl ?? (pharmacy.id ? `/api/pharmacies/banner/${pharmacy.id}/content?w=720` : null),
-      lat: Number(pharmacy.latitude),
-      lng: Number(pharmacy.longitude),
+      lat,
+      lng,
     });
   }
 
@@ -235,6 +261,11 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"list" | "map">("list");
   const [activePharmacies, setActivePharmacies] = useState<ActivePharmacy[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const mapPharmacies = useMemo(
     () => buildDushanbeMapPharmacies(activePharmacies),
@@ -247,6 +278,18 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
         id: pharmacy.id,
         title: pharmacy.title,
         address: pharmacy.address,
+        landmark: pharmacy.landmark,
+        phone: pharmacy.phone,
+        opensAt: pharmacy.opensAt,
+        closesAt: pharmacy.closesAt,
+        regionName: pharmacy.regionName,
+        updatedAt: pharmacy.updatedAt,
+        status: pharmacy.status,
+        lastSync: pharmacy.lastSync,
+        delivery: pharmacy.delivery,
+        foundItemsInCheck: pharmacy.foundItemsInCheck,
+        checkItemsTotal: pharmacy.checkItemsTotal,
+        integrated: pharmacy.integrated,
         lat: pharmacy.lat,
         lng: pharmacy.lng,
       })),
@@ -263,10 +306,31 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    const previousBodyPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      document.body.style.paddingRight = previousBodyPaddingRight;
+      window.scrollTo(0, scrollY);
     };
   }, [open]);
 
@@ -320,11 +384,10 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4">
-      <button type="button" className="absolute inset-0 hidden cursor-default sm:block" onClick={onClose} aria-label="Закрыть карту" />
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-hidden bg-black/50 p-3 backdrop-blur-sm sm:p-4">
       <div
         className="relative flex h-[calc(100dvh-1.5rem)] max-h-[780px] w-full max-w-[440px] flex-col overflow-hidden rounded-3xl bg-surface shadow-2xl sm:h-[86dvh] sm:max-w-6xl"
         role="dialog"
@@ -402,6 +465,11 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
                               <div className="absolute -bottom-12 left-12 h-24 w-24 rounded-full bg-tertiary/10" />
                             </>
                           )}
+                          {pharmacy.integrated ? (
+                            <span className="absolute left-3 top-3 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">
+                              Интегрирована
+                            </span>
+                          ) : null}
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 py-3">
                             <p className="line-clamp-2 text-lg font-extrabold leading-tight text-white">{pharmacy.title}</p>
                           </div>
@@ -430,6 +498,7 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
               pharmacies={pharmacies}
               userLocation={userLocation}
               initialZoom={12}
+              clusterMarkers
               onPharmacyClick={setSelectedPharmacyId}
               className="h-full w-full"
             />
@@ -451,6 +520,15 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
               >
                 <div className="flex items-start justify-between gap-3 border-b border-outline/60 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
+                    {selectedPharmacy.integrated ? (
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">
+                        Интегрирована
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-on-surface-variant">
+                        Активная
+                      </span>
+                    )}
                     <h3 className="mt-1 text-lg font-extrabold leading-tight text-on-surface">{selectedPharmacy.title}</h3>
                   </div>
                   <button
@@ -494,13 +572,43 @@ function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: (
                     <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Телефон аптеки</p>
                     <p className="mt-1 text-sm font-bold text-on-surface">{selectedPharmacy.phone || "Неизвестно"}</p>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Синхронизация</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{selectedPharmacy.lastSync || "Нет данных"}</p>
+                    </div>
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Доставка</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{selectedPharmacy.delivery ?? 0}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Товаров в проверке</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{selectedPharmacy.foundItemsInCheck ?? 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-surface-container-low p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Сумма проверки</p>
+                      <p className="mt-1 text-sm font-bold text-on-surface">{selectedPharmacy.checkItemsTotal ?? 0}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-surface-container-low p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Статус и обновление</p>
+                    <p className="mt-1 text-sm font-bold text-on-surface">
+                      {[selectedPharmacy.status, selectedPharmacy.updatedAt].filter(Boolean).join(" · ") || "Нет данных"}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
