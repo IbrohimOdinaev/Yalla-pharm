@@ -63,7 +63,38 @@ describe("openPaymentForCurrentDevice", () => {
       amount: 120,
     })).toBe(true);
 
-    expect(openPaymentUrl).toHaveBeenCalledWith("dushanbecity://transfer?phone=992900000001&amount=120.00");
+    expect(openPaymentUrl).toHaveBeenCalledWith("dushanbecity://transfer?phone=992900000001&amount=120.00", undefined);
     expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("reuses a prepared tab for desktop QR pages", () => {
+    mockDesktopPaymentSurface(true);
+    const paymentWindow = { closed: false, location: { href: "" } } as unknown as Window;
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window);
+
+    expect(openPaymentForCurrentDevice({
+      url: "alifmobi:///toMobi?account=%2B992900000001&summa=120.00",
+      title: "Alif Mobi",
+      amount: 120,
+      paymentWindow,
+    })).toBe(true);
+
+    expect(paymentWindow.location.href).toContain("/payment-qr?url=alifmobi%3A%2F%2F%2FtoMobi");
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes a prepared tab to direct mobile payments", () => {
+    mockDesktopPaymentSurface(false);
+    const paymentWindow = { closed: false } as Window;
+    vi.mocked(openPaymentUrl).mockReturnValue(true);
+
+    expect(openPaymentForCurrentDevice({
+      url: "dushanbecity://transfer?phone=992900000001&amount=120.00",
+      title: "Dushanbe City",
+      amount: 120,
+      paymentWindow,
+    })).toBe(true);
+
+    expect(openPaymentUrl).toHaveBeenCalledWith("dushanbecity://transfer?phone=992900000001&amount=120.00", paymentWindow);
   });
 });

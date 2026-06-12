@@ -5,6 +5,7 @@ type ResponsivePaymentInput = {
   title: string;
   amount: number;
   subtitle?: string;
+  paymentWindow?: Window | null;
 };
 
 function shouldShowDesktopQrPage(): boolean {
@@ -23,8 +24,14 @@ function buildPaymentQrPageUrl(input: ResponsivePaymentInput): string {
 
 export function openPaymentForCurrentDevice(input: ResponsivePaymentInput): boolean {
   if (shouldShowDesktopQrPage()) {
-    return Boolean(window.open(buildPaymentQrPageUrl(input), "_blank", "noopener,noreferrer"));
+    const qrPageUrl = buildPaymentQrPageUrl(input);
+    if (input.paymentWindow && !input.paymentWindow.closed) {
+      input.paymentWindow.location.href = qrPageUrl;
+      return true;
+    }
+
+    return Boolean(window.open(qrPageUrl, "_blank", "noopener,noreferrer"));
   }
 
-  return openPaymentUrl(input.url);
+  return openPaymentUrl(input.url, input.paymentWindow);
 }

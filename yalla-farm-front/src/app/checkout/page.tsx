@@ -18,6 +18,7 @@ import { getMyProfile } from "@/entities/client/api";
 import { removeFromBasket } from "@/entities/basket/api";
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
 import type { ApiMedicine, ApiCheckoutResponse, ApiClient } from "@/shared/types/api";
+import { preparePaymentWindow } from "@/shared/lib/paymentWindow";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
@@ -26,7 +27,6 @@ import { Button, Chip, Icon, StepProgress } from "@/shared/ui";
 import { CartSummary, type CartSummaryRow } from "@/widgets/cart/CartSummary";
 import {
   buildPaymentUrlFromTemplate,
-  PaymentMethodModal,
   type PaymentMethodOption,
 } from "@/widgets/payment/PaymentMethodModal";
 
@@ -122,7 +122,6 @@ export default function CheckoutPage() {
   const [courierDetails, setCourierDetails] = useState("");
   const [showCourierDetails, setShowCourierDetails] = useState(false);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
-  const [pendingPayment, setPendingPayment] = useState<{ amount: number; dcUrl: string } | null>(null);
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<PaymentMethodOption["id"]>("dc");
   const courierDetailsRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -245,10 +244,6 @@ export default function CheckoutPage() {
   const hasCalculatedDelivery = isPickup || deliveryCost != null;
   const canSubmitOrder = selectedCount > 0
     && (isPickup || (hasDeliveryAddress && hasCalculatedDelivery && !isCalculating));
-  const paymentMethods = useMemo<PaymentMethodOption[]>(() => {
-    if (!pendingPayment) return [];
-    return buildCheckoutPaymentMethods(paymentSettings, pendingPayment.amount, pendingPayment.dcUrl);
-  }, [paymentSettings, pendingPayment]);
   const checkoutPaymentMethods = useMemo(
     () => buildCheckoutPaymentMethods(paymentSettings, totalAmount, ""),
     [paymentSettings, totalAmount],
@@ -282,6 +277,7 @@ export default function CheckoutPage() {
     }
     setIsSubmitting(true);
     setError(null);
+    const preparedPaymentWindow = preparePaymentWindow("Оплата Yalla Pharm");
 
     // Explicit source — send exactly the medicines the user selected for this
     // pharmacy, so the backend doesn't sweep in unrelated basket items (e.g. a
@@ -358,11 +354,27 @@ export default function CheckoutPage() {
       const paymentUrl = String(checkout.paymentUrl || "");
       if (paymentUrl) {
         const amount = Number(checkout.amount ?? checkout.cost ?? totalAmount);
-        setPendingPayment({ amount, dcUrl: paymentUrl });
+        const methods = buildCheckoutPaymentMethods(paymentSettings, amount, paymentUrl);
+        const selectedMethod = methods.find((method) => method.id === selectedPaymentMethodId) ?? methods[0];
+        if (selectedMethod) {
+          openPaymentForCurrentDevice({
+            url: selectedMethod.url,
+            title: selectedMethod.title,
+            subtitle: selectedMethod.subtitle,
+            amount,
+            paymentWindow: preparedPaymentWindow,
+          });
+        } else {
+          preparedPaymentWindow?.close();
+        }
+
+        router.replace(prescriptionId ? "/prescriptions" : "/orders");
       } else {
+        preparedPaymentWindow?.close();
         router.replace("/orders");
       }
     } catch (err) {
+      preparedPaymentWindow?.close();
       setError(err instanceof Error ? err.message : "Не удалось оформить заказ.");
     } finally {
       setIsSubmitting(false);
@@ -757,25 +769,6 @@ export default function CheckoutPage() {
           </Button>
         </div>
       </div>
-      <PaymentMethodModal
-        open={Boolean(pendingPayment)}
-        amount={pendingPayment?.amount ?? 0}
-        methods={paymentMethods}
-        onSelect={(method) => {
-          openPaymentForCurrentDevice({
-            url: method.url,
-            title: method.title,
-            subtitle: method.subtitle,
-            amount: pendingPayment?.amount ?? 0,
-          });
-          setPendingPayment(null);
-          router.replace("/orders");
-        }}
-        onClose={() => {
-          setPendingPayment(null);
-          router.replace("/orders");
-        }}
-      />
     </AppShell>
   );
 }
