@@ -29,6 +29,7 @@ import {
   buildPaymentUrlFromTemplate,
   type PaymentMethodOption,
 } from "@/widgets/payment/PaymentMethodModal";
+import { PaymentMethodLogo } from "@/widgets/payment/PaymentMethodLogo";
 
 const FALLBACK_ALIF_URL_TEMPLATE = "";
 const FALLBACK_ESKHATA_URL_TEMPLATE = "";
@@ -77,12 +78,6 @@ function buildCheckoutPaymentMethods(
   }
 
   return methods;
-}
-
-function checkoutPaymentIcon(methodId: string): "card" | "phone" | "cash" {
-  if (methodId === "dc") return "card";
-  if (methodId === "alif") return "phone";
-  return "cash";
 }
 
 export default function CheckoutPage() {
@@ -724,9 +719,10 @@ export default function CheckoutPage() {
                       : "border-outline/60 bg-surface-container-low text-on-surface hover:border-primary/40"
                   }`}
                 >
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-lowest shadow-sm">
-                    <Icon name={checkoutPaymentIcon(method.id)} size={17} />
-                  </span>
+                  <PaymentMethodLogo
+                    methodId={method.id}
+                    className="h-9 w-16 px-2 sm:h-10 sm:w-[86px]"
+                  />
                   <span>
                     <span className="block break-words text-[11px] font-extrabold leading-tight sm:text-sm">
                       {method.title}
