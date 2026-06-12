@@ -9,6 +9,7 @@ import { calculateDelivery } from "@/shared/api/delivery";
 import { buildCheckoutIdempotencyKey } from "@/shared/lib/idempotency";
 import { formatMoney } from "@/shared/lib/format";
 import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
+import { rememberOrderPaymentMethod } from "@/shared/lib/paymentMethodMemory";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
@@ -352,6 +353,7 @@ export default function CheckoutPage() {
         const methods = buildCheckoutPaymentMethods(paymentSettings, amount, paymentUrl);
         const selectedMethod = methods.find((method) => method.id === selectedPaymentMethodId) ?? methods[0];
         if (selectedMethod) {
+          rememberOrderPaymentMethod(checkout.orderId ?? checkout.reservedOrderId, selectedMethod.id);
           openPaymentForCurrentDevice({
             url: selectedMethod.url,
             title: selectedMethod.title,

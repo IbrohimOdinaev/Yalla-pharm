@@ -19,6 +19,11 @@ import type { ApiOrder } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { isAllowedPaymentUrl } from "@/shared/lib/paymentWindow";
 import { openPaymentForCurrentDevice } from "@/shared/lib/responsivePayment";
+import {
+  getRememberedOrderPaymentMethod,
+  paymentProviderToMethodId,
+  rememberOrderPaymentMethod,
+} from "@/shared/lib/paymentMethodMemory";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -133,6 +138,20 @@ function buildOrderPaymentMethods(
   }
 
   return methods;
+}
+
+function getOrderPaymentAmount(order: ApiOrder): number {
+  return Math.max(
+    0,
+    Number(order.totalCost ?? 0)
+      || Number(order.cost ?? 0)
+      || totalsOriginalPaid(order)
+      || computeNetCost(order),
+  );
+}
+
+function getPreferredPaymentMethodId(order: ApiOrder) {
+  return getRememberedOrderPaymentMethod(order.orderId) ?? paymentProviderToMethodId(order.paymentProvider);
 }
 
 /** Pickup orders that are still in-pharmacy and haven't been handed over yet.
@@ -305,15 +324,24 @@ export default function OrdersPage() {
   }
 
   function openPaymentMethodPicker(order: ApiOrder) {
-    const amount = Math.max(
-      0,
-      Number(order.totalCost ?? 0)
-        || Number(order.cost ?? 0)
-        || totalsOriginalPaid(order)
-        || computeNetCost(order),
-    );
+    const amount = getOrderPaymentAmount(order);
     const methods = buildOrderPaymentMethods(paymentSettings, amount, order.paymentUrl);
     setPaymentPicker({ orderId: order.orderId, amount, methods });
+  }
+
+  function openPreferredPayment(order: ApiOrder) {
+    const amount = getOrderPaymentAmount(order);
+    const methods = buildOrderPaymentMethods(paymentSettings, amount, order.paymentUrl);
+    const preferredMethodId = getPreferredPaymentMethodId(order);
+    const method = methods.find((item) => item.id === preferredMethodId) ?? methods[0];
+    if (!method) return;
+    rememberOrderPaymentMethod(order.orderId, method.id);
+    openPaymentForCurrentDevice({
+      url: method.url,
+      title: method.title,
+      subtitle: method.subtitle,
+      amount,
+    });
   }
 
   if (!token) {
@@ -480,7 +508,7 @@ export default function OrdersPage() {
               {awaiting ? (
                 <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
                   {d.paymentUrl && isAllowedPaymentUrl(d.paymentUrl) ? (
-                    <Button size="sm" rightIcon="arrow-right" onClick={() => openPaymentMethodPicker(d)}>
+                    <Button size="sm" rightIcon="arrow-right" onClick={() => openPreferredPayment(d)}>
                       Оплатить
                     </Button>
                   ) : null}
@@ -707,6 +735,7 @@ export default function OrdersPage() {
         amount={paymentPicker?.amount ?? 0}
         methods={paymentPicker?.methods ?? []}
         onSelect={(method) => {
+          rememberOrderPaymentMethod(paymentPicker?.orderId, method.id);
           openPaymentForCurrentDevice({
             url: method.url,
             title: method.title,
