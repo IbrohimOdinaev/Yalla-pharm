@@ -98,10 +98,12 @@ export function PharmacyMapYandex({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<Error | null>(null);
+  const [markersTransitioning, setMarkersTransitioning] = useState(false);
   const ymapsRef = useRef<any>(null);
   const mapRef = useRef<any>(null);
   const centerPinRef = useRef<SVGSVGElement | null>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep the latest pharmacy-click handler in a ref so we don't recreate
   // markers each time the parent passes a new function reference.
@@ -163,11 +165,21 @@ export function PharmacyMapYandex({
         // animates up when the user grabs, snaps back on release; after
         // the map settles we reverse-geocode the new centre.
         map.events.add("actionbegin", () => {
+          setMarkersTransitioning(true);
           if (centerPinRef.current) {
             centerPinRef.current.style.transform = "translateY(-8px) scale(1.1)";
           }
         });
         map.events.add("actionend", () => {
+          if (zoomUpdateTimeoutRef.current) {
+            clearTimeout(zoomUpdateTimeoutRef.current);
+            zoomUpdateTimeoutRef.current = null;
+          }
+          const nextZoom = map.getZoom?.();
+          if (typeof nextZoom === "number") {
+            setMapZoom(nextZoom);
+          }
+          window.setTimeout(() => setMarkersTransitioning(false), 180);
           if (centerPinRef.current) {
             centerPinRef.current.style.transform = "";
           }
@@ -175,7 +187,11 @@ export function PharmacyMapYandex({
         map.events.add("boundschange", () => {
           const nextZoom = map.getZoom?.();
           if (typeof nextZoom === "number") {
-            setMapZoom(nextZoom);
+            if (zoomUpdateTimeoutRef.current) clearTimeout(zoomUpdateTimeoutRef.current);
+            zoomUpdateTimeoutRef.current = setTimeout(() => {
+              setMapZoom(nextZoom);
+              setMarkersTransitioning(false);
+            }, 140);
           }
           if (!centerPinMode || !onCenterChange) return;
           const c = map.getCenter();
@@ -232,6 +248,7 @@ export function PharmacyMapYandex({
     return () => {
       disposed = true;
       if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
+      if (zoomUpdateTimeoutRef.current) clearTimeout(zoomUpdateTimeoutRef.current);
       mapHandle?.(null);
       try {
         mapRef.current?.destroy();
@@ -258,7 +275,7 @@ export function PharmacyMapYandex({
     // Drop markers no longer in the list.
     for (const [id, marker] of current) {
       if (!nextIds.has(id)) {
-        try { map.geoObjects.remove(marker); } catch { /* ignore */ }
+        removeMarkerWithFade(map, marker);
         current.delete(id);
       }
     }
@@ -292,6 +309,7 @@ export function PharmacyMapYandex({
         // coord — the layout's element top-left is at the anchor by
         // default, so we shift our content by (-50%, -100%) on top.
         const wrapper = document.createElement("div");
+        prepareMarkerWrapper(wrapper, pharmacy.markerKind === "cluster");
         wrapper.appendChild(createPinElement(pharmacy, handleClick));
 
         const Layout = ymaps.templateLayoutFactory.createClass(
@@ -336,6 +354,7 @@ export function PharmacyMapYandex({
           handleClick();
         });
         map.geoObjects.add(placemark);
+        requestAnimationFrame(() => revealMarkerWrapper(wrapper));
         current.set(pharmacy.id, placemark);
       }
     }
@@ -462,7 +481,11 @@ export function PharmacyMapYandex({
         </div>
       )}
 
-      <div ref={containerRef} className="h-full w-full" />
+      <div
+        ref={containerRef}
+        data-markers-transitioning={markersTransitioning ? "true" : undefined}
+        className="h-full w-full"
+      />
     </div>
   );
 }
@@ -481,6 +504,37 @@ const PILL_SHADOW = "0 6px 20px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 4
 const PRICE_BG = "#EEF3F4";
 const PRICE_INK = "#1A1C1B";
 const INTEGRATED_GREEN = "#16A34A";
+const MARKER_TRANSITION_MS = 180;
+
+function prepareMarkerWrapper(wrapper: HTMLElement, isCluster: boolean): void {
+  Object.assign(wrapper.style, {
+    opacity: "0",
+    transform: "scale(0.86)",
+    transformOrigin: isCluster ? "50% 50%" : "50% 100%",
+    transition: `opacity ${MARKER_TRANSITION_MS}ms ease-out, transform ${MARKER_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+    willChange: "opacity, transform",
+  } satisfies Partial<CSSStyleDeclaration> as CSSStyleDeclaration);
+}
+
+function revealMarkerWrapper(wrapper: HTMLElement): void {
+  wrapper.style.opacity = "1";
+  wrapper.style.transform = "scale(1)";
+}
+
+function removeMarkerWithFade(map: any, marker: any): void {
+  const wrapper = (marker as { __el?: HTMLElement }).__el;
+  if (!wrapper) {
+    try { map.geoObjects.remove(marker); } catch { /* ignore */ }
+    return;
+  }
+
+  wrapper.style.pointerEvents = "none";
+  wrapper.style.opacity = "0";
+  wrapper.style.transform = "scale(0.86)";
+  window.setTimeout(() => {
+    try { map.geoObjects.remove(marker); } catch { /* ignore */ }
+  }, MARKER_TRANSITION_MS);
+}
 
 function getClusterCellSize(zoom: number): number {
   if (zoom >= 15) return 0;
@@ -513,7 +567,7 @@ function clusterPharmacyMarkers(pharmacies: PharmacyMarker[], zoom: number): Ren
     const lng = bucket.reduce((sum, pharmacy) => sum + pharmacy.lng, 0) / bucket.length;
     const integratedCount = bucket.filter((pharmacy) => pharmacy.integrated).length;
     rendered.push({
-      id: `cluster-${zoom.toFixed(1)}-${key}`,
+      id: `cluster-${cellSize.toFixed(3)}-${key}`,
       title: `${bucket.length} аптек`,
       address: integratedCount ? `${integratedCount} интегрированных` : "Активные аптеки",
       lat,
