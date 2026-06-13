@@ -100,7 +100,7 @@ describe("SuperAdminPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("superadmin finance: opens payout QR in a modal without navigating away", async () => {
+  it("superadmin finance: opens payout QR on a separate page", async () => {
     const deepLinkUrl = "https://alifmobi.page.link/toMobi?account=+992988122731&summa=6.00&_imcp=1";
     const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window);
     vi.stubGlobal(
@@ -155,10 +155,88 @@ describe("SuperAdminPage", () => {
     expect(await screen.findByText("A1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Открыть QR для скана" }));
 
-    expect(await screen.findByRole("dialog", { name: "QR для выплаты" })).toBeInTheDocument();
-    expect(screen.getByTestId("payment-qr")).toHaveAttribute("data-qr-value", deepLinkUrl);
-    expect(openSpy).not.toHaveBeenCalled();
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/payment-qr?url=https%3A%2F%2Falifmobi.page.link%2FtoMobi"),
+      "_blank",
+      "noopener,noreferrer",
+    );
+    const openedUrl = String(openSpy.mock.calls[0][0]);
+    expect(openedUrl).toContain(encodeURIComponent(deepLinkUrl));
+    expect(screen.queryByRole("dialog", { name: "QR для выплаты" })).not.toBeInTheDocument();
     expect(window.location.pathname).toBe("/superadmin");
     expect(window.location.hash).toBe("#finance");
+  });
+
+  it("superadmin finance: gives request statuses clearly different colors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/pharmacy-finance/superadmin/withdrawals")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({
+              summary: {},
+              withdrawalRequests: [
+                {
+                  id: "w-new",
+                  pharmacyId: "p1",
+                  pharmacyTitle: "New Pharmacy",
+                  requestedByAdminId: "a1",
+                  requestedByAdminName: "Admin",
+                  requestedByAdminPhoneNumber: "900000001",
+                  amount: 10,
+                  currency: "TJS",
+                  bank: "DushanbeCity",
+                  bankLabel: "Dushanbe City",
+                  walletPhoneNumber: "992900000001",
+                  deepLinkUrl: "dushanbecity://transfer?phone=992900000001&amount=10.00",
+                  status: "New",
+                  createdAtUtc: "2026-06-13T12:08:00Z",
+                },
+                {
+                  id: "w-done",
+                  pharmacyId: "p2",
+                  pharmacyTitle: "Done Pharmacy",
+                  requestedByAdminId: "a2",
+                  requestedByAdminName: "Admin",
+                  requestedByAdminPhoneNumber: "900000002",
+                  amount: 20,
+                  currency: "TJS",
+                  bank: "Alif",
+                  bankLabel: "Alif Mobi",
+                  walletPhoneNumber: "992900000002",
+                  deepLinkUrl: "https://alifmobi.page.link/toMobi?account=+992900000002&summa=20.00&_imcp=1",
+                  status: "Completed",
+                  createdAtUtc: "2026-06-13T12:08:00Z",
+                },
+              ],
+            }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        if (url.includes("/api/staff-compensation/payout-requests")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ payoutRequests: [] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+        );
+      }),
+    );
+
+    window.history.replaceState({}, "", "/superadmin#finance");
+    renderWithProviders(<SuperAdminPage />, {
+      preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
+    });
+
+    const newBadge = await screen.findByText("Новый");
+    const completedBadge = await screen.findByText("Выполненный");
+    expect(newBadge).toHaveClass("bg-orange-100", "text-orange-800");
+    expect(completedBadge).toHaveClass("bg-emerald-100", "text-emerald-800");
   });
 });

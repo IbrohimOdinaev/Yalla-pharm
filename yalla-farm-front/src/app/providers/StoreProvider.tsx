@@ -19,6 +19,10 @@ function getRoleHome(role: string | null): string | null {
   return null;
 }
 
+export function isStaffRedirectExemptPath(pathname: string): boolean {
+  return pathname === "/payment-qr" || pathname === "/payment-redirect";
+}
+
 function AuthSplash() {
   return (
     <div className="fixed inset-0 z-[9999] flex min-h-dvh items-center justify-center bg-surface">
@@ -41,7 +45,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const hydrated = useSelector((s: RootState) => s.auth.hydrated);
   const pathname = usePathname();
   const roleHome = getRoleHome(role);
-  const isResolvingStaffRoute = hydrated && roleHome !== null && !pathname.startsWith(roleHome);
+  const isResolvingStaffRoute = hydrated && roleHome !== null && !pathname.startsWith(roleHome) && !isStaffRedirectExemptPath(pathname);
 
   if (!hydrated || isResolvingStaffRoute) {
     return <AuthSplash />;
@@ -118,7 +122,7 @@ function RoleBasedRedirect() {
   useEffect(() => {
     if (!hydrated || !role) return;
     const roleHome = getRoleHome(role);
-    if (roleHome && !pathname.startsWith(roleHome)) {
+    if (roleHome && !pathname.startsWith(roleHome) && !isStaffRedirectExemptPath(pathname)) {
       router.replace(roleHome);
     }
   }, [hydrated, role, pathname, router]);
