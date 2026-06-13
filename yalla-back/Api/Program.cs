@@ -162,6 +162,21 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             });
     });
+
+    options.AddPolicy("partner-connect", context =>
+    {
+        var permitLimit = GetRateLimitPermitLimit(context, "PartnerConnect:RateLimitPerMinute", 5);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: BuildRateLimitPartitionKey(context, "partner-connect"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permitLimit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
 });
 builder.Services.Configure<FormOptions>(options =>
 {
