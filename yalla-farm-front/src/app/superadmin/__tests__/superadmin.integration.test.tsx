@@ -1,5 +1,5 @@
 import React from "react";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import SuperAdminPage from "@/app/superadmin/page";
 import { renderWithProviders } from "@/test/render";
@@ -98,5 +98,67 @@ describe("SuperAdminPage", () => {
     expect(
       await screen.findByText("Управление аптеками и администраторами"),
     ).toBeInTheDocument();
+  });
+
+  it("superadmin finance: opens payout QR in a modal without navigating away", async () => {
+    const deepLinkUrl = "https://alifmobi.page.link/toMobi?account=+992988122731&summa=6.00&_imcp=1";
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/pharmacy-finance/superadmin/withdrawals")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ summary: {}, withdrawalRequests: [] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        if (url.includes("/api/staff-compensation/payout-requests")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                payoutRequests: [
+                  {
+                    id: "pay-1",
+                    staffUserId: "staff-1",
+                    staffName: "A1",
+                    staffPhoneNumber: "902020202",
+                    staffRole: "Admin",
+                    pharmacyTitle: "Nishon",
+                    amount: 6,
+                    currency: "TJS",
+                    bank: "Alif",
+                    bankLabel: "Alif Mobi",
+                    walletPhoneNumber: "992988122731",
+                    deepLinkUrl,
+                    status: "New",
+                    createdAtUtc: "2026-06-13T12:08:00Z",
+                  },
+                ],
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+        );
+      }),
+    );
+
+    window.history.replaceState({}, "", "/superadmin#finance");
+    renderWithProviders(<SuperAdminPage />, {
+      preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
+    });
+
+    expect(await screen.findByText("A1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Открыть QR для скана" }));
+
+    expect(await screen.findByRole("dialog", { name: "QR для выплаты" })).toBeInTheDocument();
+    expect(screen.getByTestId("payment-qr")).toHaveAttribute("data-qr-value", deepLinkUrl);
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/superadmin");
+    expect(window.location.hash).toBe("#finance");
   });
 });

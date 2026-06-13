@@ -7,9 +7,9 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { apiFetch } from "@/shared/api/http-client";
 import { formatMoney } from "@/shared/lib/format";
 import { isAllowedPaymentUrl, openPaymentUrl } from "@/shared/lib/paymentWindow";
-import { openPaymentQrWindow } from "@/shared/lib/paymentQr";
 import { DatePicker, Select } from "@/shared/ui";
 import { StaffShell } from "@/widgets/layout/StaffShell";
+import { PaymentQrCard } from "@/widgets/payment/PaymentQrCard";
 
 import {
   completeSuperAdminTelegramLink,
@@ -545,6 +545,7 @@ function InfoTile({ label, value, wide }: { label: string; value: string; wide?:
 function FinanceTab({ token }: { token: string }) {
   const [pharmacyRequests, setPharmacyRequests] = useState<PharmacyWithdrawalRequest[]>([]);
   const [staffRequests, setStaffRequests] = useState<StaffCompensationPayoutRequest[]>([]);
+  const [qrDialog, setQrDialog] = useState<PayoutQrDialog | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadRequests = useCallback(() => {
@@ -609,6 +610,7 @@ function FinanceTab({ token }: { token: string }) {
                 key={request.id}
                 token={token}
                 request={request}
+                onOpenQr={setQrDialog}
                 onDone={(text) => {
                   setMessage(text);
                   loadRequests();
@@ -641,6 +643,7 @@ function FinanceTab({ token }: { token: string }) {
                 key={request.id}
                 token={token}
                 request={request}
+                onOpenQr={setQrDialog}
                 onDone={(text) => {
                   setMessage(text);
                   loadRequests();
@@ -650,6 +653,8 @@ function FinanceTab({ token }: { token: string }) {
           )}
         </div>
       </section>
+
+      <PayoutQrModal qr={qrDialog} onClose={() => setQrDialog(null)} />
     </section>
   );
 }
@@ -664,13 +669,71 @@ function FinanceSummaryCard({ label, value, hint }: { label: string; value: stri
   );
 }
 
+type PayoutQrDialog = {
+  paymentUrl: string;
+  title: string;
+  subtitle?: string;
+  amount: number;
+};
+
+function PayoutQrModal({ qr, onClose }: { qr: PayoutQrDialog | null; onClose: () => void }) {
+  useEffect(() => {
+    if (!qr) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [qr, onClose]);
+
+  if (!qr) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[160] flex items-center justify-center bg-black/55 p-3 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="QR для выплаты"
+    >
+      <div className="relative w-full max-w-md">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-surface-container-low text-xl font-bold text-on-surface transition hover:bg-surface-container"
+          aria-label="Закрыть QR"
+        >
+          ×
+        </button>
+        <PaymentQrCard
+          paymentUrl={qr.paymentUrl}
+          title={qr.title}
+          subtitle={qr.subtitle}
+          amount={qr.amount}
+          allowed={isAllowedPaymentUrl(qr.paymentUrl)}
+          onOpen={() => openPaymentUrl(qr.paymentUrl)}
+        />
+      </div>
+    </div>
+  );
+}
+
 function SuperAdminWithdrawalCard({
   token,
   request,
+  onOpenQr,
   onDone,
 }: {
   token: string;
   request: PharmacyWithdrawalRequest;
+  onOpenQr: (qr: PayoutQrDialog) => void;
   onDone: (message: string) => void;
 }) {
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -760,11 +823,11 @@ function SuperAdminWithdrawalCard({
                     className="stitch-button-secondary w-full"
                     disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
                     onClick={() => {
-                      void openPaymentQrWindow({
-                        deepLinkUrl: request.deepLinkUrl,
+                      onOpenQr({
+                        paymentUrl: request.deepLinkUrl,
                         title: `${bank} · ${request.pharmacyTitle}`,
-                        amountLabel: `Сумма: ${formatMoney(request.amount, request.currency)}`,
-                        walletLabel: `Кошелёк: ${request.walletPhoneNumber}`,
+                        amount: request.amount,
+                        subtitle: `Кошелёк: ${request.walletPhoneNumber}`,
                       });
                     }}
                   >
@@ -806,10 +869,12 @@ function SuperAdminWithdrawalCard({
 function SuperAdminStaffPayoutRequestCard({
   token,
   request,
+  onOpenQr,
   onDone,
 }: {
   token: string;
   request: StaffCompensationPayoutRequest;
+  onOpenQr: (qr: PayoutQrDialog) => void;
   onDone: (message: string) => void;
 }) {
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -900,11 +965,11 @@ function SuperAdminStaffPayoutRequestCard({
                     className="stitch-button-secondary w-full"
                     disabled={!isAllowedPaymentUrl(request.deepLinkUrl)}
                     onClick={() => {
-                      void openPaymentQrWindow({
-                        deepLinkUrl: request.deepLinkUrl,
+                      onOpenQr({
+                        paymentUrl: request.deepLinkUrl,
                         title: `${request.bankLabel} · ${request.staffName || request.staffUserId}`,
-                        amountLabel: `Сумма: ${formatMoney(request.amount, request.currency)}`,
-                        walletLabel: `Кошелёк: ${request.walletPhoneNumber}`,
+                        amount: request.amount,
+                        subtitle: `Кошелёк: ${request.walletPhoneNumber}`,
                       });
                     }}
                   >
