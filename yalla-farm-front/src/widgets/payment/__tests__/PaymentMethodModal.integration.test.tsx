@@ -2,9 +2,21 @@ import React from "react";
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/render";
-import { PaymentMethodModal } from "@/widgets/payment/PaymentMethodModal";
+import { buildPaymentUrlFromTemplate, PaymentMethodModal } from "@/widgets/payment/PaymentMethodModal";
 
 describe("PaymentMethodModal", () => {
+  it("replaces the Alif amount placeholder, including the legacy amaunt typo", () => {
+    expect(buildPaymentUrlFromTemplate(
+      "https://alifmobi.page.link/toMobi?account=+992988122731&summa={amaunt}&_imcp=1",
+      171,
+    )).toBe("https://alifmobi.page.link/toMobi?account=+992988122731&summa=171.00&_imcp=1");
+
+    expect(buildPaymentUrlFromTemplate(
+      "https://alifmobi.page.link/toMobi?account=+992988122731&summa={amount}&_imcp=1",
+      171,
+    )).toBe("https://alifmobi.page.link/toMobi?account=+992988122731&summa=171.00&_imcp=1");
+  });
+
   it("renders payment methods without inline QR codes", () => {
     const onSelect = vi.fn();
 

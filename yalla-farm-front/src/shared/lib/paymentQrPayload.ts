@@ -1,19 +1,11 @@
 export function buildPaymentQrValue(deepLinkUrl: string): string {
-  try {
-    const url = new URL(deepLinkUrl);
-    url.searchParams.delete("amount");
-    url.searchParams.delete("summa");
-    url.searchParams.delete("s");
-    return url.toString();
-  } catch {
-    return deepLinkUrl;
-  }
+  return deepLinkUrl.trim();
 }
 
 export function buildPaymentQrDescription(deepLinkUrl: string): string {
   const qrValue = buildPaymentQrValue(deepLinkUrl);
-  if (qrValue === deepLinkUrl) {
-    return "QR открывает приложение оплаты. Сумму введите вручную.";
+  if (!qrValue) {
+    return "QR для оплаты пока недоступен.";
   }
-  return "QR открывает приложение оплаты без автоматического заполнения суммы.";
+  return "QR открывает приложение оплаты с подготовленными реквизитами.";
 }

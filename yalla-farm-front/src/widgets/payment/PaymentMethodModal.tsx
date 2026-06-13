@@ -28,8 +28,10 @@ export function buildPaymentUrlFromTemplate(template: string | null | undefined,
   if (!source) return "";
 
   const amountText = amount.toFixed(2);
-  if (source.includes("{amount}")) {
-    return source.split("{amount}").join(amountText);
+  if (source.includes("{amount}") || source.includes("{amaunt}")) {
+    return source
+      .split("{amount}").join(amountText)
+      .split("{amaunt}").join(amountText);
   }
 
   try {
