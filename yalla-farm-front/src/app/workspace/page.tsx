@@ -97,6 +97,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
+const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
 
 function getDushanbeTodayWindow(now = new Date()): { startUtcMs: number; endUtcMs: number; label: string } {
   const shifted = new Date(now.getTime() + DUSHANBE_OFFSET_MS);
@@ -107,6 +108,22 @@ function getDushanbeTodayWindow(now = new Date()): { startUtcMs: number; endUtcM
   const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
   const label = `${String(day).padStart(2, "0")}.${String(month + 1).padStart(2, "0")}.${year}`;
   return { startUtcMs, endUtcMs, label };
+}
+
+function dushanbeTimeMs(value?: string | null) {
+  return value ? new Date(value).getTime() : 0;
+}
+
+function formatDushanbeDateTime(value?: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("ru-RU", {
+    timeZone: DUSHANBE_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function WorkspacePage() {
@@ -154,6 +171,7 @@ export default function WorkspacePage() {
 
   /* Feature 14: stat cards data */
   const [dailyStats, setDailyStats] = useState({ totalOrders: 0, cancelled: 0, returned: 0, turnover: 0, dayLabel: "" });
+  const [recentDashboardOrders, setRecentDashboardOrders] = useState<ApiOrder[]>([]);
   const [pharmacyName, setPharmacyName] = useState("");
   const [adminName, setAdminName] = useState("");
 
@@ -173,6 +191,11 @@ export default function WorkspacePage() {
           turnover: todayOrders.reduce((sum, order) => sum + computeItemsTotal(order), 0),
           dayLabel: label,
         });
+        setRecentDashboardOrders(
+          [...data]
+            .sort((a, b) => dushanbeTimeMs(b.createdAtUtc) - dushanbeTimeMs(a.createdAtUtc))
+            .slice(0, 6),
+        );
       })
       .catch(() => undefined);
   }, [token, role]);
@@ -237,7 +260,7 @@ export default function WorkspacePage() {
           <p className="mt-1 text-xs opacity-85 sm:text-sm">{activeMeta.description}</p>
         </div>
 
-        {activeTab === "dashboard" ? <DashboardTab dailyStats={dailyStats} pharmacyName={pharmacyName} /> : null}
+        {activeTab === "dashboard" ? <DashboardTab dailyStats={dailyStats} pharmacyName={pharmacyName} recentOrders={recentDashboardOrders} /> : null}
         {activeTab === "profile" ? <PharmacyTab token={token} onLogout={onLogout} /> : null}
         {activeTab === "offers" ? <OffersTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} onStatsRefresh={refreshDailyStats} /> : null}
@@ -250,9 +273,11 @@ export default function WorkspacePage() {
 function DashboardTab({
   dailyStats,
   pharmacyName,
+  recentOrders,
 }: {
   dailyStats: { totalOrders: number; cancelled: number; returned: number; turnover: number; dayLabel: string };
   pharmacyName: string;
+  recentOrders: ApiOrder[];
 }) {
   const cards = [
     {
@@ -300,7 +325,56 @@ function DashboardTab({
           </div>
         ))}
       </div>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-black">Последние заказы</h2>
+          <p className="text-sm text-on-surface-variant">Финансовая разбивка: товары, доставка и итоговая сумма заказа.</p>
+        </div>
+        <div className="space-y-2">
+          {recentOrders.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заказов пока нет.</p>
+          ) : (
+            recentOrders.map((order) => {
+              const itemsCost = computeItemsTotal(order);
+              const deliveryCost = order.isPickup ? 0 : (order.deliveryCost ?? 0);
+              const totalPaid = computeOriginalPaid(order) || order.totalCost || itemsCost + deliveryCost;
+              return (
+                <article key={order.orderId} className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[11px] text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
+                        <span className="rounded-full bg-surface-container px-2 py-1 text-[11px] font-black">{STATUS_LABELS[order.status] ?? order.status}</span>
+                        <DeliveryBadge isPickup={!!order.isPickup} />
+                      </div>
+                      <p className="mt-2 text-sm font-black">{order.clientName || order.clientPhoneNumber || "Клиент"}</p>
+                      <p className="mt-1 text-xs text-on-surface-variant">
+                        {formatDushanbeDateTime(order.createdAtUtc)} · {order.deliveryAddress || (order.isPickup ? "Самовывоз" : "Адрес не указан")}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+                      <DashboardMoneyCell label="Товары" value={formatMoney(itemsCost, order.currency)} />
+                      <DashboardMoneyCell label="Доставка" value={formatMoney(deliveryCost, order.currency)} />
+                      <DashboardMoneyCell label="Итого" value={formatMoney(totalPaid, order.currency)} emphasis />
+                    </div>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+      </section>
     </section>
+  );
+}
+
+function DashboardMoneyCell({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
+  return (
+    <div className="rounded-xl bg-surface-container-low p-2">
+      <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">{label}</p>
+      <p className={`mt-1 text-sm font-black ${emphasis ? "text-primary" : "text-on-surface"}`}>{value}</p>
+    </div>
   );
 }
 
@@ -343,6 +417,8 @@ function FinanceTab({ token }: { token: string }) {
 
   const summary = finance?.summary;
   const requests = finance?.withdrawalRequests ?? [];
+  const activeRequests = requests.filter((request) => withdrawalStatusLabel(request.status) === "Новый");
+  const completedRequests = requests.filter((request) => withdrawalStatusLabel(request.status) === "Выполненный");
 
   return (
     <section className="space-y-4">
@@ -406,18 +482,32 @@ function FinanceTab({ token }: { token: string }) {
       <section className="stitch-card p-4 sm:p-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-black">История заявок</h2>
-            <p className="text-xs text-on-surface-variant">Новые и выполненные заявки по вашей аптеке.</p>
+            <h2 className="text-base font-black">Новые заявки на вывод</h2>
+            <p className="text-xs text-on-surface-variant">Заявки, которые ещё ожидают выполнения SuperAdmin.</p>
           </div>
           <button type="button" className="rounded-xl bg-surface-container px-3 py-2 text-xs font-black" onClick={loadFinance}>
             Обновить
           </button>
         </div>
         <div className="space-y-2">
-          {requests.length === 0 ? (
-            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок пока нет.</p>
+          {activeRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Новых заявок пока нет.</p>
           ) : (
-            requests.map((request) => <AdminWithdrawalCard key={request.id} request={request} />)
+            activeRequests.map((request) => <AdminWithdrawalCard key={request.id} request={request} />)
+          )}
+        </div>
+      </section>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-3">
+          <h2 className="text-base font-black">История выводов</h2>
+          <p className="text-xs text-on-surface-variant">Выполненные заявки вынесены отдельно от рабочей очереди.</p>
+        </div>
+        <div className="space-y-2">
+          {completedRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Истории выплат пока нет.</p>
+          ) : (
+            completedRequests.map((request) => <AdminWithdrawalCard key={request.id} request={request} />)
           )}
         </div>
       </section>
@@ -450,7 +540,7 @@ function AdminWithdrawalCard({ request }: { request: PharmacyWithdrawalRequest }
             <p className="mt-1 text-xs text-on-surface-variant">{request.superAdminComment}</p>
           ) : null}
         </div>
-        <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-black ${isCompleted ? "bg-primary-soft text-primary" : "bg-warning-container text-on-surface"}`}>
+        <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-black ${isCompleted ? "border border-emerald-200 bg-emerald-100 text-emerald-800" : "border border-orange-200 bg-orange-100 text-orange-800"}`}>
           {statusLabel}
         </span>
       </div>
@@ -472,6 +562,8 @@ function StaffPayoutRequestBox({
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const requests = compensation.recentPayoutRequests ?? [];
+  const activeRequests = requests.filter((request) => request.status !== "Completed" && request.status !== 1);
+  const completedRequests = requests.filter((request) => request.status === "Completed" || request.status === 1);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -527,14 +619,14 @@ function StaffPayoutRequestBox({
         ) : null}
       </form>
 
-      {requests.length > 0 ? (
+      {activeRequests.length > 0 ? (
         <div className="space-y-2">
-          <p className="text-xs font-black uppercase text-on-surface-variant">Мои заявки</p>
-          {requests.slice(0, 5).map((request) => (
+          <p className="text-xs font-black uppercase text-on-surface-variant">Новые заявки</p>
+          {activeRequests.slice(0, 5).map((request) => (
             <div key={request.id} className="rounded-xl bg-surface-container-lowest p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-bold">{formatMoney(request.amount, request.currency)} · {request.bankLabel}</span>
-                <span className={request.status === "Completed" ? "text-primary" : "text-warning"}>
+                <span className={request.status === "Completed" ? "text-emerald-700" : "text-orange-700"}>
                   {request.status === "Completed" ? "Выполненный" : "Новый"}
                 </span>
               </div>
@@ -543,6 +635,23 @@ function StaffPayoutRequestBox({
           ))}
         </div>
       ) : null}
+
+      <div className="space-y-2">
+        <p className="text-xs font-black uppercase text-on-surface-variant">История выплат</p>
+        {completedRequests.length === 0 ? (
+          <p className="rounded-xl bg-surface-container-lowest p-2 text-xs text-on-surface-variant">Выполненных заявок пока нет.</p>
+        ) : (
+          completedRequests.slice(0, 8).map((request) => (
+            <div key={request.id} className="rounded-xl bg-surface-container-lowest p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold">{formatMoney(request.amount, request.currency)} · {request.bankLabel}</span>
+                <span className="text-emerald-700">Выполненный</span>
+              </div>
+              <p className="mt-0.5 text-on-surface-variant">{formatDushanbeDateTime(request.createdAtUtc)}</p>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

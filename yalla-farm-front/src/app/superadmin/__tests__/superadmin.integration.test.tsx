@@ -239,4 +239,58 @@ describe("SuperAdminPage", () => {
     expect(newBadge).toHaveClass("bg-orange-100", "text-orange-800");
     expect(completedBadge).toHaveClass("bg-emerald-100", "text-emerald-800");
   });
+
+  it("superadmin delivery: shows delivery accounting by order", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/orders/all")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                orders: [
+                  {
+                    orderId: "delivery1",
+                    status: "Delivered",
+                    pharmacyTitle: "Nishon",
+                    clientName: "Client Delivery",
+                    cost: 100,
+                    deliveryCost: 15,
+                    totalCost: 115,
+                    currency: "TJS",
+                    isPickup: false,
+                    deliveryAddress: "Client point B",
+                    deliveryDistance: 4.2,
+                    fromLatitude: 38.58001,
+                    fromLongitude: 68.78001,
+                    toLatitude: 38.59001,
+                    toLongitude: 68.79001,
+                    juraOrderId: 501,
+                    juraStatus: "created",
+                    createdAtUtc: "2026-06-13T12:08:00Z",
+                    positions: [],
+                  },
+                ],
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+        );
+      }),
+    );
+
+    window.history.replaceState({}, "", "/superadmin#delivery");
+    renderWithProviders(<SuperAdminPage />, {
+      preloadedAuth: { token: "t", role: "SuperAdmin", userId: "u1" },
+    });
+
+    expect(await screen.findByText("Учёт доставки по заказам")).toBeInTheDocument();
+    expect(screen.getByText("Nishon → Client Delivery")).toBeInTheDocument();
+    expect(screen.getAllByText("4.2 км").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("115.00 TJS")).toBeInTheDocument();
+    expect(screen.getByText("Jura #501")).toBeInTheDocument();
+  });
 });

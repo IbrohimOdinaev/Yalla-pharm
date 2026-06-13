@@ -44,6 +44,7 @@ const SUPERADMIN_ITEMS: StaffNavItem[] = [
   { label: "Логи", href: "/superadmin#logs", icon: "list", group: "Система" },
   { label: "Заказы", href: "/superadmin#orders", icon: "orders", group: "Операции" },
   { label: "Рецепты", href: "/superadmin#prescriptions", icon: "orders", group: "Операции" },
+  { label: "Доставка", href: "/superadmin#delivery", icon: "pharmacy", group: "Операции" },
   { label: "Финансы", href: "/superadmin#finance", icon: "coin", group: "Операции" },
 ];
 

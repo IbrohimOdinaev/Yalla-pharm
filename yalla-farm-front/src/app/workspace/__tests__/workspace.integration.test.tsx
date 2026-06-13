@@ -139,6 +139,33 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("Оборот")).toBeInTheDocument();
   });
 
+  it("admin dashboard: shows recent orders with finance breakdown", async () => {
+    mockAdminFetch([
+      {
+        orderId: "finance1",
+        status: "Delivered",
+        cost: 100,
+        deliveryCost: 16,
+        totalCost: 116,
+        isPickup: false,
+        clientName: "Client Finance",
+        deliveryAddress: "Client street",
+        createdAtUtc: "2026-06-13T08:00:00Z",
+        positions: [],
+      },
+    ]);
+    renderWithProviders(<WorkspacePage />, {
+      preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
+    });
+
+    expect(await screen.findByText("Последние заказы")).toBeInTheDocument();
+    expect(screen.getByText("Client Finance")).toBeInTheDocument();
+    expect(screen.getByText("Товары")).toBeInTheDocument();
+    expect(screen.getAllByText("Доставка").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Итого")).toBeInTheDocument();
+    expect(screen.getByText("116.00 TJS")).toBeInTheDocument();
+  });
+
   it("admin orders: hides the New column and shows New orders under review", async () => {
     window.location.hash = "#orders";
     mockAdminFetch([

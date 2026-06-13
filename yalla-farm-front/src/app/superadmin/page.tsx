@@ -85,7 +85,7 @@ function supportsGeneratedPaymentQr(deepLinkUrl: string): boolean {
   return Boolean(deepLinkUrl.trim());
 }
 
-type Tab = "dashboard" | "pharmacies" | "users" | "medicines" | "logs" | "orders" | "prescriptions" | "finance";
+type Tab = "dashboard" | "pharmacies" | "users" | "medicines" | "logs" | "orders" | "prescriptions" | "delivery" | "finance";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
@@ -246,7 +246,7 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "pharmacies" || h === "users" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions" || h === "finance") setActiveTab(h);
+      if (h === "pharmacies" || h === "users" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions" || h === "delivery" || h === "finance") setActiveTab(h);
       else setActiveTab("dashboard");
     }
     syncHash();
@@ -285,6 +285,7 @@ export default function SuperAdminPage() {
         {activeTab === "logs" ? <OneCLogsTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
         {activeTab === "prescriptions" ? <PrescriptionsTab token={token} /> : null}
+        {activeTab === "delivery" ? <DeliveryAccountingTab token={token} /> : null}
         {activeTab === "finance" ? <FinanceTab token={token} /> : null}
       </div>
     </StaffShell>
@@ -601,10 +602,34 @@ function FinanceTab({ token }: { token: string }) {
         </div>
 
         <div className="space-y-3">
-          {pharmacyRequests.length === 0 ? (
-            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок пока нет.</p>
+          {activePharmacyRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Новых заявок аптек пока нет.</p>
           ) : (
-            pharmacyRequests.map((request) => (
+            activePharmacyRequests.map((request) => (
+              <SuperAdminWithdrawalCard
+                key={request.id}
+                token={token}
+                request={request}
+                onDone={(text) => {
+                  setMessage(text);
+                  loadRequests();
+                }}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-black">История выводов аптек</h2>
+          <p className="text-sm text-on-surface-variant">Выполненные заявки отделены от новых, чтобы рабочая очередь не смешивалась с историей.</p>
+        </div>
+        <div className="space-y-3">
+          {completedPharmacyRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Истории выплат аптек пока нет.</p>
+          ) : (
+            completedPharmacyRequests.map((request) => (
               <SuperAdminWithdrawalCard
                 key={request.id}
                 token={token}
@@ -633,10 +658,34 @@ function FinanceTab({ token }: { token: string }) {
         </div>
 
         <div className="space-y-3">
-          {staffRequests.length === 0 ? (
-            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Заявок сотрудников пока нет.</p>
+          {activeStaffRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Новых заявок сотрудников пока нет.</p>
           ) : (
-            staffRequests.map((request) => (
+            activeStaffRequests.map((request) => (
+              <SuperAdminStaffPayoutRequestCard
+                key={request.id}
+                token={token}
+                request={request}
+                onDone={(text) => {
+                  setMessage(text);
+                  loadRequests();
+                }}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-black">История выплат зарплаты</h2>
+          <p className="text-sm text-on-surface-variant">Выполненные выплаты Admin и фармацевтов.</p>
+        </div>
+        <div className="space-y-3">
+          {completedStaffRequests.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Истории выплат сотрудников пока нет.</p>
+          ) : (
+            completedStaffRequests.map((request) => (
               <SuperAdminStaffPayoutRequestCard
                 key={request.id}
                 token={token}
@@ -669,6 +718,108 @@ function financeRequestStatusClass(statusLabel: "Новый" | "Выполнен
     return "border border-emerald-200 bg-emerald-100 text-emerald-800";
   }
   return "border border-orange-200 bg-orange-100 text-orange-800";
+}
+
+function DeliveryAccountingTab({ token }: { token: string }) {
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    getAllOrders(token, "", 1, 200)
+      .then((items) => {
+        setOrders(items.filter((order) => !order.isPickup && ((order.deliveryCost ?? 0) > 0 || order.deliveryAddress || order.toLatitude != null || order.toLongitude != null)));
+        setError(null);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить доставки."));
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const totalDeliveryCost = orders.reduce((sum, order) => sum + (order.deliveryCost ?? 0), 0);
+  const totalGoodsCost = orders.reduce((sum, order) => sum + computeItemsTotal(order), 0);
+  const totalDistance = orders.reduce((sum, order) => sum + (order.deliveryDistance ?? 0), 0);
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <FinanceSummaryCard label="Доставок" value={String(orders.length)} hint="заказы не самовывоз" />
+        <FinanceSummaryCard label="Стоимость доставки" value={formatMoney(totalDeliveryCost, "TJS")} hint="сумма по заказам" />
+        <FinanceSummaryCard label="Товары" value={formatMoney(totalGoodsCost, "TJS")} hint="без доставки" />
+        <FinanceSummaryCard label="Дистанция" value={`${totalDistance.toFixed(1)} км`} hint="суммарно по данным API" />
+      </div>
+
+      <section className="stitch-card p-4 sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black">Учёт доставки по заказам</h2>
+            <p className="text-sm text-on-surface-variant">
+              История доставок: точки A/B, стоимость доставки, товары, общий платёж и статус заказа.
+            </p>
+          </div>
+          <button type="button" className="rounded-xl bg-surface-container px-4 py-2 text-sm font-black" onClick={load}>
+            Обновить
+          </button>
+        </div>
+
+        {error ? <div className="mb-3 rounded-xl bg-red-100 p-3 text-sm font-semibold text-red-700">{error}</div> : null}
+
+        <div className="space-y-2">
+          {orders.length === 0 ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Доставок пока нет.</p>
+          ) : (
+            orders.map((order) => {
+              const goodsCost = computeItemsTotal(order);
+              const deliveryCost = order.deliveryCost ?? 0;
+              const totalPaid = computeOriginalPaid(order) || order.totalCost || goodsCost + deliveryCost;
+              const pointA = order.fromLatitude != null && order.fromLongitude != null
+                ? `${order.fromLatitude.toFixed(5)}, ${order.fromLongitude.toFixed(5)}`
+                : order.pharmacyTitle || "Аптека";
+              const pointB = order.toLatitude != null && order.toLongitude != null
+                ? `${order.toLatitude.toFixed(5)}, ${order.toLongitude.toFixed(5)}`
+                : order.deliveryAddress || "Адрес клиента";
+              return (
+                <article key={order.orderId} className="rounded-2xl border border-outline/60 bg-surface-container-lowest p-3">
+                  <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr] lg:items-start">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[11px] text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
+                        <span className="rounded-full bg-surface-container px-2 py-1 text-[11px] font-black">{STATUS_LABELS[order.status] ?? order.status}</span>
+                        {order.juraOrderId ? <span className="rounded-full bg-primary-soft px-2 py-1 text-[11px] font-black text-primary">Jura #{order.juraOrderId}</span> : null}
+                      </div>
+                      <p className="mt-2 text-sm font-black">{order.pharmacyTitle || "Аптека"} → {order.clientName || order.clientPhoneNumber || "Клиент"}</p>
+                      <p className="mt-1 text-xs text-on-surface-variant">{formatDushanbeDateTime(order.createdAtUtc)}</p>
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <p><span className="font-black text-on-surface">A:</span> {pointA}</p>
+                      <p><span className="font-black text-on-surface">B:</span> {pointB}</p>
+                      <p><span className="font-black text-on-surface">Расстояние:</span> {order.deliveryDistance != null ? `${order.deliveryDistance.toFixed(1)} км` : "—"}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-2">
+                      <DeliveryMoneyCell label="Товары" value={formatMoney(goodsCost, order.currency)} />
+                      <DeliveryMoneyCell label="Доставка" value={formatMoney(deliveryCost, order.currency)} />
+                      <DeliveryMoneyCell label="Итого" value={formatMoney(totalPaid, order.currency)} emphasis />
+                      <DeliveryMoneyCell label="Jura" value={(order.juraStatus || order.juraStatusId != null) ? String(order.juraStatus ?? order.juraStatusId) : "—"} />
+                    </div>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function DeliveryMoneyCell({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
+  return (
+    <div className="rounded-xl bg-surface-container-low p-2">
+      <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">{label}</p>
+      <p className={`mt-1 break-words text-sm font-black ${emphasis ? "text-primary" : "text-on-surface"}`}>{value}</p>
+    </div>
+  );
 }
 
 function SuperAdminWithdrawalCard({
