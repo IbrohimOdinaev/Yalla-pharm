@@ -630,9 +630,12 @@ public sealed class OrderService : IOrderService
         Id = deliveryData.ToAddressId
       };
 
-      var clientPhone = !string.IsNullOrEmpty(order.ClientPhoneNumber)
-        ? $"992{order.ClientPhoneNumber}"
-        : null;
+      var clientPhone = ResolveJuraDispatchPhone(order.ClientPhoneNumber, worker.PhoneNumber)
+        ?? throw new ClientErrorException(
+          "jura_client_phone_missing",
+          "Для вызова JURA нужен телефон клиента или работника аптеки. Укажите телефон и повторите попытку.",
+          "jura_client_phone_missing",
+          400);
 
       // NB: we do NOT recalculate DeliveryCost here — it was fixed at checkout and
       // is what the client was quoted (Order.PaymentAmount is locked to it). JURA
@@ -751,6 +754,25 @@ public sealed class OrderService : IOrderService
       throw new InvalidOperationException(
         $"Order '{orderId}' has incomplete delivery route data. Recreate or edit the delivery address before dispatching courier.");
     }
+  }
+
+  private static string? ResolveJuraDispatchPhone(string? clientPhoneNumber, string? workerPhoneNumber)
+  {
+    return ToJuraPhone(clientPhoneNumber) ?? ToJuraPhone(workerPhoneNumber);
+  }
+
+  private static string? ToJuraPhone(string? phoneNumber)
+  {
+    if (string.IsNullOrWhiteSpace(phoneNumber))
+      return null;
+
+    var digits = new string(phoneNumber.Where(char.IsDigit).ToArray());
+    if (digits.Length == 9)
+      return "992" + digits;
+    if (digits.Length == 12 && digits.StartsWith("992", StringComparison.Ordinal))
+      return digits;
+
+    return null;
   }
 
   private static bool IsValidCoordinate(double lat, double lng)

@@ -1727,8 +1727,23 @@ function OrderCard({
       ? `tg:${order.clientTelegramId}`
       : undefined;
 
+  function openDetails() {
+    onSelect?.(order.orderId);
+  }
+
   return (
-    <div className={`stitch-card space-y-2 p-3 ${deliveryBorderClass(!!order.isPickup)}`}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openDetails}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetails();
+        }
+      }}
+      className={`stitch-card cursor-pointer space-y-2 p-3 transition hover:border-primary/40 hover:bg-surface-container-low focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${deliveryBorderClass(!!order.isPickup)}`}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
         <div className="flex items-center gap-1.5">
@@ -1781,7 +1796,11 @@ function OrderCard({
             const stockIsEnough = hasStock && pos.stockQuantity! >= pos.quantity;
 
             return (
-              <label key={pos.positionId} className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}>
+              <label
+                key={pos.positionId}
+                onClick={(event) => event.stopPropagation()}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}
+              >
                 {!pos.isRejected ? (
                   <input type="checkbox" checked={selectedPositions.has(pos.positionId)} onChange={() => togglePosition(pos.positionId)} />
                 ) : null}
@@ -1816,7 +1835,8 @@ function OrderCard({
               key={a.action}
               type="button"
               className={`rounded-lg px-3 py-1 text-xs font-bold ${a.danger ? "bg-red-100 text-red-700" : "bg-primary text-on-primary"}`}
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 if (a.action === "dispatchDelivery") {
                   onRequestDispatch?.(order);
                   return;
@@ -1831,15 +1851,6 @@ function OrderCard({
           ))}
         </div>
       ) : null}
-
-      {/* "Подробнее" — opens modal inline (no navigation) */}
-      <button
-        type="button"
-        onClick={() => onSelect?.(order.orderId)}
-        className="inline-block rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold text-on-surface-variant hover:bg-surface-container-high"
-      >
-        Подробнее
-      </button>
     </div>
   );
 }

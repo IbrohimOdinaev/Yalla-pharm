@@ -7,6 +7,7 @@ using Yalla.Application.Services;
 using Yalla.Application.UnitTests.TestInfrastructure;
 using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
+using Yalla.Domain.ValueObjects;
 
 namespace Yalla.Application.UnitTests.Services;
 
@@ -308,6 +309,61 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task DispatchDeliveryAsync_WhenClientPhoneIsMissing_UsesWorkerPhoneForJura()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var orderId = Guid.NewGuid();
+    var orderPosition = new OrderPosition(
+      orderId,
+      setup.Medicine.Id,
+      setup.Medicine,
+      new OfferSnapshot(setup.Pharmacy.Id, 10m),
+      quantity: 1);
+    var order = new Order(
+      orderId,
+      setup.Client.Id,
+      clientPhoneNumber: "",
+      pharmacyId: setup.Pharmacy.Id,
+      deliveryAddress: "Address",
+      positions: [orderPosition]);
+
+    while (order.Status != Status.Ready)
+      order.NextStage(true);
+
+    var deliveryData = new DeliveryData(
+      order.Id,
+      "Pharmacy",
+      "Pharmacy address",
+      38.5737,
+      68.7738,
+      "Client",
+      "Client address",
+      38.5598,
+      68.7870);
+    deliveryData.SetDeliveryCost(15m, 2.4);
+    scope.Db.Orders.Add(order);
+    scope.Db.DeliveryData.Add(deliveryData);
+    await scope.Db.SaveChangesAsync();
+
+    var jura = new FakeJuraService();
+    var service = new OrderService(
+      scope.Db,
+      NullLogger<OrderService>.Instance,
+      new NoOpRealtimeUpdatesPublisher(),
+      jura);
+
+    await service.DispatchDeliveryAsync(new DispatchDeliveryRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id,
+      TariffId = 1
+    });
+
+    Assert.Equal("992992400003", jura.LastClientPhone);
+  }
+
+  [Fact]
   public async Task MoveOrderToNextStatusBySuperAdminAsync_MovesNewToUnderReview()
   {
     using var scope = TestDbFactory.Create();
@@ -500,6 +556,7 @@ public class OrderServiceTests
   private sealed class FakeJuraService : IJuraService
   {
     public int CreateOrderCalls { get; private set; }
+    public string? LastClientPhone { get; private set; }
 
     public Task<List<JuraAddressSuggestion>> SearchAddressAsync(string text, CancellationToken ct)
     {
@@ -516,6 +573,7 @@ public class OrderServiceTests
       JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
     {
       CreateOrderCalls++;
+      LastClientPhone = clientPhone;
       return Task.FromResult(new JuraCreateOrderResult
       {
         OrderId = 123456,

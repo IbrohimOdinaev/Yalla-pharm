@@ -162,6 +162,42 @@ public sealed class JuraServiceTests
   }
 
   [Fact]
+  public async Task CreateDeliveryOrderAsync_WhenPayTypeIsInvalid_RetriesWithoutPayType()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.UnprocessableEntity, """
+      {"status":422,"message":"Validation error","errors":{"pay_type_id":["Указанный тип оплаты не найден или не является корпоративным балансом."]}}
+      """),
+      Json(HttpStatusCode.OK, """
+      {
+        "message": "Заказ успешно создан",
+        "result": {
+          "id": 42106902,
+          "status": "Поступило",
+          "status_id": 1
+        }
+      }
+      """));
+    var service = CreateService(handler);
+
+    var result = await service.CreateDeliveryOrderAsync(
+      Address("A", 38.573255, 68.786378),
+      Address("B", 38.580832, 68.786342),
+      tariffId: null,
+      clientPhone: "000000003",
+      CancellationToken.None);
+
+    Assert.Equal(42106902, result.OrderId);
+    Assert.Equal(3, handler.Requests.Count);
+    using var firstBody = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
+    using var secondBody = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
+    Assert.True(firstBody.RootElement.TryGetProperty("pay_type_id", out _));
+    Assert.False(secondBody.RootElement.TryGetProperty("pay_type_id", out _));
+    Assert.Equal("992000000003", secondBody.RootElement.GetProperty("phone").GetString());
+  }
+
+  [Fact]
   public async Task GetDriverPositionAsync_ReadsLatitudeLongitude_FromExternalApiResponse()
   {
     var handler = new SequenceMessageHandler(

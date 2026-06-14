@@ -174,8 +174,8 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispat
   if (isLoading) {
     return (
       <>
-        <div className="fixed inset-0 z-[70] bg-black/50" onClick={onClose} />
-        <div className="pointer-events-none fixed inset-0 z-[71] flex items-start justify-center overflow-y-auto p-4 pt-16">
+        <div className="fixed inset-0 z-[120] bg-black/50" onClick={onClose} />
+        <div className="pointer-events-none fixed inset-0 z-[121] flex items-start justify-center overflow-y-auto p-4 pt-16">
           <div className="stitch-card pointer-events-auto w-full max-w-2xl p-6 text-sm">Загрузка...</div>
         </div>
       </>
@@ -185,8 +185,8 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispat
   if (!order) {
     return (
       <>
-        <div className="fixed inset-0 z-[70] bg-black/50" onClick={onClose} />
-        <div className="pointer-events-none fixed inset-0 z-[71] flex items-start justify-center overflow-y-auto p-4 pt-16">
+        <div className="fixed inset-0 z-[120] bg-black/50" onClick={onClose} />
+        <div className="pointer-events-none fixed inset-0 z-[121] flex items-start justify-center overflow-y-auto p-4 pt-16">
           <div className="stitch-card pointer-events-auto w-full max-w-2xl p-6 text-sm text-on-surface-variant">
             {error ?? "Заказ не найден."}
           </div>
@@ -206,8 +206,8 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispat
 
   return (
     <>
-      <div className="fixed inset-0 z-[70] bg-black/50" onClick={onClose} />
-      <div className="pointer-events-none fixed inset-0 z-[71] flex items-start justify-center overflow-y-auto p-4 pt-8">
+      <div className="fixed inset-0 z-[120] bg-black/50" onClick={onClose} />
+      <div className="pointer-events-none fixed inset-0 z-[121] flex items-start justify-center overflow-y-auto p-4 pt-8">
         <div className="stitch-card pointer-events-auto w-full max-w-2xl p-6 space-y-5">
           {/* Header */}
           <div className="flex items-center justify-between gap-3">

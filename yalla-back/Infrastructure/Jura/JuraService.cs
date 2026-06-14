@@ -112,24 +112,31 @@ public sealed class JuraService : IJuraService
     var effectiveTariffId = tariffId ?? _options.DefaultTariffId;
     var normalizedPhone = NormalizeJuraPhone(clientPhone);
 
-    var body = new
-    {
-      division_id = _options.DivisionId,
-      tariff_id = effectiveTariffId,
-      phone = normalizedPhone,
-      pay_type_id = _options.DefaultPayTypeId,
-      from_address = ToJuraAddressPayload(from),
-      to_address = new[] { ToJuraAddressPayload(to) },
-      allowances = BuildCreateAllowancesPayload(deliverToDoor)
-    };
-
     _logger.LogInformation("Creating JURA delivery order from {From} to {To}", from.Title, to.Title);
 
+    var body = BuildCreateOrderPayload(from, to, effectiveTariffId, normalizedPhone, deliverToDoor, includePayTypeId: true);
     var response = await SendWithAuthAsync(
       HttpMethod.Post,
       $"{ExternalOrdersBasePath}/create",
       body,
-      ct);
+      ct,
+      ensureSuccess: false);
+
+    if (await HasValidationErrorAsync(response, "pay_type_id", ct))
+    {
+      _logger.LogWarning(
+        "JURA rejected pay_type_id {PayTypeId}; retrying create order without pay_type_id.",
+        _options.DefaultPayTypeId);
+      body = BuildCreateOrderPayload(from, to, effectiveTariffId, normalizedPhone, deliverToDoor, includePayTypeId: false);
+      response = await SendWithAuthAsync(
+        HttpMethod.Post,
+        $"{ExternalOrdersBasePath}/create",
+        body,
+        ct,
+        ensureSuccess: false);
+    }
+
+    response.EnsureSuccessStatusCode();
 
     var result = await response.Content.ReadFromJsonAsync<JuraCreateOrderResponse>(JsonOptions, ct);
     var data = result?.Data ?? result?.Result ?? result;
@@ -183,6 +190,40 @@ public sealed class JuraService : IJuraService
 
   private sealed record JuraAllowancePayload(int AllowanceId, int Value);
   private sealed record JuraCreateAllowancePayload(int Id, decimal Price, string Type, string Name);
+
+  private object BuildCreateOrderPayload(
+    JuraAddress from,
+    JuraAddress to,
+    int tariffId,
+    string? normalizedPhone,
+    bool deliverToDoor,
+    bool includePayTypeId) => new
+    {
+      division_id = _options.DivisionId,
+      tariff_id = tariffId,
+      phone = normalizedPhone,
+      pay_type_id = includePayTypeId ? _options.DefaultPayTypeId : (long?)null,
+      from_address = ToJuraAddressPayload(from),
+      to_address = new[] { ToJuraAddressPayload(to) },
+      allowances = BuildCreateAllowancesPayload(deliverToDoor)
+    };
+
+  private static async Task<bool> HasValidationErrorAsync(
+    HttpResponseMessage response,
+    string fieldName,
+    CancellationToken ct)
+  {
+    if (response.StatusCode != HttpStatusCode.UnprocessableEntity)
+      return false;
+
+    var responseText = await response.Content.ReadAsStringAsync(ct);
+    response.Content = new StringContent(
+      responseText,
+      System.Text.Encoding.UTF8,
+      response.Content.Headers.ContentType?.MediaType ?? "application/json");
+
+    return responseText.Contains($"\"{fieldName}\"", StringComparison.OrdinalIgnoreCase);
+  }
 
   // ─── Order Status ───
 
