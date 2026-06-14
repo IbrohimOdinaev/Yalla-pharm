@@ -1,4 +1,4 @@
-import { HubConnection, HubConnectionBuilder, HubConnectionState, HttpTransportType, LogLevel } from "@microsoft/signalr";
+import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from "@microsoft/signalr";
 import { env } from "@/shared/config/env";
 
 // We keep a single shared connection, but rebuild it whenever the auth token
@@ -8,13 +8,10 @@ import { env } from "@/shared/config/env";
 let connection: HubConnection | null = null;
 let connectionToken: string | null = null;
 let currentAccessToken: string | null = null;
-const forcedTransport = process.env.NODE_ENV === "test" ? undefined : HttpTransportType.WebSockets;
 
 function build(): HubConnection {
   return new HubConnectionBuilder()
     .withUrl(env.signalRUpdatesHubUrl, {
-      ...(forcedTransport ? { transport: forcedTransport } : {}),
-      ...(forcedTransport === HttpTransportType.WebSockets ? { skipNegotiation: true } : {}),
       // Read the latest token lazily for the WebSocket handshake.
       accessTokenFactory: () => currentAccessToken ?? "",
     })

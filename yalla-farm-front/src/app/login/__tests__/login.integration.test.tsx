@@ -53,15 +53,8 @@ describe("LoginPage (OTP)", () => {
     expect(adminLink).toBeDefined();
   });
 
-  it("opens Telegram auth popup with the app link instead of leaving about:blank", async () => {
-    const popup = {
-      closed: false,
-      opener: window,
-      document: { title: "" },
-      location: { href: "about:blank" },
-      close: vi.fn(),
-    } as unknown as Window;
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+  it("opens Telegram auth in the current tab on the first click", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     vi.mocked(authApi.startTelegramAuth).mockResolvedValue({
       nonce: "n1",
       deepLink: "tg://resolve?domain=yallapharm_bot&start=auth_n1",
@@ -75,13 +68,12 @@ describe("LoginPage (OTP)", () => {
     renderWithProviders(<LoginPage />);
     await userEvent.click(screen.getByRole("button", { name: /Войти через Telegram/ }));
 
-    expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank");
     await waitFor(() => {
-      expect(popup.location.href).toBe("tg://resolve?domain=yallapharm_bot&start=auth_n1");
+      expect(openSpy).toHaveBeenCalledWith("tg://resolve?domain=yallapharm_bot&start=auth_n1", "_self");
     });
   });
 
-  it("keeps Telegram confirmation inline when the first popup is blocked", async () => {
+  it("keeps Telegram confirmation inline as the fallback action", async () => {
     const telegramTab = {
       closed: false,
       opener: window,
@@ -110,6 +102,7 @@ describe("LoginPage (OTP)", () => {
     await waitFor(() => {
       expect(screen.getByText("Подтвердите вход в Telegram")).toBeInTheDocument();
     });
+    expect(openSpy).toHaveBeenCalledWith("tg://resolve?domain=yallapharm_bot&start=auth_n1", "_self");
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".fixed.inset-0")).toBeNull();
 

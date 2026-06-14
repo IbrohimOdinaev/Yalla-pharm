@@ -35,11 +35,16 @@ function getTelegramAuthWebLink(session: StartTelegramAuthResponse): string {
 function openTelegramAuthLink(
   session: StartTelegramAuthResponse,
   target?: Window | null,
-  options: { fallbackToCurrentTab?: boolean; openNewTabIfNoTarget?: boolean; preferWebLink?: boolean } = {},
+  options: { fallbackToCurrentTab?: boolean; openNewTabIfNoTarget?: boolean; preferWebLink?: boolean; openInCurrentTab?: boolean } = {},
 ) {
   const link = options.preferWebLink ? getTelegramAuthWebLink(session) : getTelegramAuthAppLink(session);
   if (!link) {
     target?.close();
+    return;
+  }
+
+  if (options.openInCurrentTab) {
+    window.open(link, "_self");
     return;
   }
 
@@ -253,11 +258,6 @@ function LoginContent() {
     setError(null);
     setInfo(null);
     setIsSubmitting(true);
-    const telegramWindow = window.open("about:blank", "_blank");
-    if (telegramWindow) {
-      telegramWindow.opener = null;
-      telegramWindow.document.title = "Telegram";
-    }
 
     try {
       const session = await startTelegramAuth();
@@ -278,9 +278,8 @@ function LoginContent() {
         .then((conn) => { tgConnectionRef.current = conn; })
         .catch(() => { /* swallow — polling covers it */ });
 
-      openTelegramAuthLink(session, telegramWindow, { openNewTabIfNoTarget: false });
+      openTelegramAuthLink(session, null, { openInCurrentTab: true });
     } catch (err) {
-      telegramWindow?.close();
       setError(err instanceof Error ? err.message : "Не удалось запустить вход через Telegram.");
       closeTgModal();
     } finally {

@@ -24,7 +24,7 @@ internal sealed class FakePaymentSettingsService : IPaymentSettingsService
     {
       DcBaseUrl = _baseUrl,
       DcBaseUrlEffective = _baseUrl ?? string.Empty,
-      AlifUrlTemplateEffective = "alifmobi:///toMobi?account=%2B992926406699&summa={amount}&_imcp=1",
+      AlifUrlTemplateEffective = "https://alifmobi.page.link/toMobi?account=%2B992926406699&summa={amount}&_imcp=1",
       EskhataUrlTemplateEffective = "eskhata://service/96e8b785-b1b9-11e8-904b-b06ebfbfa715/992927964433/{amount}/DA00126FM",
       IsDcEnabled = true,
       IsAlifEnabled = true,

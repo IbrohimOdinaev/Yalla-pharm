@@ -8,6 +8,10 @@ namespace Yalla.Application.Services;
 
 public sealed class PaymentSettingsService : IPaymentSettingsService
 {
+  private const string LegacyAlifDeepLinkPrefix = "alifmobi:///toMobi?";
+  private const string LegacyAlifHostDeepLinkPrefix = "alifmobi://toMobi?";
+  private const string AlifDynamicLinkPrefix = "https://alifmobi.page.link/toMobi?";
+
   private readonly IAppDbContext _dbContext;
   private readonly DushanbeCityPaymentOptions _options;
 
@@ -81,9 +85,7 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
     var dbUrl = entity?.DcBaseUrl;
     var alifTemplate = entity?.AlifUrlTemplate;
     var eskhataTemplate = entity?.EskhataUrlTemplate;
-    var alifTemplateEffective = string.IsNullOrWhiteSpace(alifTemplate) || IsLegacyBrokenAlifTemplate(alifTemplate)
-      ? _options.AlifUrlTemplate
-      : alifTemplate;
+    var alifTemplateEffective = NormalizeAlifTemplate(alifTemplate, _options.AlifUrlTemplate);
     return new PaymentSettingsSnapshot
     {
       DcBaseUrl = dbUrl,
@@ -102,8 +104,26 @@ public sealed class PaymentSettingsService : IPaymentSettingsService
     };
   }
 
-  private static bool IsLegacyBrokenAlifTemplate(string urlTemplate)
-    => urlTemplate.Contains("alifmobi.page.link/toMobi", StringComparison.OrdinalIgnoreCase);
+  private static string NormalizeAlifTemplate(string? urlTemplate, string fallback)
+  {
+    var trimmed = urlTemplate?.Trim();
+    if (string.IsNullOrWhiteSpace(trimmed))
+      return fallback;
+
+    if (trimmed.StartsWith(LegacyAlifDeepLinkPrefix, StringComparison.OrdinalIgnoreCase))
+      return NormalizeAlifAccountPlus(AlifDynamicLinkPrefix + trimmed[LegacyAlifDeepLinkPrefix.Length..]);
+
+    if (trimmed.StartsWith(LegacyAlifHostDeepLinkPrefix, StringComparison.OrdinalIgnoreCase))
+      return NormalizeAlifAccountPlus(AlifDynamicLinkPrefix + trimmed[LegacyAlifHostDeepLinkPrefix.Length..]);
+
+    if (trimmed.StartsWith(AlifDynamicLinkPrefix, StringComparison.OrdinalIgnoreCase))
+      return NormalizeAlifAccountPlus(trimmed);
+
+    return trimmed;
+  }
+
+  private static string NormalizeAlifAccountPlus(string urlTemplate)
+    => urlTemplate.Replace("account=+", "account=%2B", StringComparison.OrdinalIgnoreCase);
 
   private async Task<PaymentSettings> GetOrCreateSettingsAsync(CancellationToken cancellationToken)
   {

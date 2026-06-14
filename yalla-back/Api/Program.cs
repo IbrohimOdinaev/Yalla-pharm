@@ -7,7 +7,6 @@ using Api.Startup;
 using Api.Telegram;
 using Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -479,14 +478,8 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<UpdatesHub>("/hubs/updates", options =>
-{
-    options.Transports = HttpTransportType.WebSockets;
-});
-app.MapHub<TelegramAuthHub>("/hubs/telegram-auth", options =>
-{
-    options.Transports = HttpTransportType.WebSockets;
-});
+app.MapHub<UpdatesHub>("/hubs/updates");
+app.MapHub<TelegramAuthHub>("/hubs/telegram-auth");
 // app.MapFallbackToFile("index.html");
 
 // Dedicated liveness/readiness probe — replaces the previous habit of

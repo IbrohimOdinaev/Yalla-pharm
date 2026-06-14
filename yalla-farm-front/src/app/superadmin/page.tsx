@@ -1621,7 +1621,7 @@ function PaymentSettingsCard({ token }: { token: string }) {
       value: snapshot.alifUrlTemplate,
       effective: snapshot.alifUrlTemplateEffective,
       isEnabled: snapshot.isAlifEnabled !== false,
-      placeholder: "alifmobi:///toMobi?account=%2B992...&summa={amount}",
+      placeholder: "https://alifmobi.page.link/toMobi?account=%2B992...&summa={amount}&_imcp=1",
     },
     {
       kind: "eskhata" as const,
