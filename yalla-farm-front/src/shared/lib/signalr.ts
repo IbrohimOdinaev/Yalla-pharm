@@ -8,12 +8,13 @@ import { env } from "@/shared/config/env";
 let connection: HubConnection | null = null;
 let connectionToken: string | null = null;
 let currentAccessToken: string | null = null;
+let startPromise: Promise<HubConnection | null> | null = null;
 
 function build(): HubConnection {
   return new HubConnectionBuilder()
     .withUrl(env.signalRUpdatesHubUrl, {
-      transport: HttpTransportType.LongPolling,
-      // Read the latest token lazily for the WebSocket handshake.
+      transport: HttpTransportType.WebSockets | HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling,
+      // Read the latest token lazily for the realtime handshake.
       accessTokenFactory: () => currentAccessToken ?? "",
     })
     .withAutomaticReconnect([0, 1000, 3000, 5000])
@@ -46,17 +47,21 @@ export async function ensureSignalRConnection(accessToken?: string | null): Prom
   }
 
   if (connection.state === HubConnectionState.Connected || connection.state === HubConnectionState.Connecting) {
-    return connection;
+    return startPromise ?? connection;
   }
 
-  try {
-    await connection.start();
-    return connection;
-  } catch {
-    // Leave the connection instance around so a later retry can start it;
-    // callers already handle the null return gracefully.
-    return null;
-  }
+  startPromise = connection.start()
+    .then(() => connection)
+    .catch(() => {
+      // Leave the connection instance around so a later retry can start it;
+      // callers already handle the null return gracefully.
+      return null;
+    })
+    .finally(() => {
+      startPromise = null;
+    });
+
+  return startPromise;
 }
 
 export async function stopSignalRConnection(): Promise<void> {
@@ -69,4 +74,5 @@ export async function stopSignalRConnection(): Promise<void> {
   connection = null;
   connectionToken = null;
   currentAccessToken = null;
+  startPromise = null;
 }

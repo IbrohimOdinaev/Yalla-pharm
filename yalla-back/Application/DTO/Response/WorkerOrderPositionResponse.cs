@@ -8,5 +8,6 @@ public sealed class WorkerOrderPositionResponse
   public int ReturnedQuantity { get; init; }
   public bool IsRejected { get; init; }
   public decimal Price { get; init; }
+  public int? StockQuantity { get; init; }
   public WorkerMedicineResponse Medicine { get; init; } = new();
 }

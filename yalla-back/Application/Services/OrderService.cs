@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,8 @@ namespace Yalla.Application.Services;
 
 public sealed class OrderService : IOrderService
 {
+  private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> DispatchLocks = new();
+
   private readonly IAppDbContext _dbContext;
   private readonly ILogger<OrderService> _logger;
   private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
@@ -68,6 +71,9 @@ public sealed class OrderService : IOrderService
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
         .ThenInclude(m => m!.Images)
+      .Include(x => x.Positions)
+      .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Offers)
       .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Skip((page - 1) * pageSize)
@@ -252,6 +258,9 @@ public sealed class OrderService : IOrderService
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
         .ThenInclude(m => m!.Images)
+      .Include(x => x.Positions)
+      .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Offers)
       .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Skip((page - 1) * pageSize)
@@ -293,6 +302,9 @@ public sealed class OrderService : IOrderService
       .Include(x => x.Positions)
       .ThenInclude(x => x.Medicine)
         .ThenInclude(m => m!.Images)
+      .Include(x => x.Positions)
+      .ThenInclude(x => x.Medicine)
+        .ThenInclude(m => m!.Offers)
       .Include(x => x.DeliveryData)
       .OrderByDescending(x => x.OrderPlacedAt)
       .Take(take)
@@ -541,9 +553,13 @@ public sealed class OrderService : IOrderService
     if (_juraService is null)
       throw new InvalidOperationException("JURA service is not configured.");
 
-    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    var dispatchLock = DispatchLocks.GetOrAdd(request.OrderId, _ => new SemaphoreSlim(1, 1));
+    await dispatchLock.WaitAsync(cancellationToken);
     try
     {
+      await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+      try
+      {
       var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
       var order = await _dbContext.Orders
         .AsTracking()
@@ -558,13 +574,8 @@ public sealed class OrderService : IOrderService
       if (order.IsPickup)
         throw new InvalidOperationException("Pickup orders cannot be dispatched to delivery service.");
 
-      if (order.Status != Status.Ready)
-        throw new InvalidOperationException(
-          $"Order '{order.Id}' must be in status '{Status.Ready}' to dispatch delivery.");
-
       var deliveryData = order.DeliveryData
         ?? throw new InvalidOperationException($"Order '{order.Id}' has no delivery data.");
-      ValidateDeliveryDataForDispatch(deliveryData, order.Id);
 
       if (deliveryData.JuraOrderId.HasValue)
       {
@@ -595,6 +606,12 @@ public sealed class OrderService : IOrderService
           AlreadyDispatched = true
         };
       }
+
+      if (order.Status != Status.Ready)
+        throw new InvalidOperationException(
+          $"Order '{order.Id}' must be in status '{Status.Ready}' to dispatch delivery.");
+
+      ValidateDeliveryDataForDispatch(deliveryData, order.Id);
 
       var from = new JuraAddress
       {
@@ -714,6 +731,11 @@ public sealed class OrderService : IOrderService
     {
       try { await transaction.RollbackAsync(CancellationToken.None); } catch { /* ignored */ }
       throw;
+    }
+    }
+    finally
+    {
+      dispatchLock.Release();
     }
   }
 
@@ -1545,7 +1567,16 @@ public sealed class OrderService : IOrderService
       ToLongitude = delivery?.ToLongitude,
       Comment = order.Comment,
       Positions = order.Positions
-        .Select(x => new WorkerOrderPositionResponse
+        .Select(x =>
+        {
+          var stockQuantity = x.Medicine?.Offers
+            .FirstOrDefault(offer => offer.PharmacyId == order.PharmacyId)
+            ?.StockQuantity;
+          var availableForPosition = stockQuantity.HasValue && order.IsStockDeducted && !x.IsRejected
+            ? stockQuantity.Value + x.Quantity
+            : stockQuantity;
+
+          return new WorkerOrderPositionResponse
         {
           PositionId = x.Id,
           MedicineId = x.MedicineId,
@@ -1553,6 +1584,7 @@ public sealed class OrderService : IOrderService
           ReturnedQuantity = x.ReturnedQuantity,
           IsRejected = x.IsRejected,
           Price = x.OfferSnapshot.Price,
+          StockQuantity = availableForPosition,
           Medicine = x.Medicine is null
             ? new WorkerMedicineResponse
             {
@@ -1566,7 +1598,7 @@ public sealed class OrderService : IOrderService
             {
               Id = x.Medicine.Id,
               Title = x.Medicine.Title,
-              Articul = x.Medicine.Articul,
+              Articul = x.Medicine.Articul ?? string.Empty,
               Images = x.Medicine.Images
                 .Select(image => new MedicineImageResponse
                 {
@@ -1578,6 +1610,7 @@ public sealed class OrderService : IOrderService
                 .ToList(),
               IsActive = x.Medicine.IsActive
             }
+        };
         })
         .ToList()
     };

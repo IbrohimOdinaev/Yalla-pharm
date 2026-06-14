@@ -219,6 +219,6 @@ describe("WorkspacePage", () => {
     await screen.findByText("Управление заказами");
     const calledUrls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(calledUrls.some((url) => url.includes("/api/orders/ready001/delivery/dispatch"))).toBe(true);
-    expect(calledUrls.some((url) => url.includes("/api/orders/on-the-way"))).toBe(true);
+    expect(calledUrls.some((url) => url.includes("/api/orders/on-the-way"))).toBe(false);
   });
 });

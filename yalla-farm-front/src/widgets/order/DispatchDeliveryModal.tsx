@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney } from "@/shared/lib/format";
 import {
   getDeliveryTariffs,
@@ -34,6 +34,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
   const [liveCost, setLiveCost] = useState<number | null>(null);
   const [liveDistance, setLiveDistance] = useState<number | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const dispatchInFlightRef = useRef(false);
 
   useBodyScrollLock(open);
 
@@ -104,6 +105,8 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
   }, [open, order.pharmacyId, order.toLatitude, order.toLongitude, order.deliveryAddress, selectedTariffId]);
 
   async function onConfirm() {
+    if (dispatchInFlightRef.current) return;
+    dispatchInFlightRef.current = true;
     setError(null);
     setIsDispatching(true);
     try {
@@ -113,6 +116,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось вызвать доставку.");
     } finally {
+      dispatchInFlightRef.current = false;
       setIsDispatching(false);
     }
   }
@@ -120,8 +124,8 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
-      <div className="bg-surface w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-xl max-h-modal-flush overflow-y-auto overscroll-contain">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+      <div className="w-full bg-surface-container-lowest sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.35)] ring-1 ring-outline/30 max-h-modal-flush overflow-y-auto overscroll-contain">
         <div className="flex items-center justify-between border-b border-surface-container-high p-4">
           <h2 className="text-lg font-bold">Вызвать доставку</h2>
           <button
@@ -214,7 +218,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-surface border-t border-surface-container-high p-4 pb-safe-4 sm:pb-4 flex gap-2">
+        <div className="sticky bottom-0 bg-surface-container-lowest border-t border-surface-container-high p-4 pb-safe-4 sm:pb-4 flex gap-2">
           <button
             type="button"
             onClick={onClose}

@@ -150,6 +150,7 @@ export type ApiOrderPosition = {
   quantity: number;
   returnedQuantity?: number;
   price: number;
+  stockQuantity?: number | null;
   isRejected?: boolean;
   /** Pharmacist-supplied "by units" override frozen on the position
    *  at order-creation time. UI renders unit count + total price

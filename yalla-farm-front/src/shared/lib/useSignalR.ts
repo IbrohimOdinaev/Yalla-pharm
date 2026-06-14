@@ -18,19 +18,20 @@ export function useSignalREvent(
     if (!token) return;
 
     let connection: HubConnection | null = null;
+    let wrappedHandler: EventHandler | null = null;
     let mounted = true;
 
     ensureSignalRConnection(token).then((conn) => {
       if (!mounted || !conn) return;
       connection = conn;
-      const wrappedHandler = (...args: unknown[]) => handlerRef.current(...args);
+      wrappedHandler = (...args: unknown[]) => handlerRef.current(...args);
       connection.on(eventName, wrappedHandler);
     });
 
     return () => {
       mounted = false;
-      if (connection) {
-        connection.off(eventName);
+      if (connection && wrappedHandler) {
+        connection.off(eventName, wrappedHandler);
       }
     };
   }, [eventName, token]);

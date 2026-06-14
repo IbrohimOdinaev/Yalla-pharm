@@ -164,18 +164,28 @@ export function PrescriptionPharmacyPicker({ prescriptionId }: Props) {
                         </span>
                       ) : null}
                     </span>
-                    <span className="flex-shrink-0 text-on-surface-variant">
-                      {inUnitMode ? (
-                        <>
-                          {it.unitCount ?? 0} шт. · {formatMoney(it.unitTotalPrice ?? 0)}
-                        </>
-                      ) : (
-                        <>
-                          ×{it.requestedQuantity}
-                          {it.price ? ` · ${formatMoney(it.price)}` : ""}
-                        </>
-                      )}
-                      {!it.isFound ? " · нет" : !it.hasEnoughQuantity ? ` · ост: ${it.foundQuantity}` : ""}
+                    <span className="flex flex-shrink-0 flex-col items-end gap-1 text-on-surface-variant">
+                      <span>
+                        {inUnitMode ? (
+                          <>
+                            {it.unitCount ?? 0} шт. · {formatMoney(it.unitTotalPrice ?? 0)}
+                          </>
+                        ) : (
+                          <>
+                            ×{it.requestedQuantity}
+                            {it.price ? ` · ${formatMoney(it.price)}` : ""}
+                          </>
+                        )}
+                      </span>
+                      {!it.isFound ? (
+                        <span className="rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-black text-secondary">
+                          нет
+                        </span>
+                      ) : !it.hasEnoughQuantity ? (
+                        <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-black text-warning tabular-nums">
+                          доступно {it.foundQuantity}
+                        </span>
+                      ) : null}
                     </span>
                   </li>
                 );

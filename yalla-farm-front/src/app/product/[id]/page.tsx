@@ -324,7 +324,7 @@ export default function ProductDetailsPage() {
       ) : null}
 
       {medicine && canShop ? (
-        <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 transition-opacity duration-150 will-change-transform lg:hidden">
+        <div className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] z-50 px-3 transition-opacity duration-150 lg:hidden">
           <ProductCartControls
             className="mx-auto flex max-w-md"
             quantity={quantity}

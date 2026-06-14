@@ -268,6 +268,46 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task DispatchDeliveryAsync_WhenAlreadyDispatched_ReturnsExistingJuraOrderWithoutCallingJura()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = await CreateOrderWithStatus(scope, setup.Client.Id, setup.Pharmacy.Id, setup.Medicine, Status.OnTheWay);
+    var deliveryData = new DeliveryData(
+      order.Id,
+      "Pharmacy",
+      "Pharmacy address",
+      38.5737,
+      68.7738,
+      "Client",
+      "Client address",
+      38.5598,
+      68.7870);
+    deliveryData.SetDeliveryCost(15m, 2.4);
+    deliveryData.SetJuraOrder(654321, "created", 1);
+    scope.Db.DeliveryData.Add(deliveryData);
+    await scope.Db.SaveChangesAsync();
+
+    var jura = new FakeJuraService();
+    var service = new OrderService(
+      scope.Db,
+      NullLogger<OrderService>.Instance,
+      new NoOpRealtimeUpdatesPublisher(),
+      jura);
+
+    var response = await service.DispatchDeliveryAsync(new DispatchDeliveryRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id,
+      TariffId = 1
+    });
+
+    Assert.True(response.AlreadyDispatched);
+    Assert.Equal(654321, response.JuraOrderId);
+    Assert.Equal(0, jura.CreateOrderCalls);
+  }
+
+  [Fact]
   public async Task MoveOrderToNextStatusBySuperAdminAsync_MovesNewToUnderReview()
   {
     using var scope = TestDbFactory.Create();
@@ -459,6 +499,8 @@ public class OrderServiceTests
 
   private sealed class FakeJuraService : IJuraService
   {
+    public int CreateOrderCalls { get; private set; }
+
     public Task<List<JuraAddressSuggestion>> SearchAddressAsync(string text, CancellationToken ct)
     {
       return Task.FromResult(new List<JuraAddressSuggestion>());
@@ -473,6 +515,7 @@ public class OrderServiceTests
     public Task<JuraCreateOrderResult> CreateDeliveryOrderAsync(
       JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
     {
+      CreateOrderCalls++;
       return Task.FromResult(new JuraCreateOrderResult
       {
         OrderId = 123456,

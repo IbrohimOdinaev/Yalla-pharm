@@ -313,7 +313,7 @@ export function PharmacyMapYandex({
         wrapper.appendChild(createPinElement(pharmacy, handleClick));
 
         const Layout = ymaps.templateLayoutFactory.createClass(
-          '<div class="yalla-pharmacy-marker" style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);will-change:transform;"></div>',
+          '<div class="yalla-pharmacy-marker" style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);"></div>',
           {
             build: function () {
               Layout.superclass.build.call(this);

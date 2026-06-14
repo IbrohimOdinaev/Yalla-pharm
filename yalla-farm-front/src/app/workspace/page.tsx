@@ -1565,8 +1565,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
     }
   }
 
-  async function onDeliveryDispatched(orderId: string) {
-    await markOnTheWay(token, orderId);
+  async function onDeliveryDispatched() {
     refresh();
   }
 
@@ -1670,7 +1669,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
           token={token}
           order={deliveryOrder}
           onClose={() => { setDeliveryOrder(null); refresh(); }}
-          onDispatched={() => onDeliveryDispatched(deliveryOrder.orderId)}
+          onDispatched={onDeliveryDispatched}
         />
       ) : null}
     </div>
@@ -1777,17 +1776,31 @@ function OrderCard({
       {/* Position list with reject checkboxes for Preparing */}
       {showPositionReject ? (
         <div className="space-y-1">
-          {order.positions!.map((pos) => (
-            <label key={pos.positionId} className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}>
-              {!pos.isRejected ? (
-                <input type="checkbox" checked={selectedPositions.has(pos.positionId)} onChange={() => togglePosition(pos.positionId)} />
-              ) : null}
-              <span>
-                {pos.medicine?.title ?? pos.medicineId.slice(0, 8)}
-                {" "}× {pos.useUnitMode && pos.unitCount != null ? `${pos.unitCount} шт.` : pos.quantity}
-              </span>
-            </label>
-          ))}
+          {order.positions!.map((pos) => {
+            const hasStock = typeof pos.stockQuantity === "number";
+            const stockIsEnough = hasStock && pos.stockQuantity! >= pos.quantity;
+
+            return (
+              <label key={pos.positionId} className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}>
+                {!pos.isRejected ? (
+                  <input type="checkbox" checked={selectedPositions.has(pos.positionId)} onChange={() => togglePosition(pos.positionId)} />
+                ) : null}
+                <span className="min-w-0 flex-1">
+                  {pos.medicine?.title ?? pos.medicineId.slice(0, 8)}
+                  {" "}× {pos.useUnitMode && pos.unitCount != null ? `${pos.unitCount} шт.` : pos.quantity}
+                </span>
+                {hasStock ? (
+                  <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black tabular-nums ${
+                    stockIsEnough
+                      ? "bg-primary/15 text-primary"
+                      : "bg-warning-soft text-warning"
+                  }`}>
+                    доступно {pos.stockQuantity}
+                  </span>
+                ) : null}
+              </label>
+            );
+          })}
           {selectedPositions.size > 0 ? (
             <button type="button" className="rounded-lg bg-red-100 px-3 py-1 text-xs font-bold text-red-700" onClick={onRejectSelected} disabled={isRejecting}>
               {isRejecting ? "Отклоняем..." : `Отклонить (${selectedPositions.size})`}
