@@ -66,9 +66,7 @@ services:
       OneCImport__Enabled: "false"
       SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-pharm.yalla.tj}
       Telegram__WebhookPublicBaseUrl: ${TELEGRAM_WEBHOOK_PUBLIC_BASE_URL:-https://pharm.yalla.tj}
-      # Telegram bot webhooks are global per bot token. Keep prod from
-      # stealing a shared staging/dev bot unless the env opts in explicitly.
-      Telegram__AutoRegisterWebhookOnStart: ${TELEGRAM_AUTO_REGISTER_WEBHOOK_ON_START:-false}
+      Telegram__AutoRegisterWebhookOnStart: ${TELEGRAM_AUTO_REGISTER_WEBHOOK_ON_START:-true}
       TelegramStaffNotifications__Enabled: ${TELEGRAM_STAFF_NOTIFICATIONS_ENABLED:-true}
       TelegramStaffNotifications__BotToken: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_TOKEN:-}
       TelegramStaffNotifications__BotUsername: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_USERNAME:-yalla_phamracyx_notification_bot}

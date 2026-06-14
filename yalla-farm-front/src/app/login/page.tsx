@@ -24,30 +24,36 @@ import { Button, Icon, Chip } from "@/shared/ui";
 
 const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
 
-function getTelegramAuthLink(session: StartTelegramAuthResponse, preferWebLink: boolean): string {
-  if (preferWebLink) {
-    return session.webDeepLink || session.deepLink || session.appDeepLink || "";
-  }
-  return session.appDeepLink || session.deepLink || session.webDeepLink || "";
+function getTelegramAuthLink(session: StartTelegramAuthResponse): string {
+  return session.webDeepLink || session.deepLink || session.appDeepLink || "";
 }
 
-function openTelegramAuthLink(session: StartTelegramAuthResponse, target?: Window | null) {
-  const deepLink = getTelegramAuthLink(session, Boolean(target));
-  if (!deepLink) {
+function openTelegramAuthLink(
+  session: StartTelegramAuthResponse,
+  target?: Window | null,
+  options: { fallbackToCurrentTab?: boolean; openNewTabIfNoTarget?: boolean } = {},
+) {
+  const link = getTelegramAuthLink(session);
+  if (!link) {
     target?.close();
     return;
   }
 
   if (target && !target.closed) {
     try {
-      target.location.href = deepLink;
+      target.location.href = link;
       return;
     } catch {
       target.close();
     }
   }
 
-  window.location.href = deepLink;
+  if (options.openNewTabIfNoTarget === false) return;
+
+  const opened = window.open(link, "_blank", "noopener,noreferrer");
+  if (!opened && options.fallbackToCurrentTab) {
+    window.location.href = link;
+  }
 }
 
 export default function LoginPage() {
@@ -268,7 +274,7 @@ function LoginContent() {
         .then((conn) => { tgConnectionRef.current = conn; })
         .catch(() => { /* swallow — polling covers it */ });
 
-      openTelegramAuthLink(session, telegramWindow);
+      openTelegramAuthLink(session, telegramWindow, { openNewTabIfNoTarget: false });
     } catch (err) {
       telegramWindow?.close();
       setError(err instanceof Error ? err.message : "Не удалось запустить вход через Telegram.");
@@ -499,7 +505,7 @@ function LoginContent() {
               size="md"
               fullWidth
               leftIcon="telegram"
-              onClick={() => { openTelegramAuthLink(tgSession); }}
+              onClick={() => { openTelegramAuthLink(tgSession, null, { fallbackToCurrentTab: true }); }}
             >
               Открыть Telegram
             </Button>

@@ -59,6 +59,8 @@ services:
       Elasticsearch__Url: ${ELASTICSEARCH_URL:-http://opensearch:9200}
       Elasticsearch__MedicineIndex: ${ELASTICSEARCH_INDEX:-medicines}
       SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-dev-pharm.yalla.tj}
+      Telegram__WebhookPublicBaseUrl: ${TELEGRAM_WEBHOOK_PUBLIC_BASE_URL:-https://dev-pharm.yalla.tj}
+      Telegram__AutoRegisterWebhookOnStart: ${TELEGRAM_AUTO_REGISTER_WEBHOOK_ON_START:-true}
       TelegramStaffNotifications__BotToken: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_TOKEN:-}
       TelegramStaffNotifications__BotUsername: ${TELEGRAM_STAFF_NOTIFICATIONS_BOT_USERNAME:-yalla_pharm_dev_staff_notify_bot}
       TelegramStaffNotifications__PublicBaseUrl: ${TELEGRAM_STAFF_NOTIFICATIONS_PUBLIC_BASE_URL:-https://dev-pharm.yalla.tj}

@@ -81,8 +81,18 @@ describe("LoginPage (OTP)", () => {
     });
   });
 
-  it("keeps Telegram confirmation inline without a blocking page overlay", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
+  it("keeps Telegram confirmation inline when the first popup is blocked", async () => {
+    const telegramTab = {
+      closed: false,
+      opener: window,
+      document: { title: "" },
+      location: { href: "about:blank" },
+      close: vi.fn(),
+    } as unknown as Window;
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(telegramTab);
     vi.mocked(authApi.startTelegramAuth).mockResolvedValue({
       nonce: "n1",
       deepLink: "tg://resolve?domain=yallapharm_bot&start=auth_n1",
@@ -100,7 +110,15 @@ describe("LoginPage (OTP)", () => {
     await waitFor(() => {
       expect(screen.getByText("Подтвердите вход в Telegram")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Открыть Telegram/ })).toBeInTheDocument();
+    expect(openSpy).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".fixed.inset-0")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /Открыть Telegram/ }));
+
+    expect(openSpy).toHaveBeenLastCalledWith(
+      "https://t.me/yallapharm_bot?start=auth_n1",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 });
