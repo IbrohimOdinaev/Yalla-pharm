@@ -394,9 +394,9 @@ function LoginContent() {
               fullWidth
               leftIcon="telegram"
               onClick={onTelegramLoginClick}
-              disabled={isSubmitting}
+              disabled={isSubmitting || tgWaiting}
             >
-              Войти через Telegram
+              {tgWaiting ? "Ждём подтверждения..." : "Войти через Telegram"}
             </Button>
 
             <div className="flex flex-wrap gap-1.5 justify-center pt-1">
@@ -475,27 +475,28 @@ function LoginContent() {
       </div>
 
       {tgWaiting && tgSession ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-3">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeTgModal} />
-          <div
-            className="relative w-full max-w-sm rounded-3xl bg-surface-container-lowest p-6 shadow-glass space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-telegram-soft text-telegram">
-              <Icon name="telegram" size={32} />
+        <div className="mx-auto mt-4 max-w-md rounded-3xl bg-surface-container-lowest p-4 shadow-card">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-telegram-soft text-telegram">
+              <Icon name="telegram" size={22} />
             </div>
-            <div className="text-center space-y-1.5">
-              <h3 className="font-display text-lg font-extrabold">Подтвердите вход в Telegram</h3>
-              <p className="text-sm text-on-surface-variant">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-extrabold text-on-surface">Подтвердите вход в Telegram</h3>
+              <p className="mt-1 text-xs leading-5 text-on-surface-variant">
                 Откройте бот{" "}
                 <span className="font-mono font-bold text-on-surface">@{tgSession.botUsername}</span>{" "}
                 и нажмите «Подтвердить».
               </p>
+              <p className="mt-1 text-[11px] text-on-surface-variant/80">
+                Сессия истекает через {tgSession.ttlSeconds} сек.
+              </p>
             </div>
+          </div>
 
+          <div className="mt-3 grid grid-cols-1 gap-2 xs:grid-cols-2">
             <Button
               variant="telegram"
-              size="lg"
+              size="md"
               fullWidth
               leftIcon="telegram"
               onClick={() => { openTelegramAuthLink(tgSession); }}
@@ -506,10 +507,6 @@ function LoginContent() {
             <Button variant="secondary" size="md" fullWidth onClick={closeTgModal}>
               Отмена
             </Button>
-
-            <p className="text-center text-[11px] text-on-surface-variant/80">
-              Сессия истекает через {tgSession.ttlSeconds} сек.
-            </p>
           </div>
         </div>
       ) : null}

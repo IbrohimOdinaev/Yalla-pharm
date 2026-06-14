@@ -80,4 +80,27 @@ describe("LoginPage (OTP)", () => {
       expect(popup.location.href).toBe("https://t.me/yallapharm_bot?start=auth_n1");
     });
   });
+
+  it("keeps Telegram confirmation inline without a blocking page overlay", async () => {
+    vi.spyOn(window, "open").mockReturnValue(null);
+    vi.mocked(authApi.startTelegramAuth).mockResolvedValue({
+      nonce: "n1",
+      deepLink: "tg://resolve?domain=yallapharm_bot&start=auth_n1",
+      appDeepLink: "tg://resolve?domain=yallapharm_bot&start=auth_n1",
+      webDeepLink: "https://t.me/yallapharm_bot?start=auth_n1",
+      botUsername: "yallapharm_bot",
+      expiresAtUtc: "2026-06-09T14:00:00Z",
+      ttlSeconds: 300,
+    });
+    vi.mocked(authApi.pollTelegramAuth).mockResolvedValue({ status: "pending" });
+
+    const { container } = renderWithProviders(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: /Войти через Telegram/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Подтвердите вход в Telegram")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Открыть Telegram/ })).toBeInTheDocument();
+    expect(container.querySelector(".fixed.inset-0")).toBeNull();
+  });
 });
