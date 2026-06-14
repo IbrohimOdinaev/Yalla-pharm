@@ -42,8 +42,8 @@ public sealed partial class ConnectController : ControllerBase
     var validRequest = request!;
 
     var botToken = FirstConfiguredValue(
-      _configuration["TELEGRAM_BOT_TOKEN"],
-      _configuration["PartnerConnect:TelegramBotToken"]);
+      _configuration["TELEGRAM_INTEGRATIONFORM_TOKEN"],
+      _configuration["PartnerConnect:TelegramIntegrationFormToken"]);
     var chatId = FirstConfiguredValue(
       _configuration["TELEGRAM_CHAT_ID"],
       _configuration["PartnerConnect:TelegramChatId"]);
