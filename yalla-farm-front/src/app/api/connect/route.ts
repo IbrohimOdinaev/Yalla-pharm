@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid form data" }, { status: 400 });
   }
 
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const botToken = process.env.TELEGRAM_INTEGRATIONFORM_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!botToken || !chatId) {
