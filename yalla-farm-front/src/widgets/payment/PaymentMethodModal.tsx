@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatMoney } from "@/shared/lib/format";
+import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
 import { Icon } from "@/shared/ui";
 import { PaymentQrPanel } from "@/widgets/payment/PaymentQrPanel";
 
@@ -52,14 +55,35 @@ export function buildPaymentUrlFromTemplate(template: string | null | undefined,
 }
 
 export function PaymentMethodModal({ open, amount, methods, onSelect, onClose }: Props) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
+  useBodyScrollLock(open);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4">
-      <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-[28px] bg-surface p-5 shadow-2xl">
+      <div
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-[28px] bg-surface p-5 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-method-title"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-lg font-extrabold text-on-surface">Выберите способ оплаты</h2>
+            <h2 id="payment-method-title" className="font-display text-lg font-extrabold text-on-surface">Выберите способ оплаты</h2>
             <p className="mt-1 text-sm text-on-surface-variant">
               К оплате: <span className="font-bold text-primary">{formatMoney(amount)}</span>
             </p>
@@ -89,6 +113,7 @@ export function PaymentMethodModal({ open, amount, methods, onSelect, onClose }:
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,4 @@
-import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from "@microsoft/signalr";
+import { HubConnection, HubConnectionBuilder, HubConnectionState, HttpTransportType, LogLevel } from "@microsoft/signalr";
 import { env } from "@/shared/config/env";
 
 // We keep a single shared connection, but rebuild it whenever the auth token
@@ -12,6 +12,7 @@ let currentAccessToken: string | null = null;
 function build(): HubConnection {
   return new HubConnectionBuilder()
     .withUrl(env.signalRUpdatesHubUrl, {
+      transport: HttpTransportType.LongPolling,
       // Read the latest token lazily for the WebSocket handshake.
       accessTokenFactory: () => currentAccessToken ?? "",
     })

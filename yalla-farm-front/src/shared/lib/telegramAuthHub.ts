@@ -1,4 +1,4 @@
-import { HubConnection, HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
+import { HubConnection, HubConnectionBuilder, HttpTransportType, LogLevel } from "@microsoft/signalr";
 import { env } from "@/shared/config/env";
 
 export type TelegramAuthHubHandlers = {
@@ -23,7 +23,9 @@ export async function connectTelegramAuthHub(
     : `${env.apiBaseUrl}${env.signalRTelegramAuthHubUrl}`;
 
   const conn = new HubConnectionBuilder()
-    .withUrl(url)
+    .withUrl(url, {
+      transport: HttpTransportType.LongPolling,
+    })
     .withAutomaticReconnect([0, 1000, 3000, 5000])
     .configureLogging(LogLevel.Warning)
     .build();
