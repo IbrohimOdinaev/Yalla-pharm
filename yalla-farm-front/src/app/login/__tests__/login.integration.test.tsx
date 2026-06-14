@@ -53,7 +53,7 @@ describe("LoginPage (OTP)", () => {
     expect(adminLink).toBeDefined();
   });
 
-  it("opens Telegram auth popup with the web link instead of leaving about:blank", async () => {
+  it("opens Telegram auth popup with the app link instead of leaving about:blank", async () => {
     const popup = {
       closed: false,
       opener: window,
@@ -77,7 +77,7 @@ describe("LoginPage (OTP)", () => {
 
     expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank");
     await waitFor(() => {
-      expect(popup.location.href).toBe("https://t.me/yallapharm_bot?start=auth_n1");
+      expect(popup.location.href).toBe("tg://resolve?domain=yallapharm_bot&start=auth_n1");
     });
   });
 
@@ -116,7 +116,7 @@ describe("LoginPage (OTP)", () => {
     await userEvent.click(screen.getByRole("button", { name: /Открыть Telegram/ }));
 
     expect(openSpy).toHaveBeenLastCalledWith(
-      "https://t.me/yallapharm_bot?start=auth_n1",
+      "tg://resolve?domain=yallapharm_bot&start=auth_n1",
       "_blank",
       "noopener,noreferrer",
     );
