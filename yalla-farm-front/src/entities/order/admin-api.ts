@@ -14,8 +14,12 @@ export async function getAllOrders(token: string, status = "", page = 1, pageSiz
   return Array.isArray(response?.orders) ? response.orders.map(o => normalizeOrder(o)) : [];
 }
 
-export async function startAssembly(token: string, orderId: string): Promise<void> {
-  await apiFetch<unknown>("/api/orders/assembly/start", { method: "POST", token, body: { orderId } });
+export async function startAssembly(token: string, orderId: string, acceptedByAdminId: string): Promise<void> {
+  await apiFetch<unknown>("/api/orders/assembly/start", {
+    method: "POST",
+    token,
+    body: { orderId, acceptedByAdminId },
+  });
 }
 
 export async function markReady(token: string, orderId: string): Promise<void> {

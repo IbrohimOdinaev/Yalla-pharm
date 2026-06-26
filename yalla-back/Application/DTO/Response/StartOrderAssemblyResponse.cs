@@ -6,5 +6,6 @@ public sealed class StartOrderAssemblyResponse
 {
   public Guid WorkerId { get; init; }
   public Guid OrderId { get; init; }
+  public Guid AcceptedByAdminId { get; init; }
   public Status Status { get; init; }
 }

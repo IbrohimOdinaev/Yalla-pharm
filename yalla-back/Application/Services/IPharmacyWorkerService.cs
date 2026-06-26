@@ -32,6 +32,10 @@ public interface IPharmacyWorkerService
       RegisterPharmacyWorkerRequest request,
       CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyCollection<PharmacyWorkerResponse>> GetActiveAdminsForPharmacyAsync(
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default);
+
     Task<RegisterAdminWithPharmacyResponse> RegisterAdminWithPharmacyAsync(
       RegisterAdminWithPharmacyRequest request,
       CancellationToken cancellationToken = default);

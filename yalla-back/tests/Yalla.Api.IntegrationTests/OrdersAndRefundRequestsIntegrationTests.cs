@@ -23,7 +23,9 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var response = await client.GetAsync($"/api/orders/client-history?clientId={ApiTestData.Client2Id}");
 
-    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.True(
+      response.StatusCode == HttpStatusCode.OK,
+      await response.Content.ReadAsStringAsync());
     var payload = await ReadJsonAsync(response);
     Assert.Equal(ApiTestData.Client1Id, payload.GetProperty("clientId").GetGuid());
   }
@@ -45,7 +47,9 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var response = await client.GetAsync("/api/orders/all?page=1&pageSize=20");
 
-    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.True(
+      response.StatusCode == HttpStatusCode.OK,
+      await response.Content.ReadAsStringAsync());
     var payload = await ReadJsonAsync(response);
     Assert.True(payload.GetProperty("orders").GetArrayLength() >= 1);
   }
@@ -57,7 +61,9 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var response = await client.GetAsync($"/api/orders/{ApiTestData.OrderUnderReviewId}");
 
-    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.True(
+      response.StatusCode == HttpStatusCode.OK,
+      await response.Content.ReadAsStringAsync());
     var payload = await ReadJsonAsync(response);
     Assert.Equal(ApiTestData.OrderUnderReviewId, payload.GetProperty("orderId").GetGuid());
   }
@@ -91,10 +97,13 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var response = await client.PostAsJsonAsync("/api/orders/assembly/start", new
     {
-      OrderId = ApiTestData.OrderUnderReviewId
+      OrderId = ApiTestData.OrderUnderReviewId,
+      AcceptedByAdminId = ApiTestData.WorkerInPharmacy1Id
     });
 
-    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.True(
+      response.StatusCode == HttpStatusCode.OK,
+      await response.Content.ReadAsStringAsync());
 
     using var scope = Factory.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -109,7 +118,8 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var response = await client.PostAsJsonAsync("/api/orders/assembly/start", new
     {
-      OrderId = ApiTestData.OrderPreparingId
+      OrderId = ApiTestData.OrderPreparingId,
+      AcceptedByAdminId = ApiTestData.WorkerInPharmacy1Id
     });
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -122,7 +132,8 @@ public sealed class OrdersAndRefundRequestsIntegrationTests : ApiTestBase
 
     var response = await client.PostAsJsonAsync("/api/orders/assembly/start", new
     {
-      OrderId = ApiTestData.OrderNewId
+      OrderId = ApiTestData.OrderNewId,
+      AcceptedByAdminId = ApiTestData.WorkerInPharmacy1Id
     });
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);

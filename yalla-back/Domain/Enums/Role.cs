@@ -5,5 +5,6 @@ public enum Role
     Client,
     Admin,
     SuperAdmin,
-    Pharmacist
+    Pharmacist,
+    PharmacyAccount
 }

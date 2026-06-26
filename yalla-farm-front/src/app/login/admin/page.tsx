@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
-import { adminLogin, superAdminLogin, pharmacistLogin } from "@/entities/auth/api";
+import { adminLogin, pharmacyAccountLogin, superAdminLogin, pharmacistLogin } from "@/entities/auth/api";
 import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
@@ -43,7 +43,7 @@ function loginErrorMessage(err: unknown): string {
   return "Не удалось войти. Попробуйте ещё раз.";
 }
 
-const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist" };
+const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist", 4: "PharmacyAccount" };
 
 // Single staff-login form. One phone number can only belong to one staff
 // role, so we no longer ask the user to pick — instead we probe each
@@ -51,7 +51,7 @@ const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdm
 // password / non-existent account → every endpoint returns 4xx and we
 // surface the standard "wrong number or password" message.
 async function tryStaffLogin(phone: string, password: string) {
-  const attempts = [adminLogin, superAdminLogin, pharmacistLogin];
+  const attempts = [pharmacyAccountLogin, adminLogin, superAdminLogin, pharmacistLogin];
   let lastErr: unknown;
   for (const attempt of attempts) {
     try {
@@ -113,7 +113,7 @@ function AdminLoginContent() {
       }));
 
       const fallbackRedirect =
-        role === "Admin" ? "/workspace"
+        role === "Admin" || role === "PharmacyAccount" ? "/workspace"
           : role === "SuperAdmin" ? "/superadmin"
             : role === "Pharmacist" ? "/pharmacist"
               : "/";

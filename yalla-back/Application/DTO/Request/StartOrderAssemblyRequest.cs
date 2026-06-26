@@ -5,4 +5,5 @@ public sealed class StartOrderAssemblyRequest
   public Guid WorkerId { get; init; }
   public Guid PharmacyId { get; init; }
   public Guid OrderId { get; init; }
+  public Guid AcceptedByAdminId { get; init; }
 }

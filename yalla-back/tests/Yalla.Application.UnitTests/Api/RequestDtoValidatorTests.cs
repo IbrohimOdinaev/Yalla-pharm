@@ -119,17 +119,19 @@ public sealed class RequestDtoValidatorTests
   }
 
   [Fact]
-  public void Validate_StartOrderAssemblyRequest_ShouldValidateOnlyClientProvidedOrderId()
+  public void Validate_StartOrderAssemblyRequest_ShouldValidateClientProvidedOrderAndAcceptedAdminIds()
   {
     var request = new StartOrderAssemblyRequest
     {
       WorkerId = Guid.Empty,
-      OrderId = Guid.Empty
+      OrderId = Guid.Empty,
+      AcceptedByAdminId = Guid.Empty
     };
 
     var errors = RequestDtoValidator.Validate(request);
 
     Assert.Contains(errors, x => x.Field == nameof(StartOrderAssemblyRequest.OrderId));
+    Assert.Contains(errors, x => x.Field == nameof(StartOrderAssemblyRequest.AcceptedByAdminId));
     Assert.DoesNotContain(errors, x => x.Field == nameof(StartOrderAssemblyRequest.WorkerId));
   }
 

@@ -66,7 +66,11 @@ public sealed class StaffTelegramNotificationService : IStaffTelegramNotificatio
 
     var workerExists = await _dbContext.PharmacyWorkers
       .AsNoTracking()
-      .AnyAsync(x => x.Id == pharmacyWorkerId && x.Role == Role.Admin && x.IsActive, cancellationToken);
+      .AnyAsync(
+        x => x.Id == pharmacyWorkerId
+          && (x.Role == Role.Admin || x.Role == Role.PharmacyAccount)
+          && x.IsActive,
+        cancellationToken);
     if (!workerExists)
       throw new InvalidOperationException("Pharmacy worker was not found.");
 

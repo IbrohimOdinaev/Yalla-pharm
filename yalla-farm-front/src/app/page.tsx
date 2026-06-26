@@ -637,8 +637,8 @@ function HomeFallback() {
 function HomeContent() {
   const role = useAppSelector((s) => s.auth.role);
   const hydrated = useAppSelector((s) => s.auth.hydrated);
-  const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
-  const isStaff = role === "Admin" || role === "SuperAdmin" || role === "Pharmacist";
+  const isAdminOrSA = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin";
+  const isStaff = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin" || role === "Pharmacist";
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
   // Legacy picker trigger. Existing UI calls `openPicker()` from the store;
@@ -651,7 +651,7 @@ function HomeContent() {
 
   // Auto-redirect by role
   useEffect(() => {
-    if (role === "Admin") navRouter.replace("/workspace");
+    if (role === "Admin" || role === "PharmacyAccount") navRouter.replace("/workspace");
     else if (role === "SuperAdmin") navRouter.replace("/superadmin");
     else if (role === "Pharmacist") navRouter.replace("/pharmacist");
   }, [role, navRouter]);

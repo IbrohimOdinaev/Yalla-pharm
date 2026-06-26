@@ -113,6 +113,7 @@ internal static class RequestDtoValidator
         break;
       case StartOrderAssemblyRequest request:
         RequireNotEmpty(request.OrderId, nameof(request.OrderId), errors);
+        RequireNotEmpty(request.AcceptedByAdminId, nameof(request.AcceptedByAdminId), errors);
         break;
       case UpdateAdminProfileRequest request:
         ValidateUpdateAdminProfile(request, errors);

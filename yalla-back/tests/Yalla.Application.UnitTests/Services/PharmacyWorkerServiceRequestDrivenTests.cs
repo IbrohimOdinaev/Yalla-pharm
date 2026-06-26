@@ -111,8 +111,8 @@ public class PharmacyWorkerServiceRequestDrivenTests
   public async Task UpdatePharmacyAsync_UpdatesFieldsAndActivity()
   {
     using var scope = TestDbFactory.Create();
-    var admin1 = TestDbFactory.CreateUser("Admin1", "993100003", Role.Admin);
-    var admin2 = TestDbFactory.CreateUser("Admin2", "993100004", Role.Admin);
+    var admin1 = TestDbFactory.CreateUser("Admin1", "993100003", Role.PharmacyAccount);
+    var admin2 = TestDbFactory.CreateUser("Admin2", "993100004", Role.PharmacyAccount);
     scope.Db.Users.AddRange(admin1, admin2);
     await scope.Db.SaveChangesAsync();
 

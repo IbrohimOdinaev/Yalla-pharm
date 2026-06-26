@@ -43,6 +43,17 @@ public sealed class AuthController : ControllerBase
     return Ok(response);
   }
 
+  [HttpPost("pharmacy/login")]
+  [AllowAnonymous]
+  [EnableRateLimiting("auth-login")]
+  public async Task<IActionResult> PharmacyAccountLogin(
+    [FromBody] LoginRequest request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _authService.PharmacyAccountLoginAsync(request, cancellationToken);
+    return Ok(response);
+  }
+
   [HttpPost("super-admin/login")]
   [AllowAnonymous]
   [EnableRateLimiting("auth-login")]
@@ -96,7 +107,7 @@ public sealed class AuthController : ControllerBase
   }
 
   [HttpPost("change-password")]
-  [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [Authorize(Roles = $"{nameof(Role.Client)},{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> ChangePassword(
     [FromBody] ChangePasswordRequest request,
     CancellationToken cancellationToken)

@@ -86,9 +86,10 @@ internal static class TestDbFactory
     string name,
     string phone,
     Guid pharmacyId,
-    Pharmacy pharmacy)
+    Pharmacy pharmacy,
+    Role role = Role.Admin)
   {
-    return new PharmacyWorker(name, phone, "test-hash", pharmacyId, pharmacy);
+    return new PharmacyWorker(Guid.NewGuid(), name, phone, "test-hash", pharmacyId, pharmacy, role);
   }
 
   public static Medicine CreateMedicine(

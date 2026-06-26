@@ -9,5 +9,5 @@ public sealed class JuraOptions
   public string Password { get; set; } = string.Empty;
   public int DivisionId { get; set; } = 6;
   public int DefaultTariffId { get; set; } = 37;
-  public long DefaultPayTypeId { get; set; } = 243115;
+  public long DefaultPayTypeId { get; set; } = 243138;
 }

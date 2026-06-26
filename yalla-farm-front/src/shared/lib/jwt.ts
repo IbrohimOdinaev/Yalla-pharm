@@ -3,11 +3,17 @@
  * client-side base64url decode — does NOT validate the signature, so only
  * use the result for UI gating, never for security decisions.
  *
- * The backend issues role as a numeric enum (0=Client, 1=Admin, 2=SuperAdmin)
+ * The backend issues role as a numeric enum
  * which we map to the corresponding string label.
  */
 
-const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin" };
+const ROLE_MAP: Record<number, string> = {
+  0: "Client",
+  1: "Admin",
+  2: "SuperAdmin",
+  3: "Pharmacist",
+  4: "PharmacyAccount",
+};
 
 const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
 const NAMEID_CLAIM = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";

@@ -208,6 +208,7 @@ export type ApiOrder = {
   clientId?: string;
   pharmacyId?: string;
   pharmacyTitle?: string;
+  acceptedByAdminId?: string | null;
   deliveryAddress?: string;
   isPickup?: boolean;
   createdAtUtc?: string;

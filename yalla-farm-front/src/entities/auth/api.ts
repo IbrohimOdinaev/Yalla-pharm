@@ -50,6 +50,13 @@ export async function adminLogin(phoneNumber: string, password: string): Promise
   });
 }
 
+export async function pharmacyAccountLogin(phoneNumber: string, password: string): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("/api/auth/pharmacy/login", {
+    method: "POST",
+    body: { phoneNumber, password },
+  });
+}
+
 export async function superAdminLogin(phoneNumber: string, password: string): Promise<LoginResponse> {
   return apiFetch<LoginResponse>("/api/auth/super-admin/login", {
     method: "POST",

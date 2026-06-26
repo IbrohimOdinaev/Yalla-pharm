@@ -43,10 +43,10 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         ArgumentNullException.ThrowIfNull(request);
 
         var adminExists = await _dbContext.Users
-          .AnyAsync(x => x.Id == request.AdminId, cancellationToken);
+          .AnyAsync(x => x.Id == request.AdminId && x.Role == Role.PharmacyAccount, cancellationToken);
 
         if (!adminExists)
-            throw new InvalidOperationException($"Admin user with id '{request.AdminId}' was not found.");
+            throw new InvalidOperationException($"Pharmacy account with id '{request.AdminId}' was not found.");
 
         var pharmacy = request.ToDomain();
 
@@ -72,10 +72,10 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         if (request.AdminId.HasValue && request.AdminId.Value != Guid.Empty)
         {
             var adminExists = await _dbContext.Users
-              .AnyAsync(x => x.Id == request.AdminId.Value, cancellationToken);
+              .AnyAsync(x => x.Id == request.AdminId.Value && x.Role == Role.PharmacyAccount, cancellationToken);
 
             if (!adminExists)
-                throw new InvalidOperationException($"Admin user with id '{request.AdminId}' was not found.");
+                throw new InvalidOperationException($"Pharmacy account with id '{request.AdminId}' was not found.");
         }
 
         request.ApplyToDomain(pharmacy);
@@ -180,6 +180,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         var query = _dbContext.PharmacyWorkers
           .AsNoTracking()
           .Include(x => x.Pharmacy)
+          .Where(x => x.Role == Role.Admin)
           .AsQueryable();
 
         var queryText = request.Query?.Trim();
@@ -267,6 +268,21 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         };
     }
 
+    public async Task<IReadOnlyCollection<PharmacyWorkerResponse>> GetActiveAdminsForPharmacyAsync(
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        if (pharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        return await _dbContext.PharmacyWorkers
+          .AsNoTracking()
+          .Where(x => x.PharmacyId == pharmacyId && x.Role == Role.Admin && x.IsActive)
+          .OrderBy(x => x.Name)
+          .Select(x => x.ToResponse())
+          .ToListAsync(cancellationToken);
+    }
+
     public async Task<DeletePharmacyWorkerResponse> DeletePharmacyWorkerAsync(
       DeletePharmacyWorkerRequest request,
       CancellationToken cancellationToken = default)
@@ -316,7 +332,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
           passwordHash,
           pharmacyId,
           pharmacy,
-          Role.Admin);
+          Role.PharmacyAccount);
 
         _dbContext.Pharmacies.Add(pharmacy);
         _dbContext.PharmacyWorkers.Add(worker);

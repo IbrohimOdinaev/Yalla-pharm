@@ -52,7 +52,7 @@ public sealed class RoleVisibilityIntegrationTests : ApiTestBase
   {
     using var client = await CreateAuthorizedClientAsync(TestActor.SuperAdmin);
 
-    var response = await client.GetAsync("/api/admins?page=1&pageSize=10&query=Admin%20One");
+    var response = await client.GetAsync("/api/admins?page=1&pageSize=10&query=Worker%20One");
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -60,7 +60,7 @@ public sealed class RoleVisibilityIntegrationTests : ApiTestBase
     Assert.Equal(1, payload.GetProperty("totalCount").GetInt32());
     var admins = payload.GetProperty("admins").EnumerateArray().ToList();
     Assert.Single(admins);
-    Assert.Equal("Admin One", admins[0].GetProperty("name").GetString());
+    Assert.Equal("Worker One", admins[0].GetProperty("name").GetString());
   }
 
   [Fact]

@@ -12,7 +12,7 @@ public class PharmacyWorkerServiceTests
   public async Task RegisterPharmacyAsync_CreatesPharmacy()
   {
     using var scope = TestDbFactory.Create();
-    var admin = TestDbFactory.CreateUser("Admin", "992200001", Role.Admin);
+    var admin = TestDbFactory.CreateUser("Admin", "992200001", Role.PharmacyAccount);
     scope.Db.Users.Add(admin);
     await scope.Db.SaveChangesAsync();
 

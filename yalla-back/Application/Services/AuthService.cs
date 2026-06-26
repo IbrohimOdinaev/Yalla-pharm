@@ -56,6 +56,11 @@ public sealed class AuthService : IAuthService
     CancellationToken cancellationToken = default)
     => LoginInternalAsync(request, expectedRole: Role.Admin, cancellationToken);
 
+  public Task<LoginResponse> PharmacyAccountLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default)
+    => LoginInternalAsync(request, expectedRole: Role.PharmacyAccount, cancellationToken);
+
   public Task<LoginResponse> SuperAdminLoginAsync(
     LoginRequest request,
     CancellationToken cancellationToken = default)
@@ -147,7 +152,7 @@ public sealed class AuthService : IAuthService
     }
 
     Guid? pharmacyId = null;
-    if (user.Role == Role.Admin)
+    if (user.Role is Role.Admin or Role.PharmacyAccount)
     {
       pharmacyId = await _dbContext.PharmacyWorkers
         .AsNoTracking()
@@ -238,8 +243,8 @@ public sealed class AuthService : IAuthService
       .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
       ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException($"User '{adminId}' does not have pharmacy staff role.");
 
     var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
     if (!string.Equals(normalizedPhoneNumber, admin.PhoneNumber, StringComparison.Ordinal))
@@ -284,8 +289,8 @@ public sealed class AuthService : IAuthService
       .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
       ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException($"User '{adminId}' does not have pharmacy staff role.");
 
     var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
     var phoneTaken = await _dbContext.Users
@@ -369,8 +374,8 @@ public sealed class AuthService : IAuthService
       .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
       ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException($"User '{adminId}' does not have pharmacy staff role.");
 
     admin.SetName(payload.Name);
     admin.SetPhoneNumber(payload.PhoneNumber);

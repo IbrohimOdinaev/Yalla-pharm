@@ -17,6 +17,7 @@ export type ApiPharmacyWorkerResponse = {
   phoneNumber: string;
   avatarUrl?: string | null;
   pharmacyId: string;
+  role?: "Admin" | "PharmacyAccount" | "SuperAdmin" | "Pharmacist" | number;
 };
 
 export type CreateAdminWithPharmacyResponse = {
@@ -118,6 +119,11 @@ export async function createAdminWithPharmacy(
 
 export async function deleteAdmin(token: string, pharmacyWorkerId: string): Promise<void> {
   await apiFetch<unknown>("/api/admins", { method: "DELETE", token, body: { pharmacyWorkerId } });
+}
+
+export async function getMyPharmacyAdmins(token: string): Promise<ApiPharmacyWorkerResponse[]> {
+  const response = await apiFetch<{ admins?: ApiPharmacyWorkerResponse[] }>("/api/pharmacy-workers/mine/admins", { token });
+  return Array.isArray(response.admins) ? response.admins : [];
 }
 
 export async function getAdminMe(token: string): Promise<{name: string; phoneNumber: string; avatarUrl?: string | null}> {

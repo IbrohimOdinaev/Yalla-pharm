@@ -102,6 +102,7 @@ export function normalizeOrder(raw: RawOrder): ApiOrder {
     clientTelegramUsername: raw.clientTelegramUsername ? String(raw.clientTelegramUsername) : null,
     pharmacyId: raw.pharmacyId ? String(raw.pharmacyId) : undefined,
     pharmacyTitle: raw.pharmacyTitle ? String(raw.pharmacyTitle) : undefined,
+    acceptedByAdminId: raw.acceptedByAdminId ? String(raw.acceptedByAdminId) : null,
     deliveryAddress: raw.deliveryAddress ? String(raw.deliveryAddress) : undefined,
     isPickup: Boolean(raw.isPickup),
     createdAtUtc: String(raw.createdAtUtc || raw.orderPlacedAt || ""),

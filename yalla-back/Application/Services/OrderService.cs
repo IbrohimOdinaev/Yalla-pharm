@@ -237,7 +237,7 @@ public sealed class OrderService : IOrderService
   {
     ArgumentNullException.ThrowIfNull(request);
 
-    var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
+    var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
 
     if (request.PharmacyId != Guid.Empty && request.PharmacyId != worker.PharmacyId)
       throw new InvalidOperationException(
@@ -289,7 +289,7 @@ public sealed class OrderService : IOrderService
   {
     ArgumentNullException.ThrowIfNull(request);
 
-    var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
+    var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
     var take = NormalizeTake(request.Take);
 
     var orders = await _dbContext.Orders
@@ -331,12 +331,18 @@ public sealed class OrderService : IOrderService
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
+      var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
       var order = await GetTrackedOrderForWorkerOrThrowAsync(request.OrderId, worker.PharmacyId, cancellationToken);
 
       if (order.Status is not (Status.New or Status.UnderReview))
         throw new InvalidOperationException(
           $"Order '{order.Id}' must be in status '{Status.New}' or '{Status.UnderReview}' to start assembly.");
+
+      var acceptedAdmin = await GetActiveAdminInPharmacyOrThrowAsync(
+        request.AcceptedByAdminId,
+        worker.PharmacyId,
+        cancellationToken);
+      order.AssignAcceptedAdmin(acceptedAdmin.Id);
 
       var oldStatus = order.Status;
       if (order.Status == Status.New)
@@ -354,6 +360,7 @@ public sealed class OrderService : IOrderService
       {
         WorkerId = worker.Id,
         OrderId = order.Id,
+        AcceptedByAdminId = acceptedAdmin.Id,
         Status = order.Status
       };
     }
@@ -376,7 +383,7 @@ public sealed class OrderService : IOrderService
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
+      var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
       var order = await _dbContext.Orders
         .AsTracking()
         .Where(x => x.Id == request.OrderId)
@@ -505,7 +512,7 @@ public sealed class OrderService : IOrderService
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
+      var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
       var order = await GetTrackedOrderForWorkerOrThrowAsync(request.OrderId, worker.PharmacyId, cancellationToken);
 
       if (order.Status != Status.Preparing)
@@ -518,8 +525,11 @@ public sealed class OrderService : IOrderService
 
       if (_staffCompensationService is not null)
       {
+        var acceptedAdminId = order.AcceptedByAdminId
+          ?? throw new InvalidOperationException($"Order '{order.Id}' has no accepted admin.");
+
         await _staffCompensationService.EnsureOrderReadyEarningAsync(
-          worker.Id,
+          acceptedAdminId,
           order.Id,
           worker.PharmacyId,
           cancellationToken);
@@ -560,7 +570,7 @@ public sealed class OrderService : IOrderService
       await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
       try
       {
-      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
+      var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
       var order = await _dbContext.Orders
         .AsTracking()
         .Include(x => x.DeliveryData)
@@ -630,12 +640,7 @@ public sealed class OrderService : IOrderService
         Id = deliveryData.ToAddressId
       };
 
-      var clientPhone = ResolveJuraDispatchPhone(order.ClientPhoneNumber, worker.PhoneNumber)
-        ?? throw new ClientErrorException(
-          "jura_client_phone_missing",
-          "Для вызова JURA нужен телефон клиента или работника аптеки. Укажите телефон и повторите попытку.",
-          "jura_client_phone_missing",
-          400);
+      var clientPhone = ResolveJuraDispatchPhone(order.ClientPhoneNumber);
 
       // NB: we do NOT recalculate DeliveryCost here — it was fixed at checkout and
       // is what the client was quoted (Order.PaymentAmount is locked to it). JURA
@@ -756,9 +761,9 @@ public sealed class OrderService : IOrderService
     }
   }
 
-  private static string? ResolveJuraDispatchPhone(string? clientPhoneNumber, string? workerPhoneNumber)
+  private static string ResolveJuraDispatchPhone(string? clientPhoneNumber)
   {
-    return ToJuraPhone(clientPhoneNumber) ?? ToJuraPhone(workerPhoneNumber);
+    return ToJuraPhone(clientPhoneNumber) ?? "000000000";
   }
 
   private static string? ToJuraPhone(string? phoneNumber)
@@ -794,7 +799,7 @@ public sealed class OrderService : IOrderService
     if (_juraService is null)
       throw new InvalidOperationException("JURA service is not configured.");
 
-    var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
+    var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: false, cancellationToken);
     var order = await _dbContext.Orders
       .AsTracking()
       .Include(x => x.DeliveryData)
@@ -942,7 +947,7 @@ public sealed class OrderService : IOrderService
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
+      var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
       var order = await GetTrackedOrderForWorkerOrThrowAsync(request.OrderId, worker.PharmacyId, cancellationToken);
 
       if (order.Status != Status.Ready)
@@ -1004,7 +1009,7 @@ public sealed class OrderService : IOrderService
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
     try
     {
-      var worker = await GetWorkerOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
+      var worker = await GetPharmacyAccountOrThrowAsync(request.WorkerId, asTracking: true, cancellationToken);
 
       if (request.PharmacyId != Guid.Empty && request.PharmacyId != worker.PharmacyId)
         throw new InvalidOperationException(
@@ -1403,7 +1408,7 @@ public sealed class OrderService : IOrderService
     }
   }
 
-  private async Task<PharmacyWorker> GetWorkerOrThrowAsync(
+  private async Task<PharmacyWorker> GetPharmacyAccountOrThrowAsync(
     Guid workerId,
     bool asTracking,
     CancellationToken cancellationToken)
@@ -1412,10 +1417,10 @@ public sealed class OrderService : IOrderService
     query = asTracking ? query.AsTracking() : query.AsNoTracking();
 
     var worker = await query.FirstOrDefaultAsync(x => x.Id == workerId, cancellationToken)
-      ?? throw new InvalidOperationException($"PharmacyWorker '{workerId}' was not found.");
+      ?? throw new InvalidOperationException($"Pharmacy account '{workerId}' was not found.");
 
-    if (worker.Role != Role.Admin)
-      throw new InvalidOperationException($"PharmacyWorker '{workerId}' does not have Admin role.");
+    if (worker.Role != Role.PharmacyAccount)
+      throw new InvalidOperationException($"PharmacyWorker '{workerId}' does not have PharmacyAccount role.");
 
     return worker;
   }
@@ -1435,6 +1440,31 @@ public sealed class OrderService : IOrderService
         $"Order '{orderId}' does not belong to worker pharmacy '{pharmacyId}'.");
 
     return order;
+  }
+
+  private async Task<PharmacyWorker> GetActiveAdminInPharmacyOrThrowAsync(
+    Guid adminId,
+    Guid pharmacyId,
+    CancellationToken cancellationToken)
+  {
+    if (adminId == Guid.Empty)
+      throw new DomainArgumentException("AcceptedByAdminId can't be empty.");
+
+    var admin = await _dbContext.PharmacyWorkers
+      .AsNoTracking()
+      .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
+      ?? throw new InvalidOperationException($"Admin '{adminId}' was not found.");
+
+    if (admin.Role != Role.Admin)
+      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+
+    if (!admin.IsActive)
+      throw new InvalidOperationException($"Admin '{adminId}' is inactive.");
+
+    if (admin.PharmacyId != pharmacyId)
+      throw new InvalidOperationException($"Admin '{adminId}' does not belong to pharmacy '{pharmacyId}'.");
+
+    return admin;
   }
 
   private async Task<User> GetSuperAdminOrThrowAsync(
@@ -1565,6 +1595,7 @@ public sealed class OrderService : IOrderService
       ClientTelegramId = client?.TelegramId,
       ClientTelegramUsername = client?.TelegramUsername,
       PharmacyId = order.PharmacyId,
+      AcceptedByAdminId = order.AcceptedByAdminId,
       OrderPlacedAt = order.OrderPlacedAt,
       IsPickup = order.IsPickup,
       DeliveryAddress = order.DeliveryAddress,

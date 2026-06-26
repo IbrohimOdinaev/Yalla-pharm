@@ -266,7 +266,8 @@ public sealed class RequestDtoValidatorAllCasesTests
     AssertHasErrors(new MarkOrderDeliveredBySuperAdminRequest { OrderId = Guid.Empty }, nameof(MarkOrderDeliveredBySuperAdminRequest.OrderId));
     AssertHasErrors(new MarkOrderOnTheWayRequest { OrderId = Guid.Empty }, nameof(MarkOrderOnTheWayRequest.OrderId));
     AssertHasErrors(new MarkOrderReadyRequest { OrderId = Guid.Empty }, nameof(MarkOrderReadyRequest.OrderId));
-    AssertHasErrors(new StartOrderAssemblyRequest { OrderId = Guid.Empty }, nameof(StartOrderAssemblyRequest.OrderId));
+    AssertHasErrors(new StartOrderAssemblyRequest { OrderId = Guid.Empty, AcceptedByAdminId = Guid.NewGuid() }, nameof(StartOrderAssemblyRequest.OrderId));
+    AssertHasErrors(new StartOrderAssemblyRequest { OrderId = Guid.NewGuid(), AcceptedByAdminId = Guid.Empty }, nameof(StartOrderAssemblyRequest.AcceptedByAdminId));
   }
 
   [Fact]
@@ -275,7 +276,7 @@ public sealed class RequestDtoValidatorAllCasesTests
     AssertNoErrors(new MarkOrderDeliveredBySuperAdminRequest { OrderId = Guid.NewGuid() });
     AssertNoErrors(new MarkOrderOnTheWayRequest { OrderId = Guid.NewGuid() });
     AssertNoErrors(new MarkOrderReadyRequest { OrderId = Guid.NewGuid() });
-    AssertNoErrors(new StartOrderAssemblyRequest { OrderId = Guid.NewGuid() });
+    AssertNoErrors(new StartOrderAssemblyRequest { OrderId = Guid.NewGuid(), AcceptedByAdminId = Guid.NewGuid() });
   }
 
   [Fact]
