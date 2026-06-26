@@ -13,7 +13,7 @@ import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
 import { useCartStore } from "@/features/cart/model/cartStore";
 
 function getRoleHome(role: string | null): string | null {
-  if (role === "Admin") return "/workspace";
+  if (role === "Admin" || role === "PharmacyAccount") return "/workspace";
   if (role === "SuperAdmin") return "/superadmin";
   if (role === "Pharmacist") return "/pharmacist";
   return null;
@@ -90,7 +90,7 @@ function AuthPersistenceBridge() {
     setStoredToken(token);
 
     // merge guest cart and load server cart only for real client accounts.
-    // Staff tokens (Admin/SuperAdmin/Pharmacist) are not valid for /api/basket.
+    // Staff tokens (Admin/PharmacyAccount/SuperAdmin/Pharmacist) are not valid for /api/basket.
     if (token && role === "Client" && !prevTokenRef.current) {
       guestMerge(token).catch(() => undefined);
     }
@@ -109,7 +109,7 @@ function AuthPersistenceBridge() {
 }
 
 /** Once the auth state has hydrated from storage, send staff users
- *  (Admin / SuperAdmin / Pharmacist) straight to their management
+ *  (Admin / PharmacyAccount / SuperAdmin / Pharmacist) straight to their management
  *  screen no matter where they landed — including the public home,
  *  catalog, cart, or login pages. Stays out of the way once they're
  *  already inside their workspace area so the redirect doesn't loop. */

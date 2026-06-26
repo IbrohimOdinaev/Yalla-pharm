@@ -51,7 +51,8 @@ public class OrderServiceTests
     var response = await service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
     {
       WorkerId = setup.Worker.Id,
-      OrderId = order.Id
+      OrderId = order.Id,
+      AcceptedByAdminId = setup.StaffAdmin.Id
     });
 
     Assert.Equal(Status.Preparing, response.Status);
@@ -68,7 +69,8 @@ public class OrderServiceTests
     var response = await service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
     {
       WorkerId = setup.Worker.Id,
-      OrderId = order.Id
+      OrderId = order.Id,
+      AcceptedByAdminId = setup.StaffAdmin.Id
     });
 
     Assert.Equal(Status.Preparing, response.Status);
@@ -309,7 +311,7 @@ public class OrderServiceTests
   }
 
   [Fact]
-  public async Task DispatchDeliveryAsync_WhenClientPhoneIsMissing_UsesWorkerPhoneForJura()
+  public async Task DispatchDeliveryAsync_WhenClientPhoneIsMissing_UsesJuraFallbackPhone()
   {
     using var scope = TestDbFactory.Create();
     var setup = await SeedWorkerSetup(scope);
@@ -360,7 +362,7 @@ public class OrderServiceTests
       TariffId = 1
     });
 
-    Assert.Equal("992992400003", jura.LastClientPhone);
+    Assert.Equal("000000000", jura.LastClientPhone);
   }
 
   [Fact]
@@ -510,25 +512,25 @@ public class OrderServiceTests
       }));
   }
 
-  private static async Task<(Client Client, Pharmacy Pharmacy, PharmacyWorker Worker, Medicine Medicine)> SeedWorkerSetup(TestDbScope scope)
+  private static async Task<(Client Client, Pharmacy Pharmacy, PharmacyWorker Worker, PharmacyWorker StaffAdmin, Medicine Medicine)> SeedWorkerSetup(TestDbScope scope)
   {
-    var admin = TestDbFactory.CreateUser("Admin", "992400001", Role.Admin);
     var client = TestDbFactory.CreateClient("Client", "992400002");
-    scope.Db.Users.Add(admin);
     scope.Db.Clients.Add(client);
     await scope.Db.SaveChangesAsync();
 
-    var pharmacy = TestDbFactory.CreatePharmacy("Ph", "Addr", admin.Id);
-    var worker = TestDbFactory.CreateWorker("Worker", "992400003", pharmacy.Id, pharmacy);
+    var pharmacy = TestDbFactory.CreatePharmacy("Ph", "Addr", Guid.NewGuid());
+    var worker = TestDbFactory.CreateWorker("Pharmacy Account", "992400003", pharmacy.Id, pharmacy, Role.PharmacyAccount);
+    var staffAdmin = TestDbFactory.CreateWorker("Admin", "992400004", pharmacy.Id, pharmacy);
+    pharmacy.SetAdminId(worker.Id);
     var medicine = TestDbFactory.CreateMedicine("M", "M-1");
 
     scope.Db.Pharmacies.Add(pharmacy);
-    scope.Db.PharmacyWorkers.Add(worker);
+    scope.Db.PharmacyWorkers.AddRange(worker, staffAdmin);
     scope.Db.Medicines.Add(medicine);
     scope.Db.Offers.Add(TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, stock: 10, price: 10m));
     await scope.Db.SaveChangesAsync();
 
-    return (client, pharmacy, worker, medicine);
+    return (client, pharmacy, worker, staffAdmin, medicine);
   }
 
   private static async Task<Order> CreateOrderWithStatus(
@@ -546,6 +548,17 @@ public class OrderServiceTests
       order.NextStage(true);
       if ((int)order.Status > (int)status)
         throw new InvalidOperationException("Cannot reach requested status with NextStage.");
+    }
+
+    if (status is not (Status.New or Status.UnderReview))
+    {
+      var acceptedAdminId = await scope.Db.PharmacyWorkers
+        .AsNoTracking()
+        .Where(x => x.PharmacyId == pharmacyId && x.Role == Role.Admin)
+        .Select(x => x.Id)
+        .FirstOrDefaultAsync();
+      if (acceptedAdminId != Guid.Empty)
+        order.AssignAcceptedAdmin(acceptedAdminId);
     }
 
     scope.Db.Orders.Add(order);

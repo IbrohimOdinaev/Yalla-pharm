@@ -91,7 +91,7 @@ public sealed class PharmacyFinanceServiceTests
   {
     var superAdmin = TestDbFactory.CreateUser("Super", "911299999", Role.SuperAdmin);
     var pharmacy = TestDbFactory.CreatePharmacy("Finance Pharmacy", "Dushanbe", superAdmin.Id);
-    var admin = TestDbFactory.CreateWorker("Admin", "911288888", pharmacy.Id, pharmacy);
+    var admin = TestDbFactory.CreateWorker("Admin", "911288888", pharmacy.Id, pharmacy, Role.PharmacyAccount);
     pharmacy.SetAdminId(admin.Id);
     db.Users.Add(superAdmin);
     db.Pharmacies.Add(pharmacy);

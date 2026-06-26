@@ -13,6 +13,10 @@ public interface IAuthService
     LoginRequest request,
     CancellationToken cancellationToken = default);
 
+  Task<LoginResponse> PharmacyAccountLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default);
+
   Task<LoginResponse> SuperAdminLoginAsync(
     LoginRequest request,
     CancellationToken cancellationToken = default);

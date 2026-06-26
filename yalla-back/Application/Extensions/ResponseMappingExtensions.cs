@@ -79,7 +79,8 @@ public static class ResponseMappingExtensions
             Name = worker.Name,
             PhoneNumber = worker.PhoneNumber,
             AvatarUrl = string.IsNullOrEmpty(worker.AvatarUrl) ? null : $"/api/admins/{worker.Id}/avatar/content",
-            PharmacyId = worker.PharmacyId
+            PharmacyId = worker.PharmacyId,
+            Role = worker.Role
         };
     }
 

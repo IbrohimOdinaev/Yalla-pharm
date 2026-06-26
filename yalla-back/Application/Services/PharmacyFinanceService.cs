@@ -116,7 +116,7 @@ public sealed class PharmacyFinanceService : IPharmacyFinanceService
 
     if (requesterRole != Role.SuperAdmin)
     {
-      if (requesterRole != Role.Admin || requesterPharmacyId is null || requesterPharmacyId.Value != request.PharmacyId)
+      if (requesterRole != Role.PharmacyAccount || requesterPharmacyId is null || requesterPharmacyId.Value != request.PharmacyId)
         throw new UnauthorizedAccessException("Нет доступа к чеку выплаты.");
     }
 
@@ -233,7 +233,7 @@ public sealed class PharmacyFinanceService : IPharmacyFinanceService
 
     var allowed = await _dbContext.PharmacyWorkers
       .AsNoTracking()
-      .AnyAsync(x => x.Id == adminId && x.PharmacyId == pharmacyId && x.Role == Role.Admin, cancellationToken);
+      .AnyAsync(x => x.Id == adminId && x.PharmacyId == pharmacyId && x.Role == Role.PharmacyAccount, cancellationToken);
 
     if (!allowed)
       throw new UnauthorizedAccessException("Администратор не привязан к этой аптеке.");

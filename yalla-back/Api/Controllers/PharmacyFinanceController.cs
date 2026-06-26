@@ -31,7 +31,7 @@ public sealed class PharmacyFinanceController : ControllerBase
   }
 
   [HttpGet("admin")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> GetAdminFinance(CancellationToken cancellationToken)
   {
     var response = await _service.GetForAdminAsync(
@@ -42,7 +42,7 @@ public sealed class PharmacyFinanceController : ControllerBase
   }
 
   [HttpPost("admin/withdrawals")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> CreateWithdrawal(
     [FromBody] CreatePharmacyWithdrawalRequest request,
     CancellationToken cancellationToken)
@@ -93,7 +93,7 @@ public sealed class PharmacyFinanceController : ControllerBase
   }
 
   [HttpGet("withdrawals/{withdrawalRequestId:guid}/receipt/content")]
-  [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.Admin)}")]
+  [Authorize(Roles = $"{nameof(Role.SuperAdmin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> GetReceiptContent(
     Guid withdrawalRequestId,
     CancellationToken cancellationToken)
@@ -103,7 +103,7 @@ public sealed class PharmacyFinanceController : ControllerBase
       withdrawalRequestId,
       User.GetRequiredUserId(),
       role,
-      role == Role.Admin ? User.GetRequiredPharmacyId() : null,
+      role == Role.PharmacyAccount ? User.GetRequiredPharmacyId() : null,
       cancellationToken);
     return File(content.Content, content.ContentType);
   }

@@ -12,6 +12,8 @@ public enum TestActor
   SuperAdmin,
   Admin1,
   Admin2,
+  Worker1,
+  Worker2,
   Client1,
   Client2
 }
@@ -66,6 +68,8 @@ public static class ApiTestData
       TestActor.SuperAdmin => (SuperAdminPhone, DefaultPassword),
       TestActor.Admin1 => (Admin1Phone, DefaultPassword),
       TestActor.Admin2 => (Admin2Phone, DefaultPassword),
+      TestActor.Worker1 => (WorkerPharmacy1Phone, DefaultPassword),
+      TestActor.Worker2 => (WorkerPharmacy2Phone, DefaultPassword),
       TestActor.Client1 => (Client1Phone, DefaultPassword),
       TestActor.Client2 => (Client2Phone, DefaultPassword),
       _ => throw new ArgumentOutOfRangeException(nameof(actor), actor, null)
@@ -105,7 +109,7 @@ public static class ApiTestData
       passwordHash,
       Pharmacy1Id,
       pharmacy1,
-      Role.Admin);
+      Role.PharmacyAccount);
 
     var admin2 = new PharmacyWorker(
       Admin2Id,
@@ -114,7 +118,7 @@ public static class ApiTestData
       passwordHash,
       Pharmacy2Id,
       pharmacy2,
-      Role.Admin);
+      Role.PharmacyAccount);
 
     var workerInPharmacy1 = new PharmacyWorker(
       WorkerInPharmacy1Id,
@@ -315,6 +319,14 @@ public static class ApiTestData
 
     for (var i = 0; i < stageTransitions; i++)
       order.NextStage(true);
+
+    if (stageTransitions >= 2)
+    {
+      var acceptedAdminId = pharmacyId == Pharmacy1Id
+        ? WorkerInPharmacy1Id
+        : WorkerInPharmacy2Id;
+      order.AssignAcceptedAdmin(acceptedAdminId);
+    }
 
     return order;
   }

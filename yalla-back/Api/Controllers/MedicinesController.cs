@@ -106,7 +106,7 @@ public sealed class MedicinesController : ControllerBase
     var response = await _medicineService.GetMedicineByIdAsync(new GetMedicineByIdRequest
     {
       MedicineId = medicineId,
-      IncludeInactive = role == Role.Admin || role == Role.SuperAdmin
+      IncludeInactive = role == Role.PharmacyAccount || role == Role.SuperAdmin
     }, cancellationToken);
 
     return Ok(response);
@@ -146,7 +146,7 @@ public sealed class MedicinesController : ControllerBase
 
     var response = await _medicineService.GetMedicineBySlugAsync(
       slug,
-      includeInactive: role == Role.Admin || role == Role.SuperAdmin,
+      includeInactive: role == Role.PharmacyAccount || role == Role.SuperAdmin,
       cancellationToken);
 
     return Ok(response);

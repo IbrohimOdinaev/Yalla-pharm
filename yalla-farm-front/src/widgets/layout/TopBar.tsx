@@ -237,7 +237,7 @@ export function TopBar({
   }, [menuOpen]);
 
   function onLogout() {
-    const wasAdminLike = role === "Admin" || role === "SuperAdmin";
+    const wasAdminLike = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin";
     dispatch(clearCredentials());
     setMenuOpen(false);
     // Admin/SuperAdmin → home via replace so the admin URL leaves the history
@@ -306,9 +306,9 @@ export function TopBar({
       <Link
         href="/prescriptions/new"
         title="Отправить рецепт · фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS"
-        className={`flex h-10 flex-shrink-0 items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-3 text-xs font-semibold text-on-surface transition active:scale-95 hover:bg-primary/15 ${className}`}
+        className={`flex h-10 flex-shrink-0 items-center gap-1.5 rounded-full border border-secondary/25 bg-secondary-soft px-3 text-xs font-semibold text-secondary transition active:scale-95 hover:bg-secondary/15 ${className}`}
       >
-        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary">
+        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-on-primary">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
@@ -356,7 +356,7 @@ export function TopBar({
       </>
     );
     const desktopSearchClass =
-      "ml-4 flex h-12 min-w-[220px] flex-1 items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:ml-6 xl:min-w-[360px] 2xl:max-w-[720px]";
+      "ml-4 flex h-12 min-w-[286px] flex-[1.3_1_0%] items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:ml-6 xl:min-w-[468px] 2xl:max-w-[936px]";
 
     // Desktop search flexes inside the single-line header. A minimum width
     // keeps the input readable while letting the action buttons stay inline
@@ -412,7 +412,7 @@ export function TopBar({
                 : `Корзина, ${cartCount} товаров`)
             : "Корзина"
         }
-        className={`h-11 flex-shrink-0 items-center justify-center rounded-full bg-[#2F8CFF] text-white shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-[#2479E8] active:scale-[0.98] sm:h-12 ${
+        className={`h-11 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-white shadow-card transition-[width,padding,background-color,transform] duration-150 hover:bg-secondary-container active:scale-[0.98] sm:h-12 ${
           cartFilled
             ? "w-auto gap-2 px-5 sm:gap-2.5 sm:px-6"
             : "w-11 gap-0 px-0 sm:w-12"
@@ -441,7 +441,7 @@ export function TopBar({
         >
           <Icon name="user" size={20} />
           {token ? (
-            <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-surface" />
+            <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-secondary ring-2 ring-surface" />
           ) : null}
         </button>
 
@@ -492,7 +492,7 @@ export function TopBar({
                     </Link>
                   </>
                 ) : null}
-                {role === "Admin" ? (
+                {role === "Admin" || role === "PharmacyAccount" ? (
                   <Link
                     href="/workspace"
                     onClick={() => setMenuOpen(false)}
@@ -756,7 +756,7 @@ function stageProgress<T extends string>(stages: readonly T[], status: T, aliase
   return idx >= 0 ? (idx + 1) / stages.length : 1 / stages.length;
 }
 
-const ACTIVITY_PROGRESS_COLOR = "#2F80ED";
+const ACTIVITY_PROGRESS_COLOR = "#E94A33";
 const ACTIVITY_PROGRESS_TRACK = "#DDE7EA";
 
 function activityMeta(activity: LatestClientActivity) {

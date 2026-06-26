@@ -23,7 +23,7 @@ export default function ProductDetailsPage() {
 
   const role = useAppSelector((state) => state.auth.role);
   const goBack = useGoBack();
-  const canShop = role !== "Admin" && role !== "SuperAdmin";
+  const canShop = role !== "Admin" && role !== "PharmacyAccount" && role !== "SuperAdmin";
 
   const [medicine, setMedicine] = useState<ApiMedicine | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -301,16 +301,16 @@ export default function ProductDetailsPage() {
           ) : null}
 
           {/* Admin hint */}
-          {(role === "Admin" || role === "SuperAdmin") ? (
+          {(role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin") ? (
             <div className="rounded-3xl bg-surface-container-low p-4">
               <p className="text-sm font-bold text-on-surface-variant">
-                Режим {role === "Admin" ? "администратора" : "супер-админа"}
+                Режим {role === "SuperAdmin" ? "супер-админа" : role === "PharmacyAccount" ? "аккаунта аптеки" : "администратора"}
               </p>
               <p className="mt-1 text-xs text-on-surface-variant">
                 Управление этим товаром доступно в вашем кабинете.
               </p>
               <Link
-                href={role === "Admin" ? "/workspace" : "/superadmin"}
+                href={role === "SuperAdmin" ? "/superadmin" : "/workspace"}
                 className="mt-3 inline-block"
               >
                 <Button variant="secondary" size="sm" rightIcon="arrow-right">

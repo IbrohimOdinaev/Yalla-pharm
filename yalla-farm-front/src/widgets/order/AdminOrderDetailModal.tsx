@@ -21,6 +21,7 @@ import {
   isOrderDataLost,
 } from "@/entities/order/totals";
 import { useBodyScrollLock } from "@/shared/lib/useBodyScrollLock";
+import type { ApiPharmacyWorkerResponse } from "@/entities/admin/api";
 import type { ApiOrder } from "@/shared/types/api";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -52,17 +53,19 @@ const STATUS_COLORS: Record<string, string> = {
 type Props = {
   orderId: string;
   token: string;
+  acceptedAdmins?: ApiPharmacyWorkerResponse[];
   onClose: () => void;
   onRequestDispatch?: (order: ApiOrder) => void;
 };
 
-export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispatch }: Props) {
+export function AdminOrderDetailModal({ orderId, token, acceptedAdmins = [], onClose, onRequestDispatch }: Props) {
   const router = useRouter();
   const [order, setOrder] = useState<ApiOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
+  const [selectedAcceptedAdminId, setSelectedAcceptedAdminId] = useState("");
 
   const loadOrder = useCallback(() => {
     if (!token) return;
@@ -82,6 +85,10 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispat
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  useEffect(() => {
+    setSelectedAcceptedAdminId((current) => current || acceptedAdmins[0]?.id || "");
+  }, [acceptedAdmins]);
 
   useBodyScrollLock(true);
 
@@ -109,12 +116,21 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispat
         ? `Отметить заказ #${order.orderId.slice(0, 8)} выданным клиенту?`
         : `Передать заказ #${order.orderId.slice(0, 8)} в доставку?`,
     };
+    let acceptedByAdminId = "";
+    if (action === "assembly") {
+      acceptedByAdminId = selectedAcceptedAdminId || acceptedAdmins[0]?.id || "";
+      if (!acceptedByAdminId) {
+        setError("Выберите Admin, который принял заказ.");
+        return;
+      }
+    }
+
     if (prompts[action] && !confirm(prompts[action])) return;
 
     setActionLoading(true);
     setError(null);
     try {
-      if (action === "assembly") await startAssembly(token, order.orderId);
+      if (action === "assembly") await startAssembly(token, order.orderId, acceptedByAdminId);
       if (action === "ready") await markReady(token, order.orderId);
       if (action === "ontheway") await markOnTheWay(token, order.orderId);
       loadOrder();
@@ -468,9 +484,23 @@ export function AdminOrderDetailModal({ orderId, token, onClose, onRequestDispat
           {/* Actions */}
           <div className="flex flex-wrap gap-2 pt-2 border-t border-surface-container-high">
             {(status === "New" || status === "UnderReview") && (
-              <button type="button" className="stitch-button text-sm" onClick={() => onAction("assembly")} disabled={actionLoading}>
-                Начать сборку
-              </button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[280px]">
+                <select
+                  className="stitch-input w-full"
+                  value={selectedAcceptedAdminId}
+                  onChange={(event) => setSelectedAcceptedAdminId(event.target.value)}
+                  disabled={acceptedAdmins.length === 0 || actionLoading}
+                >
+                  {acceptedAdmins.length === 0 ? (
+                    <option value="">Нет активных Admin</option>
+                  ) : acceptedAdmins.map((admin) => (
+                    <option key={admin.id} value={admin.id}>{admin.name} · {admin.phoneNumber}</option>
+                  ))}
+                </select>
+                <button type="button" className="stitch-button text-sm" onClick={() => onAction("assembly")} disabled={actionLoading || !selectedAcceptedAdminId}>
+                  Начать сборку
+                </button>
+              </div>
             )}
             {status === "Preparing" && (
               <button type="button" className="stitch-button text-sm" onClick={() => onAction("ready")} disabled={actionLoading}>

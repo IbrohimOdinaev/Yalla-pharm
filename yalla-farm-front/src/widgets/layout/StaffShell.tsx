@@ -8,7 +8,7 @@ import { useAppDispatch, useAppSelector } from "@/shared/lib/redux";
 import { Icon, type IconName } from "@/shared/ui";
 import { ProductModal } from "@/widgets/product/ProductModal";
 
-type StaffRole = "Admin" | "SuperAdmin" | "Pharmacist";
+type StaffRole = "Admin" | "PharmacyAccount" | "SuperAdmin" | "Pharmacist";
 
 type StaffNavItem = {
   label: string;
@@ -36,6 +36,11 @@ const ADMIN_ITEMS: StaffNavItem[] = [
   { label: "Финансы", href: "/workspace#finance", icon: "coin", group: "Рабочее место" },
 ];
 
+const ADMIN_STAFF_ITEMS: StaffNavItem[] = [
+  { label: "Dashboard", href: "/workspace#dashboard", icon: "grid", group: "Обзор" },
+  { label: "Профиль", href: "/workspace#profile", icon: "user", group: "Аккаунт" },
+];
+
 const SUPERADMIN_ITEMS: StaffNavItem[] = [
   { label: "Dashboard", href: "/superadmin#dashboard", icon: "grid", group: "Обзор" },
   { label: "Аптеки", href: "/superadmin#pharmacies", icon: "pharmacy", group: "Система" },
@@ -58,12 +63,14 @@ const PHARMACIST_ITEMS: StaffNavItem[] = [
 
 const ROLE_LABELS: Record<StaffRole, string> = {
   Admin: "Admin",
+  PharmacyAccount: "Аптека",
   SuperAdmin: "SuperAdmin",
   Pharmacist: "Фармацевт",
 };
 
 const ROLE_HINTS: Record<StaffRole, string> = {
-  Admin: "Кабинет аптеки",
+  Admin: "Сотрудник аптеки",
+  PharmacyAccount: "Кабинет аптеки",
   SuperAdmin: "Системная панель",
   Pharmacist: "Работа с рецептами",
 };
@@ -81,6 +88,7 @@ function splitHref(href: string): { path: string; hash: string } {
 function itemsForRole(role: string | null): StaffNavItem[] {
   if (role === "SuperAdmin") return SUPERADMIN_ITEMS;
   if (role === "Pharmacist") return PHARMACIST_ITEMS;
+  if (role === "Admin") return ADMIN_STAFF_ITEMS;
   return ADMIN_ITEMS;
 }
 
@@ -91,7 +99,7 @@ function defaultTitleForRole(role: string | null): string {
 }
 
 function profileHrefForRole(role: string | null): string {
-  if (role === "Admin") return "/workspace#profile";
+  if (role === "Admin" || role === "PharmacyAccount") return "/workspace#profile";
   if (role === "SuperAdmin") return "/superadmin#pharmacies";
   if (role === "Pharmacist") return "/pharmacist";
   return "/";

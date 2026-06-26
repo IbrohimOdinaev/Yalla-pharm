@@ -93,7 +93,7 @@ public sealed class JwtSecurityIntegrationTests : ApiTestBase
       [
         new Claim(ClaimTypes.NameIdentifier, ApiTestData.Admin1Id.ToString()),
         new Claim(JwtRegisteredClaimNames.Sub, ApiTestData.Admin1Id.ToString()),
-        new Claim(ClaimTypes.Role, "Admin")
+        new Claim(ClaimTypes.Role, "PharmacyAccount")
       ]));
 
     var response = await client.GetAsync("/api/orders/worker/new?take=10");

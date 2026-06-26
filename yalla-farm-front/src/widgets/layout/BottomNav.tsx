@@ -13,6 +13,11 @@ const ADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/workspace/lookups", label: "Запросы", icon: "search" },
 ];
 
+const ADMIN_STAFF_ITEMS: { href: string; label: string; icon: IconName }[] = [
+  { href: "/workspace#dashboard", label: "Dashboard", icon: "grid" },
+  { href: "/workspace#profile", label: "Профиль", icon: "user" },
+];
+
 const SUPERADMIN_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/superadmin#dashboard", label: "Dashboard", icon: "grid" },
   { href: "/superadmin#pharmacies", label: "Аптеки", icon: "pharmacy" },
@@ -57,11 +62,12 @@ export function BottomNav() {
     };
   }, [pathname]);
 
-  const isAdminOrSA = role === "Admin" || role === "SuperAdmin";
+  const isAdminOrSA = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin";
   const isPharmacist = role === "Pharmacist";
 
   const items = useMemo(() => {
-    if (role === "Admin") return ADMIN_ITEMS;
+    if (role === "PharmacyAccount") return ADMIN_ITEMS;
+    if (role === "Admin") return ADMIN_STAFF_ITEMS;
     if (role === "SuperAdmin") return SUPERADMIN_ITEMS;
     if (role === "Pharmacist") return PHARMACIST_ITEMS;
     return [];
