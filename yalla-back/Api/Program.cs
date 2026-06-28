@@ -287,173 +287,195 @@ var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:Apply
 var skipMigrationManagement = app.Environment.EnvironmentName == "IntegrationTests";
 if (!skipMigrationManagement)
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    await db.Database.OpenConnectionAsync();
-    await db.Database.ExecuteSqlRawAsync("SET search_path TO public");
-    var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
-    logger.LogInformation("EF migrations: {AppliedCount} applied, {PendingCount} pending. Pending: {Pending}",
-        applied.Length, pending.Length, pending.Length == 0 ? "(none)" : string.Join(", ", pending));
+    var startupDbLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseStartup");
+    var maxStartupDbAttempts = Math.Max(1, app.Configuration.GetValue<int?>("Database:StartupRetryAttempts") ?? 8);
+    var startupDbRetryDelaySeconds = Math.Max(1, app.Configuration.GetValue<int?>("Database:StartupRetryDelaySeconds") ?? 5);
 
-    if (!applyMigrationsOnStartup && pending.Length > 0)
+    for (var attempt = 1; attempt <= maxStartupDbAttempts; attempt++)
     {
-        // Refuse to start when auto-apply is disabled but the schema is
-        // behind. Hosted services would otherwise begin polling tables
-        // that don't have the columns the EF model expects, surfacing
-        // confusing PostgresException 42703 errors instead of a clear
-        // configuration problem at the top of the log.
-        throw new InvalidOperationException(
-            $"Database has {pending.Length} pending migrations and " +
-            "Database:ApplyMigrationsOnStartup is false. Pending: " +
-            string.Join(", ", pending) +
-            ". Either set DB_APPLY_MIGRATIONS=true (compose) / " +
-            "Database__ApplyMigrationsOnStartup=true (env) and restart, " +
-            "or apply migrations manually before deploying.");
-    }
-
-    if (applyMigrationsOnStartup)
-    {
-        await db.Database.MigrateAsync();
-        var stillPending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
-        if (stillPending.Length > 0)
+        try
         {
-            // MigrateAsync swallows nothing — if we still see pending
-            // migrations the EF model must reference history rows the
-            // runner couldn't materialise. Crash loud so the operator
-            // sees the broken migration instead of a downstream 42703.
-            throw new InvalidOperationException(
-                "MigrateAsync completed but pending migrations remain: " +
-                string.Join(", ", stillPending) +
-                ". Refusing to start workers against a partial schema.");
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET search_path TO public");
+            var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+            var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
+            logger.LogInformation("EF migrations: {AppliedCount} applied, {PendingCount} pending. Pending: {Pending}",
+                applied.Length, pending.Length, pending.Length == 0 ? "(none)" : string.Join(", ", pending));
+
+            if (!applyMigrationsOnStartup && pending.Length > 0)
+            {
+                // Refuse to start when auto-apply is disabled but the schema is
+                // behind. Hosted services would otherwise begin polling tables
+                // that don't have the columns the EF model expects, surfacing
+                // confusing PostgresException 42703 errors instead of a clear
+                // configuration problem at the top of the log.
+                throw new InvalidOperationException(
+                    $"Database has {pending.Length} pending migrations and " +
+                    "Database:ApplyMigrationsOnStartup is false. Pending: " +
+                    string.Join(", ", pending) +
+                    ". Either set DB_APPLY_MIGRATIONS=true (compose) / " +
+                    "Database__ApplyMigrationsOnStartup=true (env) and restart, " +
+                    "or apply migrations manually before deploying.");
+            }
+
+            if (applyMigrationsOnStartup)
+            {
+                await db.Database.MigrateAsync();
+                var stillPending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
+                if (stillPending.Length > 0)
+                {
+                    // MigrateAsync swallows nothing — if we still see pending
+                    // migrations the EF model must reference history rows the
+                    // runner couldn't materialise. Crash loud so the operator
+                    // sees the broken migration instead of a downstream 42703.
+                    throw new InvalidOperationException(
+                        "MigrateAsync completed but pending migrations remain: " +
+                        string.Join(", ", stillPending) +
+                        ". Refusing to start workers against a partial schema.");
+                }
+                logger.LogInformation("EF migrations applied successfully.");
+            }
+
+            // One-shot data fix #1: reclassify legacy pickup orders that ended up in
+            // Status.Delivered (the old Ready→Delivered code path for IsPickup=true)
+            // to Status.PickedUp now that the enum has it as a distinct terminal
+            // state. The kanban groups by status string, so orders stuck as Delivered
+            // showed up in "Доставлен" instead of "Забран клиентом". Self-clearing.
+            var legacyPickupCount = await db.Orders
+                .Where(o => o.IsPickup && o.Status == Yalla.Domain.Enums.Status.Delivered)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(o => o.Status, Yalla.Domain.Enums.Status.PickedUp));
+            if (legacyPickupCount > 0)
+            {
+                logger.LogInformation(
+                    "Reclassified {Count} legacy pickup orders Delivered → PickedUp",
+                    legacyPickupCount);
+            }
+
+            // One-shot data fix #2: backfill RefundRequest rows for orders that already
+            // reached a refund-eligible state (Cancelled / Returned / has rejected
+            // positions) before the real refund pipeline shipped — those orders only
+            // ever got a stub response, never a DB record. Self-clearing — subsequent
+            // restarts find no candidates because every newly cancelled/returned order
+            // now writes a real RefundRequest at transition time.
+            var refundBackfillCandidates = await db.Orders
+                .AsNoTracking()
+                .Where(o => o.ClientId != null
+                    && (o.Status == Yalla.Domain.Enums.Status.Cancelled
+                        || o.Status == Yalla.Domain.Enums.Status.Returned
+                        || o.Positions.Any(p => p.IsRejected))
+                    && !db.RefundRequests.Any(r => r.OrderId == o.Id))
+                .Select(o => o.Id)
+                .ToListAsync();
+
+            if (refundBackfillCandidates.Count > 0)
+            {
+                var created = 0;
+                foreach (var orderId in refundBackfillCandidates)
+                {
+                    var order = await db.Orders
+                        .Include(o => o.Positions).ThenInclude(p => p.Medicine)
+                        .Include(o => o.DeliveryData)
+                        .FirstOrDefaultAsync(o => o.Id == orderId);
+                    if (order is null || order.ClientId is null) continue;
+
+                    var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
+                    Yalla.Domain.Enums.RefundType type;
+                    decimal amount;
+                    string reason;
+                    List<Yalla.Domain.Entities.RefundRequestPosition> positions;
+
+                    if (order.Status == Yalla.Domain.Enums.Status.Returned)
+                    {
+                        // Customer received goods and returned them — physical product return.
+                        type = Yalla.Domain.Enums.RefundType.WithProductReturn;
+                        amount = order.ReturnCost;
+                        reason = "Backfill: возврат товара клиентом";
+                        positions = order.Positions
+                            .Where(p => p.IsRejected || p.ReturnedQuantity > 0)
+                            .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
+                                orderPositionId: p.Id,
+                                medicineId: p.MedicineId,
+                                medicineName: p.Medicine?.Title ?? "—",
+                                quantity: p.IsRejected ? p.Quantity : p.ReturnedQuantity,
+                                unitPrice: p.OfferSnapshot.Price))
+                            .ToList();
+                    }
+                    else if (order.Status == Yalla.Domain.Enums.Status.Cancelled)
+                    {
+                        // Cancelled — full refund of original total (everything paid).
+                        type = Yalla.Domain.Enums.RefundType.WithoutProductReturn;
+                        amount = order.Cost + order.ReturnCost + deliveryCost;
+                        reason = "Backfill: заказ отменён";
+                        positions = order.Positions
+                            .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
+                                orderPositionId: p.Id,
+                                medicineId: p.MedicineId,
+                                medicineName: p.Medicine?.Title ?? "—",
+                                quantity: p.Quantity,
+                                unitPrice: p.OfferSnapshot.Price))
+                            .ToList();
+                    }
+                    else
+                    {
+                        // Non-terminal order with rejected positions — partial refund for the rejects only.
+                        type = Yalla.Domain.Enums.RefundType.WithoutProductReturn;
+                        amount = order.ReturnCost;
+                        reason = "Backfill: отклонённые позиции";
+                        positions = order.Positions
+                            .Where(p => p.IsRejected)
+                            .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
+                                orderPositionId: p.Id,
+                                medicineId: p.MedicineId,
+                                medicineName: p.Medicine?.Title ?? "—",
+                                quantity: p.Quantity,
+                                unitPrice: p.OfferSnapshot.Price))
+                            .ToList();
+                    }
+
+                    // Skip silently when there's nothing meaningful to refund (zero amount
+                    // or no positions). Possible for orders that ended up in an odd state.
+                    if (amount <= 0 || positions.Count == 0) continue;
+
+                    var currency = string.IsNullOrWhiteSpace(order.PaymentCurrency) ? "TJS" : order.PaymentCurrency;
+                    var refund = new Yalla.Domain.Entities.RefundRequest(
+                        orderId: order.Id,
+                        clientId: order.ClientId.Value,
+                        pharmacyId: order.PharmacyId,
+                        amount: amount,
+                        currency: currency,
+                        paymentTransactionId: null,
+                        reason: reason,
+                        type: type,
+                        positions: positions);
+
+                    db.RefundRequests.Add(refund);
+                    created++;
+                }
+
+                if (created > 0)
+                {
+                    await db.SaveChangesAsync();
+                    logger.LogInformation(
+                        "Backfilled {Count} RefundRequest rows for legacy orders (out of {Candidates} candidates).",
+                        created,
+                        refundBackfillCandidates.Count);
+                }
+            }
+
+            break;
         }
-        logger.LogInformation("EF migrations applied successfully.");
-    }
-
-    // One-shot data fix #1: reclassify legacy pickup orders that ended up in
-    // Status.Delivered (the old Ready→Delivered code path for IsPickup=true)
-    // to Status.PickedUp now that the enum has it as a distinct terminal
-    // state. The kanban groups by status string, so orders stuck as Delivered
-    // showed up in "Доставлен" instead of "Забран клиентом". Self-clearing.
-    var legacyPickupCount = await db.Orders
-        .Where(o => o.IsPickup && o.Status == Yalla.Domain.Enums.Status.Delivered)
-        .ExecuteUpdateAsync(setters => setters.SetProperty(o => o.Status, Yalla.Domain.Enums.Status.PickedUp));
-    if (legacyPickupCount > 0)
-    {
-        logger.LogInformation(
-            "Reclassified {Count} legacy pickup orders Delivered → PickedUp",
-            legacyPickupCount);
-    }
-
-    // One-shot data fix #2: backfill RefundRequest rows for orders that already
-    // reached a refund-eligible state (Cancelled / Returned / has rejected
-    // positions) before the real refund pipeline shipped — those orders only
-    // ever got a stub response, never a DB record. Self-clearing — subsequent
-    // restarts find no candidates because every newly cancelled/returned order
-    // now writes a real RefundRequest at transition time.
-    var refundBackfillCandidates = await db.Orders
-        .AsNoTracking()
-        .Where(o => o.ClientId != null
-            && (o.Status == Yalla.Domain.Enums.Status.Cancelled
-                || o.Status == Yalla.Domain.Enums.Status.Returned
-                || o.Positions.Any(p => p.IsRejected))
-            && !db.RefundRequests.Any(r => r.OrderId == o.Id))
-        .Select(o => o.Id)
-        .ToListAsync();
-
-    if (refundBackfillCandidates.Count > 0)
-    {
-        var created = 0;
-        foreach (var orderId in refundBackfillCandidates)
+        catch (Exception ex) when (attempt < maxStartupDbAttempts && IsTransientStartupDatabaseException(ex))
         {
-            var order = await db.Orders
-                .Include(o => o.Positions).ThenInclude(p => p.Medicine)
-                .Include(o => o.DeliveryData)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order is null || order.ClientId is null) continue;
-
-            var deliveryCost = order.DeliveryData?.DeliveryCost ?? 0m;
-            Yalla.Domain.Enums.RefundType type;
-            decimal amount;
-            string reason;
-            List<Yalla.Domain.Entities.RefundRequestPosition> positions;
-
-            if (order.Status == Yalla.Domain.Enums.Status.Returned)
-            {
-                // Customer received goods and returned them — physical product return.
-                type = Yalla.Domain.Enums.RefundType.WithProductReturn;
-                amount = order.ReturnCost;
-                reason = "Backfill: возврат товара клиентом";
-                positions = order.Positions
-                    .Where(p => p.IsRejected || p.ReturnedQuantity > 0)
-                    .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
-                        orderPositionId: p.Id,
-                        medicineId: p.MedicineId,
-                        medicineName: p.Medicine?.Title ?? "—",
-                        quantity: p.IsRejected ? p.Quantity : p.ReturnedQuantity,
-                        unitPrice: p.OfferSnapshot.Price))
-                    .ToList();
-            }
-            else if (order.Status == Yalla.Domain.Enums.Status.Cancelled)
-            {
-                // Cancelled — full refund of original total (everything paid).
-                type = Yalla.Domain.Enums.RefundType.WithoutProductReturn;
-                amount = order.Cost + order.ReturnCost + deliveryCost;
-                reason = "Backfill: заказ отменён";
-                positions = order.Positions
-                    .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
-                        orderPositionId: p.Id,
-                        medicineId: p.MedicineId,
-                        medicineName: p.Medicine?.Title ?? "—",
-                        quantity: p.Quantity,
-                        unitPrice: p.OfferSnapshot.Price))
-                    .ToList();
-            }
-            else
-            {
-                // Non-terminal order with rejected positions — partial refund for the rejects only.
-                type = Yalla.Domain.Enums.RefundType.WithoutProductReturn;
-                amount = order.ReturnCost;
-                reason = "Backfill: отклонённые позиции";
-                positions = order.Positions
-                    .Where(p => p.IsRejected)
-                    .Select(p => new Yalla.Domain.Entities.RefundRequestPosition(
-                        orderPositionId: p.Id,
-                        medicineId: p.MedicineId,
-                        medicineName: p.Medicine?.Title ?? "—",
-                        quantity: p.Quantity,
-                        unitPrice: p.OfferSnapshot.Price))
-                    .ToList();
-            }
-
-            // Skip silently when there's nothing meaningful to refund (zero amount
-            // or no positions). Possible for orders that ended up in an odd state.
-            if (amount <= 0 || positions.Count == 0) continue;
-
-            var currency = string.IsNullOrWhiteSpace(order.PaymentCurrency) ? "TJS" : order.PaymentCurrency;
-            var refund = new Yalla.Domain.Entities.RefundRequest(
-                orderId: order.Id,
-                clientId: order.ClientId.Value,
-                pharmacyId: order.PharmacyId,
-                amount: amount,
-                currency: currency,
-                paymentTransactionId: null,
-                reason: reason,
-                type: type,
-                positions: positions);
-
-            db.RefundRequests.Add(refund);
-            created++;
-        }
-
-        if (created > 0)
-        {
-            await db.SaveChangesAsync();
-            logger.LogInformation(
-                "Backfilled {Count} RefundRequest rows for legacy orders (out of {Candidates} candidates).",
-                created,
-                refundBackfillCandidates.Count);
+            startupDbLogger.LogWarning(
+                ex,
+                "Database startup attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s.",
+                attempt,
+                maxStartupDbAttempts,
+                startupDbRetryDelaySeconds);
+            await Task.Delay(TimeSpan.FromSeconds(startupDbRetryDelaySeconds));
         }
     }
 }
@@ -534,6 +556,20 @@ static int GetRateLimitPermitLimit(HttpContext context, string configurationKey,
 {
     var configuration = context.RequestServices.GetService<IConfiguration>();
     return Math.Max(1, configuration?.GetValue<int?>(configurationKey) ?? defaultValue);
+}
+
+static bool IsTransientStartupDatabaseException(Exception exception)
+{
+    for (var current = exception; current is not null; current = current.InnerException)
+    {
+        if (current is Npgsql.PostgresException)
+            return false;
+
+        if (current is Npgsql.NpgsqlException or TimeoutException or System.Net.Sockets.SocketException)
+            return true;
+    }
+
+    return false;
 }
 
 public partial class Program { }
