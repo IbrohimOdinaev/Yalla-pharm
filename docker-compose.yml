@@ -39,10 +39,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: ${API_HEALTH_START_PERIOD:-360s}
     environment:
       - ConnectionStrings__Default=${DB_CONNECTION_STRING}
       - Database__ApplyMigrationsOnStartup=${DB_APPLY_MIGRATIONS:-true}
+      - Database__StartupRetryAttempts=${DB_STARTUP_RETRY_ATTEMPTS:-30}
+      - Database__StartupRetryDelaySeconds=${DB_STARTUP_RETRY_DELAY_SECONDS:-5}
+      - Database__ConnectionTimeoutSeconds=${DB_CONNECTION_TIMEOUT_SECONDS:-5}
       - Jwt__Key=${JWT_KEY}
       - Jwt__Issuer=${JWT_ISSUER:-Yalla.Api}
       - Jwt__Audience=${JWT_AUDIENCE:-Yalla.Api.Client}

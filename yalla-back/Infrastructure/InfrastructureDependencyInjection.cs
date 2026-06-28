@@ -28,11 +28,7 @@ public static class DependencyInjection
     {
         options.UseNpgsql(
             connectionString,
-            npgsql =>
-            {
-                npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "public");
-                npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
-            });
+            npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "public"));
         // Hand-written migrations (e.g. AddPrescriptionTierAndChecklistKind)
         // skip the auto snapshot regeneration that `dotnet ef migrations add`
         // would normally do, so EF 9 flags the model as "out of sync" and
@@ -484,8 +480,26 @@ public static class DependencyInjection
     if (string.IsNullOrWhiteSpace(builder.SearchPath))
       builder.SearchPath = "public";
 
+    var connectionTimeoutSeconds = config.GetValue<int?>("Database:ConnectionTimeoutSeconds");
+    if (connectionTimeoutSeconds is > 0 && !HasConnectionTimeout(connectionString))
+      builder.Timeout = connectionTimeoutSeconds.Value;
+
     return builder.ConnectionString;
   }
+
+  private static bool HasConnectionTimeout(string connectionString) =>
+    connectionString
+      .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+      .Any(part =>
+      {
+        var separatorIndex = part.IndexOf('=');
+        if (separatorIndex <= 0) return false;
+
+        var key = part[..separatorIndex].Trim();
+        return key.Equals("Timeout", StringComparison.OrdinalIgnoreCase)
+          || key.Equals("Connection Timeout", StringComparison.OrdinalIgnoreCase)
+          || key.Equals("Connect Timeout", StringComparison.OrdinalIgnoreCase);
+      });
 
   private static string NormalizeMinIoEndpointForContainer(string endpoint, IConfiguration config)
   {
