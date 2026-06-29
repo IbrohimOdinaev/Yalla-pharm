@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/app/providers/StoreProvider";
+import { buildStructuredData, getSiteUrl, siteSeo } from "@/shared/seo/site";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ const runtimeConfigKeys = [
   "NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL",
   "NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL",
   "NEXT_PUBLIC_YANDEX_MAPS_API_KEY",
+  "NEXT_PUBLIC_SITE_URL",
 ] as const;
 
 function getRuntimeConfigScript() {
@@ -24,8 +26,67 @@ function getRuntimeConfigScript() {
 }
 
 export const metadata: Metadata = {
-  title: "Yalla Pharm | Pharmacy Dushanbe",
-  description: "Онлайн-аптека Душанбе: доставка лекарств",
+  metadataBase: new URL(getSiteUrl()),
+  applicationName: siteSeo.name,
+  title: {
+    default: siteSeo.title,
+    template: `%s | ${siteSeo.name}`,
+  },
+  description: siteSeo.description,
+  keywords: [...siteSeo.keywords],
+  authors: [{ name: siteSeo.name }],
+  creator: siteSeo.name,
+  publisher: siteSeo.name,
+  manifest: "/manifest.webmanifest",
+  alternates: {
+    canonical: "/",
+    languages: {
+      "ru-TJ": "/",
+      ru: "/",
+    },
+  },
+  openGraph: {
+    type: "website",
+    locale: siteSeo.locale,
+    url: "/",
+    siteName: siteSeo.name,
+    title: siteSeo.title,
+    description: siteSeo.description,
+    images: [
+      {
+        url: "/pharmacy-integration-banner.png",
+        width: 1823,
+        height: 863,
+        alt: "Yalla Pharm — онлайн-аптека Душанбе",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteSeo.title,
+    description: siteSeo.description,
+    images: ["/pharmacy-integration-banner.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  category: "healthcare",
+  other: {
+    "geo.region": siteSeo.region,
+    "geo.placename": "Dushanbe, Tajikistan",
+    "geo.position": `${siteSeo.latitude};${siteSeo.longitude}`,
+    ICBM: `${siteSeo.latitude}, ${siteSeo.longitude}`,
+    "place:location:latitude": String(siteSeo.latitude),
+    "place:location:longitude": String(siteSeo.longitude),
+  },
   icons: {
     icon: [
       { url: "/logo-icon.png?v=2", type: "image/png" },
@@ -47,12 +108,19 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const structuredData = JSON.stringify(buildStructuredData()).replace(/</g, "\\u003c");
+
   return (
     <html lang="ru">
       <head>
         <script
           id="yalla-runtime-config"
           dangerouslySetInnerHTML={{ __html: getRuntimeConfigScript() }}
+        />
+        <script
+          id="yalla-structured-data"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: structuredData }}
         />
         <link rel="preconnect" href="https://api-maps.yandex.ru" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://platform.mahal.tj" crossOrigin="anonymous" />

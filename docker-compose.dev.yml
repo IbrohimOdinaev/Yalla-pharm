@@ -27,11 +27,13 @@ services:
     # Front is a Next.js renderer. Only public/runtime-safe variables
     # belong here; DB/JWT/MinIO/SMS/Telegram secrets stay on the api.
     environment:
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://pharm-api-dev:8080}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
       NEXT_PUBLIC_SIGNALR_ENABLED: ${NEXT_PUBLIC_SIGNALR_ENABLED:-false}
       NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: ${NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL:-/hubs/updates}
       NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL: ${NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL:-/hubs/telegram-auth}
       NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://dev-pharm.yalla.tj}
       MAHAL_API_TOKEN: ${MAHAL_API_TOKEN:-}
       TELEGRAM_INTEGRATIONFORM_TOKEN: ${TELEGRAM_INTEGRATIONFORM_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
