@@ -28,6 +28,7 @@ const warnings = [];
 
 const publicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const internalApiUrl = process.env.INTERNAL_API_URL ?? "";
+const publicSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
 
 if (publicApiBaseUrl && !/^https?:\/\//.test(publicApiBaseUrl)) {
   errors.push(
@@ -38,6 +39,12 @@ if (publicApiBaseUrl && !/^https?:\/\//.test(publicApiBaseUrl)) {
 if (internalApiUrl && !/^https?:\/\//.test(internalApiUrl)) {
   errors.push(
     `INTERNAL_API_URL must be an absolute URL (got "${internalApiUrl}").`,
+  );
+}
+
+if (publicSiteUrl && !/^https?:\/\//.test(publicSiteUrl)) {
+  errors.push(
+    `NEXT_PUBLIC_SITE_URL must be an absolute URL (got "${publicSiteUrl}").`,
   );
 }
 
