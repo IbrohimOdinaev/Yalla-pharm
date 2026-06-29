@@ -14,6 +14,7 @@ export const env = {
     "/hubs/telegram-auth",
   ),
   yandexMapsApiKey: getRuntimeConfigValue("NEXT_PUBLIC_YANDEX_MAPS_API_KEY"),
+  siteUrl: getRuntimeConfigValue("NEXT_PUBLIC_SITE_URL"),
 } as const;
 
 /**
@@ -38,6 +39,12 @@ export function validateEnv(): { errors: string[]; warnings: string[] } {
   if (env.apiBaseUrl && !/^https?:\/\//.test(env.apiBaseUrl)) {
     errors.push(
       `NEXT_PUBLIC_API_BASE_URL must be an absolute URL (got "${env.apiBaseUrl}").`,
+    );
+  }
+
+  if (env.siteUrl && !/^https?:\/\//.test(env.siteUrl)) {
+    errors.push(
+      `NEXT_PUBLIC_SITE_URL must be an absolute URL (got "${env.siteUrl}").`,
     );
   }
 

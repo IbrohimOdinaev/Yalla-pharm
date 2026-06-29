@@ -3,8 +3,11 @@ import { AppShell } from "@/widgets/layout/AppShell";
 import { CatalogView } from "@/widgets/catalog/CatalogView";
 
 export const metadata: Metadata = {
-  title: "Каталог | Yalla Pharm",
-  description: "Все лекарства и товары для здоровья — каталог онлайн-аптеки Душанбе.",
+  title: "Каталог лекарств",
+  description: "Каталог лекарств и товаров для здоровья в аптеках Душанбе: поиск, наличие и цены.",
+  alternates: {
+    canonical: "/catalog",
+  },
 };
 
 export default function CatalogPage() {

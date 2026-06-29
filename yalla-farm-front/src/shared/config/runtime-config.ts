@@ -3,7 +3,8 @@ type RuntimeConfigKey =
   | "NEXT_PUBLIC_SIGNALR_ENABLED"
   | "NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL"
   | "NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL"
-  | "NEXT_PUBLIC_YANDEX_MAPS_API_KEY";
+  | "NEXT_PUBLIC_YANDEX_MAPS_API_KEY"
+  | "NEXT_PUBLIC_SITE_URL";
 
 type RuntimeConfig = Partial<Record<RuntimeConfigKey, string>>;
 
@@ -19,6 +20,7 @@ const buildTimeConfig: RuntimeConfig = {
   NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL: process.env.NEXT_PUBLIC_SIGNALR_UPDATES_HUB_URL,
   NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL: process.env.NEXT_PUBLIC_SIGNALR_TELEGRAM_AUTH_HUB_URL,
   NEXT_PUBLIC_YANDEX_MAPS_API_KEY: process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY,
+  NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
 };
 
 export function getRuntimeConfigValue(key: RuntimeConfigKey, fallback = ""): string {
