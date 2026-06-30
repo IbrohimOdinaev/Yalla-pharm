@@ -32,6 +32,25 @@ export type CreateAdminWithPharmacyResponse = {
     iconUrl?: string | null;
     bannerUrl?: string | null;
   };
+  login: string;
+  defaultPassword: string;
+};
+
+export type PharmacyAccount = {
+  id: string;
+  pharmacyId: string;
+  login: string;
+  name: string;
+  phoneNumber: string;
+  avatarUrl?: string | null;
+  isActive: boolean;
+};
+
+export type ResetPharmacyAccountPasswordResponse = {
+  pharmacyAccountId: string;
+  pharmacyId: string;
+  login: string;
+  newPassword: string;
 };
 
 export type AdminProfileOtpResponse = {
@@ -72,6 +91,14 @@ export async function updateAdminMe(token: string, data: { name: string; phoneNu
   return apiFetch<ApiAdmin>("/api/admins/me", { method: "PUT", token, body: data });
 }
 
+export async function updateStaffProfile(
+  token: string,
+  adminId: string,
+  data: { name: string; phoneNumber: string },
+): Promise<ApiAdmin> {
+  return apiFetch<ApiAdmin>(`/api/admins/${adminId}`, { method: "PUT", token, body: data });
+}
+
 export async function requestAdminProfileOtp(
   token: string,
   data: { name: string; phoneNumber: string },
@@ -107,7 +134,7 @@ export async function createAdminWithPharmacy(
   data: {
     adminName: string;
     adminPhoneNumber: string;
-    adminPassword: string;
+    adminPassword?: string;
     pharmacyTitle: string;
     pharmacyAddress: string;
     latitude?: number;
@@ -115,6 +142,22 @@ export async function createAdminWithPharmacy(
   }
 ): Promise<CreateAdminWithPharmacyResponse> {
   return apiFetch<CreateAdminWithPharmacyResponse>("/api/admins/register-with-pharmacy", { method: "POST", token, body: data });
+}
+
+export async function getPharmacyAccounts(token: string): Promise<PharmacyAccount[]> {
+  const response = await apiFetch<{ accounts?: PharmacyAccount[] }>("/api/pharmacy-workers/accounts", { token });
+  return Array.isArray(response.accounts) ? response.accounts : [];
+}
+
+export async function resetPharmacyAccountPassword(
+  token: string,
+  pharmacyId: string,
+  newPassword?: string,
+): Promise<ResetPharmacyAccountPasswordResponse> {
+  return apiFetch<ResetPharmacyAccountPasswordResponse>(
+    `/api/pharmacy-workers/accounts/${pharmacyId}/password`,
+    { method: "POST", token, body: { newPassword: newPassword || null } },
+  );
 }
 
 export async function deleteAdmin(token: string, pharmacyWorkerId: string): Promise<void> {

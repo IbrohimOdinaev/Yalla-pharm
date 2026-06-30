@@ -69,4 +69,26 @@ public sealed class PharmacyWorkersController : ControllerBase
       cancellationToken);
     return Ok(new { admins = response });
   }
+
+  [HttpGet("accounts")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> GetPharmacyAccounts(CancellationToken cancellationToken)
+  {
+    var response = await _pharmacyWorkerService.GetPharmacyAccountsAsync(cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("accounts/{pharmacyId:guid}/password")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> ResetPharmacyAccountPassword(
+    Guid pharmacyId,
+    [FromBody] ResetPharmacyAccountPasswordRequest? request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _pharmacyWorkerService.ResetPharmacyAccountPasswordAsync(
+      pharmacyId,
+      request ?? new ResetPharmacyAccountPasswordRequest(),
+      cancellationToken);
+    return Ok(response);
+  }
 }
