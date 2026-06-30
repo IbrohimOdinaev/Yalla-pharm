@@ -50,10 +50,10 @@ export async function adminLogin(phoneNumber: string, password: string): Promise
   });
 }
 
-export async function pharmacyAccountLogin(phoneNumber: string, password: string): Promise<LoginResponse> {
+export async function pharmacyAccountLogin(login: string, password: string): Promise<LoginResponse> {
   return apiFetch<LoginResponse>("/api/auth/pharmacy/login", {
     method: "POST",
-    body: { phoneNumber, password },
+    body: { phoneNumber: login, password },
   });
 }
 

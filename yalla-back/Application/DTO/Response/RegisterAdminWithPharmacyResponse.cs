@@ -4,4 +4,6 @@ public sealed class RegisterAdminWithPharmacyResponse
 {
   public PharmacyWorkerResponse PharmacyWorker { get; init; } = new();
   public PharmacyResponse Pharmacy { get; init; } = new();
+  public string Login { get; init; } = string.Empty;
+  public string DefaultPassword { get; init; } = string.Empty;
 }

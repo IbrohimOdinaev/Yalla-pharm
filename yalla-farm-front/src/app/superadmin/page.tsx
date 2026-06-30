@@ -18,11 +18,15 @@ import {
   deleteAdmin,
   deleteSuperAdminTelegramRecipient,
   getAdmins,
+  getPharmacyAccounts,
   getSuperAdminTelegramRecipients,
   pollSuperAdminTelegramLink,
+  resetPharmacyAccountPassword,
   startSuperAdminTelegramLink,
+  updateStaffProfile,
   uploadAdminAvatarForSuperAdmin,
   type ApiAdmin,
+  type PharmacyAccount,
   type StaffTelegramLinkStartResponse,
   type StaffTelegramRecipient,
 } from "@/entities/admin/api";
@@ -355,10 +359,18 @@ function passwordVisibilityText(user: Pick<ApiUserListItem, "authType" | "hasPas
   return "Задан, хранится как BCrypt hash";
 }
 
-function CredentialBlock({ login, passwordText }: { login: string; passwordText: string }) {
+function CredentialBlock({
+  login,
+  passwordText,
+  prefix = "+",
+}: {
+  login: string;
+  passwordText: string;
+  prefix?: string;
+}) {
   return (
     <div className="mt-2 grid gap-1 rounded-xl bg-surface-container-low p-2 text-[11px]">
-      <p><span className="font-black text-on-surface">Логин:</span> <span className="font-mono">{login ? `+${login}` : "—"}</span></p>
+      <p><span className="font-black text-on-surface">Логин:</span> <span className="break-all font-mono">{login ? `${prefix}${login}` : "—"}</span></p>
       <p><span className="font-black text-on-surface">Пароль:</span> {passwordText}</p>
     </div>
   );
@@ -2226,6 +2238,7 @@ function StaffPayoutModal({
 
 function PharmaciesTab({ token }: { token: string }) {
   const [admins, setAdmins] = useState<ApiAdmin[]>([]);
+  const [pharmacyAccounts, setPharmacyAccounts] = useState<PharmacyAccount[]>([]);
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [oneCSources, setOneCSources] = useState<OneCSource[]>([]);
   const [query, setQuery] = useState("");
@@ -2237,6 +2250,10 @@ function PharmaciesTab({ token }: { token: string }) {
     getAdmins(token, q)
       .then(setAdmins)
       .catch(() => setAdmins([]));
+
+    getPharmacyAccounts(token)
+      .then(setPharmacyAccounts)
+      .catch(() => setPharmacyAccounts([]));
 
     getAllPharmacies(token, q)
       .then(setPharmacies)
@@ -2255,10 +2272,10 @@ function PharmaciesTab({ token }: { token: string }) {
     debounceRef.current = setTimeout(() => load(v), 300);
   }
 
-  /* Create admin + pharmacy */
+  /* Create pharmacy account + pharmacy */
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminPhone, setNewAdminPhone] = useState("");
-  const [newAdminPass, setNewAdminPass] = useState("");
+  const [createdAccountCredentials, setCreatedAccountCredentials] = useState<{ login: string; password: string } | null>(null);
   const [newPharmaTitle, setNewPharmaTitle] = useState("");
   const [newPharmaAddr, setNewPharmaAddr] = useState("");
   const [showCreateMap, setShowCreateMap] = useState(false);
@@ -2280,7 +2297,7 @@ function PharmaciesTab({ token }: { token: string }) {
     setMsg(null);
     try {
       const created = await createAdminWithPharmacy(token, {
-        adminName: newAdminName, adminPhoneNumber: newAdminPhone, adminPassword: newAdminPass,
+        adminName: newAdminName, adminPhoneNumber: newAdminPhone,
         pharmacyTitle: newPharmaTitle, pharmacyAddress: newPharmaAddr,
         latitude: newPharmaLat ? parseFloat(newPharmaLat) : undefined,
         longitude: newPharmaLng ? parseFloat(newPharmaLng) : undefined,
@@ -2291,8 +2308,9 @@ function PharmaciesTab({ token }: { token: string }) {
       if (logo) await uploadPharmacyIcon(token, created.pharmacy.id, logo);
       if (banner) await uploadPharmacyBanner(token, created.pharmacy.id, banner);
       if (avatar) await uploadAdminAvatarForSuperAdmin(token, created.pharmacyWorker.id, avatar);
-      setMsg("Админ и аптека созданы.");
-      setNewAdminName(""); setNewAdminPhone(""); setNewAdminPass(""); setNewPharmaTitle(""); setNewPharmaAddr("");
+      setCreatedAccountCredentials({ login: created.login, password: created.defaultPassword });
+      setMsg("Аккаунт аптеки и аптека созданы.");
+      setNewAdminName(""); setNewAdminPhone(""); setNewPharmaTitle(""); setNewPharmaAddr("");
       setNewPharmaLat(""); setNewPharmaLng(""); setShowCreateMap(false);
       if (newPharmaLogoRef.current) newPharmaLogoRef.current.value = "";
       if (newPharmaBannerRef.current) newPharmaBannerRef.current.value = "";
@@ -2315,13 +2333,12 @@ function PharmaciesTab({ token }: { token: string }) {
       {/* Create form */}
       <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onCreateAdminPharmacy}>
         <div>
-          <h3 className="text-sm xs:text-base sm:text-lg font-bold">Создать админа + аптеку</h3>
-          <p className="mt-0.5 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Новый администратор с новой аптекой</p>
+          <h3 className="text-sm xs:text-base sm:text-lg font-bold">Создать PharmacyAccount + аптеку</h3>
+          <p className="mt-0.5 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">Логин будет равен ID аптеки, пароль сгенерируется автоматически</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
-          <input className="stitch-input" placeholder="Имя админа" value={newAdminName} onChange={(e) => setNewAdminName(e.target.value)} required />
-          <input className="stitch-input" placeholder="Телефон" value={newAdminPhone} onChange={(e) => setNewAdminPhone(e.target.value)} required />
-          <input className="stitch-input" type="password" placeholder="Пароль" value={newAdminPass} onChange={(e) => setNewAdminPass(e.target.value)} required />
+          <input className="stitch-input" placeholder="Имя аккаунта аптеки" value={newAdminName} onChange={(e) => setNewAdminName(e.target.value)} required />
+          <input className="stitch-input" placeholder="Телефон для связи" value={newAdminPhone} onChange={(e) => setNewAdminPhone(e.target.value)} required />
           <input className="stitch-input" placeholder="Название аптеки" value={newPharmaTitle} onChange={(e) => setNewPharmaTitle(e.target.value)} required />
           <div className="md:col-span-2">
             <AddressAutocomplete
@@ -2342,8 +2359,15 @@ function PharmaciesTab({ token }: { token: string }) {
           </div>
           <PrettyFileInput inputRef={newPharmaLogoRef} label="Логотип аптеки" accept="image/png,image/jpeg,image/webp" />
           <PrettyFileInput inputRef={newPharmaBannerRef} label="Баннер аптеки" accept="image/png,image/jpeg,image/webp" />
-          <PrettyFileInput inputRef={newAdminAvatarRef} label="Фото профиля админа (необязательно)" accept="image/png,image/jpeg,image/webp" className="md:col-span-2" />
+          <PrettyFileInput inputRef={newAdminAvatarRef} label="Фото профиля аккаунта (необязательно)" accept="image/png,image/jpeg,image/webp" className="md:col-span-2" />
         </div>
+        {createdAccountCredentials ? (
+          <CredentialBlock
+            login={createdAccountCredentials.login}
+            passwordText={createdAccountCredentials.password}
+            prefix=""
+          />
+        ) : null}
         <button type="button" className="stitch-button-secondary text-xs w-full" onClick={() => setShowCreateMap(!showCreateMap)}>
           {showCreateMap ? "Скрыть карту" : "Выбрать адрес на карте"}
         </button>
@@ -2418,6 +2442,7 @@ function PharmaciesTab({ token }: { token: string }) {
               token={token}
               pharmacy={p}
               admins={admins}
+              pharmacyAccounts={pharmacyAccounts}
               oneCSources={oneCSources.filter((source) => source.pharmacyId === p.id)}
               onDone={() => load(query)}
             />
@@ -2491,12 +2516,14 @@ function EditablePharmacyCard({
   token,
   pharmacy,
   admins,
+  pharmacyAccounts,
   oneCSources,
   onDone,
 }: {
   token: string;
   pharmacy: ActivePharmacy;
   admins: ApiAdmin[];
+  pharmacyAccounts: PharmacyAccount[];
   oneCSources: OneCSource[];
   onDone: () => void;
 }) {
@@ -2511,6 +2538,12 @@ function EditablePharmacyCard({
   const [iconUploading, setIconUploading] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
   const [adminAvatarUploading, setAdminAvatarUploading] = useState(false);
+  const [accountName, setAccountName] = useState("");
+  const [accountPhone, setAccountPhone] = useState("");
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountPassword, setAccountPassword] = useState("");
+  const [accountPasswordResetting, setAccountPasswordResetting] = useState(false);
+  const [lastAccountPassword, setLastAccountPassword] = useState<string | null>(null);
   const iconFileRef = useRef<HTMLInputElement>(null);
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const adminAvatarFileRef = useRef<HTMLInputElement>(null);
@@ -2518,6 +2551,18 @@ function EditablePharmacyCard({
 
   // Find current admin for this pharmacy
   const pharmacyAdmin = admins.find((a) => a.pharmacyId === pharmacy.id);
+  const pharmacyAccount = pharmacyAccounts.find((account) => account.pharmacyId === pharmacy.id);
+
+  useEffect(() => {
+    if (!pharmacyAccount) {
+      setAccountName("");
+      setAccountPhone("");
+      return;
+    }
+
+    setAccountName(pharmacyAccount.name);
+    setAccountPhone(pharmacyAccount.phoneNumber);
+  }, [pharmacyAccount]);
 
   const iconSrc = pharmacy.iconUrl
     ? (pharmacy.iconUrl.startsWith("http") ? pharmacy.iconUrl : `/api/pharmacies/icon/${pharmacy.id}/content`)
@@ -2632,6 +2677,46 @@ function EditablePharmacyCard({
     }
   }
 
+  async function onUpdatePharmacyAccount() {
+    if (!pharmacyAccount) return;
+    setAccountSaving(true);
+    setMsg(null);
+    try {
+      await updateStaffProfile(token, pharmacyAccount.id, {
+        name: accountName,
+        phoneNumber: accountPhone,
+      });
+      setMsg("Данные PharmacyAccount обновлены.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    } finally {
+      setAccountSaving(false);
+    }
+  }
+
+  async function onResetPharmacyAccountPassword() {
+    if (!pharmacyAccount) return;
+    setAccountPasswordResetting(true);
+    setMsg(null);
+    setLastAccountPassword(null);
+    try {
+      const response = await resetPharmacyAccountPassword(
+        token,
+        pharmacy.id,
+        accountPassword.trim() || undefined,
+      );
+      setLastAccountPassword(response.newPassword);
+      setAccountPassword("");
+      setMsg("Пароль PharmacyAccount обновлен.");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Ошибка.");
+    } finally {
+      setAccountPasswordResetting(false);
+    }
+  }
+
   if (isEditing) {
     return (
       <form className="stitch-card space-y-2 xs:space-y-3 sm:space-y-4 p-3 xs:p-4 sm:p-5" onSubmit={onSave}>
@@ -2709,6 +2794,63 @@ function EditablePharmacyCard({
           </div>
         </div>
 
+        {/* PharmacyAccount section */}
+        <div className="space-y-1.5 rounded-xl bg-surface-container-low p-2.5 xs:p-3">
+          <label className="text-xs font-semibold text-on-surface-variant">PharmacyAccount</label>
+          {pharmacyAccount ? (
+            <div className="space-y-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  className="stitch-input"
+                  value={accountName}
+                  onChange={(event) => setAccountName(event.target.value)}
+                  placeholder="Имя аккаунта"
+                />
+                <input
+                  className="stitch-input"
+                  value={accountPhone}
+                  onChange={(event) => setAccountPhone(event.target.value)}
+                  placeholder="Телефон"
+                />
+              </div>
+              <p className={`text-[10px] font-bold ${pharmacyAccount.isActive ? "text-primary" : "text-red-600"}`}>
+                {pharmacyAccount.isActive ? "Активен" : "Отключен"}
+              </p>
+              <CredentialBlock login={pharmacyAccount.login || pharmacy.id} passwordText="Задан, хранится как BCrypt hash" prefix="" />
+              <button
+                type="button"
+                className="stitch-button-secondary text-xs"
+                disabled={accountSaving}
+                onClick={onUpdatePharmacyAccount}
+              >
+                {accountSaving ? "Сохраняем..." : "Сохранить данные PharmacyAccount"}
+              </button>
+              {lastAccountPassword ? (
+                <CredentialBlock login={pharmacyAccount.login || pharmacy.id} passwordText={lastAccountPassword} prefix="" />
+              ) : null}
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <input
+                  className="stitch-input"
+                  type="text"
+                  value={accountPassword}
+                  onChange={(event) => setAccountPassword(event.target.value)}
+                  placeholder="Новый пароль или пусто для автогенерации"
+                />
+                <button
+                  type="button"
+                  className="stitch-button-secondary text-xs"
+                  disabled={accountPasswordResetting}
+                  onClick={onResetPharmacyAccountPassword}
+                >
+                  {accountPasswordResetting ? "Сохраняем..." : "Сменить пароль"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-warning">PharmacyAccount для этой аптеки не найден.</p>
+          )}
+        </div>
+
         {/* Admin section */}
         <div className="space-y-1.5 rounded-xl bg-surface-container-low p-2.5 xs:p-3">
           <label className="text-xs font-semibold text-on-surface-variant">Администратор</label>
@@ -2744,7 +2886,7 @@ function EditablePharmacyCard({
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Активна
         </label>
-        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("загружен") || msg.includes("загружена") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
+        {msg ? <div className={`text-xs ${msg.includes("Обновлено") || msg.includes("обновлен") || msg.includes("загружен") || msg.includes("загружена") ? "text-primary" : "text-red-700"}`}>{msg}</div> : null}
         <div className="flex gap-2">
           <button type="submit" className="stitch-button text-xs">Сохранить</button>
           <button type="button" className="stitch-button-secondary text-xs" onClick={() => setIsEditing(false)}>Отмена</button>
@@ -2768,6 +2910,9 @@ function EditablePharmacyCard({
           <div className="min-w-0">
             <p className="font-bold truncate">{pharmacy.title}</p>
             <p className="text-xs text-on-surface-variant truncate">{pharmacy.address} · {pharmacy.isActive ? "Активна" : "Неактивна"}</p>
+            <p className="text-[10px] text-on-surface-variant">
+              PharmacyAccount login: <span className="font-mono break-all">{pharmacyAccount?.login || pharmacy.id}</span>
+            </p>
             {pharmacyAdmin && <p className="text-[10px] text-on-surface-variant">Админ: {pharmacyAdmin.name}</p>}
             {!pharmacyAdmin && <p className="text-[10px] text-warning">Нет админа</p>}
             {pharmacy.latitude && pharmacy.longitude ? (
