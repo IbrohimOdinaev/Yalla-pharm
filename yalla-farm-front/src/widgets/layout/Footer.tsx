@@ -65,7 +65,7 @@ function MailGlyph() {
 export function Footer() {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.auth.role);
-  const isStaffRole = role === "Admin" || role === "SuperAdmin" || role === "Pharmacist";
+  const isStaffRole = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin" || role === "Pharmacist";
   const isStaffArea =
     pathname.startsWith("/workspace") || pathname.startsWith("/superadmin") || pathname.startsWith("/pharmacist");
 

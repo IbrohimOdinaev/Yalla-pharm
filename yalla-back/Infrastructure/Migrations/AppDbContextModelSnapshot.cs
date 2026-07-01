@@ -1085,6 +1085,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AcceptedByAdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("accepted_by_admin_id");
+
                     b.Property<int?>("Apartment")
                         .HasColumnType("integer")
                         .HasColumnName("apartment");
@@ -1223,6 +1227,9 @@ namespace Infrastructure.Migrations
                         .HasColumnName("status");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AcceptedByAdminId")
+                        .HasDatabaseName("ix_orders_accepted_by_admin_id");
 
                     b.HasIndex("ClientId")
                         .HasDatabaseName("ix_orders_client_id");
@@ -3513,6 +3520,11 @@ namespace Infrastructure.Migrations
                     b.HasOne("Yalla.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("PaymentConfirmedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Yalla.Domain.Entities.PharmacyWorker", null)
+                        .WithMany()
+                        .HasForeignKey("AcceptedByAdminId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Yalla.Domain.Entities.Pharmacy", null)

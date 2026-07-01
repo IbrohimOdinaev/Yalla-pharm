@@ -124,7 +124,7 @@ export function DispatchDeliveryModal({ open, token, order, onClose, onDispatche
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
       <div className="w-full bg-surface-container-lowest sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.35)] ring-1 ring-outline/30 max-h-modal-flush overflow-y-auto overscroll-contain">
         <div className="flex items-center justify-between border-b border-surface-container-high p-4">
           <h2 className="text-lg font-bold">Вызвать доставку</h2>

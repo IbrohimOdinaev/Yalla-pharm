@@ -34,6 +34,10 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .HasColumnType("uuid")
           .IsRequired();
 
+        builder.Property(x => x.AcceptedByAdminId)
+          .HasColumnName("accepted_by_admin_id")
+          .HasColumnType("uuid");
+
         builder.Property(x => x.DeliveryAddress)
           .HasColumnName("delivery_address")
           .HasColumnType("character varying(500)")
@@ -169,6 +173,9 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.HasIndex(x => x.PharmacyId)
           .HasDatabaseName("ix_orders_pharmacy_id");
 
+        builder.HasIndex(x => x.AcceptedByAdminId)
+          .HasDatabaseName("ix_orders_accepted_by_admin_id");
+
         builder.HasIndex(x => x.Status)
           .HasDatabaseName("ix_orders_status");
 
@@ -191,6 +198,11 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .WithMany(x => x.Orders)
           .HasForeignKey(x => x.PharmacyId)
           .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<PharmacyWorker>()
+          .WithMany()
+          .HasForeignKey(x => x.AcceptedByAdminId)
+          .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne<User>()
           .WithMany()

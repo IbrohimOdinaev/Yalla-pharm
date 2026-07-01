@@ -7,6 +7,7 @@ using Yalla.Application.Services;
 using Yalla.Application.UnitTests.TestInfrastructure;
 using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
+using Yalla.Domain.ValueObjects;
 
 namespace Yalla.Application.UnitTests.Services;
 
@@ -50,7 +51,8 @@ public class OrderServiceTests
     var response = await service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
     {
       WorkerId = setup.Worker.Id,
-      OrderId = order.Id
+      OrderId = order.Id,
+      AcceptedByAdminId = setup.StaffAdmin.Id
     });
 
     Assert.Equal(Status.Preparing, response.Status);
@@ -67,7 +69,8 @@ public class OrderServiceTests
     var response = await service.StartOrderAssemblyAsync(new StartOrderAssemblyRequest
     {
       WorkerId = setup.Worker.Id,
-      OrderId = order.Id
+      OrderId = order.Id,
+      AcceptedByAdminId = setup.StaffAdmin.Id
     });
 
     Assert.Equal(Status.Preparing, response.Status);
@@ -308,6 +311,61 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task DispatchDeliveryAsync_WhenClientPhoneIsMissing_UsesJuraFallbackPhone()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var orderId = Guid.NewGuid();
+    var orderPosition = new OrderPosition(
+      orderId,
+      setup.Medicine.Id,
+      setup.Medicine,
+      new OfferSnapshot(setup.Pharmacy.Id, 10m),
+      quantity: 1);
+    var order = new Order(
+      orderId,
+      setup.Client.Id,
+      clientPhoneNumber: "",
+      pharmacyId: setup.Pharmacy.Id,
+      deliveryAddress: "Address",
+      positions: [orderPosition]);
+
+    while (order.Status != Status.Ready)
+      order.NextStage(true);
+
+    var deliveryData = new DeliveryData(
+      order.Id,
+      "Pharmacy",
+      "Pharmacy address",
+      38.5737,
+      68.7738,
+      "Client",
+      "Client address",
+      38.5598,
+      68.7870);
+    deliveryData.SetDeliveryCost(15m, 2.4);
+    scope.Db.Orders.Add(order);
+    scope.Db.DeliveryData.Add(deliveryData);
+    await scope.Db.SaveChangesAsync();
+
+    var jura = new FakeJuraService();
+    var service = new OrderService(
+      scope.Db,
+      NullLogger<OrderService>.Instance,
+      new NoOpRealtimeUpdatesPublisher(),
+      jura);
+
+    await service.DispatchDeliveryAsync(new DispatchDeliveryRequest
+    {
+      WorkerId = setup.Worker.Id,
+      OrderId = order.Id,
+      TariffId = 1
+    });
+
+    Assert.Equal("000000000", jura.LastClientPhone);
+  }
+
+  [Fact]
   public async Task MoveOrderToNextStatusBySuperAdminAsync_MovesNewToUnderReview()
   {
     using var scope = TestDbFactory.Create();
@@ -454,25 +512,25 @@ public class OrderServiceTests
       }));
   }
 
-  private static async Task<(Client Client, Pharmacy Pharmacy, PharmacyWorker Worker, Medicine Medicine)> SeedWorkerSetup(TestDbScope scope)
+  private static async Task<(Client Client, Pharmacy Pharmacy, PharmacyWorker Worker, PharmacyWorker StaffAdmin, Medicine Medicine)> SeedWorkerSetup(TestDbScope scope)
   {
-    var admin = TestDbFactory.CreateUser("Admin", "992400001", Role.Admin);
     var client = TestDbFactory.CreateClient("Client", "992400002");
-    scope.Db.Users.Add(admin);
     scope.Db.Clients.Add(client);
     await scope.Db.SaveChangesAsync();
 
-    var pharmacy = TestDbFactory.CreatePharmacy("Ph", "Addr", admin.Id);
-    var worker = TestDbFactory.CreateWorker("Worker", "992400003", pharmacy.Id, pharmacy);
+    var pharmacy = TestDbFactory.CreatePharmacy("Ph", "Addr", Guid.NewGuid());
+    var worker = TestDbFactory.CreateWorker("Pharmacy Account", "992400003", pharmacy.Id, pharmacy, Role.PharmacyAccount);
+    var staffAdmin = TestDbFactory.CreateWorker("Admin", "992400004", pharmacy.Id, pharmacy);
+    pharmacy.SetAdminId(worker.Id);
     var medicine = TestDbFactory.CreateMedicine("M", "M-1");
 
     scope.Db.Pharmacies.Add(pharmacy);
-    scope.Db.PharmacyWorkers.Add(worker);
+    scope.Db.PharmacyWorkers.AddRange(worker, staffAdmin);
     scope.Db.Medicines.Add(medicine);
     scope.Db.Offers.Add(TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, stock: 10, price: 10m));
     await scope.Db.SaveChangesAsync();
 
-    return (client, pharmacy, worker, medicine);
+    return (client, pharmacy, worker, staffAdmin, medicine);
   }
 
   private static async Task<Order> CreateOrderWithStatus(
@@ -492,6 +550,17 @@ public class OrderServiceTests
         throw new InvalidOperationException("Cannot reach requested status with NextStage.");
     }
 
+    if (status is not (Status.New or Status.UnderReview))
+    {
+      var acceptedAdminId = await scope.Db.PharmacyWorkers
+        .AsNoTracking()
+        .Where(x => x.PharmacyId == pharmacyId && x.Role == Role.Admin)
+        .Select(x => x.Id)
+        .FirstOrDefaultAsync();
+      if (acceptedAdminId != Guid.Empty)
+        order.AssignAcceptedAdmin(acceptedAdminId);
+    }
+
     scope.Db.Orders.Add(order);
     await scope.Db.SaveChangesAsync();
     return order;
@@ -500,6 +569,7 @@ public class OrderServiceTests
   private sealed class FakeJuraService : IJuraService
   {
     public int CreateOrderCalls { get; private set; }
+    public string? LastClientPhone { get; private set; }
 
     public Task<List<JuraAddressSuggestion>> SearchAddressAsync(string text, CancellationToken ct)
     {
@@ -516,6 +586,7 @@ public class OrderServiceTests
       JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
     {
       CreateOrderCalls++;
+      LastClientPhone = clientPhone;
       return Task.FromResult(new JuraCreateOrderResult
       {
         OrderId = 123456,

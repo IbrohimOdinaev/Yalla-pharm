@@ -13,6 +13,7 @@ public sealed class WorkerOrderResponse
   public long? ClientTelegramId { get; init; }
   public string? ClientTelegramUsername { get; init; }
   public Guid PharmacyId { get; init; }
+  public Guid? AcceptedByAdminId { get; init; }
   public DateTime OrderPlacedAt { get; init; }
   public bool IsPickup { get; init; }
   public string DeliveryAddress { get; init; } = string.Empty;

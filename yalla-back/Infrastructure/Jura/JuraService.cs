@@ -20,8 +20,10 @@ public sealed class JuraService : IJuraService
   private readonly ILogger<JuraService> _logger;
   private readonly IJuraHealthState _health;
   private readonly SemaphoreSlim _authLock = new(1, 1);
+  private readonly SemaphoreSlim _payTypeLock = new(1, 1);
 
   private string? _token;
+  private long? _corporatePayTypeId;
 
   private static readonly JsonSerializerOptions JsonOptions = new()
   {
@@ -110,26 +112,45 @@ public sealed class JuraService : IJuraService
     JuraAddress from, JuraAddress to, int? tariffId, string? clientPhone, CancellationToken ct, bool deliverToDoor = false)
   {
     var effectiveTariffId = tariffId ?? _options.DefaultTariffId;
-    var normalizedPhone = NormalizeJuraPhone(clientPhone);
-
-    var body = new
-    {
-      division_id = _options.DivisionId,
-      tariff_id = effectiveTariffId,
-      phone = normalizedPhone,
-      pay_type_id = _options.DefaultPayTypeId,
-      from_address = ToJuraAddressPayload(from),
-      to_address = new[] { ToJuraAddressPayload(to) },
-      allowances = BuildCreateAllowancesPayload(deliverToDoor)
-    };
+    var normalizedPhone = NormalizeJuraPhone(clientPhone) ?? NormalizeJuraPhone("000000000")!;
+    var payTypeId = await ResolveCorporatePayTypeIdAsync(ct);
 
     _logger.LogInformation("Creating JURA delivery order from {From} to {To}", from.Title, to.Title);
 
+    var body = BuildCreateOrderPayload(from, to, effectiveTariffId, normalizedPhone, deliverToDoor, payTypeId);
     var response = await SendWithAuthAsync(
       HttpMethod.Post,
       $"{ExternalOrdersBasePath}/create",
       body,
-      ct);
+      ct,
+      ensureSuccess: false);
+
+    if (await HasValidationErrorAsync(response, "pay_type_id", ct))
+    {
+      var refreshedPayTypeId = await ResolveCorporatePayTypeIdAsync(ct, forceRefresh: true);
+      if (refreshedPayTypeId.HasValue && refreshedPayTypeId != payTypeId)
+      {
+        _logger.LogWarning(
+          "JURA rejected pay_type_id {PayTypeId}; retrying create order with refreshed corporate pay_type_id {RefreshedPayTypeId}.",
+          payTypeId,
+          refreshedPayTypeId);
+        body = BuildCreateOrderPayload(from, to, effectiveTariffId, normalizedPhone, deliverToDoor, refreshedPayTypeId);
+        response = await SendWithAuthAsync(
+          HttpMethod.Post,
+          $"{ExternalOrdersBasePath}/create",
+          body,
+          ct,
+          ensureSuccess: false);
+      }
+      else
+      {
+        _logger.LogWarning(
+          "JURA rejected pay_type_id {PayTypeId}; no alternate corporate pay_type_id was found.",
+          payTypeId);
+      }
+    }
+
+    response.EnsureSuccessStatusCode();
 
     var result = await response.Content.ReadFromJsonAsync<JuraCreateOrderResponse>(JsonOptions, ct);
     var data = result?.Data ?? result?.Result ?? result;
@@ -183,6 +204,178 @@ public sealed class JuraService : IJuraService
 
   private sealed record JuraAllowancePayload(int AllowanceId, int Value);
   private sealed record JuraCreateAllowancePayload(int Id, decimal Price, string Type, string Name);
+
+  private object BuildCreateOrderPayload(
+    JuraAddress from,
+    JuraAddress to,
+    int tariffId,
+    string? normalizedPhone,
+    bool deliverToDoor,
+    long? payTypeId) => new
+    {
+      division_id = _options.DivisionId,
+      tariff_id = tariffId,
+      phone = normalizedPhone,
+      pay_type_id = payTypeId,
+      from_address = ToJuraAddressPayload(from),
+      to_address = new[] { ToJuraAddressPayload(to) },
+      allowances = BuildCreateAllowancesPayload(deliverToDoor)
+    };
+
+  private async Task<long?> ResolveCorporatePayTypeIdAsync(CancellationToken ct, bool forceRefresh = false)
+  {
+    if (!forceRefresh && _corporatePayTypeId.HasValue)
+      return _corporatePayTypeId;
+
+    await _payTypeLock.WaitAsync(ct);
+    try
+    {
+      if (!forceRefresh && _corporatePayTypeId.HasValue)
+        return _corporatePayTypeId;
+
+      var fallbackPayTypeId = _options.DefaultPayTypeId > 0 ? _options.DefaultPayTypeId : (long?)null;
+      var response = await SendWithAuthAsync(
+        HttpMethod.Get,
+        $"{ExternalOrdersBasePath}/pay-types",
+        null,
+        ct,
+        ensureSuccess: false,
+        ignoreNotFoundFailure: true);
+
+      if (!response.IsSuccessStatusCode)
+      {
+        _logger.LogWarning(
+          "JURA pay-types endpoint returned {Status}; falling back to configured pay_type_id {PayTypeId}.",
+          (int)response.StatusCode,
+          fallbackPayTypeId);
+        _corporatePayTypeId = fallbackPayTypeId;
+        return _corporatePayTypeId;
+      }
+
+      var responseText = await response.Content.ReadAsStringAsync(ct);
+      try
+      {
+        _corporatePayTypeId = FindCorporatePayTypeId(responseText) ?? fallbackPayTypeId;
+      }
+      catch (JsonException ex)
+      {
+        _logger.LogWarning(
+          ex,
+          "JURA pay-types endpoint returned an unexpected payload; falling back to configured pay_type_id {PayTypeId}.",
+          fallbackPayTypeId);
+        _corporatePayTypeId = fallbackPayTypeId;
+      }
+
+      _logger.LogInformation("Resolved JURA corporate pay_type_id: {PayTypeId}", _corporatePayTypeId);
+      return _corporatePayTypeId;
+    }
+    finally
+    {
+      _payTypeLock.Release();
+    }
+  }
+
+  private static long? FindCorporatePayTypeId(string responseText)
+  {
+    if (string.IsNullOrWhiteSpace(responseText))
+      return null;
+
+    using var document = JsonDocument.Parse(responseText);
+    return FindCorporatePayTypeId(document.RootElement);
+  }
+
+  private static long? FindCorporatePayTypeId(JsonElement element)
+  {
+    if (element.ValueKind == JsonValueKind.Object)
+    {
+      if (TryReadLongProperty(element, "id", out var id)
+          && IsCorporatePayType(element))
+        return id;
+
+      if (TryReadLongProperty(element, "pay_type_id", out var payTypeId)
+          && IsCorporatePayType(element))
+        return payTypeId;
+
+      foreach (var property in element.EnumerateObject())
+      {
+        var found = FindCorporatePayTypeId(property.Value);
+        if (found.HasValue)
+          return found;
+      }
+    }
+
+    if (element.ValueKind == JsonValueKind.Array)
+    {
+      foreach (var item in element.EnumerateArray())
+      {
+        var found = FindCorporatePayTypeId(item);
+        if (found.HasValue)
+          return found;
+      }
+    }
+
+    return null;
+  }
+
+  private static bool IsCorporatePayType(JsonElement element)
+  {
+    var text = new System.Text.StringBuilder();
+    foreach (var property in element.EnumerateObject())
+    {
+      var propertyName = property.Name.ToLowerInvariant();
+      if (property.Value.ValueKind == JsonValueKind.True
+          && (propertyName.Contains("corporate", StringComparison.Ordinal)
+              || propertyName.Contains("corp", StringComparison.Ordinal)
+              || propertyName.Contains("balance", StringComparison.Ordinal)))
+      {
+        return true;
+      }
+
+      if (property.Value.ValueKind == JsonValueKind.String)
+        text.Append(' ').Append(propertyName).Append(' ').Append(property.Value.GetString());
+    }
+
+    var candidate = text.ToString().ToLowerInvariant();
+    return candidate.Contains("corporate", StringComparison.Ordinal)
+           || candidate.Contains("corp", StringComparison.Ordinal)
+           || candidate.Contains("корпоратив", StringComparison.Ordinal)
+           || candidate.Contains("корп.", StringComparison.Ordinal)
+           || ((candidate.Contains("balance", StringComparison.Ordinal)
+                || candidate.Contains("баланс", StringComparison.Ordinal))
+               && !candidate.Contains("cash", StringComparison.Ordinal)
+               && !candidate.Contains("налич", StringComparison.Ordinal));
+  }
+
+  private static bool TryReadLongProperty(JsonElement element, string propertyName, out long value)
+  {
+    value = 0;
+    if (!element.TryGetProperty(propertyName, out var property))
+      return false;
+
+    return property.ValueKind switch
+    {
+      JsonValueKind.Number => property.TryGetInt64(out value),
+      JsonValueKind.String => long.TryParse(property.GetString(), out value),
+      _ => false
+    };
+  }
+
+  private static async Task<bool> HasValidationErrorAsync(
+    HttpResponseMessage response,
+    string fieldName,
+    CancellationToken ct)
+  {
+    if (response.StatusCode != HttpStatusCode.UnprocessableEntity)
+      return false;
+
+    var responseText = await response.Content.ReadAsStringAsync(ct);
+    response.Content = new StringContent(
+      responseText,
+      System.Text.Encoding.UTF8,
+      response.Content.Headers.ContentType?.MediaType ?? "application/json");
+
+    return responseText.Contains($"\"{fieldName}\"", StringComparison.OrdinalIgnoreCase);
+  }
 
   // ─── Order Status ───
 

@@ -120,7 +120,7 @@ export default function ProfilePage() {
   }
 
   function onLogout() {
-    const wasAdminLike = role === "Admin" || role === "SuperAdmin";
+    const wasAdminLike = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin";
     dispatch(clearCredentials());
     // Admin/SuperAdmin → home via replace so the back button can't bounce the
     // user back into the now-unauthorized workspace. Client → login.

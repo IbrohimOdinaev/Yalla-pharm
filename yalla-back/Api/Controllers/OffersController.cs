@@ -19,7 +19,7 @@ public sealed class OffersController : ControllerBase
   }
 
   [HttpPost]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> Upsert(
     [FromBody] UpsertOfferRequest request,
     CancellationToken cancellationToken)

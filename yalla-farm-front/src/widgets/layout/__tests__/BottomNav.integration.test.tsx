@@ -6,7 +6,7 @@ import { BottomNav } from "@/widgets/layout/BottomNav";
 import { renderWithProviders } from "@/test/render";
 
 // BottomNav is staff-only — client + guest get an empty render. Admin,
-// SuperAdmin and Pharmacist each see their own set of section links.
+// PharmacyAccount, SuperAdmin and Pharmacist each see their own set of section links.
 describe("BottomNav", () => {
   it("guest: renders nothing", () => {
     const { container } = renderWithProviders(<BottomNav />);
@@ -20,9 +20,9 @@ describe("BottomNav", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("admin: shows workspace nav (Dashboard / Предложения / Заказы / Запросы)", () => {
+  it("pharmacy account: shows workspace nav (Dashboard / Предложения / Заказы / Запросы)", () => {
     renderWithProviders(<BottomNav />, {
-      preloadedAuth: { token: "t", role: "Admin" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount" },
     });
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Предложения")).toBeInTheDocument();
@@ -32,6 +32,17 @@ describe("BottomNav", () => {
     expect(screen.queryByText("Каталог")).not.toBeInTheDocument();
     expect(screen.queryByText("Корзина")).not.toBeInTheDocument();
     expect(screen.queryByText("Профиль")).not.toBeInTheDocument();
+  });
+
+  it("admin: shows staff payout nav (Dashboard / Профиль)", () => {
+    renderWithProviders(<BottomNav />, {
+      preloadedAuth: { token: "t", role: "Admin" },
+    });
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Профиль")).toBeInTheDocument();
+    expect(screen.queryByText("Предложения")).not.toBeInTheDocument();
+    expect(screen.queryByText("Заказы")).not.toBeInTheDocument();
+    expect(screen.queryByText("Запросы")).not.toBeInTheDocument();
   });
 
   it("superadmin: shows Dashboard / Аптеки / Лекарства / Заказы / Рецепты / Доставка", () => {
@@ -59,12 +70,12 @@ describe("BottomNav", () => {
     expect(screen.getByText("История")).toBeInTheDocument();
   });
 
-  it("admin: at /workspace/lookups only Запросы is active", () => {
+  it("pharmacy account: at /workspace/lookups only Запросы is active", () => {
     vi.spyOn(navigation, "usePathname").mockReturnValue("/workspace/lookups");
     window.history.replaceState({}, "", "/workspace/lookups");
 
     renderWithProviders(<BottomNav />, {
-      preloadedAuth: { token: "t", role: "Admin" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount" },
     });
 
     const dashboardTab = screen.getByRole("link", { name: "Dashboard" });

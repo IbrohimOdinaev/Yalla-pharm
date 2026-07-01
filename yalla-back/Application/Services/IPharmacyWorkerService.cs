@@ -28,12 +28,24 @@ public interface IPharmacyWorkerService
       GetAdminsRequest request,
       CancellationToken cancellationToken = default);
 
+    Task<GetPharmacyAccountsResponse> GetPharmacyAccountsAsync(
+      CancellationToken cancellationToken = default);
+
     Task<RegisterPharmacyWorkerResponse> RegisterPharmacyWorkerAsync(
       RegisterPharmacyWorkerRequest request,
       CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyCollection<PharmacyWorkerResponse>> GetActiveAdminsForPharmacyAsync(
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default);
+
     Task<RegisterAdminWithPharmacyResponse> RegisterAdminWithPharmacyAsync(
       RegisterAdminWithPharmacyRequest request,
+      CancellationToken cancellationToken = default);
+
+    Task<ResetPharmacyAccountPasswordResponse> ResetPharmacyAccountPasswordAsync(
+      Guid pharmacyId,
+      ResetPharmacyAccountPasswordRequest request,
       CancellationToken cancellationToken = default);
 
     Task<UpsertOfferResponse> UpsertOfferAsync(

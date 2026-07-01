@@ -55,10 +55,10 @@ public sealed class JwtTokenProvider : IJwtTokenProvider
       new(ClaimTypes.Role, role.ToString())
     };
 
-    if (role == Role.Admin)
+    if (role is Role.Admin or Role.PharmacyAccount)
     {
       if (!pharmacyId.HasValue || pharmacyId.Value == Guid.Empty)
-        throw new InvalidOperationException("PharmacyId claim is required for Admin token.");
+        throw new InvalidOperationException("PharmacyId claim is required for pharmacy staff token.");
 
       claims.Add(new("pharmacy_id", pharmacyId.Value.ToString()));
     }

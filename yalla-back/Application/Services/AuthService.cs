@@ -56,6 +56,11 @@ public sealed class AuthService : IAuthService
     CancellationToken cancellationToken = default)
     => LoginInternalAsync(request, expectedRole: Role.Admin, cancellationToken);
 
+  public Task<LoginResponse> PharmacyAccountLoginAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken = default)
+    => PharmacyAccountLoginInternalAsync(request, cancellationToken);
+
   public Task<LoginResponse> SuperAdminLoginAsync(
     LoginRequest request,
     CancellationToken cancellationToken = default)
@@ -147,7 +152,7 @@ public sealed class AuthService : IAuthService
     }
 
     Guid? pharmacyId = null;
-    if (user.Role == Role.Admin)
+    if (user.Role is Role.Admin or Role.PharmacyAccount)
     {
       pharmacyId = await _dbContext.PharmacyWorkers
         .AsNoTracking()
@@ -187,6 +192,112 @@ public sealed class AuthService : IAuthService
       Name = user.Name,
       PhoneNumber = user.PhoneNumber,
       Role = user.Role,
+      AccessToken = token.AccessToken,
+      ExpiresAtUtc = token.ExpiresAtUtc
+    };
+  }
+
+  private async Task<LoginResponse> PharmacyAccountLoginInternalAsync(
+    LoginRequest request,
+    CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var rawLogin = request.PhoneNumber?.Trim() ?? string.Empty;
+    if (string.IsNullOrWhiteSpace(rawLogin))
+      throw new InvalidOperationException("Invalid phone number or password.");
+
+    PharmacyWorker? account = null;
+    if (Guid.TryParse(rawLogin, out var loginGuid))
+    {
+      account = await _dbContext.PharmacyWorkers
+        .AsNoTracking()
+        .FirstOrDefaultAsync(
+          x => x.Role == Role.PharmacyAccount
+            && (x.PharmacyId == loginGuid || x.Id == loginGuid),
+          cancellationToken);
+    }
+    else
+    {
+      try
+      {
+        var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(rawLogin);
+        account = await _dbContext.PharmacyWorkers
+          .AsNoTracking()
+          .FirstOrDefaultAsync(
+            x => x.PhoneNumber == normalizedPhoneNumber && x.Role == Role.PharmacyAccount,
+            cancellationToken);
+      }
+      catch (DomainArgumentException)
+      {
+        account = null;
+      }
+    }
+
+    if (account is null
+      || string.IsNullOrWhiteSpace(account.PasswordHash)
+      || !_passwordHasher.VerifyPassword(request.Password, account.PasswordHash))
+    {
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.LoginFailed,
+          entityType: "User",
+          entityId: account?.Id,
+          summary: "Failed pharmacy account login attempt.",
+          payload: new { login = rawLogin, expectedRole = Role.PharmacyAccount.ToString() },
+          cancellationToken: cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+      }
+      throw new InvalidOperationException("Invalid phone number or password.");
+    }
+
+    if (!account.IsActive)
+    {
+      if (_auditLogger is not null)
+      {
+        await _auditLogger.LogAsync(
+          AuditAction.LoginFailed,
+          entityType: "User",
+          entityId: account.Id,
+          summary: "Login rejected — pharmacy account is inactive.",
+          payload: new
+          {
+            deactivatedAtUtc = account.DeactivatedAtUtc,
+            deactivatedByUserId = account.DeactivatedByUserId,
+            reason = account.DeactivationReason,
+          },
+          cancellationToken: cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+      }
+      throw new InvalidOperationException("Invalid phone number or password.");
+    }
+
+    var token = _jwtTokenProvider.GenerateToken(
+      account.Id,
+      account.Name,
+      account.PhoneNumber,
+      account.Role,
+      account.PharmacyId);
+
+    if (_auditLogger is not null)
+    {
+      await _auditLogger.LogAsync(
+        AuditAction.LoginSucceeded,
+        entityType: "User",
+        entityId: account.Id,
+        summary: $"User '{account.Id}' logged in as {account.Role}.",
+        payload: new { role = account.Role.ToString(), pharmacyId = account.PharmacyId, login = rawLogin },
+        cancellationToken: cancellationToken);
+      await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    return new LoginResponse
+    {
+      UserId = account.Id,
+      Name = account.Name,
+      PhoneNumber = account.PhoneNumber,
+      Role = account.Role,
       AccessToken = token.AccessToken,
       ExpiresAtUtc = token.ExpiresAtUtc
     };
@@ -238,8 +349,8 @@ public sealed class AuthService : IAuthService
       .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
       ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException($"User '{adminId}' does not have pharmacy staff role.");
 
     var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
     if (!string.Equals(normalizedPhoneNumber, admin.PhoneNumber, StringComparison.Ordinal))
@@ -284,8 +395,8 @@ public sealed class AuthService : IAuthService
       .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
       ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException($"User '{adminId}' does not have pharmacy staff role.");
 
     var normalizedPhoneNumber = UserInputPolicy.NormalizePhoneNumber(request.PhoneNumber);
     var phoneTaken = await _dbContext.Users
@@ -369,8 +480,8 @@ public sealed class AuthService : IAuthService
       .FirstOrDefaultAsync(x => x.Id == adminId, cancellationToken)
       ?? throw new InvalidOperationException($"Admin user with id '{adminId}' was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException($"User '{adminId}' does not have Admin role.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException($"User '{adminId}' does not have pharmacy staff role.");
 
     admin.SetName(payload.Name);
     admin.SetPhoneNumber(payload.PhoneNumber);

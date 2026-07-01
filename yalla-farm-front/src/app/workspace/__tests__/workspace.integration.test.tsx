@@ -25,6 +25,18 @@ function mockAdminFetch(orders: Record<string, unknown>[] = [
         ),
       );
     }
+    if (requestUrl.includes("/api/pharmacy-workers/mine/admins")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            admins: [
+              { id: "admin-worker-1", name: "Worker Admin", phoneNumber: "900000012", pharmacyId: "ph1" },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
     if (requestUrl.includes("/api/delivery/tariffs")) {
       return Promise.resolve(
         new Response(
@@ -112,26 +124,26 @@ describe("WorkspacePage", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("admin: shows the Admin Dashboard hero", async () => {
+  it("pharmacy account: shows the Admin Dashboard hero", async () => {
     mockAdminFetch();
     renderWithProviders(<WorkspacePage />, {
-      preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount", userId: "u1" },
     });
     expect(await screen.findByText("Admin Dashboard")).toBeInTheDocument();
   });
 
-  it("admin: shows the pharmacy name in the hero", async () => {
+  it("pharmacy account: shows the pharmacy name in the hero", async () => {
     mockAdminFetch();
     renderWithProviders(<WorkspacePage />, {
-      preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount", userId: "u1" },
     });
     expect((await screen.findAllByText(/Аптека Тест/)).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("admin: shows the stat-card labels", async () => {
+  it("pharmacy account: shows the stat-card labels", async () => {
     mockAdminFetch();
     renderWithProviders(<WorkspacePage />, {
-      preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount", userId: "u1" },
     });
     expect(await screen.findByText("Заказы сегодня")).toBeInTheDocument();
     expect(screen.getByText("Отменённые")).toBeInTheDocument();
@@ -139,7 +151,7 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("Оборот")).toBeInTheDocument();
   });
 
-  it("admin dashboard: shows recent orders with finance breakdown", async () => {
+  it("pharmacy account dashboard: shows recent orders with finance breakdown", async () => {
     mockAdminFetch([
       {
         orderId: "finance1",
@@ -155,7 +167,7 @@ describe("WorkspacePage", () => {
       },
     ]);
     renderWithProviders(<WorkspacePage />, {
-      preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount", userId: "u1" },
     });
 
     expect(await screen.findByText("Последние заказы")).toBeInTheDocument();
@@ -166,7 +178,7 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("116.00 TJS")).toBeInTheDocument();
   });
 
-  it("admin orders: hides the New column and shows New orders under review", async () => {
+  it("pharmacy account orders: hides the New column and shows New orders under review", async () => {
     window.location.hash = "#orders";
     mockAdminFetch([
       { orderId: "new00001", status: "New", cost: 100, positions: [], createdAtUtc: "2026-06-05T08:00:00Z" },
@@ -174,7 +186,7 @@ describe("WorkspacePage", () => {
     ]);
 
     renderWithProviders(<WorkspacePage />, {
-      preloadedAuth: { token: "t", role: "Admin", userId: "u1" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount", userId: "u1" },
     });
 
     expect(await screen.findByText("Order Board")).toBeInTheDocument();
@@ -184,7 +196,7 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("#review01")).toBeInTheDocument();
   });
 
-  it("admin orders: opens courier dispatch from the Ready card and moves order on the way after confirm", async () => {
+  it("pharmacy account orders: opens courier dispatch from the Ready card and moves order on the way after confirm", async () => {
     window.location.hash = "#orders";
     const fetchMock = mockAdminFetch([
       {
@@ -205,7 +217,7 @@ describe("WorkspacePage", () => {
     ]);
 
     renderWithProviders(<WorkspacePage />, {
-      preloadedAuth: { token: "t", role: "Admin", userId: "u1", pharmacyId: "ph1" },
+      preloadedAuth: { token: "t", role: "PharmacyAccount", userId: "u1", pharmacyId: "ph1" },
     });
 
     await userEvent.click(await screen.findByRole("button", { name: "В пути" }));

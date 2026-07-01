@@ -368,7 +368,7 @@ public static class DependencyInjection
         : 37;
       options.DefaultPayTypeId = long.TryParse(config[$"{JuraOptions.SectionName}:DefaultPayTypeId"], out var payTypeId)
         ? payTypeId
-        : 243115;
+        : 243138;
     });
     services.AddSingleton<IJuraHealthState, JuraHealthState>();
     services.AddHttpClient<JuraService>((provider, client) =>
@@ -480,8 +480,26 @@ public static class DependencyInjection
     if (string.IsNullOrWhiteSpace(builder.SearchPath))
       builder.SearchPath = "public";
 
+    var connectionTimeoutSeconds = config.GetValue<int?>("Database:ConnectionTimeoutSeconds");
+    if (connectionTimeoutSeconds is > 0 && !HasConnectionTimeout(connectionString))
+      builder.Timeout = connectionTimeoutSeconds.Value;
+
     return builder.ConnectionString;
   }
+
+  private static bool HasConnectionTimeout(string connectionString) =>
+    connectionString
+      .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+      .Any(part =>
+      {
+        var separatorIndex = part.IndexOf('=');
+        if (separatorIndex <= 0) return false;
+
+        var key = part[..separatorIndex].Trim();
+        return key.Equals("Timeout", StringComparison.OrdinalIgnoreCase)
+          || key.Equals("Connection Timeout", StringComparison.OrdinalIgnoreCase)
+          || key.Equals("Connect Timeout", StringComparison.OrdinalIgnoreCase);
+      });
 
   private static string NormalizeMinIoEndpointForContainer(string endpoint, IConfiguration config)
   {

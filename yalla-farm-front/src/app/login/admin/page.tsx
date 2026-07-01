@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
-import { adminLogin, superAdminLogin, pharmacistLogin } from "@/entities/auth/api";
+import { adminLogin, pharmacyAccountLogin, superAdminLogin, pharmacistLogin } from "@/entities/auth/api";
 import { formatPhone } from "@/shared/lib/format";
 import { useAppDispatch } from "@/shared/lib/redux";
 import { setCredentials } from "@/features/auth/model/authSlice";
@@ -43,19 +43,29 @@ function loginErrorMessage(err: unknown): string {
   return "Не удалось войти. Попробуйте ещё раз.";
 }
 
-const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist" };
+const ROLE_MAP: Record<number, string> = { 0: "Client", 1: "Admin", 2: "SuperAdmin", 3: "Pharmacist", 4: "PharmacyAccount" };
 
 // Single staff-login form. One phone number can only belong to one staff
 // role, so we no longer ask the user to pick — instead we probe each
 // role-specific endpoint in sequence and accept whichever succeeds. Wrong
 // password / non-existent account → every endpoint returns 4xx and we
 // surface the standard "wrong number or password" message.
-async function tryStaffLogin(phone: string, password: string) {
-  const attempts = [adminLogin, superAdminLogin, pharmacistLogin];
+function normalizePhoneLogin(value: string) {
+  return formatPhone(value.replace(/\D/g, ""));
+}
+
+async function tryStaffLogin(login: string, password: string) {
+  const phoneLogin = normalizePhoneLogin(login);
+  const attempts = [
+    () => pharmacyAccountLogin(login.trim(), password),
+    () => adminLogin(phoneLogin, password),
+    () => superAdminLogin(phoneLogin, password),
+    () => pharmacistLogin(phoneLogin, password),
+  ];
   let lastErr: unknown;
   for (const attempt of attempts) {
     try {
-      return await attempt(phone, password);
+      return await attempt();
     } catch (err) {
       lastErr = err;
       // Try the next role only on credential-style failures (401/404).
@@ -95,8 +105,7 @@ function AdminLoginContent() {
     setError(null);
 
     try {
-      const normalizedPhone = formatPhone(phoneNumber);
-      const response = await tryStaffLogin(normalizedPhone, password);
+      const response = await tryStaffLogin(phoneNumber, password);
 
       const role = typeof response.role === "number"
         ? (ROLE_MAP[response.role] ?? "Client")
@@ -113,7 +122,7 @@ function AdminLoginContent() {
       }));
 
       const fallbackRedirect =
-        role === "Admin" ? "/workspace"
+        role === "Admin" || role === "PharmacyAccount" ? "/workspace"
           : role === "SuperAdmin" ? "/superadmin"
             : role === "Pharmacist" ? "/pharmacist"
               : "/";
@@ -148,18 +157,16 @@ function AdminLoginContent() {
         >
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-on-surface-variant">
-              Номер телефона
+              ID аптеки или телефон
             </span>
             <div className="flex items-center gap-2 rounded-2xl bg-surface-container-low px-3.5 focus-within:ring-2 focus-within:ring-primary/30">
               <span className="text-sm">🇹🇯</span>
-              <span className="font-semibold text-on-surface-variant">+992</span>
               <input
                 className="min-w-0 flex-1 bg-transparent py-3 text-base font-semibold tracking-wider text-on-surface outline-none tabular-nums"
-                type="tel"
-                inputMode="numeric"
+                type="text"
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                placeholder="93 •••• •• ••"
+                onChange={(e) => setPhoneNumber(e.target.value.trim())}
+                placeholder="ID аптеки или телефон"
                 required
               />
             </div>

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
@@ -12,6 +13,9 @@ namespace Yalla.Application.Services;
 
 public sealed class PharmacyWorkerService : IPharmacyWorkerService
 {
+    private const int GeneratedPasswordLength = 8;
+    private const string GeneratedPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
     private readonly IAppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IRealtimeUpdatesPublisher _realtimeUpdatesPublisher;
@@ -43,10 +47,10 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         ArgumentNullException.ThrowIfNull(request);
 
         var adminExists = await _dbContext.Users
-          .AnyAsync(x => x.Id == request.AdminId, cancellationToken);
+          .AnyAsync(x => x.Id == request.AdminId && x.Role == Role.PharmacyAccount, cancellationToken);
 
         if (!adminExists)
-            throw new InvalidOperationException($"Admin user with id '{request.AdminId}' was not found.");
+            throw new InvalidOperationException($"Pharmacy account with id '{request.AdminId}' was not found.");
 
         var pharmacy = request.ToDomain();
 
@@ -72,10 +76,10 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         if (request.AdminId.HasValue && request.AdminId.Value != Guid.Empty)
         {
             var adminExists = await _dbContext.Users
-              .AnyAsync(x => x.Id == request.AdminId.Value, cancellationToken);
+              .AnyAsync(x => x.Id == request.AdminId.Value && x.Role == Role.PharmacyAccount, cancellationToken);
 
             if (!adminExists)
-                throw new InvalidOperationException($"Admin user with id '{request.AdminId}' was not found.");
+                throw new InvalidOperationException($"Pharmacy account with id '{request.AdminId}' was not found.");
         }
 
         request.ApplyToDomain(pharmacy);
@@ -180,6 +184,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         var query = _dbContext.PharmacyWorkers
           .AsNoTracking()
           .Include(x => x.Pharmacy)
+          .Where(x => x.Role == Role.Admin)
           .AsQueryable();
 
         var queryText = request.Query?.Trim();
@@ -225,6 +230,31 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         };
     }
 
+    public async Task<GetPharmacyAccountsResponse> GetPharmacyAccountsAsync(
+      CancellationToken cancellationToken = default)
+    {
+        var accounts = await _dbContext.PharmacyWorkers
+          .AsNoTracking()
+          .Where(x => x.Role == Role.PharmacyAccount)
+          .OrderBy(x => x.Pharmacy != null ? x.Pharmacy.Title : x.Name)
+          .Select(x => new PharmacyAccountResponse
+          {
+              Id = x.Id,
+              PharmacyId = x.PharmacyId,
+              Login = x.PharmacyId.ToString(),
+              Name = x.Name,
+              PhoneNumber = x.PhoneNumber,
+              AvatarUrl = string.IsNullOrEmpty(x.AvatarUrl) ? null : $"/api/admins/{x.Id}/avatar/content",
+              IsActive = x.IsActive
+          })
+          .ToListAsync(cancellationToken);
+
+        return new GetPharmacyAccountsResponse
+        {
+            Accounts = accounts
+        };
+    }
+
     public async Task<RegisterPharmacyWorkerResponse> RegisterPharmacyWorkerAsync(
       RegisterPharmacyWorkerRequest request,
       CancellationToken cancellationToken = default)
@@ -267,6 +297,21 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         };
     }
 
+    public async Task<IReadOnlyCollection<PharmacyWorkerResponse>> GetActiveAdminsForPharmacyAsync(
+      Guid pharmacyId,
+      CancellationToken cancellationToken = default)
+    {
+        if (pharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        return await _dbContext.PharmacyWorkers
+          .AsNoTracking()
+          .Where(x => x.PharmacyId == pharmacyId && x.Role == Role.Admin && x.IsActive)
+          .OrderBy(x => x.Name)
+          .Select(x => x.ToResponse())
+          .ToListAsync(cancellationToken);
+    }
+
     public async Task<DeletePharmacyWorkerResponse> DeletePharmacyWorkerAsync(
       DeletePharmacyWorkerRequest request,
       CancellationToken cancellationToken = default)
@@ -293,9 +338,12 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         if (phoneExists)
             throw new InvalidOperationException($"User with phone number '{normalizedPhoneNumber}' already exists.");
 
-        UserInputPolicy.EnsureValidPassword(request.AdminPassword, nameof(request.AdminPassword));
-        var passwordHash = _passwordHasher.HashPassword(request.AdminPassword);
-        if (!_passwordHasher.VerifyPassword(request.AdminPassword, passwordHash))
+        var defaultPassword = string.IsNullOrWhiteSpace(request.AdminPassword)
+          ? GenerateDefaultPassword()
+          : request.AdminPassword;
+        UserInputPolicy.EnsureValidPassword(defaultPassword, nameof(request.AdminPassword));
+        var passwordHash = _passwordHasher.HashPassword(defaultPassword);
+        if (!_passwordHasher.VerifyPassword(defaultPassword, passwordHash))
             throw new InvalidOperationException("Password hashing verification failed.");
 
         var adminId = Guid.NewGuid();
@@ -316,7 +364,7 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
           passwordHash,
           pharmacyId,
           pharmacy,
-          Role.Admin);
+          Role.PharmacyAccount);
 
         _dbContext.Pharmacies.Add(pharmacy);
         _dbContext.PharmacyWorkers.Add(worker);
@@ -325,7 +373,45 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         return new RegisterAdminWithPharmacyResponse
         {
             Pharmacy = pharmacy.ToResponse(),
-            PharmacyWorker = worker.ToResponse()
+            PharmacyWorker = worker.ToResponse(),
+            Login = pharmacyId.ToString(),
+            DefaultPassword = defaultPassword
+        };
+    }
+
+    public async Task<ResetPharmacyAccountPasswordResponse> ResetPharmacyAccountPasswordAsync(
+      Guid pharmacyId,
+      ResetPharmacyAccountPasswordRequest request,
+      CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (pharmacyId == Guid.Empty)
+            throw new DomainArgumentException("PharmacyId can't be empty.");
+
+        var account = await _dbContext.PharmacyWorkers
+          .AsTracking()
+          .FirstOrDefaultAsync(x => x.PharmacyId == pharmacyId && x.Role == Role.PharmacyAccount, cancellationToken)
+          ?? throw new InvalidOperationException($"Pharmacy account for pharmacy '{pharmacyId}' was not found.");
+
+        var newPassword = string.IsNullOrWhiteSpace(request.NewPassword)
+          ? GenerateDefaultPassword()
+          : request.NewPassword.Trim();
+
+        UserInputPolicy.EnsureValidPassword(newPassword, nameof(request.NewPassword));
+        var passwordHash = _passwordHasher.HashPassword(newPassword);
+        if (!_passwordHasher.VerifyPassword(newPassword, passwordHash))
+            throw new InvalidOperationException("Password hashing verification failed.");
+
+        account.SetPasswordHash(passwordHash);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ResetPharmacyAccountPasswordResponse
+        {
+            PharmacyAccountId = account.Id,
+            PharmacyId = account.PharmacyId,
+            Login = account.PharmacyId.ToString(),
+            NewPassword = newPassword
         };
     }
 
@@ -438,6 +524,18 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
         {
             DeletedPharmacyWorkerId = request.PharmacyWorkerId
         };
+    }
+
+    private static string GenerateDefaultPassword()
+    {
+        Span<char> password = stackalloc char[GeneratedPasswordLength];
+        for (var i = 0; i < password.Length; i++)
+        {
+            var index = RandomNumberGenerator.GetInt32(GeneratedPasswordAlphabet.Length);
+            password[i] = GeneratedPasswordAlphabet[index];
+        }
+
+        return new string(password);
     }
 
     public async Task<DeactivateUserResponse> DeactivatePharmacyWorkerAsync(

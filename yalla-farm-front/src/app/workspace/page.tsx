@@ -12,6 +12,7 @@ import {
   completeAdminTelegramLink,
   deleteAdminTelegramRecipient,
   getAdminMe,
+  getMyPharmacyAdmins,
   getAdminTelegramRecipients,
   pollAdminTelegramLink,
   requestAdminProfileOtp,
@@ -19,6 +20,7 @@ import {
   updateAdminMe,
   uploadAdminAvatar,
   verifyAdminProfileOtp,
+  type ApiPharmacyWorkerResponse,
   type StaffTelegramLinkStartResponse,
   type StaffTelegramRecipient,
 } from "@/entities/admin/api";
@@ -81,8 +83,8 @@ const TAB_META: Record<Tab, { eyebrow: string; title: string; description: strin
   },
 };
 
-const BOARD_COLUMNS = ["UnderReview", "Preparing", "Ready", "Taken", "Cancelled", "Returned"];
-const TAKEN_STATUSES = new Set(["OnTheWay", "DriverArrived", "Delivered", "PickedUp"]);
+const BOARD_COLUMNS = ["UnderReview", "Preparing", "Ready", "OnTheWay", "Taken", "Cancelled", "Returned"];
+const TAKEN_STATUSES = new Set(["DriverArrived", "Delivered", "PickedUp"]);
 const STATUS_LABELS: Record<string, string> = {
   New: "На рассмотрении", UnderReview: "На рассмотрении", Preparing: "Собирается",
   Ready: "Готов", Taken: "Забран", OnTheWay: "В пути", DriverArrived: "Курьер на месте",
@@ -133,7 +135,7 @@ export default function WorkspacePage() {
   const dispatch = useAppDispatch();
   const router = useRouter();
 
-  // Auth gate — bounce unauthenticated/non-admin visitors to the home page.
+  // Auth gate — bounce unauthenticated/non-pharmacy-staff visitors to the home page.
   // `replace` swaps the current entry so Back doesn't return them here.
   // Critically gated on `hydrated`: before the persisted JWT has been
   // rehydrated into the store both `token` and `role` are null, so without
@@ -143,7 +145,7 @@ export default function WorkspacePage() {
   // refresh stranded the admin on the default tab.
   useEffect(() => {
     if (!hydrated) return;
-    if (!token || role !== "Admin") {
+    if (!token || (role !== "Admin" && role !== "PharmacyAccount")) {
       router.replace("/");
     }
   }, [hydrated, token, role, router]);
@@ -176,7 +178,7 @@ export default function WorkspacePage() {
   const [adminName, setAdminName] = useState("");
 
   const refreshDailyStats = useCallback(() => {
-    if (!token || role !== "Admin") return;
+    if (!token || role !== "PharmacyAccount") return;
     getAdminOrders(token, "", 1, 1000)
       .then((data) => {
         const { startUtcMs, endUtcMs, label } = getDushanbeTodayWindow();
@@ -201,7 +203,7 @@ export default function WorkspacePage() {
   }, [token, role]);
 
   useEffect(() => {
-    if (!token || role !== "Admin") return;
+    if (!token || role !== "PharmacyAccount") return;
     refreshDailyStats();
     getAdminMe(token)
       .then((admin) => setAdminName(admin.name))
@@ -224,16 +226,21 @@ export default function WorkspacePage() {
   }, [token, role, adminPharmacyId, refreshDailyStats]);
 
   useEffect(() => {
-    if (!token || role !== "Admin") return;
+    if (!token || role !== "PharmacyAccount") return;
     const interval = setInterval(refreshDailyStats, 60_000);
     return () => clearInterval(interval);
   }, [token, role, refreshDailyStats]);
 
   // Render nothing while the auth-gate effect above performs the redirect —
   // avoids a flash of the "Access denied" stub on logout / direct hits.
-  if (!token || role !== "Admin") {
+  if (!token || (role !== "Admin" && role !== "PharmacyAccount")) {
     return null;
   }
+
+  if (role === "Admin") {
+    return <AdminStaffWorkspace token={token} onLogout={() => { dispatch(clearCredentials()); router.replace("/"); }} />;
+  }
+
   const activeMeta = TAB_META[activeTab];
 
   function onLogout() {
@@ -265,6 +272,83 @@ export default function WorkspacePage() {
         {activeTab === "offers" ? <OffersTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} onStatsRefresh={refreshDailyStats} /> : null}
         {activeTab === "finance" ? <FinanceTab token={token} /> : null}
+      </div>
+    </StaffShell>
+  );
+}
+
+function AdminStaffWorkspace({ token, onLogout }: { token: string; onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "profile">("dashboard");
+  const [adminName, setAdminName] = useState("");
+  const [compensation, setCompensation] = useState<StaffCompensationMe | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refreshCompensation = useCallback(() => {
+    return getStaffCompensationMe(token)
+      .then(setCompensation)
+      .catch(() => setCompensation(null));
+  }, [token]);
+
+  useEffect(() => {
+    function syncHash() {
+      const h = window.location.hash.replace("#", "");
+      setActiveTab(h === "profile" ? "profile" : "dashboard");
+    }
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  useEffect(() => {
+    setIsLoading(true);
+    Promise.all([
+      getAdminMe(token).then((admin) => setAdminName(admin.name)).catch(() => undefined),
+      refreshCompensation(),
+    ]).finally(() => setIsLoading(false));
+  }, [token, refreshCompensation]);
+
+  return (
+    <StaffShell
+      title="Admin"
+      subtitle="Кабинет сотрудника аптеки"
+      userDisplayName={adminName}
+      showLogoutInSidebar={false}
+    >
+      <div className="space-y-4">
+        {activeTab === "profile" ? (
+          <PharmacyTab token={token} onLogout={onLogout} />
+        ) : (
+          <section className="stitch-card space-y-4 p-4 sm:p-5">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Admin Dashboard</p>
+              <h1 className="mt-1 text-lg font-extrabold">Заработок</h1>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                Здесь отображаются заказы, которые главный аккаунт аптеки назначил вам при старте сборки.
+              </p>
+            </div>
+            {isLoading ? (
+              <div className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Загрузка...</div>
+            ) : compensation ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <StatTile label="готовых заказов" value={compensation.summary.earnedWorkItemsCount} hint="Назначенные заказы" emphasis />
+                  <StatTile label="к выплате" value={formatMoney(compensation.summary.balanceAmount, compensation.summary.currency)} hint="Доступный баланс" emphasis />
+                  <StatTile label="начислено" value={formatMoney(compensation.summary.earnedAmount, compensation.summary.currency)} hint="Всего начислено" />
+                  <StatTile label="выплачено" value={formatMoney(compensation.summary.paidAmount, compensation.summary.currency)} hint="Закрытые выплаты" />
+                </div>
+                <StaffPayoutRequestBox
+                  token={token}
+                  compensation={compensation}
+                  onCreated={refreshCompensation}
+                />
+              </>
+            ) : (
+              <div className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                Данные заработка пока недоступны.
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </StaffShell>
   );
@@ -545,6 +629,26 @@ function AdminWithdrawalCard({ request }: { request: PharmacyWithdrawalRequest }
         </span>
       </div>
     </article>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  hint,
+  emphasis = false,
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl bg-surface-container-low p-4">
+      <p className={`text-2xl font-black ${emphasis ? "text-primary" : "text-on-surface"}`}>{value}</p>
+      <p className="mt-2 text-xs font-bold uppercase text-on-surface-variant">{label}</p>
+      <p className="mt-1 text-xs text-on-surface-variant">{hint}</p>
+    </div>
   );
 }
 
@@ -1512,11 +1616,15 @@ function OffersTab({ token }: { token: string }) {
 
 function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: () => void }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [acceptedAdmins, setAcceptedAdmins] = useState<ApiPharmacyWorkerResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [deliveryOrder, setDeliveryOrder] = useState<ApiOrder | null>(null);
+  const [assemblyOrder, setAssemblyOrder] = useState<ApiOrder | null>(null);
+  const [selectedAcceptedAdminId, setSelectedAcceptedAdminId] = useState("");
+  const [isAssemblySubmitting, setIsAssemblySubmitting] = useState(false);
 
   // Deep-link: /workspace?orderId=X auto-opens modal on mount.
   useEffect(() => {
@@ -1538,6 +1646,15 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  useEffect(() => {
+    getMyPharmacyAdmins(token)
+      .then((admins) => {
+        setAcceptedAdmins(admins);
+        setSelectedAcceptedAdminId((current) => current || admins[0]?.id || "");
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить админов аптеки."));
+  }, [token]);
+
   // Safety-net polling: if SignalR drops, auto-transitions from JURA still land.
   useEffect(() => {
     function onFocus() {
@@ -1554,14 +1671,37 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
   }, [refresh]);
 
 
-  async function onAction(action: string, orderId: string) {
+  async function onAction(action: string, order: ApiOrder) {
     try {
-      if (action === "assembly") await startAssembly(token, orderId);
-      if (action === "ready") await markReady(token, orderId);
-      if (action === "ontheway") await markOnTheWay(token, orderId);
+      if (action === "assembly") {
+        setAssemblyOrder(order);
+        setSelectedAcceptedAdminId(order.acceptedByAdminId || acceptedAdmins[0]?.id || "");
+        return;
+      }
+      if (action === "ready") await markReady(token, order.orderId);
+      if (action === "ontheway") await markOnTheWay(token, order.orderId);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка.");
+    }
+  }
+
+  async function confirmStartAssembly() {
+    if (!assemblyOrder) return;
+    if (!selectedAcceptedAdminId) {
+      setError("Выберите Admin, который принял заказ.");
+      return;
+    }
+    setIsAssemblySubmitting(true);
+    setError(null);
+    try {
+      await startAssembly(token, assemblyOrder.orderId, selectedAcceptedAdminId);
+      setAssemblyOrder(null);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка.");
+    } finally {
+      setIsAssemblySubmitting(false);
     }
   }
 
@@ -1585,6 +1725,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
   const grouped = BOARD_COLUMNS.reduce<Record<string, ApiOrder[]>>((acc, status) => {
     const list = filteredOrders.filter((o) => {
       if (status === "Taken") return TAKEN_STATUSES.has(o.status);
+      if (status === "OnTheWay") return o.status === "OnTheWay";
       if (status === "UnderReview") return o.status === "New" || o.status === "UnderReview";
       return o.status === status;
     });
@@ -1626,7 +1767,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
         {BOARD_COLUMNS.map((status) => {
           const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] => {
             const a: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] = [];
-            if (status === "UnderReview" && (order.status === "New" || order.status === "UnderReview")) a.push({ label: "Начать сборку", action: "assembly", needsConfirm: true });
+            if (status === "UnderReview" && (order.status === "New" || order.status === "UnderReview")) a.push({ label: "Начать сборку", action: "assembly" });
             if (status === "Preparing") a.push({ label: "Собран", action: "ready", needsConfirm: true });
             if (status === "Ready") a.push(order.isPickup
               ? { label: "Выдан клиенту", action: "ontheway", needsConfirm: true }
@@ -1658,9 +1799,47 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
         <AdminOrderDetailModal
           orderId={selectedOrderId}
           token={token}
+          acceptedAdmins={acceptedAdmins}
           onRequestDispatch={openDeliveryDispatch}
           onClose={() => { setSelectedOrderId(null); refresh(); }}
         />
+      ) : null}
+
+      {assemblyOrder ? (
+        <>
+          <div className="fixed inset-0 z-[120] bg-black/50" onClick={() => setAssemblyOrder(null)} />
+          <div className="pointer-events-none fixed inset-0 z-[121] flex items-start justify-center overflow-y-auto p-4 pt-20">
+            <div className="stitch-card pointer-events-auto w-full max-w-md space-y-4 p-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">Принял заказ</p>
+                <h3 className="mt-1 text-lg font-extrabold">Выберите Admin</h3>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Этот сотрудник получит начисление после перевода заказа #{assemblyOrder.orderId.slice(0, 8)} в статус “Готов”.
+                </p>
+              </div>
+              <select
+                className="stitch-input w-full"
+                value={selectedAcceptedAdminId}
+                onChange={(event) => setSelectedAcceptedAdminId(event.target.value)}
+                disabled={acceptedAdmins.length === 0}
+              >
+                {acceptedAdmins.length === 0 ? (
+                  <option value="">Нет активных Admin</option>
+                ) : acceptedAdmins.map((admin) => (
+                  <option key={admin.id} value={admin.id}>{admin.name} · {admin.phoneNumber}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <button type="button" className="stitch-button flex-1" onClick={confirmStartAssembly} disabled={isAssemblySubmitting || !selectedAcceptedAdminId}>
+                  {isAssemblySubmitting ? "Сохраняем..." : "Начать сборку"}
+                </button>
+                <button type="button" className="rounded-xl bg-surface-container-low px-4 py-2 text-sm font-bold" onClick={() => setAssemblyOrder(null)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       ) : null}
 
       {deliveryOrder ? (
@@ -1687,7 +1866,7 @@ function OrderCard({
 }: {
   order: ApiOrder;
   actions: { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[];
-  onAction: (action: string, orderId: string) => void;
+  onAction: (action: string, order: ApiOrder) => void;
   token?: string;
   onRefresh?: () => void;
   onSelect?: (orderId: string) => void;
@@ -1727,8 +1906,23 @@ function OrderCard({
       ? `tg:${order.clientTelegramId}`
       : undefined;
 
+  function openDetails() {
+    onSelect?.(order.orderId);
+  }
+
   return (
-    <div className={`stitch-card space-y-2 p-3 ${deliveryBorderClass(!!order.isPickup)}`}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openDetails}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetails();
+        }
+      }}
+      className={`stitch-card cursor-pointer space-y-2 p-3 transition hover:border-primary/40 hover:bg-surface-container-low focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${deliveryBorderClass(!!order.isPickup)}`}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
         <div className="flex items-center gap-1.5">
@@ -1781,7 +1975,11 @@ function OrderCard({
             const stockIsEnough = hasStock && pos.stockQuantity! >= pos.quantity;
 
             return (
-              <label key={pos.positionId} className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}>
+              <label
+                key={pos.positionId}
+                onClick={(event) => event.stopPropagation()}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${pos.isRejected ? "line-through text-on-surface-variant" : ""}`}
+              >
                 {!pos.isRejected ? (
                   <input type="checkbox" checked={selectedPositions.has(pos.positionId)} onChange={() => togglePosition(pos.positionId)} />
                 ) : null}
@@ -1816,14 +2014,15 @@ function OrderCard({
               key={a.action}
               type="button"
               className={`rounded-lg px-3 py-1 text-xs font-bold ${a.danger ? "bg-red-100 text-red-700" : "bg-primary text-on-primary"}`}
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 if (a.action === "dispatchDelivery") {
                   onRequestDispatch?.(order);
                   return;
                 }
                 if (a.danger && !confirm(`Подтвердите: ${a.label.toLowerCase()} заказ #${order.orderId.slice(0, 8)}?`)) return;
                 if (a.needsConfirm && !confirm(`${a.label}? Статус заказа #${order.orderId.slice(0, 8)} изменится.`)) return;
-                onAction(a.action, order.orderId);
+                onAction(a.action, order);
               }}
             >
               {a.label}
@@ -1831,15 +2030,6 @@ function OrderCard({
           ))}
         </div>
       ) : null}
-
-      {/* "Подробнее" — opens modal inline (no navigation) */}
-      <button
-        type="button"
-        onClick={() => onSelect?.(order.orderId)}
-        className="inline-block rounded-lg bg-surface-container-low px-3 py-1 text-xs font-bold text-on-surface-variant hover:bg-surface-container-high"
-      >
-        Подробнее
-      </button>
     </div>
   );
 }

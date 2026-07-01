@@ -148,12 +148,14 @@ function ProductModalInner() {
     () => (currentPharmacyId ? availableOffers.find((offer) => offer.pharmacyId === currentPharmacyId) : undefined),
     [availableOffers, currentPharmacyId],
   );
-  const canAddToBasket = role !== "Admin" && role !== "SuperAdmin";
-  const showOfferBreakdown = role !== "Admin" && role !== "SuperAdmin";
-  const displayedPrice = role === "Admin" && currentPharmacyId
+  const isPharmacyManager = role === "PharmacyAccount";
+  const isManagementRole = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin";
+  const canAddToBasket = !isManagementRole;
+  const showOfferBreakdown = !isManagementRole;
+  const displayedPrice = isPharmacyManager && currentPharmacyId
     ? (currentPharmacyOffer?.price ?? medicine?.minPrice ?? medicine?.price)
     : cheapestPrice;
-  const displayedPricePrefix = role === "Admin" && currentPharmacyId ? "" : "от ";
+  const displayedPricePrefix = isPharmacyManager && currentPharmacyId ? "" : "от ";
 
   const handleAdd = useCallback(() => {
     if (!medicine) return;

@@ -50,7 +50,7 @@ function GlobalTopBarInner() {
   // Hide the prescription CTA for staff — they don't shop. Same condition the
   // home-page banner uses, so the in-header pill and the page banner share
   // visibility rules and never both vanish for a real client.
-  const showPrescriptionCta = role !== "Admin" && role !== "SuperAdmin";
+  const showPrescriptionCta = role !== "Admin" && role !== "PharmacyAccount" && role !== "SuperAdmin";
 
   return (
     <>

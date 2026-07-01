@@ -125,6 +125,7 @@ public static class RequestDtoValidator
         break;
       case StartOrderAssemblyRequest request:
         RequireNotEmpty(request.OrderId, nameof(request.OrderId), errors);
+        RequireNotEmpty(request.AcceptedByAdminId, nameof(request.AcceptedByAdminId), errors);
         break;
       case UpdateAdminProfileRequest request:
         ValidateUpdateAdminProfile(request, errors);
@@ -324,7 +325,7 @@ public static class RequestDtoValidator
     LoginRequest request,
     List<ValidationError> errors)
   {
-    RequireDigitsPhone(request.PhoneNumber, nameof(request.PhoneNumber), errors);
+    RequireNotWhiteSpace(request.PhoneNumber, nameof(request.PhoneNumber), errors);
     RequireNotWhiteSpace(request.Password, nameof(request.Password), errors);
   }
 
@@ -354,7 +355,8 @@ public static class RequestDtoValidator
   {
     RequireNotWhiteSpace(request.AdminName, nameof(request.AdminName), errors);
     RequireDigitsPhone(request.AdminPhoneNumber, nameof(request.AdminPhoneNumber), errors);
-    RequirePasswordByPolicy(request.AdminPassword, nameof(request.AdminPassword), errors);
+    if (!string.IsNullOrWhiteSpace(request.AdminPassword))
+      RequirePasswordByPolicy(request.AdminPassword, nameof(request.AdminPassword), errors);
     RequireNotWhiteSpace(request.PharmacyTitle, nameof(request.PharmacyTitle), errors);
     RequireNotWhiteSpace(request.PharmacyAddress, nameof(request.PharmacyAddress), errors);
   }

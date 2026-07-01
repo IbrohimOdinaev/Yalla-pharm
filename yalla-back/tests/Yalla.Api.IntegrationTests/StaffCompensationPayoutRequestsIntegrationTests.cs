@@ -21,7 +21,7 @@ public sealed class StaffCompensationPayoutRequestsIntegrationTests : ApiTestBas
     {
       var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
       db.StaffCompensationEarnings.Add(new StaffCompensationEarning(
-        ApiTestData.Admin1Id,
+        ApiTestData.WorkerInPharmacy1Id,
         Role.Admin,
         StaffCompensationSourceType.OrderReady,
         Guid.NewGuid(),
@@ -31,7 +31,7 @@ public sealed class StaffCompensationPayoutRequestsIntegrationTests : ApiTestBas
       await db.SaveChangesAsync();
     }
 
-    using var adminClient = await CreateAuthorizedClientAsync(TestActor.Admin1);
+    using var adminClient = await CreateAuthorizedClientAsync(TestActor.Worker1);
     var createResponse = await adminClient.PostAsJsonAsync("/api/staff-compensation/payout-requests", new
     {
       Bank = "DushanbeCity",
@@ -40,7 +40,7 @@ public sealed class StaffCompensationPayoutRequestsIntegrationTests : ApiTestBas
     Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
     var createdJson = await ReadJsonAsync(createResponse);
     var requestId = createdJson.GetProperty("id").GetGuid();
-    Assert.Equal("Admin One", createdJson.GetProperty("staffName").GetString());
+    Assert.Equal("Worker One", createdJson.GetProperty("staffName").GetString());
     Assert.Equal("Pharmacy One", createdJson.GetProperty("pharmacyTitle").GetString());
     Assert.Equal(25m, createdJson.GetProperty("amount").GetDecimal());
     Assert.Contains("dushanbecity://", createdJson.GetProperty("deepLinkUrl").GetString());
@@ -81,7 +81,7 @@ public sealed class StaffCompensationPayoutRequestsIntegrationTests : ApiTestBas
     using (var scope = Factory.CreateScope())
     {
       var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-      Assert.True(await db.StaffCompensationPayouts.AnyAsync(x => x.StaffUserId == ApiTestData.Admin1Id && x.Amount == 25m));
+      Assert.True(await db.StaffCompensationPayouts.AnyAsync(x => x.StaffUserId == ApiTestData.WorkerInPharmacy1Id && x.Amount == 25m));
     }
   }
 }

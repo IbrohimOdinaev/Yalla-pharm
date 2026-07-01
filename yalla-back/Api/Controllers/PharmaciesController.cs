@@ -67,7 +67,7 @@ public sealed class PharmaciesController : ControllerBase
   }
 
   [HttpPut]
-  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [Authorize(Roles = $"{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> Update(
     [FromBody] UpdatePharmacyRequest request,
     CancellationToken cancellationToken)
@@ -75,7 +75,7 @@ public sealed class PharmaciesController : ControllerBase
     var role = User.GetRequiredRole();
     var scopedRequest = request;
 
-    if (role == Role.Admin)
+    if (role == Role.PharmacyAccount)
     {
       scopedRequest = new UpdatePharmacyRequest
       {
@@ -199,7 +199,7 @@ public sealed class PharmaciesController : ControllerBase
   }
 
   [HttpPost("banner")]
-  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [Authorize(Roles = $"{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> UploadBanner(
     [FromForm] Guid pharmacyId,
     [FromForm] IFormFile image,
@@ -212,7 +212,7 @@ public sealed class PharmaciesController : ControllerBase
       throw new InvalidOperationException("Banner file is too large. Maximum 10 MB.");
 
     var role = User.GetRequiredRole();
-    var targetPharmacyId = role == Role.Admin ? User.GetRequiredPharmacyId() : pharmacyId;
+    var targetPharmacyId = role == Role.PharmacyAccount ? User.GetRequiredPharmacyId() : pharmacyId;
 
     var pharmacy = await _db.Pharmacies.FindAsync([targetPharmacyId], cancellationToken)
       ?? throw new InvalidOperationException("Pharmacy not found.");
@@ -275,13 +275,13 @@ public sealed class PharmaciesController : ControllerBase
   }
 
   [HttpDelete("banner")]
-  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [Authorize(Roles = $"{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> DeleteBanner(
     [FromBody] DeletePharmacyRequest request,
     CancellationToken cancellationToken)
   {
     var role = User.GetRequiredRole();
-    var targetPharmacyId = role == Role.Admin ? User.GetRequiredPharmacyId() : request.PharmacyId;
+    var targetPharmacyId = role == Role.PharmacyAccount ? User.GetRequiredPharmacyId() : request.PharmacyId;
 
     var pharmacy = await _db.Pharmacies.FindAsync([targetPharmacyId], cancellationToken)
       ?? throw new InvalidOperationException("Pharmacy not found.");

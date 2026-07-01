@@ -41,6 +41,53 @@ jobs:
           docker network inspect yalla-net-dev >/dev/null 2>&1 \
             || docker network create yalla-net-dev
 
+      - name: Preflight database connectivity
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+
+          if [ ! -f .env.dev ]; then
+            echo "::error::.env.dev is missing in $DEPLOY_DIR"
+            exit 1
+          fi
+
+          connection_string="$(awk -F= '$1 == "DB_CONNECTION_STRING" { value = substr($0, index($0, "=") + 1) } END { print value }' .env.dev)"
+          connection_string="${connection_string%\"}"
+          connection_string="${connection_string#\"}"
+          connection_string="${connection_string%\'}"
+          connection_string="${connection_string#\'}"
+
+          if [ -z "$connection_string" ]; then
+            echo "::error::DB_CONNECTION_STRING is missing in .env.dev"
+            exit 1
+          fi
+
+          db_host="$(printf '%s' "$connection_string" | tr ';' '\n' | awk -F= 'tolower($1) == "host" { print substr($0, index($0, "=") + 1); exit }')"
+          db_port="$(printf '%s' "$connection_string" | tr ';' '\n' | awk -F= 'tolower($1) == "port" { print substr($0, index($0, "=") + 1); exit }')"
+          db_port="${db_port:-5432}"
+
+          if [ -z "$db_host" ]; then
+            echo "::error::DB_CONNECTION_STRING does not contain Host"
+            exit 1
+          fi
+
+          runner_ip="$(curl -fsS --max-time 5 https://api.ipify.org || true)"
+          if [ -n "$runner_ip" ]; then
+            echo "::notice::Deploy runner public IP: $runner_ip"
+          fi
+
+          for attempt in 1 2 3; do
+            if timeout 5 bash -c ':</dev/tcp/$1/$2' _ "$db_host" "$db_port"; then
+              echo "PostgreSQL TCP preflight succeeded for $db_host:$db_port"
+              exit 0
+            fi
+            echo "PostgreSQL TCP preflight attempt $attempt/3 failed for $db_host:$db_port"
+            sleep 5
+          done
+
+          echo "::error::Cannot connect to PostgreSQL $db_host:$db_port from the deploy runner. Check managed DB firewall/allowlist/network before recreating the stack."
+          exit 1
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:

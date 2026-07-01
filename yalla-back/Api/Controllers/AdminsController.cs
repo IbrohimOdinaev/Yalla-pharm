@@ -111,7 +111,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpPut("me")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> UpdateMyProfile(
     [FromBody] UpdateAdminProfileRequest request,
     CancellationToken cancellationToken)
@@ -122,13 +122,13 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpGet("me")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> GetMyProfile(CancellationToken cancellationToken)
   {
     var adminId = User.GetRequiredUserId();
     var admin = await _db.Users
       .AsNoTracking()
-      .Where(x => x.Id == adminId && x.Role == Role.Admin)
+      .Where(x => x.Id == adminId && (x.Role == Role.Admin || x.Role == Role.PharmacyAccount))
       .Select(x => new
       {
         name = x.Name,
@@ -142,7 +142,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpGet("me/telegram/recipients")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> GetMyTelegramRecipients(CancellationToken cancellationToken)
   {
     var adminId = User.GetRequiredUserId();
@@ -151,7 +151,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpPost("me/telegram/link/start")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> StartMyTelegramLink(CancellationToken cancellationToken)
   {
     var adminId = User.GetRequiredUserId();
@@ -160,7 +160,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpGet("me/telegram/link/poll")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> PollMyTelegramLink(
     [FromQuery] string nonce,
     CancellationToken cancellationToken)
@@ -171,7 +171,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpPost("me/telegram/link/complete")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> CompleteMyTelegramLink(
     [FromBody] CompleteTelegramAuthRequest request,
     CancellationToken cancellationToken)
@@ -185,7 +185,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpDelete("me/telegram/recipients/{recipientId:guid}")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> DeleteMyTelegramRecipient(
     Guid recipientId,
     CancellationToken cancellationToken)
@@ -196,7 +196,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpPost("me/otp/request")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> RequestMyProfileOtp(
     [FromBody] RequestAdminProfileUpdateOtpRequest request,
     CancellationToken cancellationToken)
@@ -207,7 +207,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpPost("me/otp/verify")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> VerifyMyProfileOtp(
     [FromBody] VerifyAdminProfileUpdateOtpRequest request,
     CancellationToken cancellationToken)
@@ -218,7 +218,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpPost("me/avatar")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> UploadMyAvatar(
     [FromForm] IFormFile image,
     CancellationToken cancellationToken)
@@ -233,8 +233,8 @@ public sealed class AdminsController : ControllerBase
     var admin = await _db.Users.FindAsync([adminId], cancellationToken)
       ?? throw new InvalidOperationException("Admin user was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException("Only pharmacy admins can upload this avatar.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException("Only pharmacy staff can upload this avatar.");
 
     if (!string.IsNullOrEmpty(admin.AvatarUrl))
     {
@@ -272,8 +272,8 @@ public sealed class AdminsController : ControllerBase
     var admin = await _db.Users.FindAsync([adminId], cancellationToken)
       ?? throw new InvalidOperationException("Admin user was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException("Only pharmacy admins can have this avatar.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException("Only pharmacy staff can have this avatar.");
 
     if (!string.IsNullOrEmpty(admin.AvatarUrl))
     {
@@ -296,7 +296,7 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpGet("me/avatar/content")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)}")]
   public async Task<IActionResult> GetMyAvatarContent(CancellationToken cancellationToken)
   {
     var adminId = User.GetRequiredUserId();
@@ -311,20 +311,20 @@ public sealed class AdminsController : ControllerBase
   }
 
   [HttpGet("{adminId:guid}/avatar/content")]
-  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+  [Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> GetAdminAvatarContent(
     Guid adminId,
     CancellationToken cancellationToken)
   {
     var role = User.GetRequiredRole();
-    if (role == Role.Admin && User.GetRequiredUserId() != adminId)
+    if ((role is Role.Admin or Role.PharmacyAccount) && User.GetRequiredUserId() != adminId)
       return Forbid();
 
     var admin = await _db.Users.FindAsync([adminId], cancellationToken)
       ?? throw new InvalidOperationException("Admin user was not found.");
 
-    if (admin.Role != Role.Admin)
-      throw new InvalidOperationException("Only pharmacy admins can have this avatar.");
+    if (admin.Role is not (Role.Admin or Role.PharmacyAccount))
+      throw new InvalidOperationException("Only pharmacy staff can have this avatar.");
 
     if (string.IsNullOrEmpty(admin.AvatarUrl))
       return NotFound();

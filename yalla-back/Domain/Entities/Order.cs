@@ -15,6 +15,8 @@ public class Order
 
     public Guid PharmacyId { get; private set; }
 
+    public Guid? AcceptedByAdminId { get; private set; }
+
     public string DeliveryAddress { get; private set; } = string.Empty;
 
     public bool IsPickup { get; private set; }
@@ -144,6 +146,17 @@ public class Order
     public void SetComment(string? comment)
     {
         Comment = NormalizeOptionalString(comment, 1024, "Comment");
+    }
+
+    public void AssignAcceptedAdmin(Guid adminId)
+    {
+        if (adminId == Guid.Empty)
+            throw new DomainArgumentException("AcceptedByAdminId can't be empty.");
+
+        if (AcceptedByAdminId.HasValue && AcceptedByAdminId.Value != adminId)
+            throw new DomainException("Order already has a different accepted admin.");
+
+        AcceptedByAdminId = adminId;
     }
 
     public void RecalculateTotals()

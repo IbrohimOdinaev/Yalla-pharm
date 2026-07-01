@@ -64,7 +64,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpGet("worker/new")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> GetNewForWorker(
     [FromQuery] GetNewOrdersForWorkerRequest request,
     CancellationToken cancellationToken)
@@ -74,7 +74,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpGet("admin/pharmacy")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> GetOrdersForAdminPharmacy(
     [FromQuery] GetNewOrdersForWorkerRequest request,
     CancellationToken cancellationToken)
@@ -84,7 +84,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpGet("admin/history")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> GetHistoryForAdminPharmacy(
     [FromQuery] GetPharmacyOrdersRequest request,
     CancellationToken cancellationToken)
@@ -94,7 +94,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpGet("worker/history")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> GetHistoryForWorkerPharmacy(
     [FromQuery] GetPharmacyOrdersRequest request,
     CancellationToken cancellationToken)
@@ -104,7 +104,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("admin/new/delete")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> DeleteNewAsAdmin(
     [FromBody] DeleteNewOrderByAdminRequest request,
     CancellationToken cancellationToken)
@@ -137,7 +137,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("assembly/start")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> StartAssembly(
     [FromBody] StartOrderAssemblyRequest request,
     CancellationToken cancellationToken)
@@ -146,7 +146,8 @@ public sealed class OrdersController : ControllerBase
     {
       WorkerId = User.GetRequiredUserId(),
       PharmacyId = User.GetRequiredPharmacyId(),
-      OrderId = request.OrderId
+      OrderId = request.OrderId,
+      AcceptedByAdminId = request.AcceptedByAdminId
     };
 
     var response = await _orderService.StartOrderAssemblyAsync(scopedRequest, cancellationToken);
@@ -154,7 +155,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("positions/reject")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> RejectPositions(
     [FromBody] RejectOrderPositionsRequest request,
     CancellationToken cancellationToken)
@@ -172,7 +173,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("ready")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> MarkReady(
     [FromBody] MarkOrderReadyRequest request,
     CancellationToken cancellationToken)
@@ -189,7 +190,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("on-the-way")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> MarkOnTheWay(
     [FromBody] MarkOrderOnTheWayRequest request,
     CancellationToken cancellationToken)
@@ -248,7 +249,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("cancel-by-admin")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> CancelByAdmin(
     [FromBody] CancelOrderRequest request,
     CancellationToken cancellationToken)
@@ -271,7 +272,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("{orderId:guid}/delivery/dispatch")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> DispatchDelivery(
     Guid orderId,
     [FromBody] DispatchDeliveryRequest request,
@@ -288,7 +289,7 @@ public sealed class OrdersController : ControllerBase
   }
 
   [HttpPost("{orderId:guid}/delivery/cancel")]
-  [Authorize(Roles = nameof(Role.Admin))]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
   public async Task<IActionResult> CancelDelivery(
     Guid orderId,
     [FromBody] CancelDeliveryRequest request,

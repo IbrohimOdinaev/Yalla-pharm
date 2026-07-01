@@ -9,7 +9,7 @@ namespace Api.Controllers;
 
 [ApiController]
 [Route("api/pharmacy-workers")]
-[Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.SuperAdmin)}")]
+[Authorize(Roles = $"{nameof(Role.Admin)},{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
 public sealed class PharmacyWorkersController : ControllerBase
 {
   private readonly IPharmacyWorkerService _pharmacyWorkerService;
@@ -20,6 +20,7 @@ public sealed class PharmacyWorkersController : ControllerBase
   }
 
   [HttpPost]
+  [Authorize(Roles = $"{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> Register(
     [FromBody] RegisterPharmacyWorkerRequest request,
     CancellationToken cancellationToken)
@@ -27,7 +28,7 @@ public sealed class PharmacyWorkersController : ControllerBase
     var role = User.GetRequiredRole();
     var scopedRequest = request;
 
-    if (role == Role.Admin)
+    if (role == Role.PharmacyAccount)
     {
       scopedRequest = new RegisterPharmacyWorkerRequest
       {
@@ -43,18 +44,51 @@ public sealed class PharmacyWorkersController : ControllerBase
   }
 
   [HttpDelete]
+  [Authorize(Roles = $"{nameof(Role.PharmacyAccount)},{nameof(Role.SuperAdmin)}")]
   public async Task<IActionResult> Delete(
     [FromBody] DeletePharmacyWorkerRequest request,
     CancellationToken cancellationToken)
   {
     var role = User.GetRequiredRole();
-    var response = role == Role.Admin
+    var response = role == Role.PharmacyAccount
       ? await _pharmacyWorkerService.DeletePharmacyWorkerInPharmacyAsync(
         request,
         User.GetRequiredPharmacyId(),
         cancellationToken)
       : await _pharmacyWorkerService.DeletePharmacyWorkerAsync(request, cancellationToken);
 
+    return Ok(response);
+  }
+
+  [HttpGet("mine/admins")]
+  [Authorize(Roles = nameof(Role.PharmacyAccount))]
+  public async Task<IActionResult> GetMyAdmins(CancellationToken cancellationToken)
+  {
+    var response = await _pharmacyWorkerService.GetActiveAdminsForPharmacyAsync(
+      User.GetRequiredPharmacyId(),
+      cancellationToken);
+    return Ok(new { admins = response });
+  }
+
+  [HttpGet("accounts")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> GetPharmacyAccounts(CancellationToken cancellationToken)
+  {
+    var response = await _pharmacyWorkerService.GetPharmacyAccountsAsync(cancellationToken);
+    return Ok(response);
+  }
+
+  [HttpPost("accounts/{pharmacyId:guid}/password")]
+  [Authorize(Roles = nameof(Role.SuperAdmin))]
+  public async Task<IActionResult> ResetPharmacyAccountPassword(
+    Guid pharmacyId,
+    [FromBody] ResetPharmacyAccountPasswordRequest? request,
+    CancellationToken cancellationToken)
+  {
+    var response = await _pharmacyWorkerService.ResetPharmacyAccountPasswordAsync(
+      pharmacyId,
+      request ?? new ResetPharmacyAccountPasswordRequest(),
+      cancellationToken);
     return Ok(response);
   }
 }
