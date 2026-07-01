@@ -100,6 +100,7 @@ export default function PharmacistHistoryPage() {
             const decodedAt = p.decodedAtUtc || p.updatedAtUtc || p.createdAtUtc;
             const phone = p.clientPhoneNumber?.replace(/\D/g, "");
             const phoneDisplay = phone ? `+992${phone}` : null;
+            const displayId = p.publicId && Number.isFinite(p.publicId) ? `№${p.publicId}` : `#${p.prescriptionId.slice(0, 8)}`;
             return (
               <li key={p.prescriptionId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
                 <div className="flex items-start justify-between gap-3">
@@ -108,6 +109,7 @@ export default function PharmacistHistoryPage() {
                       <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold text-primary">
                         {PRESCRIPTION_STATUS_LABEL_RU[p.status] ?? p.status}
                       </span>
+                      <span className="font-mono text-xs font-semibold text-on-surface-variant">{displayId}</span>
                       <span className="text-xs text-on-surface-variant">
                         {new Date(decodedAt).toLocaleString("ru-RU")}
                       </span>

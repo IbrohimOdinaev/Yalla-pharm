@@ -552,7 +552,7 @@ function UserMarker({ style }: { style: { left: number; top: number } }) {
 function SelectedMarker({ style }: { style: { left: number; top: number } }) {
   return (
     <div className="absolute z-20 -translate-x-1/2 -translate-y-1/2" style={style}>
-      <span className="block h-5 w-5 rounded-full border-[3px] border-white bg-[#ff3b30] shadow" />
+      <span className="block h-5 w-5 rounded-full border-[3px] border-white bg-[#D4484C] shadow" />
     </div>
   );
 }

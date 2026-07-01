@@ -90,6 +90,7 @@ export function normalizeOrder(raw: RawOrder): ApiOrder {
 
   return {
     orderId: String(raw.orderId || raw.id || ""),
+    publicId: raw.publicId != null ? Number(raw.publicId) : undefined,
     status,
     paymentState,
     paymentProvider: raw.paymentProvider != null ? String(raw.paymentProvider) : null,

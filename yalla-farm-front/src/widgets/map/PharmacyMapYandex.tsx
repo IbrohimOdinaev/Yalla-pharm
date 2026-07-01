@@ -428,7 +428,7 @@ export function PharmacyMapYandex({
     }
     if (selectedPoint && !centerPinMode) {
       const dotSvg =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#ff3b30" stroke="white" stroke-width="3"/></svg>';
+        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#D4484C" stroke="white" stroke-width="3"/></svg>';
       const placemark = new ymaps.Placemark(
         [selectedPoint.lat, selectedPoint.lng],
         {},

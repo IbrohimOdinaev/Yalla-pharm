@@ -1248,6 +1248,7 @@ public sealed class PrescriptionService : IPrescriptionService
         return new PrescriptionResponse
         {
             PrescriptionId = prescription.Id,
+            PublicId = prescription.PublicId,
             ClientId = prescription.ClientId,
             ClientName = client?.Name,
             ClientPhoneNumber = client?.PhoneNumber,

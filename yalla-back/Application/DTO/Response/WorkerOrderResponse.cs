@@ -5,6 +5,7 @@ namespace Yalla.Application.DTO.Response;
 public sealed class WorkerOrderResponse
 {
   public Guid OrderId { get; init; }
+  public int PublicId { get; init; }
   public Guid? ClientId { get; init; }
   public string ClientPhoneNumber { get; init; } = string.Empty;
   /// Populated from the linked Client (if any) so admin / superadmin order

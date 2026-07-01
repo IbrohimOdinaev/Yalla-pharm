@@ -90,6 +90,7 @@ export function PrescriptionClientInfoModal({ prescription, onClose }: Props) {
           <section className="rounded-2xl bg-surface-container-low p-3">
             <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Связанные ID</p>
             <div className="mt-2 space-y-2 text-xs">
+              {prescription.publicId ? <IdRow label="Номер рецепта" value={`№${prescription.publicId}`} /> : null}
               <IdRow label="Рецепт" value={prescription.prescriptionId} />
               <IdRow label="Платёж" value={prescription.paymentIntentId} />
               <IdRow label="Заказ" value={prescription.orderId} />

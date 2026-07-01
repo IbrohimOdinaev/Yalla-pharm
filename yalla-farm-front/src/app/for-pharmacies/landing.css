@@ -1,11 +1,11 @@
 :root {
   --white: #ffffff;
-  --red: #d83a4e;
+  --red: #d4484c;
   --blue: #2f80ed;
   --light: #eef3f4;
   --text-light: #fdebed;
   --dark: #0d1b2a;
-  --red-soft: rgba(216, 58, 78, 0.08);
+  --red-soft: rgba(212, 72, 76, 0.08);
   --blue-soft: rgba(47, 128, 237, 0.08);
   --title-font: "Manrope", "Inter", sans-serif;
   --subtitle-font: "Inter", "Manrope", sans-serif;
@@ -115,9 +115,9 @@ nav {
 }
 
 .nav-cta:hover {
-  background: #c02f42;
+  background: #C23F44;
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(216, 58, 78, 0.3);
+  box-shadow: 0 8px 24px rgba(212, 72, 76, 0.3);
 }
 
 /* ─── HERO ─── */
@@ -159,7 +159,7 @@ nav {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(216, 58, 78, 0.1) 0%,
+    rgba(212, 72, 76, 0.1) 0%,
     transparent 70%
   );
   bottom: 50px;
@@ -376,12 +376,12 @@ nav {
   top: 50%;
   border-radius: 40px;
   background:
-    linear-gradient(135deg, rgba(47, 128, 237, 0.28), rgba(216, 58, 78, 0.18)),
+    linear-gradient(135deg, rgba(47, 128, 237, 0.28), rgba(212, 72, 76, 0.18)),
     rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow:
     0 34px 92px rgba(47, 128, 237, 0.24),
-    0 24px 62px rgba(216, 58, 78, 0.1),
+    0 24px 62px rgba(212, 72, 76, 0.1),
     0 1px 0 rgba(255, 255, 255, 0.9) inset;
   transform: translate(-42%, -43%) rotateX(58deg) rotateZ(-18deg);
   transform-style: preserve-3d;
@@ -411,7 +411,7 @@ nav {
   inset: -46px -54px;
   border-radius: 64px;
   background:
-    linear-gradient(135deg, rgba(47, 128, 237, 0.16), rgba(216, 58, 78, 0.12)),
+    linear-gradient(135deg, rgba(47, 128, 237, 0.16), rgba(212, 72, 76, 0.12)),
     rgba(255, 255, 255, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.54);
   box-shadow:
@@ -703,7 +703,7 @@ nav {
   border-radius: 20px;
   background:
     radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.95), transparent 34%),
-    linear-gradient(135deg, rgba(47, 128, 237, 0.16), rgba(216, 58, 78, 0.08));
+    linear-gradient(135deg, rgba(47, 128, 237, 0.16), rgba(212, 72, 76, 0.08));
   box-shadow:
     0 16px 34px rgba(47, 128, 237, 0.14),
     0 1px 0 rgba(255, 255, 255, 0.9) inset;
@@ -783,7 +783,7 @@ nav {
   position: absolute;
   right: -24px;
   bottom: -22px;
-  color: rgba(216, 58, 78, 0.06);
+  color: rgba(212, 72, 76, 0.06);
   font-family: var(--title-font);
   font-size: clamp(6rem, 15vw, 14rem);
   font-weight: 800;
@@ -1214,8 +1214,8 @@ nav {
   overflow: hidden;
   background:
     radial-gradient(circle at 82% 20%, rgba(47, 128, 237, 0.16), transparent 30%),
-    radial-gradient(circle at 18% 88%, rgba(216, 58, 78, 0.12), transparent 28%),
-    linear-gradient(135deg, rgba(47, 128, 237, 0.06), rgba(216, 58, 78, 0.05)),
+    radial-gradient(circle at 18% 88%, rgba(212, 72, 76, 0.12), transparent 28%),
+    linear-gradient(135deg, rgba(47, 128, 237, 0.06), rgba(212, 72, 76, 0.05)),
     var(--white);
 }
 
@@ -1304,7 +1304,7 @@ nav {
 .one-c-visual:hover {
   box-shadow:
     0 40px 100px rgba(47, 128, 237, 0.18),
-    0 18px 44px rgba(216, 58, 78, 0.1);
+    0 18px 44px rgba(212, 72, 76, 0.1);
   transform: translateY(-5px);
 }
 
@@ -1384,7 +1384,7 @@ nav {
   width: 88px;
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 16px 26px rgba(216, 58, 78, 0.2));
+  filter: drop-shadow(0 16px 26px rgba(212, 72, 76, 0.2));
 }
 
 .one-c-flow {
@@ -1608,7 +1608,7 @@ nav {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(216, 58, 78, 0.08) 0%,
+    rgba(212, 72, 76, 0.08) 0%,
     transparent 70%
   );
   top: 50%;
@@ -1783,13 +1783,13 @@ nav {
 }
 
 .connect-field.has-error input {
-  border-color: rgba(216, 58, 78, 0.75);
-  background: rgba(216, 58, 78, 0.04);
+  border-color: rgba(212, 72, 76, 0.75);
+  background: rgba(212, 72, 76, 0.04);
 }
 
 .connect-field.has-error input:focus {
   border-color: var(--red);
-  box-shadow: 0 0 0 4px rgba(216, 58, 78, 0.12);
+  box-shadow: 0 0 0 4px rgba(212, 72, 76, 0.12);
 }
 
 .connect-checkbox {
@@ -1840,13 +1840,13 @@ nav {
 }
 
 .connect-checkbox.has-error {
-  border-color: rgba(216, 58, 78, 0.75);
-  background: rgba(216, 58, 78, 0.04);
+  border-color: rgba(212, 72, 76, 0.75);
+  background: rgba(212, 72, 76, 0.04);
 }
 
 .connect-checkbox.has-error:has(input:focus-visible) {
   border-color: var(--red);
-  box-shadow: 0 0 0 4px rgba(216, 58, 78, 0.12);
+  box-shadow: 0 0 0 4px rgba(212, 72, 76, 0.12);
 }
 
 .connect-choice {
@@ -1893,8 +1893,8 @@ nav {
 }
 
 .connect-choice.has-error .connect-checkbox {
-  border-color: rgba(216, 58, 78, 0.75);
-  background: rgba(216, 58, 78, 0.04);
+  border-color: rgba(212, 72, 76, 0.75);
+  background: rgba(212, 72, 76, 0.04);
 }
 
 .connect-submit {
@@ -1909,7 +1909,7 @@ nav {
   color: var(--text-light);
   border: none;
   border-radius: 100px;
-  box-shadow: 0 14px 38px rgba(216, 58, 78, 0.34);
+  box-shadow: 0 14px 38px rgba(212, 72, 76, 0.34);
   cursor: pointer;
   font-family: var(--title-font);
   font-size: 1rem;
@@ -1934,7 +1934,7 @@ nav {
 .connect-submit:hover {
   background: var(--red);
   color: var(--text-light);
-  box-shadow: 0 16px 48px rgba(216, 58, 78, 0.4);
+  box-shadow: 0 16px 48px rgba(212, 72, 76, 0.4);
   transform: translateY(-3px);
 }
 
@@ -1967,9 +1967,9 @@ nav {
 
 .connect-submit-error {
   margin-top: 14px;
-  border: 1px solid rgba(216, 58, 78, 0.2);
+  border: 1px solid rgba(212, 72, 76, 0.2);
   border-radius: 14px;
-  background: rgba(216, 58, 78, 0.06);
+  background: rgba(212, 72, 76, 0.06);
   color: var(--red);
   font-size: 0.82rem;
   font-weight: 700;
@@ -2131,14 +2131,14 @@ nav {
   font-size: 1rem;
   text-decoration: none;
   transition: all 0.3s;
-  box-shadow: 0 8px 32px rgba(216, 58, 78, 0.3);
+  box-shadow: 0 8px 32px rgba(212, 72, 76, 0.3);
   margin-top: 40px;
 }
 
 .cta-btn:hover {
-  background: #c02f42;
+  background: #C23F44;
   transform: translateY(-3px);
-  box-shadow: 0 16px 48px rgba(216, 58, 78, 0.4);
+  box-shadow: 0 16px 48px rgba(212, 72, 76, 0.4);
 }
 
 /* ─── FOOTER ─── */

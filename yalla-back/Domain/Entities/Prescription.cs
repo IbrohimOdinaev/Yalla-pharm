@@ -22,6 +22,8 @@ public class Prescription
 
     public Guid Id { get; private set; }
 
+    public int PublicId { get; private set; }
+
     public Guid ClientId { get; private set; }
 
     /// <summary>Patient's age, in full years. Required at submission time.</summary>

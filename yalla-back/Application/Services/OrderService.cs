@@ -123,6 +123,7 @@ public sealed class OrderService : IOrderService
         .Select(x => new OrderHistoryItemResponse
         {
           OrderId = x.Id,
+          PublicId = x.PublicId,
           PharmacyId = x.PharmacyId,
           OrderPlacedAt = x.OrderPlacedAt,
           IsPickup = x.IsPickup,
@@ -171,6 +172,7 @@ public sealed class OrderService : IOrderService
     {
       ClientId = request.ClientId,
       OrderId = order.Id,
+      PublicId = order.PublicId,
       PharmacyId = order.PharmacyId,
       OrderPlacedAt = order.OrderPlacedAt,
       IsPickup = order.IsPickup,
@@ -1589,6 +1591,7 @@ public sealed class OrderService : IOrderService
     return new WorkerOrderResponse
     {
       OrderId = order.Id,
+      PublicId = order.PublicId,
       ClientId = order.ClientId,
       ClientPhoneNumber = order.ClientPhoneNumber,
       ClientName = client?.Name,
@@ -1604,6 +1607,7 @@ public sealed class OrderService : IOrderService
       PaymentProvider = order.PaymentProvider,
       PaymentReceiverAccount = order.PaymentReceiverAccount,
       PaymentComment = order.PaymentComment,
+      PaymentExpiresAtUtc = order.PaymentExpiresAtUtc,
       Cost = order.Cost,
       ReturnCost = order.ReturnCost,
       DeliveryCost = deliveryCost,

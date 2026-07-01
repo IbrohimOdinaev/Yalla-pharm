@@ -99,6 +99,7 @@ public static class ResponseMappingExtensions
         return new ClientOrderResponse
         {
             OrderId = order.Id,
+            PublicId = order.PublicId,
             PharmacyId = order.PharmacyId,
             OrderPlacedAt = order.OrderPlacedAt,
             IsPickup = order.IsPickup,
@@ -159,6 +160,7 @@ public static class ResponseMappingExtensions
             ClientId = order.ClientId ?? Guid.Empty,
             PaymentIntentId = Guid.Empty,
             ReservedOrderId = order.Id,
+            PublicId = order.PublicId,
             Currency = order.PaymentCurrency,
             CreatedAtUtc = DateTime.UtcNow,
             PaymentIntentState = Domain.Enums.PaymentIntentState.Confirmed,

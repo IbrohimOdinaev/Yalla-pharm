@@ -188,6 +188,18 @@ function formatDushanbeDateTime(value?: string | null) {
   });
 }
 
+function orderDisplayId(order: ApiOrder): string {
+  return order.publicId && Number.isFinite(order.publicId)
+    ? `№${order.publicId}`
+    : `#${order.orderId.slice(0, 8)}`;
+}
+
+function prescriptionDisplayId(prescription: ApiPrescription): string {
+  return prescription.publicId && Number.isFinite(prescription.publicId)
+    ? `№${prescription.publicId}`
+    : `#${prescription.prescriptionId.slice(0, 8)}`;
+}
+
 function formatDushanbeDate(value?: string | null) {
   const date = parseDushanbeDate(value);
   if (!date) return "—";
@@ -796,7 +808,7 @@ function DeliveryAccountingTab({ token }: { token: string }) {
                   <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr] lg:items-start">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[11px] text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
+                        <span className="font-mono text-[11px] text-on-surface-variant">{orderDisplayId(order)}</span>
                         <span className="rounded-full bg-surface-container px-2 py-1 text-[11px] font-black">{STATUS_LABELS[order.status] ?? order.status}</span>
                         {order.juraOrderId ? <span className="rounded-full bg-primary-soft px-2 py-1 text-[11px] font-black text-primary">Jura #{order.juraOrderId}</span> : null}
                       </div>
@@ -3925,7 +3937,7 @@ function OrdersTab({ token }: { token: string }) {
                     return (
                       <div key={order.orderId} className={`stitch-card p-3 cursor-pointer hover:ring-1 hover:ring-primary transition ${deliveryBorderClass(!!order.isPickup)}`} onClick={() => openOverlay(order)}>
                         <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] text-on-surface-variant font-mono">#{order.orderId.slice(0, 8)}</span>
+                          <span className="text-[10px] text-on-surface-variant font-mono">{orderDisplayId(order)}</span>
                           <DeliveryBadge isPickup={!!order.isPickup} iconOnly />
                         </div>
                         <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{order.orderId}</p>
@@ -4009,7 +4021,7 @@ function OrdersTab({ token }: { token: string }) {
             {/* Header */}
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-mono text-on-surface-variant">#{selectedOrder.orderId.slice(0, 8)}</p>
+                <p className="text-xs font-mono text-on-surface-variant">{orderDisplayId(selectedOrder)}</p>
                 <h2 className="text-xl font-extrabold">Заказ</h2>
                 <p className="mt-0.5 text-[10px] font-mono text-on-surface-variant/50 break-all">{selectedOrder.orderId}</p>
               </div>
@@ -4195,7 +4207,7 @@ function OrdersTab({ token }: { token: string }) {
             {(selectedOrder.status === "New" || selectedOrder.status === "OnTheWay") ? (
               <button type="button" className="stitch-button w-full" onClick={async () => {
                 const label = selectedOrder.status === "New" ? "подтвердить оплату и передать заказ аптеке" : "подтвердить доставку заказа клиенту";
-                if (!confirm(`Действительно ${label} #${selectedOrder.orderId.slice(0, 8)}?`)) return;
+                if (!confirm(`Действительно ${label} ${orderDisplayId(selectedOrder)}?`)) return;
                 await superAdminNextStatus(token, selectedOrder.orderId).catch(() => undefined);
                 load();
                 closeOverlay();
@@ -4208,7 +4220,7 @@ function OrdersTab({ token }: { token: string }) {
                 type="button"
                 className="w-full rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-200 transition"
                 onClick={async () => {
-                  if (!confirm(`Отменить заказ #${selectedOrder.orderId.slice(0, 8)}?`)) return;
+                  if (!confirm(`Отменить заказ ${orderDisplayId(selectedOrder)}?`)) return;
                   try {
                     await superAdminCancelOrder(token, selectedOrder.orderId);
                     load();
@@ -4752,7 +4764,7 @@ function PendingPrescriptionsSection({ token }: { token: string }) {
                         canonical id when liaising with support or DB tools. */}
                     <div className="space-y-0.5 pt-0.5">
                       <p className="text-[11px] font-mono text-on-surface-variant/70">
-                        <span className="font-semibold">Рецепт: </span>#{p.prescriptionId.slice(0, 8)}
+                        <span className="font-semibold">Рецепт: </span>{prescriptionDisplayId(p)}
                       </p>
                       <p className="font-mono text-[9px] text-on-surface-variant/50 break-all">{p.prescriptionId}</p>
                       {p.paymentIntentId ? (

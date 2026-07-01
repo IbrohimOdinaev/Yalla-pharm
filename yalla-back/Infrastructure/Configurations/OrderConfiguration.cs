@@ -19,6 +19,12 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
           .ValueGeneratedOnAdd()
           .IsRequired();
 
+        builder.Property(x => x.PublicId)
+          .HasColumnName("public_id")
+          .HasColumnType("integer")
+          .ValueGeneratedOnAdd()
+          .IsRequired();
+
         builder.Property(x => x.ClientId)
           .HasColumnName("client_id")
           .HasColumnType("uuid");
@@ -169,6 +175,10 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_orders_client_id");
+
+        builder.HasIndex(x => x.PublicId)
+          .IsUnique()
+          .HasDatabaseName("ux_orders_public_id");
 
         builder.HasIndex(x => x.PharmacyId)
           .HasDatabaseName("ix_orders_pharmacy_id");

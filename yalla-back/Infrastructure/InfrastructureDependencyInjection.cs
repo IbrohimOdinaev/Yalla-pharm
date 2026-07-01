@@ -98,6 +98,7 @@ public static class DependencyInjection
       options.PendingConfirmationTimeoutMinutes = int.TryParse(
         config[$"{DushanbeCityPaymentOptions.SectionName}:PendingConfirmationTimeoutMinutes"],
         out var pendingConfirmationTimeoutMinutes)
+        && pendingConfirmationTimeoutMinutes > 0
         ? pendingConfirmationTimeoutMinutes
         : options.PendingConfirmationTimeoutMinutes;
       options.CleanupIntervalSeconds = int.TryParse(

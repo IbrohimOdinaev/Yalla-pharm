@@ -709,27 +709,32 @@ export default function CheckoutPage() {
               Сейчас нет доступных способов оплаты.
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {checkoutPaymentMethods.map((method) => (
-                <button
-                  key={method.id}
-                  type="button"
-                  onClick={() => setSelectedPaymentMethodId(method.id)}
-                  className={`flex min-h-[72px] items-center justify-center rounded-2xl border p-2 transition active:scale-[0.98] sm:min-h-[86px] sm:p-3 ${
-                    selectedPaymentMethodId === method.id
-                      ? "border-primary bg-primary-soft text-primary"
-                      : "border-outline/60 bg-surface-container-low text-on-surface hover:border-primary/40"
-                  }`}
-                  aria-label={method.title}
-                  title={method.title}
-                >
-                  <PaymentMethodLogo
-                    methodId={method.id}
-                    className="h-12 w-full bg-transparent px-2 shadow-none sm:h-14"
-                  />
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {checkoutPaymentMethods.map((method) => (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => setSelectedPaymentMethodId(method.id)}
+                    className={`flex min-h-[72px] items-center justify-center rounded-2xl border p-2 transition active:scale-[0.98] sm:min-h-[86px] sm:p-3 ${
+                      selectedPaymentMethodId === method.id
+                        ? "border-primary bg-primary-soft text-primary"
+                        : "border-outline/60 bg-surface-container-low text-on-surface hover:border-primary/40"
+                    }`}
+                    aria-label={method.title}
+                    title={method.title}
+                  >
+                    <PaymentMethodLogo
+                      methodId={method.id}
+                      className="h-12 w-full bg-transparent px-2 shadow-none sm:h-14"
+                    />
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-xs font-semibold leading-snug text-primary">
+                Если заказ не оплачен в течение 3 минут, он отменяется.
+              </p>
+            </>
           )}
         </section>
 

@@ -51,7 +51,7 @@ export function DriverTrackingMapYandex({
         );
 
         const fromDot = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="#2F80ED" stroke="white" stroke-width="2"/></svg>`;
-        const toDot = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="#ef4444" stroke="white" stroke-width="2"/></svg>`;
+        const toDot = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="#D4484C" stroke="white" stroke-width="2"/></svg>`;
 
         map.geoObjects.add(new ymaps.Placemark(
           [fromPoint.lat, fromPoint.lng],

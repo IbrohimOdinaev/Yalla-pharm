@@ -113,6 +113,7 @@ export const PRESCRIPTION_TIER_VALUE: Record<PrescriptionPreferenceTier, number>
 
 export type ApiPrescription = {
   prescriptionId: string;
+  publicId?: number;
   clientId?: string;
   clientName?: string | null;
   clientPhoneNumber?: string | null;

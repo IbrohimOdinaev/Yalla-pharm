@@ -18,6 +18,12 @@ public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
           .ValueGeneratedNever()
           .IsRequired();
 
+        builder.Property(x => x.PublicId)
+          .HasColumnName("public_id")
+          .HasColumnType("integer")
+          .ValueGeneratedOnAdd()
+          .IsRequired();
+
         builder.Property(x => x.ClientId)
           .HasColumnName("client_id")
           .HasColumnType("uuid")
@@ -124,6 +130,10 @@ public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
 
         builder.HasIndex(x => x.ClientId)
           .HasDatabaseName("ix_prescriptions_client_id");
+
+        builder.HasIndex(x => x.PublicId)
+          .IsUnique()
+          .HasDatabaseName("ux_prescriptions_public_id");
 
         builder.HasIndex(x => x.Status)
           .HasDatabaseName("ix_prescriptions_status");

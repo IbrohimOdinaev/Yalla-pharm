@@ -229,6 +229,7 @@ export default function PharmacistQueuePage() {
                       const phone = formatPhone(p.clientPhoneNumber);
                       const tg = p.clientTelegramUsername ? `@${p.clientTelegramUsername}` : null;
                       const created = new Date(p.createdAtUtc).toLocaleString("ru-RU");
+                      const displayId = p.publicId && Number.isFinite(p.publicId) ? `№${p.publicId}` : `#${p.prescriptionId.slice(0, 8)}`;
                       return (
                         <li key={p.prescriptionId} className="rounded-2xl bg-surface-container-lowest p-3 shadow-card xs:p-4">
                           <div className="flex items-start gap-3">
@@ -239,7 +240,7 @@ export default function PharmacistQueuePage() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-bold">
-                                {p.clientName?.trim() || phone || tg || "Без имени"}
+                                {displayId} · {p.clientName?.trim() || phone || tg || "Без имени"}
                               </p>
                               <p className="truncate text-xs text-on-surface-variant">
                                 {[phone, tg, `Возраст: ${p.patientAge}`].filter(Boolean).join(" · ")}

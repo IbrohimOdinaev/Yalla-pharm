@@ -778,7 +778,7 @@ function stageProgress<T extends string>(stages: readonly T[], status: T, aliase
   return idx >= 0 ? (idx + 1) / stages.length : 1 / stages.length;
 }
 
-const ACTIVITY_PROGRESS_COLOR = "#E94A33";
+const ACTIVITY_PROGRESS_COLOR = "#D4484C";
 const ACTIVITY_PROGRESS_TRACK = "#DDE7EA";
 
 function isAwaitingPayment(order: ApiOrder): boolean {
@@ -842,7 +842,7 @@ function activityMeta(activity: LatestClientActivity) {
       href: `/prescriptions/${activity.id}`,
       label,
       progress,
-      color: danger ? "#EF4444" : ACTIVITY_PROGRESS_COLOR,
+      color: danger ? "#D4484C" : ACTIVITY_PROGRESS_COLOR,
       icon: "orders" as const,
     };
   }
@@ -855,7 +855,7 @@ function activityMeta(activity: LatestClientActivity) {
     href: "/orders",
     label: ORDER_STATUS_LABEL_RU[activity.status] ?? activity.status,
     progress,
-    color: danger ? "#EF4444" : ACTIVITY_PROGRESS_COLOR,
+    color: danger ? "#D4484C" : ACTIVITY_PROGRESS_COLOR,
     icon: "bag" as const,
   };
 }

@@ -57,7 +57,7 @@ export function DispatchRouteMapYandex({
           ));
         }
         if (toPoint) {
-          const dot = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#ef4444" stroke="white" stroke-width="2"/></svg>';
+          const dot = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#D4484C" stroke="white" stroke-width="2"/></svg>';
           map.geoObjects.add(new ymaps.Placemark(
             [toPoint.lat, toPoint.lng],
             { hintContent: "Клиент" },

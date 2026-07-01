@@ -108,6 +108,7 @@ export type ApiBasket = {
 export type ApiCheckoutResponse = {
   orderId?: string;
   reservedOrderId?: string;
+  publicId?: number;
   paymentIntentId?: string;
   paymentUrl?: string;
   paymentExpiresAtUtc?: string | null;
@@ -200,6 +201,7 @@ export type ApiRefundRequest = {
 
 export type ApiOrder = {
   orderId: string;
+  publicId?: number;
   status: string;
   paymentState?: string;
   paymentProvider?: string | null;

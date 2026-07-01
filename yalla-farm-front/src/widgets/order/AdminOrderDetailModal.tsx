@@ -50,6 +50,12 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-gray-100 text-gray-800",
 };
 
+function orderDisplayId(order: ApiOrder | null, fallbackOrderId: string): string {
+  return order?.publicId && Number.isFinite(order.publicId)
+    ? `№${order.publicId}`
+    : `#${fallbackOrderId.slice(0, 8)}`;
+}
+
 type Props = {
   orderId: string;
   token: string;
@@ -109,12 +115,13 @@ export function AdminOrderDetailModal({ orderId, token, acceptedAdmins = [], onC
 
   async function onAction(action: string) {
     if (!order) return;
+    const displayId = orderDisplayId(order, orderId);
     const prompts: Record<string, string> = {
-      assembly: `Начать сборку заказа #${order.orderId.slice(0, 8)}?`,
-      ready: `Отметить заказ #${order.orderId.slice(0, 8)} собранным?`,
+      assembly: `Начать сборку заказа ${displayId}?`,
+      ready: `Отметить заказ ${displayId} собранным?`,
       ontheway: order.isPickup
-        ? `Отметить заказ #${order.orderId.slice(0, 8)} выданным клиенту?`
-        : `Передать заказ #${order.orderId.slice(0, 8)} в доставку?`,
+        ? `Отметить заказ ${displayId} выданным клиенту?`
+        : `Передать заказ ${displayId} в доставку?`,
     };
     let acceptedByAdminId = "";
     if (action === "assembly") {
@@ -159,7 +166,7 @@ export function AdminOrderDetailModal({ orderId, token, acceptedAdmins = [], onC
 
   async function onReject() {
     if (!order || selectedPositions.size === 0) return;
-    if (!confirm(`Отклонить ${selectedPositions.size} позицию(й) в заказе #${order.orderId.slice(0, 8)}?`)) return;
+    if (!confirm(`Отклонить ${selectedPositions.size} позицию(й) в заказе ${orderDisplayId(order, orderId)}?`)) return;
     setActionLoading(true);
     setError(null);
     try {
@@ -228,7 +235,7 @@ export function AdminOrderDetailModal({ orderId, token, acceptedAdmins = [], onC
           {/* Header */}
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-mono text-on-surface-variant">#{orderId.slice(0, 8)}</p>
+              <p className="text-xs font-mono text-on-surface-variant">{orderDisplayId(order, orderId)}</p>
               <h2 className="text-xl font-extrabold">Заказ</h2>
               <p className="mt-0.5 text-[10px] font-mono text-on-surface-variant/50 break-all">{orderId}</p>
             </div>

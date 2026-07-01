@@ -10,6 +10,6 @@ public sealed class DushanbeCityPaymentOptions
   public string ProviderName { get; set; } = "DushanbeCityManualPhone";
   public string Currency { get; set; } = "TJS";
   public bool CreateOrderOnlyAfterAdminPaymentConfirmation { get; set; } = true;
-  public int PendingConfirmationTimeoutMinutes { get; set; } = 5;
+  public int PendingConfirmationTimeoutMinutes { get; set; } = 3;
   public int CleanupIntervalSeconds { get; set; } = 30;
 }

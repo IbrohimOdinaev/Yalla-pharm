@@ -38,9 +38,23 @@ const config: Config = {
         "primary-soft": "#DDE9FA",
 
         // ── Action red (cart button on products, favourites, sale prices) ─
-        secondary: "#E94A33",
-        "secondary-container": "#FF6145",
-        "secondary-soft": "#FCE0DB",
+        secondary: "#D4484C",
+        "secondary-container": "#C23F44",
+        "secondary-soft": "#F9DCDD",
+
+        // ── Brand red scale — all red-* utilities follow the main logo ───
+        red: {
+          50: "#FDF0F1",
+          100: "#F9DCDD",
+          200: "#F2B9BC",
+          300: "#EA9296",
+          400: "#DF666B",
+          500: "#D4484C",
+          600: "#C23F44",
+          700: "#A83439",
+          800: "#872D31",
+          900: "#6F282B",
+        },
 
         // ── Info blue (links, JURA status, generic info) ──────────────────
         tertiary: "#2F80ED",

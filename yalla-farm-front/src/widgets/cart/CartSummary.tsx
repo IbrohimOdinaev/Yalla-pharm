@@ -35,7 +35,7 @@ export function CartSummary({ rows, total, hint, currency = "TJS" }: Props) {
               </span>
               <span className={`text-sm font-bold tabular-nums ${valueCls}`}>
                 {r.tone === "discount" ? "−" : ""}
-                {formatMoney(Math.abs(r.value))} {currency}
+                {formatMoney(Math.abs(r.value), currency)}
               </span>
             </li>
           );
@@ -47,7 +47,7 @@ export function CartSummary({ rows, total, hint, currency = "TJS" }: Props) {
       <div className="flex items-baseline justify-between">
         <span className="font-display text-lg font-extrabold text-on-surface">Итого</span>
         <span className="font-display text-2xl font-extrabold tabular-nums text-primary">
-          {formatMoney(total)} {currency}
+          {formatMoney(total, currency)}
         </span>
       </div>
 

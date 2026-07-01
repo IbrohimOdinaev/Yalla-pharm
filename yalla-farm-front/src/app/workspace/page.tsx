@@ -128,6 +128,12 @@ function formatDushanbeDateTime(value?: string | null) {
   });
 }
 
+function orderDisplayId(order: ApiOrder): string {
+  return order.publicId && Number.isFinite(order.publicId)
+    ? `№${order.publicId}`
+    : `#${order.orderId.slice(0, 8)}`;
+}
+
 export default function WorkspacePage() {
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
@@ -428,7 +434,7 @@ function DashboardTab({
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[11px] text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
+                        <span className="font-mono text-[11px] text-on-surface-variant">{orderDisplayId(order)}</span>
                         <span className="rounded-full bg-surface-container px-2 py-1 text-[11px] font-black">{STATUS_LABELS[order.status] ?? order.status}</span>
                         <DeliveryBadge isPickup={!!order.isPickup} />
                       </div>
@@ -1814,7 +1820,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
                 <p className="text-xs font-bold uppercase tracking-wider text-primary">Принял заказ</p>
                 <h3 className="mt-1 text-lg font-extrabold">Выберите Admin</h3>
                 <p className="mt-1 text-sm text-on-surface-variant">
-                  Этот сотрудник получит начисление после перевода заказа #{assemblyOrder.orderId.slice(0, 8)} в статус “Готов”.
+                  Этот сотрудник получит начисление после перевода заказа {orderDisplayId(assemblyOrder)} в статус “Готов”.
                 </p>
               </div>
               <select
@@ -1924,7 +1930,7 @@ function OrderCard({
       className={`stitch-card cursor-pointer space-y-2 p-3 transition hover:border-primary/40 hover:bg-surface-container-low focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${deliveryBorderClass(!!order.isPickup)}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-on-surface-variant">#{order.orderId.slice(0, 8)}</span>
+        <span className="font-mono text-xs text-on-surface-variant">{orderDisplayId(order)}</span>
         <div className="flex items-center gap-1.5">
           <DeliveryBadge isPickup={!!order.isPickup} />
           <span className="font-bold text-sm">{formatMoney(computeOriginalPaid(order), order.currency)}</span>
@@ -2020,8 +2026,8 @@ function OrderCard({
                   onRequestDispatch?.(order);
                   return;
                 }
-                if (a.danger && !confirm(`Подтвердите: ${a.label.toLowerCase()} заказ #${order.orderId.slice(0, 8)}?`)) return;
-                if (a.needsConfirm && !confirm(`${a.label}? Статус заказа #${order.orderId.slice(0, 8)} изменится.`)) return;
+                if (a.danger && !confirm(`Подтвердите: ${a.label.toLowerCase()} заказ ${orderDisplayId(order)}?`)) return;
+                if (a.needsConfirm && !confirm(`${a.label}? Статус заказа ${orderDisplayId(order)} изменится.`)) return;
                 onAction(a.action, order);
               }}
             >

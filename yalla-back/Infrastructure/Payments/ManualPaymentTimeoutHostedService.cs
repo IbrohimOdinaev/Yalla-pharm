@@ -72,12 +72,28 @@ public sealed class ManualPaymentTimeoutHostedService : BackgroundService
       if (expiredOrders.Count == 0)
         return;
 
+      var expiredOrderIds = expiredOrders.Select(x => x.Id).ToList();
+      var paymentIntentsByOrderId = await dbContext.PaymentIntents
+        .AsTracking()
+        .Where(x =>
+          expiredOrderIds.Contains(x.ReservedOrderId)
+          && x.State != PaymentIntentState.Confirmed
+          && x.State != PaymentIntentState.Rejected)
+        .ToDictionaryAsync(x => x.ReservedOrderId, cancellationToken);
+
       await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
       try
       {
         foreach (var order in expiredOrders)
         {
           order.MarkManualPaymentExpired(nowUtc);
+
+          if (paymentIntentsByOrderId.TryGetValue(order.Id, out var paymentIntent))
+          {
+            paymentIntent.MarkRejected(
+              "Payment timeout: client did not pay within the confirmation window.",
+              nowUtc);
+          }
 
           if (order.IsStockDeducted)
           {

@@ -154,6 +154,22 @@ function getPreferredPaymentMethodId(order: ApiOrder) {
   return getRememberedOrderPaymentMethod(order.orderId) ?? paymentProviderToMethodId(order.paymentProvider);
 }
 
+function getOrderDisplayId(order: ApiOrder): string {
+  return order.publicId && Number.isFinite(order.publicId)
+    ? `№${order.publicId}`
+    : `#${order.orderId.slice(0, 8)}`;
+}
+
+function formatPaymentCountdown(expiresAtUtc: string | null | undefined, nowMs: number): string {
+  if (!expiresAtUtc) return "Оплатите в течение 3 минут, иначе заказ будет отменён";
+  const expiresMs = new Date(expiresAtUtc).getTime();
+  if (!Number.isFinite(expiresMs)) return "Оплатите в течение 3 минут, иначе заказ будет отменён";
+  const remainingSeconds = Math.max(0, Math.ceil((expiresMs - nowMs) / 1000));
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `До отмены ${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 /** Pickup orders that are still in-pharmacy and haven't been handed over yet.
  * For these we compute "забрать сегодня/завтра" each render so the hint stays
  * fresh as the current time crosses the pharmacy's 30-minute cutoff. */
@@ -164,6 +180,7 @@ export default function OrdersPage() {
   const targetOrderId = searchParams.get("orderId");
   const token = useAppSelector((state) => state.auth.token);
   const addCartItem = useCartStore((s) => s.addItem);
+  const loadBasket = useCartStore((s) => s.loadBasket);
   const addGuestItem = useGuestCartStore((s) => s.addItem);
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -176,6 +193,7 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>("active");
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
   const [paymentPicker, setPaymentPicker] = useState<{ orderId: string; amount: number; methods: PaymentMethodOption[] } | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Resolve Plus-Code pharmacy addresses to human-readable Jura text.
   const pharmacyList = Object.values(pharmacyMap);
@@ -212,6 +230,11 @@ export default function OrdersPage() {
     getPublicPaymentSettings().then(setPaymentSettings).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   // Track which orders we've already returned to cart (prevent duplicates)
   const returnedOrderIds = useRef(new Set<string>());
 
@@ -219,17 +242,11 @@ export default function OrdersPage() {
   useOrderStatusLive(useCallback(async (payload) => {
     if (payload.status === "Cancelled" && token && !returnedOrderIds.current.has(payload.orderId)) {
       returnedOrderIds.current.add(payload.orderId);
-      try {
-        const detail = await getOrderById(token, payload.orderId);
-        const positions = (detail.positions ?? []).filter((p) => !p.isRejected && p.medicineId && p.quantity > 0);
-        for (const pos of positions) {
-          try { await addCartItem(token, pos.medicineId, pos.quantity); } catch { /* best effort */ }
-        }
-      } catch { /* skip */ }
+      await loadBasket(token).catch(() => undefined);
     }
     // Refresh orders list
     loadAll();
-  }, [token, loadAll, addCartItem]));
+  }, [token, loadAll, loadBasket]));
 
   // Auto-switch to history tab if no active orders
   const hasActive = orders.some((o) => isActiveOrder(orderDetails[o.orderId] ?? o));
@@ -461,9 +478,9 @@ export default function OrdersPage() {
                 onClick={() => onToggleExpand(order.orderId)}
               >
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant/70">#{order.orderId.slice(0, 8)}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant/70">{getOrderDisplayId(d)}</p>
                   <div className="flex items-center gap-2">
-                    <p className="font-display text-xl font-extrabold text-primary">{originalPaid > 0 ? `${formatMoney(originalPaid)} ${d.currency ?? "TJS"}` : "—"}</p>
+                    <p className="font-display text-xl font-extrabold text-primary">{originalPaid > 0 ? formatMoney(originalPaid, d.currency) : "—"}</p>
                     {refundAmount > 0 ? (
                       <Chip tone="danger" asButton={false} size="sm">
                         возврат {formatMoney(refundAmount)}
@@ -521,7 +538,7 @@ export default function OrdersPage() {
                     Изменить способ
                   </Button>
                   <p className="text-[10px] font-semibold leading-tight text-warning">
-                    Оплатите в течение 24ч, иначе заказ будет отменён
+                    {formatPaymentCountdown(d.paymentExpiresAtUtc, nowMs)}
                   </p>
                 </div>
               ) : null}
@@ -581,6 +598,10 @@ export default function OrdersPage() {
                             ) : null}
                           </p>
                         ) : null}
+                      </div>
+                      <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
+                        <p className="text-[10px] text-on-surface-variant uppercase">Номер заказа</p>
+                        <p className="text-[10px] xs:text-xs sm:text-sm font-bold">{getOrderDisplayId(d)}</p>
                       </div>
                       <div className="rounded-xl bg-surface-container-low p-2 xs:p-2.5">
                         <p className="text-[10px] text-on-surface-variant uppercase">Сумма заказа</p>

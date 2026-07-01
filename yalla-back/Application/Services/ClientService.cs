@@ -687,7 +687,7 @@ public sealed class ClientService : IClientService
                 cancellationToken);
 
             if (existingIntent is not null)
-                return ToCheckoutPaymentIntentResponse(existingIntent);
+                return await ToCheckoutPaymentIntentResponseAsync(existingIntent, cancellationToken: cancellationToken);
         }
 
         var sourceKind = request.Source?.Kind ?? CheckoutSourceKind.Basket;
@@ -1114,7 +1114,7 @@ public sealed class ClientService : IClientService
             cancellationToken);
 
         if (existingIntent is not null)
-            return ToCheckoutPaymentIntentResponse(existingIntent);
+            return await ToCheckoutPaymentIntentResponseAsync(existingIntent, cancellationToken: cancellationToken);
 
         var reservedOrderId = Guid.NewGuid();
         var paymentResponse = await _paymentService.PayForOrderAsync(new PayForOrderRequest
@@ -1155,6 +1155,7 @@ public sealed class ClientService : IClientService
             throw new InvalidOperationException("Payment intent snapshot contains invalid offer price.");
 
         var nowUtc = DateTime.UtcNow;
+        var paymentExpiresAtUtc = nowUtc.AddMinutes(Math.Max(1, _paymentOptions.PendingConfirmationTimeoutMinutes));
         var paymentIntent = new PaymentIntent(
           reservedOrderId: reservedOrderId,
           clientId: request.ClientId,
@@ -1212,7 +1213,7 @@ public sealed class ClientService : IClientService
         };
 
         var order = orderRequest.ToDomain(reservedOrderId, effectivePhone, orderPositions);
-        order.MarkManualPaymentPendingIndefinitely(
+        order.MarkManualPaymentPending(
           amount: estimatedCost,
           currency: _paymentOptions.Currency,
           provider: string.IsNullOrWhiteSpace(paymentResponse.Provider)
@@ -1220,7 +1221,8 @@ public sealed class ClientService : IClientService
             : paymentResponse.Provider,
           receiverAccount: paymentResponse.ReceiverAccount ?? string.Empty,
           paymentUrl: paymentResponse.PaymentUrl,
-          paymentComment: paymentResponse.PaymentComment);
+          paymentComment: paymentResponse.PaymentComment,
+          expiresAtUtc: paymentExpiresAtUtc);
         order.MarkStockNotDeducted();
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -1276,7 +1278,7 @@ public sealed class ClientService : IClientService
                 cancellationToken);
 
             if (concurrentIntent is not null)
-                return ToCheckoutPaymentIntentResponse(concurrentIntent, deliveryCost);
+                return await ToCheckoutPaymentIntentResponseAsync(concurrentIntent, deliveryCost, cancellationToken);
 
             throw;
         }
@@ -1292,7 +1294,7 @@ public sealed class ClientService : IClientService
         await _realtimeUpdatesPublisher.PublishPaymentIntentUpdatedAsync(
             paymentIntent.Id, paymentIntent.ClientId, paymentIntent.State, order.Id, cancellationToken);
 
-        return ToCheckoutPaymentIntentResponse(paymentIntent, deliveryCost);
+        return ToCheckoutPaymentIntentResponse(paymentIntent, deliveryCost, order.PublicId, order.PaymentExpiresAtUtc);
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
@@ -1516,8 +1518,29 @@ public sealed class ClientService : IClientService
             throw new DomainArgumentException("Delivery coordinates are required.");
     }
 
+    private async Task<CheckoutBasketResponse> ToCheckoutPaymentIntentResponseAsync(
+      PaymentIntent paymentIntent,
+      decimal deliveryCost = 0m,
+      CancellationToken cancellationToken = default)
+    {
+        var order = await _dbContext.Orders
+          .AsNoTracking()
+          .Where(x => x.Id == paymentIntent.ReservedOrderId)
+          .Select(x => new { x.PublicId, x.PaymentExpiresAtUtc })
+          .FirstOrDefaultAsync(cancellationToken);
+
+        return ToCheckoutPaymentIntentResponse(
+          paymentIntent,
+          deliveryCost,
+          order?.PublicId ?? 0,
+          order?.PaymentExpiresAtUtc);
+    }
+
     private static CheckoutBasketResponse ToCheckoutPaymentIntentResponse(
-      PaymentIntent paymentIntent, decimal deliveryCost = 0m)
+      PaymentIntent paymentIntent,
+      decimal deliveryCost = 0m,
+      int publicId = 0,
+      DateTime? paymentExpiresAtUtc = null)
     {
         var itemsCost = paymentIntent.Amount - deliveryCost;
         return new CheckoutBasketResponse
@@ -1525,6 +1548,7 @@ public sealed class ClientService : IClientService
             ClientId = paymentIntent.ClientId,
             PaymentIntentId = paymentIntent.Id,
             ReservedOrderId = paymentIntent.ReservedOrderId,
+            PublicId = publicId,
             Currency = paymentIntent.Currency,
             CreatedAtUtc = paymentIntent.CreatedAtUtc,
             PaymentIntentState = paymentIntent.State,
@@ -1540,7 +1564,7 @@ public sealed class ClientService : IClientService
             PaymentState = paymentIntent.State == PaymentIntentState.Confirmed
               ? OrderPaymentState.Confirmed
               : OrderPaymentState.PendingManualConfirmation,
-            PaymentExpiresAtUtc = null,
+            PaymentExpiresAtUtc = paymentExpiresAtUtc,
             PaymentUrl = paymentIntent.PaymentUrl
         };
     }

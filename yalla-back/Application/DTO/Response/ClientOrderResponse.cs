@@ -5,6 +5,7 @@ namespace Yalla.Application.DTO.Response;
 public sealed class ClientOrderResponse
 {
   public Guid OrderId { get; init; }
+  public int PublicId { get; init; }
   public Guid PharmacyId { get; init; }
   public DateTime OrderPlacedAt { get; init; }
   public bool IsPickup { get; init; }

@@ -3,6 +3,7 @@ namespace Yalla.Application.DTO.Response;
 public sealed class PrescriptionResponse
 {
     public Guid PrescriptionId { get; set; }
+    public int PublicId { get; set; }
     public Guid ClientId { get; set; }
     /// <summary>Client display name (may be empty for OTP/Telegram-only clients without a saved name).</summary>
     public string? ClientName { get; set; }

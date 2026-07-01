@@ -188,6 +188,7 @@ function TabButton({ label, count, isActive, onClick }: { label: string; count: 
 
 function Row({ p }: { p: ApiPrescription }) {
   const cover = p.images[0];
+  const displayId = p.publicId && Number.isFinite(p.publicId) ? `№${p.publicId}` : `#${p.prescriptionId.slice(0, 8)}`;
   const created = new Date(p.createdAtUtc).toLocaleString("ru-RU", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit"
@@ -213,6 +214,7 @@ function Row({ p }: { p: ApiPrescription }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] font-semibold text-on-surface-variant">{displayId}</span>
             <Chip tone={STATUS_TONE[p.status] ?? "tertiary"} asButton={false} size="sm">
               {PRESCRIPTION_STATUS_LABEL_RU[p.status] ?? p.status}
             </Chip>

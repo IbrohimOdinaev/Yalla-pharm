@@ -9,6 +9,8 @@ public class Order
 
     public Guid Id { get; private set; }
 
+    public int PublicId { get; private set; }
+
     public Guid? ClientId { get; private set; }
 
     public string ClientPhoneNumber { get; private set; } = string.Empty;

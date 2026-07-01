@@ -42,11 +42,11 @@ export function CategoryIcon({ name, ...rest }: Props) {
             <line x1="42" y1="17" x2="45" y2="17" />
           </g>
           {/* Tube */}
-          <rect x="21" y="7" width="6" height="24" rx="3" fill="#FEE4DE" stroke="#F87171" strokeWidth="1.5" />
-          <rect x="22.5" y="14" width="3" height="16" fill="#F87171" />
+          <rect x="21" y="7" width="6" height="24" rx="3" fill="#FDF0F1" stroke="#D4484C" strokeWidth="1.5" />
+          <rect x="22.5" y="14" width="3" height="16" fill="#D4484C" />
           {/* Bulb */}
-          <circle cx="24" cy="36" r="7" fill="#F87171" stroke="#DC2626" strokeWidth="1.5" />
-          <circle cx="21.5" cy="34" r="1.6" fill="#FECACA" />
+          <circle cx="24" cy="36" r="7" fill="#D4484C" stroke="#A83439" strokeWidth="1.5" />
+          <circle cx="21.5" cy="34" r="1.6" fill="#F9DCDD" />
         </svg>
       );
 
@@ -113,7 +113,7 @@ export function CategoryIcon({ name, ...rest }: Props) {
             {/* Whole capsule shape */}
             <rect x="8" y="18" width="32" height="12" rx="6" fill="#F8FAFC" stroke="#475569" strokeWidth="1.5" />
             {/* Left half — coral */}
-            <rect x="8" y="18" width="16" height="12" fill="#FDA4AF" clipPath="url(#pillClip)" />
+            <rect x="8" y="18" width="16" height="12" fill="#EA9296" clipPath="url(#pillClip)" />
             {/* Right half — lilac */}
             <rect x="24" y="18" width="16" height="12" fill="#C4B5FD" clipPath="url(#pillClip)" />
             {/* Divider */}
@@ -149,14 +149,14 @@ export function CategoryIcon({ name, ...rest }: Props) {
         <svg {...common}>
           <path
             d="M24 42 C24 42 6 30 6 18 C6 12 11 8 16 8 C20 8 23 10 24 13 C25 10 28 8 32 8 C37 8 42 12 42 18 C42 30 24 42 24 42 Z"
-            fill="#F87171"
-            stroke="#DC2626"
+            fill="#D4484C"
+            stroke="#A83439"
             strokeWidth="1.5"
           />
           {/* Highlight */}
           <path
             d="M13 14 Q10 17 11 22"
-            stroke="#FCA5A5"
+            stroke="#EA9296"
             strokeWidth="2.5"
             strokeLinecap="round"
             fill="none"
@@ -241,12 +241,12 @@ export function CategoryIcon({ name, ...rest }: Props) {
           {/* Big blood drop */}
           <path
             d="M24 6 C24 6 12 20 12 30 C12 37 17 42 24 42 C31 42 36 37 36 30 C36 20 24 6 24 6 Z"
-            fill="#F87171"
-            stroke="#DC2626"
+            fill="#D4484C"
+            stroke="#A83439"
             strokeWidth="1.5"
           />
           {/* Highlight */}
-          <path d="M18 20 Q15 26 17 32" stroke="#FECACA" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          <path d="M18 20 Q15 26 17 32" stroke="#F9DCDD" strokeWidth="2.5" strokeLinecap="round" fill="none" />
           {/* Plus sign (medical) */}
           <g fill="#FFFFFF">
             <rect x="22" y="26" width="4" height="10" rx="1" />
@@ -259,9 +259,9 @@ export function CategoryIcon({ name, ...rest }: Props) {
       return (
         <svg {...common}>
           {/* Teat */}
-          <ellipse cx="24" cy="9" rx="3" ry="4" fill="#FDA4AF" stroke="#BE185D" strokeWidth="1.3" />
+          <ellipse cx="24" cy="9" rx="3" ry="4" fill="#EA9296" stroke="#BE185D" strokeWidth="1.3" />
           {/* Ring */}
-          <rect x="18" y="12" width="12" height="3" rx="1.5" fill="#F43F5E" />
+          <rect x="18" y="12" width="12" height="3" rx="1.5" fill="#D4484C" />
           {/* Bottle body */}
           <path
             d="M16 15 L32 15 L32 38 C32 41 30 43 27 43 L21 43 C18 43 16 41 16 38 Z"
@@ -332,11 +332,11 @@ export function CategoryIcon({ name, ...rest }: Props) {
           {/* Ring */}
           <rect x="16" y="22" width="16" height="3" fill="#9CA3AF" />
           {/* Lipstick stick */}
-          <rect x="19" y="10" width="10" height="14" fill="#F43F5E" />
+          <rect x="19" y="10" width="10" height="14" fill="#D4484C" />
           {/* Angled tip */}
-          <path d="M19 10 L29 10 L24 4 Z" fill="#E11D48" />
+          <path d="M19 10 L29 10 L24 4 Z" fill="#A83439" />
           {/* Highlight */}
-          <rect x="20" y="12" width="2" height="10" fill="#FCA5A5" opacity="0.7" />
+          <rect x="20" y="12" width="2" height="10" fill="#EA9296" opacity="0.7" />
         </svg>
       );
 
@@ -361,7 +361,7 @@ export function CategoryIcon({ name, ...rest }: Props) {
       return (
         <svg {...common}>
           <rect x="8" y="8" width="14" height="14" rx="3" fill="#86EFAC" stroke="#16A34A" strokeWidth="1.3" />
-          <rect x="26" y="8" width="14" height="14" rx="3" fill="#FCA5A5" stroke="#DC2626" strokeWidth="1.3" />
+          <rect x="26" y="8" width="14" height="14" rx="3" fill="#EA9296" stroke="#A83439" strokeWidth="1.3" />
           <rect x="8" y="26" width="14" height="14" rx="3" fill="#93C5FD" stroke="#2563EB" strokeWidth="1.3" />
           <rect x="26" y="26" width="14" height="14" rx="3" fill="#FCD34D" stroke="#D97706" strokeWidth="1.3" />
         </svg>
