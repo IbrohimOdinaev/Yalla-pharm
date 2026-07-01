@@ -9,7 +9,6 @@ import { replaceLastNavigation } from "@/shared/lib/useNavigationHistory";
 import { getCatalogMedicinesPaginated, getHomePopularMedicines, searchByPharmacy, liveSearch, type LiveSearchSuggestion } from "@/entities/medicine/api";
 import { getCategories } from "@/entities/category/api";
 import type { ApiMedicine, ApiCategory, ApiPharmacyMedicinesGroup } from "@/shared/types/api";
-import { HeroCarousel } from "@/widgets/catalog/HeroCarousel";
 import { MedicineCard } from "@/widgets/catalog/MedicineCard";
 import { MedicineCardSkeleton } from "@/widgets/catalog/MedicineCardSkeleton";
 import { MedicineRail } from "@/widgets/catalog/MedicineRail";
@@ -1018,6 +1017,30 @@ function HomeContent() {
     return null;
   }
 
+  function renderHomeRail(spec: RailSpec, revealDelay = 1) {
+    const ref = railCategoryRefs[spec.id];
+    // Keyword-defined rail that found no matching category -> drop it.
+    if (spec.keywords !== null && (ref === undefined || !ref.id)) return null;
+
+    const meds = railMeds[spec.id];
+    const target = ref?.slug ? `/catalog/${ref.slug}` : "/catalog";
+
+    return (
+      <div
+        key={spec.id}
+        className={`home-reveal home-reveal-delay-${Math.min(revealDelay, 5)}`}
+      >
+        <MedicineRail
+          title={spec.title}
+          accent={spec.accent}
+          medicines={meds ?? []}
+          isLoading={meds === undefined}
+          onViewAll={() => navRouter.push(target)}
+        />
+      </div>
+    );
+  }
+
   // ── SEARCH VIEW ──
   if (view === "search") {
     return (
@@ -1351,10 +1374,6 @@ function HomeContent() {
             </div>
           </section>
 
-          <div className="home-reveal home-reveal-delay-1">
-            <PharmacyIntegrationBanner />
-          </div>
-
           {/* Phone actions — compact vertical blocks directly under categories. */}
           {!isAdminOrSA ? (
             <div className="home-reveal home-reveal-delay-2 grid grid-cols-2 gap-3 sm:hidden">
@@ -1422,13 +1441,17 @@ function HomeContent() {
             </Link>
           ) : null}
 
-          <div className="home-reveal home-reveal-delay-2">
-            <HeroCarousel />
-          </div>
+          {/* Popular products first — this is the primary shopping block after
+              category shortcuts. */}
+          {renderHomeRail(HOME_RAILS[0], 2)}
 
           {/* Pharmacy banners */}
           <div className="home-reveal home-reveal-delay-3 hidden sm:block">
             <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
+          </div>
+
+          <div className="home-reveal home-reveal-delay-2">
+            <PharmacyIntegrationBanner />
           </div>
 
           {/* Rails — fixed-count horizontal shelves, one per popular category.
@@ -1438,27 +1461,7 @@ function HomeContent() {
               "Все →" navigates to the dedicated /catalog/[slug] route so
               search engines can index each category page. */}
           <div className="space-y-8 sm:space-y-12">
-            {HOME_RAILS.map((spec, index) => {
-              const ref = railCategoryRefs[spec.id];
-              // Keyword-defined rail that found no matching category → drop it.
-              if (spec.keywords !== null && (ref === undefined || !ref.id)) return null;
-              const meds = railMeds[spec.id];
-              const target = ref?.slug ? `/catalog/${ref.slug}` : "/catalog";
-              return (
-                <div
-                  key={spec.id}
-                  className={`home-reveal home-reveal-delay-${Math.min((index % 3) + 1, 5)}`}
-                >
-                  <MedicineRail
-                    title={spec.title}
-                    accent={spec.accent}
-                    medicines={meds ?? []}
-                    isLoading={meds === undefined}
-                    onViewAll={() => navRouter.push(target)}
-                  />
-                </div>
-              );
-            })}
+            {HOME_RAILS.slice(1).map((spec, index) => renderHomeRail(spec, (index % 3) + 1))}
           </div>
 
           {/* Footer CTA to the full catalog */}

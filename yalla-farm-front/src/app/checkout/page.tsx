@@ -529,7 +529,7 @@ export default function CheckoutPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                     Уточнение для курьера
                   </p>
-                  <p className="text-[10px] text-on-surface-variant/70">необязательно</p>
+                  <p className="text-xs font-semibold text-primary">необязательно</p>
                 </div>
                 <div className="mt-1.5 grid grid-cols-3 gap-2">
                   <NumericField label="Подъезд" value={entrance} onChange={setEntrance} />
@@ -715,24 +715,18 @@ export default function CheckoutPage() {
                   key={method.id}
                   type="button"
                   onClick={() => setSelectedPaymentMethodId(method.id)}
-                  className={`flex min-h-[86px] flex-col items-start justify-between rounded-2xl border p-2 text-left transition active:scale-[0.98] sm:min-h-[104px] sm:p-3 ${
+                  className={`flex min-h-[72px] items-center justify-center rounded-2xl border p-2 transition active:scale-[0.98] sm:min-h-[86px] sm:p-3 ${
                     selectedPaymentMethodId === method.id
                       ? "border-primary bg-primary-soft text-primary"
                       : "border-outline/60 bg-surface-container-low text-on-surface hover:border-primary/40"
                   }`}
+                  aria-label={method.title}
+                  title={method.title}
                 >
                   <PaymentMethodLogo
                     methodId={method.id}
-                    className="h-9 w-16 px-2 sm:h-10 sm:w-[86px]"
+                    className="h-12 w-full bg-transparent px-2 shadow-none sm:h-14"
                   />
-                  <span>
-                    <span className="block break-words text-[11px] font-extrabold leading-tight sm:text-sm">
-                      {method.title}
-                    </span>
-                    <span className="mt-1 hidden text-[11px] font-semibold leading-tight opacity-75 sm:block">
-                      {method.subtitle}
-                    </span>
-                  </span>
                 </button>
               ))}
             </div>
