@@ -81,6 +81,7 @@ export function TopBar({
   // layouts); click-outside must treat both subtrees as "inside".
   const menuRefDesktop = useRef<HTMLDivElement>(null);
   const menuRefMobile = useRef<HTMLDivElement>(null);
+  const activityCounts = useClientActivityCounts(token, role);
 
   const serverBasket = useCartStore((s) => s.basket);
   const guestCartCount = useGuestCartStore((s) => s.items.length);
@@ -431,6 +432,14 @@ export function TopBar({
 
     const LatestActivity = <LatestClientActivityButton />;
 
+    const renderMenuCount = (count: number) => (
+      count > 0 ? (
+        <span className="ml-2 inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black leading-none text-white">
+          {count > 99 ? "99+" : count}
+        </span>
+      ) : null
+    );
+
     const renderProfileButton = (ref: RefObject<HTMLDivElement | null>) => (
       <div className="relative flex-shrink-0" ref={ref}>
         <button
@@ -477,18 +486,24 @@ export function TopBar({
                     <Link
                       href="/orders"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
+                      className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                     >
-                      <Icon name="orders" size={16} />
-                      Мои заказы
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <Icon name="orders" size={16} className="flex-shrink-0" />
+                        <span className="truncate">Мои заказы</span>
+                      </span>
+                      {renderMenuCount(activityCounts.orders)}
                     </Link>
                     <Link
                       href="/prescriptions"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
+                      className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-95 hover:bg-surface-container"
                     >
-                      <Icon name="orders" size={16} />
-                      Мои рецепты
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <Icon name="orders" size={16} className="flex-shrink-0" />
+                        <span className="truncate">Мои рецепты</span>
+                      </span>
+                      {renderMenuCount(activityCounts.prescriptions)}
                     </Link>
                   </>
                 ) : null}
@@ -576,15 +591,13 @@ export function TopBar({
             </div>
           </div>
 
-          {/* MOBILE (< lg): two rows — logo+address+(cart sm+)+profile, then
-              wide search. The inline cart fills the gap left by the floating
-              pill, which is phone-only. */}
+          {/* MOBILE/TABLET (< lg): two rows — logo+address+activity+profile,
+              then wide search. Cart moves to the floating bottom pill. */}
           <div className="lg:hidden">
             <div className="flex items-center gap-3 py-2.5 sm:py-3">
               {LogoLink}
               {MobileBrandAndAddress}
               {LatestActivity}
-              {!onCartRoute ? renderCartButton("hidden sm:inline-flex") : null}
               {renderProfileButton(menuRefMobile)}
             </div>
             {MobileSearch ? (
@@ -597,7 +610,7 @@ export function TopBar({
         <div className="hair-divider" />
       </header>
 
-      {/* Floating cart — phone only (sm:hidden), shown when basket has
+      {/* Floating cart — mobile/tablet only (lg:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
           Size the pill from the icon+label group and keep that whole group
           centered. iOS browser toolbars move the visual viewport, so JS keeps
@@ -613,7 +626,7 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#2F8CFF] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out hover:bg-[#2479E8] active:scale-[0.98] sm:hidden"
+          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#2F8CFF] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out hover:bg-[#2479E8] active:scale-[0.98] lg:hidden"
           style={{
             top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
             transitionDuration: "var(--floating-cart-duration, 220ms)",
@@ -732,6 +745,15 @@ const ACTIVE_ORDER_STATUSES: ReadonlySet<string> = new Set([
   "PickedUp",
 ]);
 
+const ACTIVE_MENU_ORDER_STATUSES: ReadonlySet<string> = new Set([
+  "New",
+  "UnderReview",
+  "Preparing",
+  "Ready",
+  "DriverArrived",
+  "OnTheWay",
+]);
+
 const PRESCRIPTION_PROGRESS_STAGES: PrescriptionStatus[] = [
   "Submitted",
   "AwaitingConfirmation",
@@ -758,6 +780,56 @@ function stageProgress<T extends string>(stages: readonly T[], status: T, aliase
 
 const ACTIVITY_PROGRESS_COLOR = "#E94A33";
 const ACTIVITY_PROGRESS_TRACK = "#DDE7EA";
+
+function isAwaitingPayment(order: ApiOrder): boolean {
+  if (["Cancelled", "Delivered", "PickedUp", "Returned"].includes(order.status)) return false;
+  return order.paymentState === "PendingManualConfirmation" || String(order.paymentState) === "1";
+}
+
+function isMenuActiveOrder(order: ApiOrder): boolean {
+  return ACTIVE_MENU_ORDER_STATUSES.has(order.status) || isAwaitingPayment(order);
+}
+
+function useClientActivityCounts(token: string | null, role: string | null) {
+  const [counts, setCounts] = useState({ orders: 0, prescriptions: 0 });
+
+  const load = useCallback(() => {
+    if (!token || role !== "Client") {
+      setCounts({ orders: 0, prescriptions: 0 });
+      return;
+    }
+
+    let cancelled = false;
+    Promise.allSettled([getClientOrderHistory(token), getMyPrescriptions(token)]).then((results) => {
+      if (cancelled) return;
+      const orders = results[0].status === "fulfilled" && Array.isArray(results[0].value) ? results[0].value : [];
+      const prescriptions = results[1].status === "fulfilled" && Array.isArray(results[1].value) ? results[1].value : [];
+      setCounts({
+        orders: orders.filter((order: ApiOrder) => isMenuActiveOrder(order)).length,
+        prescriptions: prescriptions.filter((prescription: ApiPrescription) => (
+          ACTIVE_PRESCRIPTION_STATUSES.has(prescription.status)
+        )).length,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role, token]);
+
+  useEffect(() => {
+    const cleanup = load();
+    return () => {
+      cleanup?.();
+    };
+  }, [load]);
+
+  const clientSignalRToken = role === "Client" ? token : null;
+  useSignalREvent("OrderStatusChanged", load, clientSignalRToken);
+  useSignalREvent("PrescriptionUpdated", load, clientSignalRToken);
+
+  return counts;
+}
 
 function activityMeta(activity: LatestClientActivity) {
   if (activity.kind === "prescription") {
@@ -867,7 +939,7 @@ function LatestClientActivityButton() {
       href={meta.href}
       title={`Последний статус: ${meta.label}`}
       aria-label={`Последний статус: ${meta.label}`}
-      className="flex h-[46px] w-[74px] flex-shrink-0 flex-col items-center gap-0.5 transition active:scale-95 sm:h-[50px]"
+      className="flex h-[46px] w-[74px] flex-shrink-0 flex-col items-center justify-center gap-0.5 transition active:scale-95 sm:h-[50px]"
     >
       <span
         className="relative flex h-9 w-9 items-center justify-center rounded-full p-[2px] sm:h-10 sm:w-10"
@@ -883,9 +955,6 @@ function LatestClientActivityButton() {
           style={{ backgroundColor: meta.color }}
           aria-hidden="true"
         />
-      </span>
-      <span className="block max-w-full truncate text-center text-[10px] font-bold leading-none text-on-surface-variant">
-        {meta.label}
       </span>
     </Link>
   );
