@@ -264,34 +264,44 @@ export function TopBar({
   //    selector moves out of the header on mobile and lives as the last
   //    card in PharmacyBanners.
   if (homeMode) {
-    const LogoMark = (
+    const FullLogo = (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src="/logo-icon.png"
-        alt=""
-        aria-hidden="true"
-        className="h-9 w-9 flex-shrink-0 object-contain sm:h-10 sm:w-10 lg:h-11 lg:w-11"
+        src="/for-pharmacies-assets/yal.png"
+        alt="Yalla Pharm"
+        className="-my-4 h-20 w-auto flex-shrink-0 object-contain sm:-my-5 sm:h-24"
       />
     );
 
+    const LogoMark = (
+      <span className="relative block h-9 w-10 flex-shrink-0 overflow-hidden sm:h-10 sm:w-11" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/for-pharmacies-assets/yal.png"
+          alt=""
+          className="absolute -left-[17px] -top-[28px] h-[92px] w-auto max-w-none object-contain sm:-left-[18px] sm:-top-[30px] sm:h-[100px]"
+        />
+      </span>
+    );
+
     const LogoText = (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src="/logo-text.png"
-        alt="Yalla Pharm"
-        className="h-7 w-auto flex-shrink-0 object-contain sm:h-8 lg:h-9"
-      />
+      <span className="relative block h-6 w-[164px] max-w-full flex-shrink-0 overflow-hidden sm:h-7 sm:w-[180px]" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/for-pharmacies-assets/yal.png"
+          alt=""
+          className="absolute -left-[68px] -top-[35px] h-[100px] w-auto max-w-none object-contain sm:-left-[75px] sm:-top-[39px] sm:h-[110px]"
+        />
+      </span>
     );
 
     const LogoLink = onLogoClick ? (
       <button type="button" onClick={onLogoClick} className="flex flex-shrink-0 items-center gap-2">
-        {LogoMark}
-        {LogoText}
+        {FullLogo}
       </button>
     ) : (
       <Link href="/" className="flex flex-shrink-0 items-center gap-2">
-        {LogoMark}
-        {LogoText}
+        {FullLogo}
       </Link>
     );
 
