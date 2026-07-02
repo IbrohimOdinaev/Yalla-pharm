@@ -264,24 +264,34 @@ export function TopBar({
   //    selector moves out of the header on mobile and lives as the last
   //    card in PharmacyBanners.
   if (homeMode) {
-    const LogoBlock = (
-      <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/for-pharmacies-assets/yal.png"
-          alt="Yalla Pharm"
-          className="-my-4 h-20 w-auto flex-shrink-0 object-contain sm:-my-5 sm:h-24"
-        />
-      </>
+    const LogoMark = (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/logo-icon.png"
+        alt=""
+        aria-hidden="true"
+        className="h-9 w-9 flex-shrink-0 object-contain sm:h-10 sm:w-10 lg:h-11 lg:w-11"
+      />
+    );
+
+    const LogoText = (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/logo-text.png"
+        alt="Yalla Pharm"
+        className="h-7 w-auto flex-shrink-0 object-contain sm:h-8 lg:h-9"
+      />
     );
 
     const LogoLink = onLogoClick ? (
-      <button type="button" onClick={onLogoClick} className="flex items-center gap-2 flex-shrink-0">
-        {LogoBlock}
+      <button type="button" onClick={onLogoClick} className="flex flex-shrink-0 items-center gap-2">
+        {LogoMark}
+        {LogoText}
       </button>
     ) : (
-      <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-        {LogoBlock}
+      <Link href="/" className="flex flex-shrink-0 items-center gap-2">
+        {LogoMark}
+        {LogoText}
       </Link>
     );
 
@@ -323,28 +333,52 @@ export function TopBar({
 
     // Mobile header column next to the logo. Keep the address picker separate
     // so tapping the logo can still navigate home.
-    const MobileBrandAndAddress = (
-      <div className="-mx-1 flex min-w-0 flex-1 flex-col items-start px-1 py-0.5 max-[710px]:pl-12">
-        <button
-          type="button"
-          onClick={onAddressClick}
-          className="flex w-full min-w-0 items-center gap-1 rounded text-[11px] xs:text-xs sm:text-sm transition active:bg-surface-container-low/70"
-          title={addressTitle ? addressText : undefined}
-        >
-          {/* Pin icon — makes the row read as an address even when only a
-              short user label ("Kulob") is shown. */}
-          <Icon name="pin" size={12} className="flex-shrink-0 text-secondary" />
-          <span
-            className={`min-w-0 truncate ${addressTitle ? "font-semibold text-on-surface" : "text-on-surface-variant"}`}
+    const MobileLogoMarkLink = onLogoClick ? (
+      <button type="button" onClick={onLogoClick} className="flex flex-shrink-0 items-center" aria-label="Yalla Pharm">
+        {LogoMark}
+      </button>
+    ) : (
+      <Link href="/" className="flex flex-shrink-0 items-center" aria-label="Yalla Pharm">
+        {LogoMark}
+      </Link>
+    );
+
+    const MobileLogoTextLink = onLogoClick ? (
+      <button type="button" onClick={onLogoClick} className="flex max-w-full items-center" aria-label="Yalla Pharm">
+        {LogoText}
+      </button>
+    ) : (
+      <Link href="/" className="flex max-w-full items-center" aria-label="Yalla Pharm">
+        {LogoText}
+      </Link>
+    );
+
+    const MobileLogoAndAddress = (
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {MobileLogoMarkLink}
+        <div className="flex min-w-0 flex-1 flex-col items-start">
+          {MobileLogoTextLink}
+          <button
+            type="button"
+            onClick={onAddressClick}
+            className="mt-0.5 flex max-w-full min-w-0 items-center gap-1 rounded text-[11px] leading-tight transition active:bg-surface-container-low/70 xs:text-xs sm:text-sm"
+            title={addressTitle ? addressText : undefined}
           >
-            {addressTitle || displayAddressText || "Выберите адрес"}
-          </span>
-          <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-on-surface text-surface">
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </button>
+            {/* Pin icon — makes the row read as an address even when only a
+                short user label ("Kulob") is shown. */}
+            <Icon name="pin" size={12} className="flex-shrink-0 text-secondary" />
+            <span
+              className={`min-w-0 truncate ${addressTitle ? "font-semibold text-on-surface" : "text-on-surface-variant"}`}
+            >
+              {addressTitle || displayAddressText || "Выберите адрес"}
+            </span>
+            <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-on-surface text-surface">
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          </button>
+        </div>
       </div>
     );
 
@@ -595,10 +629,7 @@ export function TopBar({
               then wide search. Cart moves to the floating bottom pill. */}
           <div className="lg:hidden">
             <div className="flex items-center gap-3 py-2.5 sm:py-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2 max-[710px]:flex-col max-[710px]:items-start max-[710px]:gap-0">
-                {LogoLink}
-                {MobileBrandAndAddress}
-              </div>
+              {MobileLogoAndAddress}
               {LatestActivity}
               {renderProfileButton(menuRefMobile)}
             </div>
