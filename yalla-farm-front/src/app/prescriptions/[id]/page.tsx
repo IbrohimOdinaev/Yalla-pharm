@@ -27,7 +27,6 @@ import {
   PaymentMethodModal,
   type PaymentMethodOption,
 } from "@/widgets/payment/PaymentMethodModal";
-import { PaymentQrPanel } from "@/widgets/payment/PaymentQrPanel";
 import { AuthedImage, Button, Chip, Icon } from "@/shared/ui";
 
 const FALLBACK_ALIF_URL_TEMPLATE = "";
@@ -400,22 +399,18 @@ export default function PrescriptionDetailPage() {
                 <p className="text-xs text-on-surface-variant">
                   Откройте ссылку ниже и оплатите расшифровку. Как только платёж придёт, заявка автоматически отправится фармацевту.
                 </p>
-                {prescriptionPaymentMethods.length > 0 ? (
-                  <div className="space-y-3">
-                    {prescriptionPaymentMethods.map((method) => (
-                      <PaymentQrPanel
-                        key={method.id}
-                        method={method}
-                        amount={prescriptionPaymentAmount}
-                        onOpen={() => openPaymentForCurrentDevice({
-                          url: method.url,
-                          title: method.title,
-                          subtitle: method.subtitle,
-                          amount: prescriptionPaymentAmount,
-                        })}
-                      />
-                    ))}
-                  </div>
+                {prescriptionPaymentMethods.length > 0 && prescription.paymentUrl ? (
+                  <Button
+                    size="md"
+                    rightIcon="arrow-right"
+                    onClick={() => setPendingPayment({
+                      prescriptionId: prescription.prescriptionId,
+                      amount: prescriptionPaymentAmount,
+                      dcUrl: prescription.paymentUrl!,
+                    })}
+                  >
+                    Оплатить
+                  </Button>
                 ) : (
                   <p className="text-xs text-secondary">
                     Не удалось получить платёжную ссылку. Обновите страницу или попробуйте позже.

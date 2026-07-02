@@ -324,7 +324,7 @@ export function TopBar({
     // Mobile header column next to the logo. Keep the address picker separate
     // so tapping the logo can still navigate home.
     const MobileBrandAndAddress = (
-      <div className="-mx-1 flex min-w-0 flex-1 flex-col items-start px-1 py-0.5">
+      <div className="-mx-1 flex min-w-0 flex-1 flex-col items-start px-1 py-0.5 max-[710px]:pl-12">
         <button
           type="button"
           onClick={onAddressClick}
@@ -595,8 +595,10 @@ export function TopBar({
               then wide search. Cart moves to the floating bottom pill. */}
           <div className="lg:hidden">
             <div className="flex items-center gap-3 py-2.5 sm:py-3">
-              {LogoLink}
-              {MobileBrandAndAddress}
+              <div className="flex min-w-0 flex-1 items-center gap-2 max-[710px]:flex-col max-[710px]:items-start max-[710px]:gap-0">
+                {LogoLink}
+                {MobileBrandAndAddress}
+              </div>
               {LatestActivity}
               {renderProfileButton(menuRefMobile)}
             </div>

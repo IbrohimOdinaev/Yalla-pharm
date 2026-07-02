@@ -29,7 +29,7 @@ import { getCatalogMedicinesPaginated, liveSearch, type LiveSearchSuggestion } f
 import { getCategories } from "@/entities/category/api";
 import type { ApiCategory, ApiMedicine, ApiOrder } from "@/shared/types/api";
 import { upsertOffer } from "@/entities/offer/api";
-import { getAdminOrders, startAssembly, markReady, markOnTheWay, rejectPositions } from "@/entities/order/admin-api";
+import { getAdminOrders, getAdminOrdersPage, startAssembly, markReady, markOnTheWay, rejectPositions } from "@/entities/order/admin-api";
 import { AdminOrderDetailModal } from "@/widgets/order/AdminOrderDetailModal";
 import { DispatchDeliveryModal } from "@/widgets/order/DispatchDeliveryModal";
 import { computeItemsTotal, computeOriginalPaid, isOrderDataLost } from "@/entities/order/totals";
@@ -54,6 +54,7 @@ import {
 } from "@/entities/pharmacy-finance/api";
 
 type Tab = "dashboard" | "profile" | "offers" | "orders" | "finance";
+type OrderView = "board" | "history";
 
 const TAB_META: Record<Tab, { eyebrow: string; title: string; description: string }> = {
   dashboard: {
@@ -84,6 +85,7 @@ const TAB_META: Record<Tab, { eyebrow: string; title: string; description: strin
 };
 
 const BOARD_COLUMNS = ["UnderReview", "Preparing", "Ready", "OnTheWay", "Taken", "Cancelled", "Returned"];
+const ORDER_HISTORY_PAGE_SIZE = 40;
 const TAKEN_STATUSES = new Set(["DriverArrived", "Delivered", "PickedUp"]);
 const STATUS_LABELS: Record<string, string> = {
   New: "На рассмотрении", UnderReview: "На рассмотрении", Preparing: "Собирается",
@@ -1622,15 +1624,21 @@ function OffersTab({ token }: { token: string }) {
 
 function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: () => void }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<ApiOrder[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [acceptedAdmins, setAcceptedAdmins] = useState<ApiPharmacyWorkerResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
+  const [orderView, setOrderView] = useState<OrderView>("board");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [deliveryOrder, setDeliveryOrder] = useState<ApiOrder | null>(null);
   const [assemblyOrder, setAssemblyOrder] = useState<ApiOrder | null>(null);
   const [selectedAcceptedAdminId, setSelectedAcceptedAdminId] = useState("");
   const [isAssemblySubmitting, setIsAssemblySubmitting] = useState(false);
+  const historySentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Deep-link: /workspace?orderId=X auto-opens modal on mount.
   useEffect(() => {
@@ -1642,15 +1650,54 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
 
   const refresh = useCallback(() => {
     setIsLoading(true);
-    getAdminOrders(token, "")
+    getAdminOrders(token, "", 1, 1000, dateFilter)
       .then((data) => { setOrders(data); setIsLoading(false); onStatsRefresh?.(); })
       .catch((err) => { setError(err instanceof Error ? err.message : "Ошибка."); setIsLoading(false); });
-  }, [token, onStatsRefresh]);
+  }, [token, onStatsRefresh, dateFilter]);
+
+  const loadHistoryPage = useCallback(async (page: number, reset = false) => {
+    setIsHistoryLoading(true);
+    try {
+      const result = await getAdminOrdersPage(token, {
+        page,
+        pageSize: ORDER_HISTORY_PAGE_SIZE,
+        date: dateFilter,
+      });
+      setHistoryOrders((prev) => reset ? result.orders : [...prev, ...result.orders]);
+      setHistoryPage(result.page);
+      setHistoryHasMore(result.page * result.pageSize < result.totalCount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка загрузки истории.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, [token, dateFilter]);
 
   useOrderStatusLive(useCallback(() => { refresh(); }, [refresh]));
   useSignalREvent("PaymentIntentUpdated", useCallback(() => { refresh(); }, [refresh]), token);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    setHistoryOrders([]);
+    setHistoryPage(1);
+    setHistoryHasMore(true);
+    if (orderView === "history") {
+      loadHistoryPage(1, true);
+    }
+  }, [orderView, dateFilter, loadHistoryPage]);
+
+  useEffect(() => {
+    if (orderView !== "history") return;
+    const sentinel = historySentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting || isHistoryLoading || !historyHasMore) return;
+      loadHistoryPage(historyPage + 1);
+    }, { rootMargin: "240px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [orderView, isHistoryLoading, historyHasMore, historyPage, loadHistoryPage]);
 
   useEffect(() => {
     getMyPharmacyAdmins(token)
@@ -1720,9 +1767,7 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
     setDeliveryOrder(order);
   }
 
-  const filteredOrders = dateFilter
-    ? orders.filter((o) => o.createdAtUtc && new Date(o.createdAtUtc).toISOString().slice(0, 10) === dateFilter)
-    : orders;
+  const filteredOrders = orders;
 
   // Active columns run FIFO (longest-waiting first); history columns are
   // newest-first so the most recent finalised order is at the top.
@@ -1767,8 +1812,26 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
         </div>
       </div>
 
+      <div className="inline-flex rounded-2xl bg-surface-container-low p-1">
+        <button
+          type="button"
+          onClick={() => setOrderView("board")}
+          className={`rounded-xl px-4 py-2 text-xs font-bold transition ${orderView === "board" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
+        >
+          Доска
+        </button>
+        <button
+          type="button"
+          onClick={() => setOrderView("history")}
+          className={`rounded-xl px-4 py-2 text-xs font-bold transition ${orderView === "history" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
+        >
+          История
+        </button>
+      </div>
+
       {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
+      {orderView === "board" ? (
       <div className="-mx-1 flex flex-nowrap gap-4 overflow-x-auto px-1 pb-4 snap-x snap-mandatory">
         {BOARD_COLUMNS.map((status) => {
           const actions = (order: ApiOrder): { label: string; action: string; danger?: boolean; needsConfirm?: boolean }[] => {
@@ -1800,6 +1863,37 @@ function OrdersTab({ token, onStatsRefresh }: { token: string; onStatsRefresh?: 
           );
         })}
       </div>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold">История заказов</h3>
+            <span className="text-xs text-on-surface-variant">{historyOrders.length} загружено</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {historyOrders.map((order) => (
+              <OrderCard
+                key={order.orderId}
+                order={order}
+                token={token}
+                onRefresh={refresh}
+                onSelect={setSelectedOrderId}
+                onRequestDispatch={openDeliveryDispatch}
+                actions={[]}
+                onAction={onAction}
+              />
+            ))}
+          </div>
+          {historyOrders.length === 0 && !isHistoryLoading ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-center text-sm text-on-surface-variant">История пуста.</p>
+          ) : null}
+          <div ref={historySentinelRef} className="h-8" />
+          {isHistoryLoading ? (
+            <p className="text-center text-xs font-semibold text-on-surface-variant">Загружаем...</p>
+          ) : !historyHasMore && historyOrders.length > 0 ? (
+            <p className="text-center text-xs text-on-surface-variant">Все заказы загружены.</p>
+          ) : null}
+        </section>
+      )}
 
       {selectedOrderId ? (
         <AdminOrderDetailModal

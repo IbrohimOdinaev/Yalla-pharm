@@ -39,7 +39,7 @@ import type { ApiMedicine, ApiCategory, ApiOrder, ApiRefundRequest } from "@/sha
 import { getClients, deleteClient } from "@/entities/client/admin-api";
 import type { ApiClient } from "@/shared/types/api";
 import { getUsers, type ApiUserListItem, type ApiUserRole } from "@/entities/user/admin-api";
-import { getAllOrders, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
+import { getAllOrders, getAllOrdersPage, superAdminNextStatus, superAdminCancelOrder, superAdminReturnPositions } from "@/entities/order/admin-api";
 import { computeItemsTotal, computeOriginalPaid, computeRejectedRefund, computeReturnedRefund, computeNetCost, isOrderDataLost } from "@/entities/order/totals";
 import { getPendingPaymentIntents, confirmPaymentIntent, rejectPaymentIntent, type ApiPaymentIntent } from "@/entities/payment/api";
 import { getAwaitingConfirmation as getAwaitingPrescriptions, confirmPrescriptionPayment } from "@/entities/prescription/admin-api";
@@ -90,9 +90,11 @@ function supportsGeneratedPaymentQr(deepLinkUrl: string): boolean {
 }
 
 type Tab = "dashboard" | "pharmacies" | "users" | "medicines" | "logs" | "orders" | "prescriptions" | "delivery" | "finance";
+type OrderView = "board" | "history";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
+const ORDER_HISTORY_PAGE_SIZE = 40;
 const EXPLICIT_TIMEZONE_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 function PrettyFileInput({
@@ -209,19 +211,6 @@ function formatDushanbeDate(value?: string | null) {
     month: "2-digit",
     year: "numeric",
   });
-}
-
-function getDushanbeDateKey(value?: string | null) {
-  const date = parseDushanbeDate(value);
-  if (!date) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: DUSHANBE_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function dushanbeTimeMs(value?: string | null) {
@@ -3721,16 +3710,22 @@ const STATUS_COLORS: Record<string, string> = {
 
 function OrdersTab({ token }: { token: string }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<ApiOrder[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [intents, setIntents] = useState<ApiPaymentIntent[]>([]);
   const [refunds, setRefunds] = useState<ApiRefundRequest[]>([]);
   const [pharmacyTitleById, setPharmacyTitleById] = useState<Record<string, string>>({});
   const [pharmacyById, setPharmacyById] = useState<Record<string, ActivePharmacy>>({});
   const [error, setError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("");
+  const [orderView, setOrderView] = useState<OrderView>("board");
   const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null);
   const [showDeliveryMap, setShowDeliveryMap] = useState(false);
   const [returnMode, setReturnMode] = useState(false);
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const historySentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Pharmacy title lookup — backend returns only `pharmacyId` on orders, so
   // we resolve the readable title client-side. Loaded once per token.
@@ -3754,7 +3749,7 @@ function OrdersTab({ token }: { token: string }) {
     // own data arrives, so the user can already act on (e.g.) loaded orders
     // even if refunds are still in flight. The previous Promise.all gated
     // every column behind the slowest of the three endpoints.
-    getAllOrders(token, "")
+    getAllOrders(token, "", 1, 200, dateFilter)
       .then(setOrders)
       .catch((err) => setError(err instanceof Error ? err.message : "Ошибка."));
     getPendingPaymentIntents(token)
@@ -3763,7 +3758,25 @@ function OrdersTab({ token }: { token: string }) {
     getRefundRequests(token)
       .then(setRefunds)
       .catch((err) => setError(err instanceof Error ? err.message : "Ошибка."));
-  }, [token]);
+  }, [token, dateFilter]);
+
+  const loadHistoryPage = useCallback(async (page: number, reset = false) => {
+    setIsHistoryLoading(true);
+    try {
+      const result = await getAllOrdersPage(token, {
+        page,
+        pageSize: ORDER_HISTORY_PAGE_SIZE,
+        date: dateFilter,
+      });
+      setHistoryOrders((prev) => reset ? result.orders : [...prev, ...result.orders]);
+      setHistoryPage(result.page);
+      setHistoryHasMore(result.page * result.pageSize < result.totalCount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка загрузки истории.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, [token, dateFilter]);
 
   useOrderStatusLive(useCallback(() => { load(); }, [load]));
 
@@ -3771,6 +3784,27 @@ function OrdersTab({ token }: { token: string }) {
   useSignalREvent("PaymentIntentUpdated", useCallback(() => { load(); }, [load]), token);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setHistoryOrders([]);
+    setHistoryPage(1);
+    setHistoryHasMore(true);
+    if (orderView === "history") {
+      loadHistoryPage(1, true);
+    }
+  }, [orderView, dateFilter, loadHistoryPage]);
+
+  useEffect(() => {
+    if (orderView !== "history") return;
+    const sentinel = historySentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting || isHistoryLoading || !historyHasMore) return;
+      loadHistoryPage(historyPage + 1);
+    }, { rootMargin: "240px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [orderView, isHistoryLoading, historyHasMore, historyPage, loadHistoryPage]);
 
   // Reset return-mode whenever a different order is opened or overlay closes.
   useEffect(() => {
@@ -3818,9 +3852,7 @@ function OrdersTab({ token }: { token: string }) {
   }
 
 
-  const filteredOrders = dateFilter
-    ? orders.filter((o) => getDushanbeDateKey(o.createdAtUtc) === dateFilter)
-    : orders;
+  const filteredOrders = orders;
 
   // Order IDs that have pending payment intents — avoid showing them as regular order cards
   const intentOrderIds = new Set(intents.map((i) => i.reservedOrderId).filter(Boolean));
@@ -3893,9 +3925,27 @@ function OrdersTab({ token }: { token: string }) {
         </div>
       </div>
 
+      <div className="inline-flex rounded-2xl bg-surface-container-low p-1">
+        <button
+          type="button"
+          onClick={() => setOrderView("board")}
+          className={`rounded-xl px-4 py-2 text-xs font-bold transition ${orderView === "board" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
+        >
+          Доска
+        </button>
+        <button
+          type="button"
+          onClick={() => setOrderView("history")}
+          className={`rounded-xl px-4 py-2 text-xs font-bold transition ${orderView === "history" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
+        >
+          История
+        </button>
+      </div>
+
       {error ? <div className="rounded-xl bg-red-100 p-3 text-sm text-red-700">{error}</div> : null}
 
       {/* Kanban columns */}
+      {orderView === "board" ? (
       <section>
         <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-on-surface-variant">Заказы ({filteredOrders.length})</h3>
         <div className="flex gap-4 overflow-x-auto pb-4">
@@ -4013,6 +4063,58 @@ function OrdersTab({ token }: { token: string }) {
           />
         </div>
       </section>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-on-surface-variant">История заказов</h3>
+            <span className="text-xs text-on-surface-variant">{historyOrders.length} загружено</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {historyOrders.map((order) => {
+              const phone = order.clientPhoneNumber?.replace(/^\+?992/, "") ?? "";
+              const tgHandle = order.clientTelegramUsername
+                ? `@${order.clientTelegramUsername.replace(/^@/, "")}`
+                : order.clientTelegramId
+                  ? `tg:${order.clientTelegramId}`
+                  : "";
+              return (
+                <button
+                  key={order.orderId}
+                  type="button"
+                  className={`stitch-card p-3 text-left transition hover:ring-1 hover:ring-primary ${deliveryBorderClass(!!order.isPickup)}`}
+                  onClick={() => openOverlay(order)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-on-surface-variant">{orderDisplayId(order)}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded-full bg-surface-container px-2 py-1 text-[10px] font-black">{STATUS_LABELS[order.status] ?? order.status}</span>
+                      <DeliveryBadge isPickup={!!order.isPickup} iconOnly />
+                    </div>
+                  </div>
+                  <p className="mt-1 font-mono text-[10px] text-on-surface-variant/50 break-all">{order.orderId}</p>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate">{order.pharmacyTitle || "Аптека"}</span>
+                    {computeOriginalPaid(order) > 0 ? (
+                      <span className="font-bold text-primary">{formatMoney(computeOriginalPaid(order), order.currency)}</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-on-surface">{order.clientName || phone || tgHandle || "Клиент"}</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">{formatDushanbeDateTime(order.createdAtUtc)}</p>
+                </button>
+              );
+            })}
+          </div>
+          {historyOrders.length === 0 && !isHistoryLoading ? (
+            <p className="rounded-2xl bg-surface-container-low p-4 text-center text-sm text-on-surface-variant">История пуста.</p>
+          ) : null}
+          <div ref={historySentinelRef} className="h-8" />
+          {isHistoryLoading ? (
+            <p className="text-center text-xs font-semibold text-on-surface-variant">Загружаем...</p>
+          ) : !historyHasMore && historyOrders.length > 0 ? (
+            <p className="text-center text-xs text-on-surface-variant">Все заказы загружены.</p>
+          ) : null}
+        </section>
+      )}
 
       {/* Order detail overlay */}
       {selectedOrder ? (

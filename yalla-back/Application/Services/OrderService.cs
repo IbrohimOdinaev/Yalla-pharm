@@ -66,6 +66,12 @@ public sealed class OrderService : IOrderService
     if (request.Status.HasValue)
       query = query.Where(x => x.Status == request.Status.Value);
 
+    if (request.FromUtc.HasValue)
+      query = query.Where(x => x.OrderPlacedAt >= NormalizeOrderDateFilter(request.FromUtc.Value));
+
+    if (request.ToUtc.HasValue)
+      query = query.Where(x => x.OrderPlacedAt < NormalizeOrderDateFilter(request.ToUtc.Value));
+
     var totalCount = await query.CountAsync(cancellationToken);
     var orders = await query
       .Include(x => x.Positions)
@@ -254,6 +260,12 @@ public sealed class OrderService : IOrderService
 
     if (request.Status.HasValue)
       query = query.Where(x => x.Status == request.Status.Value);
+
+    if (request.FromUtc.HasValue)
+      query = query.Where(x => x.OrderPlacedAt >= NormalizeOrderDateFilter(request.FromUtc.Value));
+
+    if (request.ToUtc.HasValue)
+      query = query.Where(x => x.OrderPlacedAt < NormalizeOrderDateFilter(request.ToUtc.Value));
 
     var totalCount = await query.CountAsync(cancellationToken);
     var orders = await query
@@ -1805,5 +1817,12 @@ public sealed class OrderService : IOrderService
       actorId,
       fromStatus,
       toStatus);
+  }
+
+  private static DateTime NormalizeOrderDateFilter(DateTime value)
+  {
+    return value.Kind == DateTimeKind.Unspecified
+      ? value
+      : DateTime.SpecifyKind(value.ToUniversalTime(), DateTimeKind.Unspecified);
   }
 }

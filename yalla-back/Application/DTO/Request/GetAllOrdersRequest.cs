@@ -5,6 +5,8 @@ namespace Yalla.Application.DTO.Request;
 public sealed class GetAllOrdersRequest
 {
   public Status? Status { get; init; }
+  public DateTime? FromUtc { get; init; }
+  public DateTime? ToUtc { get; init; }
   public int Page { get; init; } = 1;
   public int PageSize { get; init; } = 50;
 }

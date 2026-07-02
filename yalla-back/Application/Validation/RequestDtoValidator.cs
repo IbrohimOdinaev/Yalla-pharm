@@ -260,6 +260,7 @@ public static class RequestDtoValidator
 
     if (request.PageSize < 1)
       errors.Add(new ValidationError(nameof(request.PageSize), "PageSize must be greater than zero."));
+
   }
 
   private static void ValidateGetAdmins(
@@ -271,6 +272,7 @@ public static class RequestDtoValidator
 
     if (request.PageSize < 1)
       errors.Add(new ValidationError(nameof(request.PageSize), "PageSize must be greater than zero."));
+
   }
 
   private static void ValidateGetAllOrders(
@@ -282,6 +284,9 @@ public static class RequestDtoValidator
 
     if (request.PageSize < 1)
       errors.Add(new ValidationError(nameof(request.PageSize), "PageSize must be greater than zero."));
+
+    if (request.FromUtc.HasValue && request.ToUtc.HasValue && request.ToUtc <= request.FromUtc)
+      errors.Add(new ValidationError(nameof(request.ToUtc), "ToUtc must be greater than FromUtc."));
   }
 
   private static void ValidateGetClientByPhoneNumber(
