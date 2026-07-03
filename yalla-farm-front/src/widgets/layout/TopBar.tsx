@@ -669,7 +669,7 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#2F8CFF] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out hover:bg-[#2479E8] active:scale-[0.98] lg:hidden"
+          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
           style={{
             top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
             transitionDuration: "var(--floating-cart-duration, 220ms)",

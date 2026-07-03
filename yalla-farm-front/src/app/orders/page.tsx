@@ -41,6 +41,8 @@ import {
 
 const FALLBACK_ALIF_URL_TEMPLATE = "";
 const FALLBACK_ESKHATA_URL_TEMPLATE = "";
+const DELIVERY_PAYMENT_TIMEOUT_MS = 3 * 60 * 1000;
+const PICKUP_PAYMENT_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 const STATUS_LABELS: Record<string, string> = {
   New: "Новый",
@@ -160,14 +162,38 @@ function getOrderDisplayId(order: ApiOrder): string {
     : `#${order.orderId.slice(0, 8)}`;
 }
 
-function formatPaymentCountdown(expiresAtUtc: string | null | undefined, nowMs: number): string {
-  if (!expiresAtUtc) return "Оплатите в течение 3 минут, иначе заказ будет отменён";
-  const expiresMs = new Date(expiresAtUtc).getTime();
-  if (!Number.isFinite(expiresMs)) return "Оплатите в течение 3 минут, иначе заказ будет отменён";
-  const remainingSeconds = Math.max(0, Math.ceil((expiresMs - nowMs) / 1000));
-  const minutes = Math.floor(remainingSeconds / 60);
+function getPaymentDeadlineMs(order: ApiOrder): number | null {
+  const createdAtMs = order.createdAtUtc ? new Date(order.createdAtUtc).getTime() : NaN;
+  const paymentExpiresAtMs = order.paymentExpiresAtUtc ? new Date(order.paymentExpiresAtUtc).getTime() : NaN;
+  const timeoutMs = order.isPickup ? PICKUP_PAYMENT_TIMEOUT_MS : DELIVERY_PAYMENT_TIMEOUT_MS;
+
+  // For pickup we intentionally give a longer local timeout regardless
+  // of backend values so the UX is aligned with the page requirement.
+  if (Number.isFinite(createdAtMs)) {
+    return order.isPickup ? createdAtMs + timeoutMs : (Number.isFinite(paymentExpiresAtMs) ? paymentExpiresAtMs : createdAtMs + timeoutMs);
+  }
+
+  return Number.isFinite(paymentExpiresAtMs) ? paymentExpiresAtMs : null;
+}
+
+function getPaymentTimeoutLabel(order: ApiOrder): string {
+  return `Оплатите в течение ${order.isPickup ? "2 часов" : "3 минут"}, иначе заказ будет отменён`;
+}
+
+function formatPaymentCountdown(order: ApiOrder, nowMs: number): string {
+  const deadlineMs = getPaymentDeadlineMs(order);
+  if (deadlineMs === null) return getPaymentTimeoutLabel(order);
+
+  const remainingSeconds = Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
+  if (remainingSeconds <= 0) return "Время для оплаты истекло";
+
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
   const seconds = remainingSeconds % 60;
-  return `До отмены ${minutes}:${seconds.toString().padStart(2, "0")}`;
+
+  return hours > 0
+    ? `До отмены ${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+    : `До отмены ${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 /** Pickup orders that are still in-pharmacy and haven't been handed over yet.
@@ -194,6 +220,7 @@ export default function OrdersPage() {
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
   const [paymentPicker, setPaymentPicker] = useState<{ orderId: string; amount: number; methods: PaymentMethodOption[] } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const autoCancellingOrderIds = useRef(new Set<string>());
 
   // Resolve Plus-Code pharmacy addresses to human-readable Jura text.
   const pharmacyList = Object.values(pharmacyMap);
@@ -247,6 +274,35 @@ export default function OrdersPage() {
     // Refresh orders list
     loadAll();
   }, [token, loadAll, loadBasket]));
+
+  useEffect(() => {
+    if (!token || orders.length === 0) return;
+
+    for (const order of orders) {
+      const resolvedOrder = orderDetails[order.orderId] ?? order;
+      if (!isAwaitingPayment(resolvedOrder)) continue;
+      if (!autoCancellingOrderIds.current.has(resolvedOrder.orderId) && !returnedOrderIds.current.has(resolvedOrder.orderId)) {
+        const deadlineMs = getPaymentDeadlineMs(resolvedOrder);
+        if (deadlineMs !== null && deadlineMs <= nowMs) {
+          autoCancellingOrderIds.current.add(resolvedOrder.orderId);
+
+          void (async () => {
+            try {
+              const detail = orderDetails[resolvedOrder.orderId] ?? await getOrderById(token, resolvedOrder.orderId).catch(() => resolvedOrder);
+              await cancelOrder(token, resolvedOrder.orderId);
+              await returnPositionsToCart(detail);
+              returnedOrderIds.current.add(resolvedOrder.orderId);
+              await loadAll();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Не удалось автоматически отменить заказ.");
+            } finally {
+              autoCancellingOrderIds.current.delete(resolvedOrder.orderId);
+            }
+          })();
+        }
+      }
+    }
+  }, [token, orders, orderDetails, nowMs, loadAll]);
 
   // Auto-switch to history tab if no active orders
   const hasActive = orders.some((o) => isActiveOrder(orderDetails[o.orderId] ?? o));
@@ -538,7 +594,7 @@ export default function OrdersPage() {
                     Изменить способ
                   </Button>
                   <p className="text-[10px] font-semibold leading-tight text-warning">
-                    {formatPaymentCountdown(d.paymentExpiresAtUtc, nowMs)}
+                    {formatPaymentCountdown(d, nowMs)}
                   </p>
                 </div>
               ) : null}
