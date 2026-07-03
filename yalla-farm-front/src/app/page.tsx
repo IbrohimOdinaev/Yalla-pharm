@@ -254,6 +254,48 @@ function PharmacyIntegrationBanner() {
   );
 }
 
+function DushanbePharmaciesBanner() {
+  return (
+    <section className="overflow-hidden rounded-3xl border border-outline/60 bg-surface-container-low shadow-card">
+      <Link
+        href="/pharmacies"
+        className="group grid min-h-[210px] grid-cols-1 transition active:scale-[0.99] sm:min-h-[240px] lg:grid-cols-[minmax(0,0.85fr)_minmax(400px,1fr)]"
+      >
+        <div className="relative z-10 flex flex-col justify-between gap-5 p-5 sm:p-7 lg:p-8">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-black text-primary">
+              <span className="h-2 w-2 rounded-full bg-secondary" />
+              Душанбе
+            </span>
+            <h2 className="mt-3 max-w-xl font-display text-2xl font-black leading-tight text-on-surface sm:text-3xl lg:text-4xl">
+              Аптеки в Душанбе
+            </h2>
+            <p className="mt-2 max-w-md text-sm font-semibold leading-relaxed text-on-surface-variant">
+              Список и карта аптек рядом с вами: режим работы, доставка и быстрый выбор аптеки.
+            </p>
+          </div>
+
+          <span className="inline-flex h-11 w-max items-center justify-center rounded-full bg-primary px-5 text-sm font-black text-on-primary transition group-hover:bg-primary-container">
+            Открыть аптеки →
+          </span>
+        </div>
+
+        <div className="relative min-h-[150px] overflow-hidden sm:min-h-[210px] lg:min-h-full">
+          <Image
+            src="/pharmacy-integration-banner.png"
+            alt="Аптеки в Душанбе"
+            fill
+            unoptimized
+            sizes="(min-width: 1024px) 52vw, 100vw"
+            className="object-cover object-center transition duration-500 group-hover:scale-[1.03]"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent lg:bg-gradient-to-r lg:from-surface-container-low lg:via-transparent lg:to-transparent" />
+        </div>
+      </Link>
+    </section>
+  );
+}
+
 function DushanbePharmacyMapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
   const [geoStatus, setGeoStatus] = useState<string>("Запрашиваем доступ к геолокации...");
@@ -1443,6 +1485,10 @@ function HomeContent() {
           {/* Popular products first — this is the primary shopping block after
               category shortcuts. */}
           {renderHomeRail(HOME_RAILS[0], 2)}
+
+          <div className="home-reveal home-reveal-delay-2">
+            <DushanbePharmaciesBanner />
+          </div>
 
           {/* Pharmacy banners */}
           <div className="home-reveal home-reveal-delay-3 hidden sm:block">
