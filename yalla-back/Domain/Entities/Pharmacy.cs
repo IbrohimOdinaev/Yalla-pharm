@@ -21,6 +21,8 @@ public class Pharmacy
 
     public string? BannerUrl { get; private set; }
 
+    public bool HasDelivery { get; private set; }
+
     /// Opening time (local). Null together with <see cref="ClosesAt"/> means
     /// the pharmacy is treated as 24/7.
     public TimeOnly? OpensAt { get; private set; }
@@ -105,6 +107,11 @@ public class Pharmacy
     public void SetBannerUrl(string? bannerUrl)
     {
         BannerUrl = string.IsNullOrWhiteSpace(bannerUrl) ? null : bannerUrl.Trim();
+    }
+
+    public void SetHasDelivery(bool hasDelivery)
+    {
+        HasDelivery = hasDelivery;
     }
 
     /// Both arguments must be provided together (pharmacy open from X to Y)

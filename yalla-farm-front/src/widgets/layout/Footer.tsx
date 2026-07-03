@@ -139,7 +139,7 @@ export function Footer() {
 
           <FooterColumn title="Каталог">
             <FooterLink href="/">Все товары</FooterLink>
-            <FooterLink href="/pharmacies/map">Карта аптек</FooterLink>
+            <FooterLink href="/pharmacies?tab=map">Карта аптек</FooterLink>
             <FooterLink href="/?search=">Поиск</FooterLink>
           </FooterColumn>
 

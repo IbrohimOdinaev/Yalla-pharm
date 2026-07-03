@@ -139,6 +139,9 @@ export async function createAdminWithPharmacy(
     pharmacyAddress: string;
     latitude?: number;
     longitude?: number;
+    hasDelivery?: boolean;
+    opensAt?: string;
+    closesAt?: string;
   }
 ): Promise<CreateAdminWithPharmacyResponse> {
   return apiFetch<CreateAdminWithPharmacyResponse>("/api/admins/register-with-pharmacy", { method: "POST", token, body: data });

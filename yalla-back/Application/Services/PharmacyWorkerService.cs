@@ -356,6 +356,13 @@ public sealed class PharmacyWorkerService : IPharmacyWorkerService
           adminId,
           request.IsPharmacyActive);
         pharmacy.SetCoordinates(request.Latitude, request.Longitude);
+        pharmacy.SetHasDelivery(request.HasDelivery);
+        if (request.OpensAt is not null || request.ClosesAt is not null)
+        {
+            var opens = string.IsNullOrWhiteSpace(request.OpensAt) ? (TimeOnly?)null : TimeOnly.Parse(request.OpensAt);
+            var closes = string.IsNullOrWhiteSpace(request.ClosesAt) ? (TimeOnly?)null : TimeOnly.Parse(request.ClosesAt);
+            pharmacy.SetOpeningHours(opens, closes);
+        }
 
         var worker = new PharmacyWorker(
           adminId,

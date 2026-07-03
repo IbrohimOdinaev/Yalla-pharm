@@ -57,6 +57,12 @@ public class PharmacyConfiguration : IEntityTypeConfiguration<Pharmacy>
           .HasMaxLength(1024)
           .IsRequired(false);
 
+        builder.Property(x => x.HasDelivery)
+          .HasColumnName("has_delivery")
+          .HasColumnType("boolean")
+          .HasDefaultValue(false)
+          .IsRequired();
+
         builder.Property(x => x.OpensAt)
           .HasColumnName("opens_at")
           .HasColumnType("time without time zone")

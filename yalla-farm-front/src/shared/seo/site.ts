@@ -42,7 +42,7 @@ export const siteSeo = {
 export const publicSeoRoutes = [
   { path: "/", priority: 1, changeFrequency: "daily" as const },
   { path: "/catalog", priority: 0.9, changeFrequency: "daily" as const },
-  { path: "/pharmacies/map", priority: 0.8, changeFrequency: "daily" as const },
+  { path: "/pharmacies", priority: 0.8, changeFrequency: "daily" as const },
   { path: "/for-pharmacies", priority: 0.7, changeFrequency: "monthly" as const },
   { path: "/privacy-policy", priority: 0.3, changeFrequency: "yearly" as const },
 ] as const;

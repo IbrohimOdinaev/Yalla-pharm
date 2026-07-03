@@ -87,7 +87,10 @@ public sealed class PharmaciesController : ControllerBase
         Latitude = request.Latitude,
         Longitude = request.Longitude,
         IconUrl = request.IconUrl,
-        BannerUrl = request.BannerUrl
+        BannerUrl = request.BannerUrl,
+        HasDelivery = request.HasDelivery,
+        OpensAt = request.OpensAt,
+        ClosesAt = request.ClosesAt
       };
     }
 

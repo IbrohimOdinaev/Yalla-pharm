@@ -2282,6 +2282,10 @@ function PharmaciesTab({ token }: { token: string }) {
   const [showCreateMap, setShowCreateMap] = useState(false);
   const [newPharmaLat, setNewPharmaLat] = useState("");
   const [newPharmaLng, setNewPharmaLng] = useState("");
+  const [newPharmaHasDelivery, setNewPharmaHasDelivery] = useState(false);
+  const [newPharmaFullTime, setNewPharmaFullTime] = useState(true);
+  const [newPharmaOpensAt, setNewPharmaOpensAt] = useState("08:00");
+  const [newPharmaClosesAt, setNewPharmaClosesAt] = useState("22:00");
   const createMapHandleRef = useRef<PharmacyMapHandle | null>(null);
   const newPharmaLogoRef = useRef<HTMLInputElement>(null);
   const newPharmaBannerRef = useRef<HTMLInputElement>(null);
@@ -2302,6 +2306,9 @@ function PharmaciesTab({ token }: { token: string }) {
         pharmacyTitle: newPharmaTitle, pharmacyAddress: newPharmaAddr,
         latitude: newPharmaLat ? parseFloat(newPharmaLat) : undefined,
         longitude: newPharmaLng ? parseFloat(newPharmaLng) : undefined,
+        hasDelivery: newPharmaHasDelivery,
+        opensAt: newPharmaFullTime ? "" : newPharmaOpensAt,
+        closesAt: newPharmaFullTime ? "" : newPharmaClosesAt,
       });
       const logo = newPharmaLogoRef.current?.files?.[0];
       const banner = newPharmaBannerRef.current?.files?.[0];
@@ -2313,6 +2320,7 @@ function PharmaciesTab({ token }: { token: string }) {
       setMsg("Аккаунт аптеки и аптека созданы.");
       setNewAdminName(""); setNewAdminPhone(""); setNewPharmaTitle(""); setNewPharmaAddr("");
       setNewPharmaLat(""); setNewPharmaLng(""); setShowCreateMap(false);
+      setNewPharmaHasDelivery(false); setNewPharmaFullTime(true); setNewPharmaOpensAt("08:00"); setNewPharmaClosesAt("22:00");
       if (newPharmaLogoRef.current) newPharmaLogoRef.current.value = "";
       if (newPharmaBannerRef.current) newPharmaBannerRef.current.value = "";
       if (newAdminAvatarRef.current) newAdminAvatarRef.current.value = "";
@@ -2361,6 +2369,20 @@ function PharmaciesTab({ token }: { token: string }) {
           <PrettyFileInput inputRef={newPharmaLogoRef} label="Логотип аптеки" accept="image/png,image/jpeg,image/webp" />
           <PrettyFileInput inputRef={newPharmaBannerRef} label="Баннер аптеки" accept="image/png,image/jpeg,image/webp" />
           <PrettyFileInput inputRef={newAdminAvatarRef} label="Фото профиля аккаунта (необязательно)" accept="image/png,image/jpeg,image/webp" className="md:col-span-2" />
+          <label className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-bold">
+            <input type="checkbox" checked={newPharmaHasDelivery} onChange={(event) => setNewPharmaHasDelivery(event.target.checked)} />
+            Есть доставка
+          </label>
+          <label className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-bold">
+            <input type="checkbox" checked={newPharmaFullTime} onChange={(event) => setNewPharmaFullTime(event.target.checked)} />
+            24/7
+          </label>
+          {!newPharmaFullTime ? (
+            <>
+              <input className="stitch-input" type="time" value={newPharmaOpensAt} onChange={(event) => setNewPharmaOpensAt(event.target.value)} />
+              <input className="stitch-input" type="time" value={newPharmaClosesAt} onChange={(event) => setNewPharmaClosesAt(event.target.value)} />
+            </>
+          ) : null}
         </div>
         {createdAccountCredentials ? (
           <CredentialBlock
@@ -2534,6 +2556,10 @@ function EditablePharmacyCard({
   const [isActive, setIsActive] = useState(pharmacy.isActive ?? true);
   const [lat, setLat] = useState(pharmacy.latitude?.toString() ?? "");
   const [lng, setLng] = useState(pharmacy.longitude?.toString() ?? "");
+  const [hasDelivery, setHasDelivery] = useState(Boolean(pharmacy.hasDelivery));
+  const [fullTime, setFullTime] = useState(!pharmacy.opensAt && !pharmacy.closesAt);
+  const [opensAt, setOpensAt] = useState(pharmacy.opensAt?.slice(0, 5) ?? "08:00");
+  const [closesAt, setClosesAt] = useState(pharmacy.closesAt?.slice(0, 5) ?? "22:00");
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [iconUploading, setIconUploading] = useState(false);
@@ -2587,6 +2613,9 @@ function EditablePharmacyCard({
         pharmacyId: pharmacy.id, title, address, isActive,
         latitude: lat ? parseFloat(lat) : undefined,
         longitude: lng ? parseFloat(lng) : undefined,
+        hasDelivery,
+        opensAt: fullTime ? "" : opensAt,
+        closesAt: fullTime ? "" : closesAt,
       });
       setMsg("Обновлено.");
       setIsEditing(false);
@@ -2740,6 +2769,22 @@ function EditablePharmacyCard({
         <div className="grid grid-cols-2 gap-2">
           <input className="stitch-input" placeholder="Широта (lat)" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} />
           <input className="stitch-input" placeholder="Долгота (lng)" type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-bold">
+            <input type="checkbox" checked={hasDelivery} onChange={(event) => setHasDelivery(event.target.checked)} />
+            Есть доставка
+          </label>
+          <label className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-bold">
+            <input type="checkbox" checked={fullTime} onChange={(event) => setFullTime(event.target.checked)} />
+            24/7
+          </label>
+          {!fullTime ? (
+            <>
+              <input className="stitch-input" type="time" value={opensAt} onChange={(event) => setOpensAt(event.target.value)} />
+              <input className="stitch-input" type="time" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
+            </>
+          ) : null}
         </div>
         <button type="button" className="stitch-button-secondary text-xs w-full" onClick={() => setShowMapPicker(!showMapPicker)}>
           {showMapPicker ? "Скрыть карту" : "Выбрать на карте"}
@@ -2916,6 +2961,9 @@ function EditablePharmacyCard({
             </p>
             {pharmacyAdmin && <p className="text-[10px] text-on-surface-variant">Админ: {pharmacyAdmin.name}</p>}
             {!pharmacyAdmin && <p className="text-[10px] text-warning">Нет админа</p>}
+            <p className="text-[10px] text-on-surface-variant">
+              Доставка: {pharmacy.hasDelivery ? "есть" : "нет"} · Время: {!pharmacy.opensAt && !pharmacy.closesAt ? "24/7" : `${pharmacy.opensAt?.slice(0, 5) ?? "—"}-${pharmacy.closesAt?.slice(0, 5) ?? "—"}`}
+            </p>
             {pharmacy.latitude && pharmacy.longitude ? (
               <p className="text-[10px] text-on-surface-variant">Координаты: {pharmacy.latitude}, {pharmacy.longitude}</p>
             ) : (

@@ -10,4 +10,7 @@ public sealed class RegisterAdminWithPharmacyRequest
   public double? Latitude { get; init; }
   public double? Longitude { get; init; }
   public bool IsPharmacyActive { get; init; } = true;
+  public bool HasDelivery { get; init; }
+  public string? OpensAt { get; init; }
+  public string? ClosesAt { get; init; }
 }

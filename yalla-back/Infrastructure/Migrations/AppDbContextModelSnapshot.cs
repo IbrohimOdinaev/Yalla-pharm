@@ -1771,6 +1771,12 @@ namespace Infrastructure.Migrations
                     b.Property<string>("IconUrl")
                         .HasColumnType("text");
 
+                    b.Property<bool>("HasDelivery")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("has_delivery");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
@@ -17,7 +18,6 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
   const [pharmacies, setPharmacies] = useState<ActivePharmacy[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
-  const openPicker = usePharmacyStore((s) => s.openPicker);
 
   useEffect(() => {
     getActivePharmacies()
@@ -56,9 +56,8 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide scroll-touch snap-x snap-mandatory">
         {/* Pharmacy picker entry — first card so the catch-all is the first
             thing visible without horizontal scrolling. Opens the picker modal. */}
-        <button
-          type="button"
-          onClick={openPicker}
+        <Link
+          href="/pharmacies"
           className="relative h-24 xs:h-28 sm:h-32 w-[200px] xs:w-[240px] sm:w-[280px] flex-shrink-0 rounded-2xl overflow-hidden snap-start flex flex-col items-center justify-center gap-1.5 bg-primary-soft text-primary transition active:scale-95 shadow-card hover:shadow-glass"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
@@ -73,9 +72,9 @@ export function PharmacyBanners({ onPharmacyClick }: Props) {
             {selectedPharmacy ? selectedPharmacy.title : "Все аптеки"}
           </p>
           <p className="text-[11px] font-semibold text-primary/80">
-            {selectedPharmacy ? "Изменить" : "Выбрать аптеку"}
+            {selectedPharmacy ? "Открыть список" : "Аптеки на карте"}
           </p>
-        </button>
+        </Link>
 
         {pharmacies.map((p) => {
           // Banner cards render up to ~280 CSS px wide. For server-hosted

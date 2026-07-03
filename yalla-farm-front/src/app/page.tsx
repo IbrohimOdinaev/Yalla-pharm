@@ -686,8 +686,8 @@ function HomeContent() {
   useEffect(() => {
     if (!isPickerOpen) return;
     closePicker();
-    setShowDushanbeMapModal(true);
-  }, [isPickerOpen, closePicker]);
+    navRouter.push("/pharmacies");
+  }, [isPickerOpen, closePicker, navRouter]);
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
 
@@ -1395,9 +1395,8 @@ function HomeContent() {
                 </span>
               </Link>
 
-              <button
-                type="button"
-                onClick={() => setShowDushanbeMapModal(true)}
+              <Link
+                href="/pharmacies"
                 className="flex min-h-[116px] flex-col justify-between rounded-2xl bg-primary-soft p-3 text-left text-primary shadow-card transition active:scale-95 hover:bg-primary/15"
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
@@ -1410,7 +1409,7 @@ function HomeContent() {
                   <span className="block text-sm font-bold leading-tight">Все аптеки</span>
                   <span className="mt-1 block text-[11px] font-semibold leading-tight text-primary/80">Аптеки на карте</span>
                 </span>
-              </button>
+              </Link>
             </div>
           ) : null}
 

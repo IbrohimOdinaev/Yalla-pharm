@@ -66,6 +66,7 @@ public static class ResponseMappingExtensions
             Longitude = pharmacy.Longitude,
             IconUrl = pharmacy.IconUrl,
             BannerUrl = pharmacy.BannerUrl,
+            HasDelivery = pharmacy.HasDelivery,
             OpensAt = pharmacy.OpensAt,
             ClosesAt = pharmacy.ClosesAt
         };

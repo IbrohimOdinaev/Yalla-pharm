@@ -9,6 +9,7 @@ export type ActivePharmacy = {
   longitude?: number | null;
   iconUrl?: string | null;
   bannerUrl?: string | null;
+  hasDelivery?: boolean;
   /** Opening time as "HH:mm:ss" (local). Null together with closesAt means 24/7. */
   opensAt?: string | null;
   closesAt?: string | null;

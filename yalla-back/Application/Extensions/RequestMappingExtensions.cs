@@ -38,6 +38,13 @@ public static class RequestMappingExtensions
     {
         var pharmacy = new Pharmacy(request.Title, request.Address);
         pharmacy.SetAdminId(request.AdminId);
+        pharmacy.SetHasDelivery(request.HasDelivery);
+        if (request.OpensAt is not null || request.ClosesAt is not null)
+        {
+            var opens = ParseSchedulePart(request.OpensAt);
+            var closes = ParseSchedulePart(request.ClosesAt);
+            pharmacy.SetOpeningHours(opens, closes);
+        }
 
         return pharmacy;
     }
@@ -95,6 +102,7 @@ public static class RequestMappingExtensions
             pharmacy.SetIconUrl(request.IconUrl);
         if (request.BannerUrl is not null)
             pharmacy.SetBannerUrl(request.BannerUrl);
+        pharmacy.SetHasDelivery(request.HasDelivery);
 
         // Opening hours: explicit empty strings clear the schedule (24/7).
         // `null` leaves the existing value untouched so partial updates don't

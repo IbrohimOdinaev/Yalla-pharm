@@ -18,6 +18,7 @@ export async function updatePharmacy(
     latitude?: number;
     longitude?: number;
     iconUrl?: string;
+    hasDelivery?: boolean;
     /** "HH:mm" to set, "" to mark 24/7, or omit to leave untouched. */
     opensAt?: string;
     closesAt?: string;
