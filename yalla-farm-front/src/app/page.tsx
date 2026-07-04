@@ -254,24 +254,82 @@ function PharmacyIntegrationBanner() {
 }
 
 function PharmaciesEntryBlock() {
+  const [bannerPharmacies, setBannerPharmacies] = useState<ActivePharmacy[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getActivePharmacies()
+      .then((items) => {
+        if (cancelled) return;
+        setBannerPharmacies(
+          items
+            .filter((pharmacy) => pharmacy.isActive !== false && Boolean(pharmacy.bannerUrl))
+            .slice(0, 3),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setBannerPharmacies([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <section>
       <h3 className="mb-2 text-sm font-bold text-on-surface xs:text-base sm:text-lg">Аптеки</h3>
-      <Link
-        href="/pharmacies"
-        className="flex h-32 w-[280px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-primary-soft text-primary shadow-card transition active:scale-95 hover:bg-primary/15 hover:shadow-glass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-      >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" />
-          </svg>
-        </span>
-        <span className="text-sm font-bold">Все аптеки</span>
-        <span className="text-[11px] font-semibold text-primary/80">Выбрать аптеку</span>
-      </Link>
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide scroll-touch">
+        <Link
+          href="/pharmacies"
+          className="flex h-32 w-[280px] flex-shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-primary-soft text-primary shadow-card transition active:scale-95 hover:bg-primary/15 hover:shadow-glass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+          </span>
+          <span className="text-sm font-bold">Все аптеки</span>
+          <span className="text-[11px] font-semibold text-primary/80">Выбрать аптеку</span>
+        </Link>
+
+        {bannerPharmacies.map((pharmacy) => {
+          const isExternal = pharmacy.bannerUrl?.startsWith("http") ?? false;
+          const bannerSrc = isExternal
+            ? pharmacy.bannerUrl!
+            : `/api/pharmacies/banner/${pharmacy.id}/content?w=480`;
+          const bannerSrcSet = isExternal
+            ? undefined
+            : `/api/pharmacies/banner/${pharmacy.id}/content?w=480 1x, /api/pharmacies/banner/${pharmacy.id}/content?w=800 2x`;
+
+          return (
+            <Link
+              key={pharmacy.id}
+              href="/pharmacies"
+              className="group relative h-32 w-[280px] flex-shrink-0 overflow-hidden rounded-2xl shadow-card transition active:scale-95 hover:shadow-glass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={bannerSrc}
+                srcSet={bannerSrcSet}
+                alt={pharmacy.title}
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-3 text-left">
+                <p className="truncate text-sm font-black text-white drop-shadow">{pharmacy.title}</p>
+                {pharmacy.address ? (
+                  <p className="mt-0.5 truncate text-xs font-semibold text-white/85">{pharmacy.address}</p>
+                ) : null}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -1450,13 +1508,13 @@ function HomeContent() {
               category shortcuts. */}
           {renderHomeRail(HOME_RAILS[0], 2)}
 
+          <div className="home-reveal home-reveal-delay-2">
+            <PharmacyIntegrationBanner />
+          </div>
+
           {/* Pharmacy entry */}
           <div className="home-reveal home-reveal-delay-3 hidden sm:block">
             <PharmaciesEntryBlock />
-          </div>
-
-          <div className="home-reveal home-reveal-delay-2">
-            <PharmacyIntegrationBanner />
           </div>
 
           {/* Rails — fixed-count horizontal shelves, one per popular category.
