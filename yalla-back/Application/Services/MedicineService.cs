@@ -274,6 +274,62 @@ public sealed class MedicineService : IMedicineService
       CancellationToken cancellationToken = default)
     {
         var safeLimit = limit <= 0 ? 6 : Math.Min(limit, 24);
+        var configuredQuery =
+          from popular in _dbContext.HomePopularMedicines.AsNoTracking()
+          join medicine in _dbContext.Medicines.AsNoTracking()
+            on popular.MedicineId equals medicine.Id
+          where medicine.IsActive
+            && medicine.IsCatalogMedicine
+            && (pharmacyId.HasValue
+              ? medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0 && o.Price > 0)
+              : medicine.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0))
+          orderby popular.Position
+          select medicine;
+
+        var configuredTotalCount = await configuredQuery.CountAsync(cancellationToken);
+        if (configuredTotalCount > 0)
+        {
+            var configuredMedicines = await configuredQuery
+              .Take(safeLimit)
+              .Select(medicine => new MedicineSearchItemResponse
+              {
+                  Id = medicine.Id,
+                  Title = medicine.Title,
+                  Articul = medicine.Articul,
+                  Barcode = medicine.Barcode,
+                  Slug = medicine.Slug,
+                  IsActive = medicine.IsActive,
+                  CategoryName = medicine.Category != null ? medicine.Category.Name : null,
+                  MinPrice = pharmacyId.HasValue
+                    ? (medicine.Offers.Any(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0 && o.Price > 0)
+                        ? medicine.Offers.Where(o => o.PharmacyId == pharmacyId.Value && o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
+                        : (decimal?)null)
+                    : (medicine.Offers.Any(o => o.StockQuantity > 0 && o.Price > 0)
+                        ? medicine.Offers.Where(o => o.StockQuantity > 0 && o.Price > 0).Min(o => o.Price)
+                        : (decimal?)null),
+                  Images = medicine.Images
+                    .OrderByDescending(i => i.IsMain)
+                    .ThenByDescending(i => i.IsMinimal)
+                    .Select(i => new MedicineImageResponse
+                    {
+                        Id = i.Id,
+                        Key = i.Key,
+                        IsMain = i.IsMain,
+                        IsMinimal = i.IsMinimal
+                    })
+                    .ToList()
+              })
+              .ToListAsync(cancellationToken);
+
+            return new GetMedicinesCatalogResponse
+            {
+                Page = 1,
+                PageSize = safeLimit,
+                TotalCount = configuredTotalCount,
+                Medicines = configuredMedicines
+            };
+        }
+
         var query = _dbContext.Medicines
           .AsNoTracking()
           .Where(medicine => medicine.IsActive && medicine.IsCatalogMedicine)

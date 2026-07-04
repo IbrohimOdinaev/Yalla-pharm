@@ -89,12 +89,13 @@ function supportsGeneratedPaymentQr(deepLinkUrl: string): boolean {
   return Boolean(deepLinkUrl.trim());
 }
 
-type Tab = "dashboard" | "pharmacies" | "users" | "medicines" | "logs" | "orders" | "prescriptions" | "delivery" | "finance";
+type Tab = "dashboard" | "pharmacies" | "users" | "medicines" | "popular" | "logs" | "orders" | "prescriptions" | "delivery" | "finance";
 type OrderView = "board" | "history";
 
 const DUSHANBE_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DUSHANBE_TIME_ZONE = "Asia/Dushanbe";
 const ORDER_HISTORY_PAGE_SIZE = 40;
+const POPULAR_HOME_SLOT_COUNT = 6;
 const EXPLICIT_TIMEZONE_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 function PrettyFileInput({
@@ -251,7 +252,7 @@ export default function SuperAdminPage() {
   useEffect(() => {
     function syncHash() {
       const h = window.location.hash.replace("#", "") as Tab;
-      if (h === "pharmacies" || h === "users" || h === "medicines" || h === "logs" || h === "orders" || h === "prescriptions" || h === "delivery" || h === "finance") setActiveTab(h);
+      if (h === "pharmacies" || h === "users" || h === "medicines" || h === "popular" || h === "logs" || h === "orders" || h === "prescriptions" || h === "delivery" || h === "finance") setActiveTab(h);
       else setActiveTab("dashboard");
     }
     syncHash();
@@ -287,6 +288,7 @@ export default function SuperAdminPage() {
         {activeTab === "pharmacies" ? <PharmaciesTab token={token} /> : null}
         {activeTab === "users" ? <UsersTab token={token} /> : null}
         {activeTab === "medicines" ? <MedicinesTab token={token} /> : null}
+        {activeTab === "popular" ? <PopularMedicinesTab token={token} /> : null}
         {activeTab === "logs" ? <OneCLogsTab token={token} /> : null}
         {activeTab === "orders" ? <OrdersTab token={token} /> : null}
         {activeTab === "prescriptions" ? <PrescriptionsTab token={token} /> : null}
@@ -3142,6 +3144,276 @@ function formatExchangeContact(status?: OneCExchangeStatus | null) {
 /* ── Medicines Tab ── */
 
 type ActiveFilter = "all" | "active" | "inactive";
+
+function PopularMedicinesTab({ token }: { token: string }) {
+  const [slots, setSlots] = useState<Array<HomePopularMedicineItem | null>>(
+    () => Array.from({ length: POPULAR_HOME_SLOT_COUNT }, () => null),
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerResults, setPickerResults] = useState<ApiMedicine[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
+  const hydrateSlots = useCallback((items: HomePopularMedicineItem[]) => {
+    const next = Array.from({ length: POPULAR_HOME_SLOT_COUNT }, () => null) as Array<HomePopularMedicineItem | null>;
+    items
+      .sort((a, b) => a.position - b.position)
+      .slice(0, POPULAR_HOME_SLOT_COUNT)
+      .forEach((item, index) => {
+        next[index] = item;
+      });
+    setSlots(next);
+  }, []);
+
+  const loadPopular = useCallback(() => {
+    setIsLoading(true);
+    getHomePopularMedicinesForAdmin(token)
+      .then((response) => hydrateSlots(response.items))
+      .catch((err) => setMsg(err instanceof Error ? err.message : "Не удалось загрузить популярные товары."))
+      .finally(() => setIsLoading(false));
+  }, [hydrateSlots, token]);
+
+  useEffect(() => {
+    loadPopular();
+  }, [loadPopular]);
+
+  const loadPickerResults = useCallback((query: string) => {
+    setPickerLoading(true);
+    getAllMedicines(token, query, 1, 30, true)
+      .then((response) => setPickerResults(response.medicines))
+      .catch(() => setPickerResults([]))
+      .finally(() => setPickerLoading(false));
+  }, [token]);
+
+  useEffect(() => {
+    if (pickerSlot === null) return;
+    loadPickerResults("");
+  }, [loadPickerResults, pickerSlot]);
+
+  async function saveSlots(nextSlots: Array<HomePopularMedicineItem | null>) {
+    setIsSaving(true);
+    setMsg(null);
+    try {
+      const ids = nextSlots
+        .map((item) => item?.medicineId)
+        .filter((id): id is string => Boolean(id));
+      const response = await updateHomePopularMedicines(token, ids);
+      hydrateSlots(response.items);
+      setMsg("Популярные товары обновлены.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Не удалось сохранить популярные товары.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function selectMedicine(medicine: ApiMedicine) {
+    if (pickerSlot === null) return;
+    const next = [...slots];
+    const duplicateIndex = next.findIndex((item) => item?.medicineId === medicine.id);
+    if (duplicateIndex >= 0 && duplicateIndex !== pickerSlot) next[duplicateIndex] = null;
+    next[pickerSlot] = {
+      medicineId: medicine.id,
+      position: pickerSlot + 1,
+      medicine,
+    };
+    setSlots(next);
+    setPickerSlot(null);
+    await saveSlots(next);
+  }
+
+  async function clearSlot(index: number) {
+    const next = [...slots];
+    next[index] = null;
+    setSlots(next);
+    await saveSlots(next);
+  }
+
+  function openPicker(index: number) {
+    setPickerSlot(index);
+    setPickerQuery("");
+    setPickerResults([]);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm xs:text-base sm:text-lg font-bold">Управление популярными товарами</h2>
+        <p className="mt-1 text-[10px] xs:text-xs sm:text-sm text-on-surface-variant">
+          Эти слоты управляют блоком “Популярные товары” на главной странице. Нажмите на слот и выберите товар из модалки.
+        </p>
+      </div>
+
+      <div className="stitch-card p-3 xs:p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-black text-on-surface">Слоты главной страницы</p>
+            <p className="mt-1 text-xs text-on-surface-variant">Порядок слотов совпадает с порядком карточек на главной.</p>
+          </div>
+          <button
+            type="button"
+            onClick={loadPopular}
+            disabled={isLoading || isSaving}
+            className="rounded-full bg-surface-container-low px-3 py-2 text-xs font-bold text-on-surface-variant transition hover:bg-surface-container-high disabled:opacity-40"
+          >
+            Обновить
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="rounded-2xl bg-surface-container-low p-5 text-sm font-semibold text-on-surface-variant">
+            Загружаем популярные товары...
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            {slots.map((item, index) => {
+              const medicine = item?.medicine;
+              return (
+                <div key={index} className="group overflow-hidden rounded-2xl border border-outline/60 bg-surface shadow-card">
+                  <button
+                    type="button"
+                    onClick={() => openPicker(index)}
+                    disabled={isSaving}
+                    className="block w-full text-left transition hover:bg-primary-soft/40 disabled:opacity-60"
+                  >
+                    <div className="relative aspect-square bg-image-backdrop p-3">
+                      {medicine ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={resolveMedicineImageUrl(medicine) || DEFAULT_MEDICINE_IMAGE_URL}
+                          alt=""
+                          onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                          className="h-full w-full object-contain mix-blend-multiply"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center rounded-xl border border-dashed border-primary/30 text-center text-xs font-bold text-primary">
+                          Выбрать товар
+                        </div>
+                      )}
+                      <span className="absolute left-2 top-2 rounded-full bg-primary px-2 py-1 text-[10px] font-black text-on-primary">
+                        #{index + 1}
+                      </span>
+                    </div>
+                    <div className="min-h-[96px] p-3">
+                      <p className="line-clamp-2 text-sm font-black text-on-surface">
+                        {medicine ? getMedicineDisplayName(medicine) : "Пустой слот"}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-on-surface-variant">
+                        {medicine?.minPrice ? formatMoney(medicine.minPrice) : medicine ? "Цена не задана" : "Нажмите для выбора"}
+                      </p>
+                    </div>
+                  </button>
+                  {medicine ? (
+                    <button
+                      type="button"
+                      onClick={() => clearSlot(index)}
+                      disabled={isSaving}
+                      className="w-full border-t border-outline/50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-40"
+                    >
+                      Очистить слот
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {msg ? (
+          <div className={`mt-3 rounded-2xl p-3 text-sm font-semibold ${msg.includes("обновлены") ? "bg-primary-soft text-primary" : "bg-red-50 text-red-700"}`}>
+            {msg}
+          </div>
+        ) : null}
+      </div>
+
+      {pickerSlot !== null ? (
+        <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-black/45 p-3 pt-10 backdrop-blur-sm">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setPickerSlot(null)}
+            aria-label="Закрыть выбор товара"
+          />
+          <div className="relative w-full max-w-3xl rounded-3xl bg-surface p-4 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase text-on-surface-variant">Слот #{pickerSlot + 1}</p>
+                <h3 className="mt-1 text-lg font-black text-on-surface">Выберите товар</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerSlot(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-low text-on-surface transition hover:bg-surface-container-high"
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              className="mb-3 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                loadPickerResults(pickerQuery);
+              }}
+            >
+              <input
+                className="stitch-input min-w-0 flex-1"
+                placeholder="Поиск по названию, артикулу или штрихкоду"
+                value={pickerQuery}
+                onChange={(event) => setPickerQuery(event.target.value)}
+              />
+              <button type="submit" className="stitch-button px-4">Найти</button>
+            </form>
+
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+              {pickerLoading ? (
+                <div className="rounded-2xl bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">Загрузка...</div>
+              ) : pickerResults.length === 0 ? (
+                <div className="rounded-2xl bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">Товары не найдены.</div>
+              ) : (
+                pickerResults.map((medicine) => {
+                  const alreadySelected = slots.some((item, index) => index !== pickerSlot && item?.medicineId === medicine.id);
+                  return (
+                    <button
+                      key={medicine.id}
+                      type="button"
+                      onClick={() => selectMedicine(medicine)}
+                      disabled={isSaving}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-outline/60 bg-surface p-2 text-left transition hover:border-primary/50 hover:bg-primary-soft/40 disabled:opacity-50"
+                    >
+                      <span className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-image-backdrop p-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={resolveMedicineImageUrl(medicine) || DEFAULT_MEDICINE_IMAGE_URL}
+                          alt=""
+                          onError={(event) => showDefaultMedicineImage(event.currentTarget)}
+                          className="h-full w-full object-contain mix-blend-multiply"
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-black text-on-surface">{getMedicineDisplayName(medicine)}</span>
+                        <span className="mt-1 block truncate text-xs text-on-surface-variant">
+                          {medicine.categoryName || medicine.articul || "Без категории"} · {medicine.minPrice ? formatMoney(medicine.minPrice) : "Цена не задана"}
+                        </span>
+                      </span>
+                      {alreadySelected ? (
+                        <span className="rounded-full bg-warning-soft px-2 py-1 text-[10px] font-black text-warning">Уже выбран</span>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function MedicinesTab({ token }: { token: string }) {
   const [medicines, setMedicines] = useState<ApiMedicine[]>([]);

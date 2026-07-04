@@ -20,6 +20,7 @@ const ADMIN_ITEMS: Item[] = [
 const SUPERADMIN_ITEMS: Item[] = [
   { label: "Аптеки", href: "/superadmin", hash: "pharmacies", icon: "pharmacy" },
   { label: "Лекарства", href: "/superadmin", hash: "medicines", icon: "bag" },
+  { label: "Популярные", href: "/superadmin", hash: "popular", icon: "star" },
   { label: "Заказы", href: "/superadmin", hash: "orders", icon: "orders" },
   { label: "Платежи", href: "/superadmin", hash: "payments", icon: "card" },
   { label: "Возвраты", href: "/superadmin", hash: "refunds", icon: "warning" },
