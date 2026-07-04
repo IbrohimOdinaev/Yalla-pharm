@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Аптеки Душанбе",
+  title: "Карта аптек Душанбе",
   description: "Карта аптек Душанбе в Yalla Pharm: адреса, наличие и выбор аптеки для заказа.",
   alternates: {
-    canonical: "/pharmacies",
+    canonical: "/pharmacies/map",
   },
   openGraph: {
-    title: "Аптеки Душанбе",
+    title: "Карта аптек Душанбе | Yalla Pharm",
     description: "Найдите аптеки Душанбе на карте и выберите аптеку для заказа лекарств.",
-    url: "/pharmacies",
+    url: "/pharmacies/map",
   },
 };
 
