@@ -22,7 +22,6 @@ import { useAppSelector } from "@/shared/lib/redux";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { usePharmacyStore } from "@/features/pharmacy/model/pharmacyStore";
 import { AddressPickerModal } from "@/widgets/address/AddressPickerModal";
-import { PharmacyBanners } from "@/widgets/pharmacy/PharmacyBanners";
 import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { DORU_DUSHANBE_ACTIVE_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { PharmacyLogo } from "@/shared/ui";
@@ -254,43 +253,24 @@ function PharmacyIntegrationBanner() {
   );
 }
 
-function DushanbePharmaciesBanner() {
+function PharmaciesEntryBlock() {
   return (
-    <section className="overflow-hidden rounded-3xl border border-outline/60 bg-surface-container-low shadow-card">
+    <section>
+      <h3 className="mb-2 text-sm font-bold text-on-surface xs:text-base sm:text-lg">Аптеки</h3>
       <Link
         href="/pharmacies"
-        className="group grid min-h-[210px] grid-cols-1 transition active:scale-[0.99] sm:min-h-[240px] lg:grid-cols-[minmax(0,0.85fr)_minmax(400px,1fr)]"
+        className="flex h-32 w-[280px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-primary-soft text-primary shadow-card transition active:scale-95 hover:bg-primary/15 hover:shadow-glass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
-        <div className="relative z-10 flex flex-col justify-between gap-5 p-5 sm:p-7 lg:p-8">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-black text-primary">
-              <span className="h-2 w-2 rounded-full bg-secondary" />
-              Душанбе
-            </span>
-            <h2 className="mt-3 max-w-xl font-display text-2xl font-black leading-tight text-on-surface sm:text-3xl lg:text-4xl">
-              Аптеки в Душанбе
-            </h2>
-            <p className="mt-2 max-w-md text-sm font-semibold leading-relaxed text-on-surface-variant">
-              Список и карта аптек рядом с вами: режим работы, доставка и быстрый выбор аптеки.
-            </p>
-          </div>
-
-          <span className="inline-flex h-11 w-max items-center justify-center rounded-full bg-primary px-5 text-sm font-black text-on-primary transition group-hover:bg-primary-container">
-            Открыть аптеки →
-          </span>
-        </div>
-
-        <div className="relative min-h-[150px] overflow-hidden sm:min-h-[210px] lg:min-h-full">
-          <Image
-            src="/pharmacy-integration-banner.png"
-            alt="Аптеки в Душанбе"
-            fill
-            unoptimized
-            sizes="(min-width: 1024px) 52vw, 100vw"
-            className="object-cover object-center transition duration-500 group-hover:scale-[1.03]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent lg:bg-gradient-to-r lg:from-surface-container-low lg:via-transparent lg:to-transparent" />
-        </div>
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.5" />
+            <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          </svg>
+        </span>
+        <span className="text-sm font-bold">Все аптеки</span>
+        <span className="text-[11px] font-semibold text-primary/80">Выбрать аптеку</span>
       </Link>
     </section>
   );
@@ -974,22 +954,6 @@ function HomeContent() {
     }
   }
 
-  function openSearchForPharmacy(pharmacy: ActivePharmacy) {
-    setPinnedSearchPharmacy(pharmacy);
-    setSelectedSearchPharmacyId(pharmacy.id);
-    setView("search");
-    setQuery("");
-    setPharmacyResults([]);
-    setSearchTotalCount(0);
-    // Push a new browser history entry so back works naturally; pre-encode the
-    // pharmacy filter so a refresh keeps the chip selected.
-    const url = new URL(window.location.href);
-    url.searchParams.set("search", "");
-    url.searchParams.set("pharmacy", pharmacy.id);
-    navRouter.push(url.pathname + url.search);
-    setTimeout(() => searchInputRef.current?.focus(), 100);
-  }
-
   // Restore search results from URL on mount, including pharmacy filter so
   // shared / refreshed links land on the same filtered results the user sent.
   const searchRestored = useRef(false);
@@ -1486,13 +1450,9 @@ function HomeContent() {
               category shortcuts. */}
           {renderHomeRail(HOME_RAILS[0], 2)}
 
-          <div className="home-reveal home-reveal-delay-2">
-            <DushanbePharmaciesBanner />
-          </div>
-
-          {/* Pharmacy banners */}
+          {/* Pharmacy entry */}
           <div className="home-reveal home-reveal-delay-3 hidden sm:block">
-            <PharmacyBanners onPharmacyClick={openSearchForPharmacy} />
+            <PharmaciesEntryBlock />
           </div>
 
           <div className="home-reveal home-reveal-delay-2">
