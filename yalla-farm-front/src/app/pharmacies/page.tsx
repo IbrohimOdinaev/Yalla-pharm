@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { getActivePharmacies, type ActivePharmacy } from "@/entities/pharmacy/api";
 import { DORU_DUSHANBE_ACTIVE_PHARMACIES } from "@/entities/pharmacy/doru-dushanbe-integrated";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { AppShell } from "@/widgets/layout/AppShell";
@@ -41,14 +40,8 @@ function pharmacyHoursLabel(pharmacy: Pick<CityPharmacy, "opensAt" | "closesAt" 
   return `${formatPharmacyTime(pharmacy.opensAt)}-${formatPharmacyTime(pharmacy.closesAt)}`;
 }
 
-function pharmacyBannerSrc(pharmacy: CityPharmacy): string | null {
-  if (!pharmacy.bannerUrl) return null;
-  if (pharmacy.bannerUrl.startsWith("http")) return pharmacy.bannerUrl;
-  return `/api/pharmacies/banner/${pharmacy.id.replace(/^admin-/, "")}/content?w=800`;
-}
-
-function buildCityPharmacies(activePharmacies: ActivePharmacy[]): CityPharmacy[] {
-  const items: CityPharmacy[] = DORU_DUSHANBE_ACTIVE_PHARMACIES.map((pharmacy) => {
+function buildCityPharmacies(): CityPharmacy[] {
+  return DORU_DUSHANBE_ACTIVE_PHARMACIES.map((pharmacy) => {
     const fullTime = pharmacy.is24Time === 1 || isFullTime(pharmacy.opensAt ?? null, pharmacy.closesAt ?? null);
     return {
       id: `doru-${pharmacy.id}`,
@@ -66,46 +59,13 @@ function buildCityPharmacies(activePharmacies: ActivePharmacy[]): CityPharmacy[]
       lng: pharmacy.lng,
     };
   });
-
-  const knownByCoordinate = new Set(
-    items.map((pharmacy) => `${pharmacy.title.toLowerCase()}|${pharmacy.lat.toFixed(5)}|${pharmacy.lng.toFixed(5)}`),
-  );
-
-  for (const pharmacy of activePharmacies) {
-    if (pharmacy.isActive === false || pharmacy.latitude == null || pharmacy.longitude == null) continue;
-    const lat = Number(pharmacy.latitude);
-    const lng = Number(pharmacy.longitude);
-    const coordinateKey = `${pharmacy.title.toLowerCase()}|${lat.toFixed(5)}|${lng.toFixed(5)}`;
-    if (knownByCoordinate.has(coordinateKey)) continue;
-
-    items.push({
-      id: pharmacy.id,
-      title: pharmacy.title,
-      address: pharmacy.address,
-      opensAt: pharmacy.opensAt ?? null,
-      closesAt: pharmacy.closesAt ?? null,
-      integrated: true,
-      iconUrl: pharmacy.iconUrl ?? null,
-      bannerUrl: pharmacy.bannerUrl ?? null,
-      hasDelivery: Boolean(pharmacy.hasDelivery),
-      fullTime: isFullTime(pharmacy.opensAt ?? null, pharmacy.closesAt ?? null),
-      source: "admin",
-      lat,
-      lng,
-    });
-  }
-
-  return items;
 }
 
 export default function PharmaciesPage() {
   const [activeTab, setActiveTab] = useState<Tab>("list");
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("full");
-  const [activePharmacies, setActivePharmacies] = useState<ActivePharmacy[]>([]);
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const userCoords = useDeliveryAddressStore((state) => state.coords);
 
   useEffect(() => {
@@ -113,15 +73,7 @@ export default function PharmaciesPage() {
     if (query.get("tab") === "map") setActiveTab("map");
   }, []);
 
-  useEffect(() => {
-    setIsLoading(true);
-    getActivePharmacies()
-      .then((items) => setActivePharmacies(items.filter((pharmacy) => pharmacy.isActive !== false)))
-      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить аптеки."))
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  const pharmacies = useMemo(() => buildCityPharmacies(activePharmacies), [activePharmacies]);
+  const pharmacies = useMemo(() => buildCityPharmacies(), []);
 
   const visiblePharmacies = useMemo(() => {
     return pharmacies
@@ -169,81 +121,101 @@ export default function PharmaciesPage() {
             </button>
           </div>
 
-          <div className="flex flex-col gap-2 rounded-2xl bg-surface-container-low p-2 sm:flex-row">
-            <label className="flex flex-1 flex-col gap-1 text-xs font-bold text-on-surface-variant">
-              Фильтр
-              <select
-                value={deliveryFilter}
-                onChange={(event) => setDeliveryFilter(event.target.value as DeliveryFilter)}
-                className="h-10 rounded-xl border border-outline bg-surface px-3 text-sm font-bold text-on-surface"
-              >
-                <option value="all">Все аптеки</option>
-                <option value="delivery">Есть доставка</option>
-              </select>
-            </label>
-            <label className="flex flex-1 flex-col gap-1 text-xs font-bold text-on-surface-variant">
-              Сортировка
-              <select
-                value={sortMode}
-                onChange={(event) => setSortMode(event.target.value as SortMode)}
-                className="h-10 rounded-xl border border-outline bg-surface px-3 text-sm font-bold text-on-surface"
-              >
-                <option value="full">Сначала 24/7</option>
-                <option value="title">По названию</option>
-              </select>
-            </label>
+          <div className="grid gap-3 rounded-3xl border border-outline/60 bg-surface p-3 shadow-card sm:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-xs font-black uppercase text-on-surface-variant">Фильтр</p>
+              <div className="grid grid-cols-2 rounded-2xl bg-surface-container-low p-1">
+                <button
+                  type="button"
+                  onClick={() => setDeliveryFilter("all")}
+                  className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                    deliveryFilter === "all" ? "bg-primary text-on-primary shadow-card" : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  Все
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeliveryFilter("delivery")}
+                  className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                    deliveryFilter === "delivery" ? "bg-primary text-on-primary shadow-card" : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  Доставка
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-black uppercase text-on-surface-variant">Сортировка</p>
+              <div className="grid grid-cols-2 rounded-2xl bg-surface-container-low p-1">
+                <button
+                  type="button"
+                  onClick={() => setSortMode("full")}
+                  className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                    sortMode === "full" ? "bg-primary text-on-primary shadow-card" : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  24/7
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSortMode("title")}
+                  className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                    sortMode === "title" ? "bg-primary text-on-primary shadow-card" : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  Название
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
-        {isLoading ? (
-          <div className="rounded-3xl bg-surface-container-low p-6 text-sm font-semibold">Загружаем аптеки...</div>
-        ) : null}
-        {error ? (
-          <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
-        ) : null}
-
         {activeTab === "list" ? (
-          visiblePharmacies.length === 0 && !isLoading ? (
+          visiblePharmacies.length === 0 ? (
             <div className="rounded-3xl bg-surface-container-low p-8 text-center text-sm font-semibold text-on-surface-variant">
               По выбранному фильтру аптек нет.
             </div>
           ) : (
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {visiblePharmacies.map((pharmacy) => (
-                <button
-                  key={pharmacy.id}
-                  type="button"
-                  onClick={() => setSelectedPharmacyId(pharmacy.id)}
-                  className="overflow-hidden rounded-2xl border border-outline/60 bg-surface text-left shadow-card transition active:scale-[0.99] hover:border-primary/40 hover:shadow-glass"
-                >
-                  <div className="relative h-28 overflow-hidden bg-primary-soft">
-                    {pharmacyBannerSrc(pharmacy) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={pharmacyBannerSrc(pharmacy)!} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary-soft via-surface-container-low to-surface-container-high" />
-                    )}
-                    <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-                      {pharmacy.fullTime ? <span className="rounded-full bg-primary px-2 py-1 text-[10px] font-black text-white">24/7</span> : null}
-                      {pharmacy.hasDelivery ? <span className="rounded-full bg-emerald-500 px-2 py-1 text-[10px] font-black text-white">Доставка</span> : null}
+            <section className="overflow-hidden rounded-3xl border border-outline/60 bg-surface shadow-card">
+              <div className="hidden grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_120px_120px] gap-3 border-b border-outline/60 bg-surface-container-low px-4 py-3 text-xs font-black uppercase text-on-surface-variant md:grid">
+                <span>Аптека</span>
+                <span>Адрес</span>
+                <span>Режим</span>
+                <span>Доставка</span>
+              </div>
+              <div className="divide-y divide-outline/50">
+                {visiblePharmacies.map((pharmacy) => (
+                  <button
+                    key={pharmacy.id}
+                    type="button"
+                    onClick={() => setSelectedPharmacyId(pharmacy.id)}
+                    className="grid w-full gap-3 px-3 py-3 text-left transition hover:bg-primary-soft/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 md:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_120px_120px] md:items-center md:px-4"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      {pharmacy.source === "admin" ? (
+                        <PharmacyLogo pharmacyId={pharmacy.id.replace(/^admin-/, "")} iconUrl={pharmacy.iconUrl} size={42} className="flex-shrink-0" />
+                      ) : (
+                        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Icon name="pharmacy" size={22} />
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <h2 className="truncate text-sm font-black text-on-surface">{pharmacy.title}</h2>
+                        <p className="mt-1 text-[11px] font-bold text-primary md:hidden">{pharmacyHoursLabel(pharmacy)}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3">
-                    {pharmacy.source === "admin" ? (
-                      <PharmacyLogo pharmacyId={pharmacy.id.replace(/^admin-/, "")} iconUrl={pharmacy.iconUrl} size={44} className="flex-shrink-0" />
-                    ) : (
-                      <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <Icon name="pharmacy" size={22} />
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-sm font-black text-on-surface">{pharmacy.title}</h2>
-                      <p className="truncate text-xs text-on-surface-variant">{pharmacy.address}</p>
-                      <p className="mt-1 text-[11px] font-bold text-primary">{pharmacyHoursLabel(pharmacy)}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                    <p className="min-w-0 truncate text-xs font-semibold text-on-surface-variant md:text-sm">{pharmacy.address}</p>
+                    <span className="hidden text-sm font-black text-primary md:block">{pharmacyHoursLabel(pharmacy)}</span>
+                    <span className={`w-max rounded-full px-3 py-1 text-xs font-black ${
+                      pharmacy.hasDelivery ? "bg-emerald-50 text-emerald-600" : "bg-surface-container-low text-on-surface-variant"
+                    }`}>
+                      {pharmacy.hasDelivery ? "Есть" : "Нет"}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </section>
           )
         ) : (
@@ -270,17 +242,11 @@ export default function PharmaciesPage() {
               aria-label="Закрыть информацию об аптеке"
             />
             <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-surface shadow-2xl">
-              <div className="relative h-32 bg-primary-soft">
-                {pharmacyBannerSrc(selectedPharmacy) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={pharmacyBannerSrc(selectedPharmacy)!} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary-soft via-surface-container-low to-surface-container-high" />
-                )}
+              <div className="relative flex justify-end bg-surface-container-low p-3">
                 <button
                   type="button"
                   onClick={() => setSelectedPharmacyId(null)}
-                  className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-surface/90 text-on-surface shadow-card transition hover:bg-surface"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-on-surface shadow-card transition hover:bg-surface-container-high"
                   aria-label="Закрыть"
                 >
                   <Icon name="close" size={18} />
