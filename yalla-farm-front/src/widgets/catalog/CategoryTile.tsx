@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { CategoryIcon, type CategoryIconKey } from "./CategoryIcon";
 
 export type CategoryTilePalette =
@@ -99,12 +101,12 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
             keeps the actual product photo small relative to the card). */}
         <span className={`flex flex-1 items-center justify-center ${image ? "p-3 sm:p-4" : "p-2 sm:p-3"}`}>
           {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={image}
               alt=""
-              loading="lazy"
-              decoding="async"
+              width={528}
+              height={448}
+              sizes="(min-width: 1024px) 111px, (min-width: 640px) 96px, 88px"
               className="h-full w-full object-contain mix-blend-multiply"
             />
           ) : (

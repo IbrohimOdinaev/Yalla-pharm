@@ -112,15 +112,15 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   // "Все категории" first — anchors the rail with the catch-all so users
   // who don't see their target among the quick tiles immediately know
   // where to look.
-  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/all.png" },
-  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
-  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/allergy.png", keywords: ["аллерг", "антигистамин"] },
-  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
-  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
-  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
-  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
-  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
-  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/hd/all.png" },
+  { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/hd/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
+  { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/hd/allergy.png", keywords: ["аллерг", "антигистамин"] },
+  { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/hd/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
+  { icon: "vitamin", palette: "sun", label: "Витамины", image: "/categories/hd/vitamins.png", keywords: ["витамин", "бад", "биодобав", "минерал"] },
+  { icon: "heart", palette: "rose", label: "Сердце", image: "/categories/hd/heart.png", keywords: ["сердц", "сердеч", "кардио", "сосуд", "давлен"] },
+  { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/hd/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
+  { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/hd/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
+  { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/hd/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
 ];
 
 export default function HomePage() {
