@@ -113,6 +113,8 @@ public sealed class OrderService : IOrderService
     if (!clientExists)
       throw new InvalidOperationException($"Client with id '{request.ClientId}' was not found.");
 
+    await ExpireClientManualPaymentOrdersAsync(request.ClientId, orderId: null, cancellationToken);
+
     var orders = await _dbContext.Orders
       .AsNoTracking()
       .Where(x => x.ClientId == request.ClientId)
@@ -159,6 +161,8 @@ public sealed class OrderService : IOrderService
     CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(request);
+
+    await ExpireClientManualPaymentOrdersAsync(request.ClientId, request.OrderId, cancellationToken);
 
     var order = await _dbContext.Orders
       .AsNoTracking()
@@ -1774,6 +1778,83 @@ public sealed class OrderService : IOrderService
     };
   }
 
+  private async Task ExpireClientManualPaymentOrdersAsync(
+    Guid clientId,
+    Guid? orderId,
+    CancellationToken cancellationToken)
+  {
+    var nowUtc = DateTime.UtcNow;
+
+    var query = _dbContext.Orders
+      .AsTracking()
+      .Include(x => x.Positions)
+      .Where(x =>
+        x.ClientId == clientId
+        && x.Status == Status.New
+        && x.PaymentState == OrderPaymentState.PendingManualConfirmation
+        && x.PaymentExpiresAtUtc.HasValue
+        && x.PaymentExpiresAtUtc.Value <= nowUtc);
+
+    if (orderId.HasValue)
+      query = query.Where(x => x.Id == orderId.Value);
+
+    var expiredOrders = await query.ToListAsync(cancellationToken);
+    if (expiredOrders.Count == 0)
+      return;
+
+    var expiredOrderIds = expiredOrders.Select(x => x.Id).ToList();
+    var paymentIntentsByOrderId = await _dbContext.PaymentIntents
+      .AsTracking()
+      .Where(x =>
+        expiredOrderIds.Contains(x.ReservedOrderId)
+        && x.State != PaymentIntentState.Confirmed
+        && x.State != PaymentIntentState.Rejected)
+      .ToDictionaryAsync(x => x.ReservedOrderId, cancellationToken);
+
+    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+    try
+    {
+      foreach (var order in expiredOrders)
+      {
+        var oldStatus = order.Status;
+        order.MarkManualPaymentExpired(nowUtc);
+
+        if (paymentIntentsByOrderId.TryGetValue(order.Id, out var paymentIntent))
+        {
+          paymentIntent.MarkRejected(
+            "Payment timeout: client did not pay within the confirmation window.",
+            nowUtc);
+        }
+
+        var positionsToRestore = order.Positions
+          .Where(x => !x.IsRejected)
+          .ToList();
+
+        if (order.IsStockDeducted && positionsToRestore.Count > 0)
+          await RestoreStockForPositionsAsync(order.PharmacyId, positionsToRestore, cancellationToken);
+
+        await RestoreBasketPositionsFromOrderAsync(order, cancellationToken);
+
+        order.Cancel();
+        LogStatusTransition(order.Id, oldStatus, order.Status, "ExpireClientManualPaymentOrders", clientId);
+      }
+
+      await _dbContext.SaveChangesAsync(cancellationToken);
+      await transaction.CommitAsync(cancellationToken);
+    }
+    catch (Exception)
+    {
+      await transaction.RollbackAsync(cancellationToken);
+      throw;
+    }
+
+    foreach (var order in expiredOrders)
+    {
+      await _realtimeUpdatesPublisher.PublishOrderStatusChangedAsync(
+        order.Id, order.Status.ToString(), order.ClientId, order.PharmacyId, cancellationToken);
+    }
+  }
+
   private async Task RestoreStockForPositionsAsync(
     Guid pharmacyId,
     IReadOnlyCollection<OrderPosition> positions,
@@ -1799,6 +1880,46 @@ public sealed class OrderService : IOrderService
       {
         throw new InvalidOperationException(
           $"Offer for medicine '{restoreItem.Key}' in pharmacy '{pharmacyId}' was not found while restoring stock.");
+      }
+    }
+  }
+
+  private async Task RestoreBasketPositionsFromOrderAsync(
+    Order order,
+    CancellationToken cancellationToken)
+  {
+    if (!order.ClientId.HasValue)
+      return;
+
+    var clientId = order.ClientId.Value;
+    var acceptedByMedicine = order.Positions
+      .Where(x => !x.IsRejected)
+      .GroupBy(x => x.MedicineId)
+      .ToDictionary(x => x.Key, x => x.Sum(y => y.Quantity));
+
+    if (acceptedByMedicine.Count == 0)
+      return;
+
+    var medicineIds = acceptedByMedicine.Keys.ToList();
+    var existingPositions = await _dbContext.BasketPositions
+      .AsTracking()
+      .Where(x => x.ClientId == clientId && medicineIds.Contains(x.MedicineId))
+      .ToListAsync(cancellationToken);
+
+    var existingByMedicine = existingPositions.ToDictionary(x => x.MedicineId, x => x);
+    foreach (var item in acceptedByMedicine)
+    {
+      if (existingByMedicine.TryGetValue(item.Key, out var position))
+      {
+        position.SetQuantity(position.Quantity + item.Value);
+      }
+      else
+      {
+        _dbContext.BasketPositions.Add(new BasketPosition(
+          clientId,
+          item.Key,
+          medicine: null,
+          quantity: item.Value));
       }
     }
   }

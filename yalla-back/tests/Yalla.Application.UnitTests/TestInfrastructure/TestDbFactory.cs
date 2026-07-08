@@ -46,6 +46,8 @@ internal sealed class FakeClientAddressService : IClientAddressService
 
 internal static class TestDbFactory
 {
+  private static int _nextOrderPublicId = 1000;
+
   public static TestDbScope Create()
   {
     var connection = new SqliteConnection("Data Source=:memory:");
@@ -142,7 +144,11 @@ internal static class TestDbFactory
         isRejected: x.isRejected))
       .ToList();
 
-    return new Order(orderId, clientId, "900000000", pharmacyId, address, orderPositions, isPickup: isPickup);
+    var order = new Order(orderId, clientId, "900000000", pharmacyId, address, orderPositions, isPickup: isPickup);
+    typeof(Order)
+      .GetProperty(nameof(Order.PublicId))!
+      .SetValue(order, Interlocked.Increment(ref _nextOrderPublicId));
+    return order;
   }
 }
 

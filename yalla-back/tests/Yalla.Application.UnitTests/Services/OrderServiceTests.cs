@@ -14,6 +14,66 @@ namespace Yalla.Application.UnitTests.Services;
 public class OrderServiceTests
 {
   [Fact]
+  public async Task GetClientOrderHistoryAsync_ExpiresTimedOutManualPaymentOrder()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = TestDbFactory.CreateOrder(
+      setup.Client.Id,
+      setup.Pharmacy.Id,
+      "Address",
+      (setup.Medicine, 10m, 2, false));
+
+    order.MarkManualPaymentPending(
+      amount: order.Cost,
+      currency: "TJS",
+      provider: "DushanbeCityManualPhone",
+      receiverAccount: "9762000087892609",
+      paymentUrl: "http://pay.expresspay.tj/?A=9762000087892609&s=20.00&c=test",
+      paymentComment: "test",
+      expiresAtUtc: DateTime.UtcNow.AddMinutes(2));
+
+    scope.Db.Orders.Add(order);
+
+    var offer = await scope.Db.Offers
+      .FirstAsync(x => x.PharmacyId == setup.Pharmacy.Id && x.MedicineId == setup.Medicine.Id);
+    offer.SetStockQuantity(8);
+
+    await scope.Db.SaveChangesAsync();
+
+    scope.Db.Entry(order).Property(x => x.PaymentExpiresAtUtc).CurrentValue = DateTime.UtcNow.AddMinutes(-2);
+    await scope.Db.SaveChangesAsync();
+    scope.Db.ChangeTracker.Clear();
+
+    var service = new OrderService(scope.Db);
+    var response = await service.GetClientOrderHistoryAsync(new GetClientOrderHistoryRequest
+    {
+      ClientId = setup.Client.Id
+    });
+
+    var responseOrder = Assert.Single(response.Orders, x => x.OrderId == order.Id);
+    Assert.Equal(Status.Cancelled, responseOrder.Status);
+    Assert.Equal(OrderPaymentState.Expired, responseOrder.PaymentState);
+
+    var storedOrder = await scope.Db.Orders
+      .AsNoTracking()
+      .FirstAsync(x => x.Id == order.Id);
+    Assert.Equal(Status.Cancelled, storedOrder.Status);
+    Assert.Equal(OrderPaymentState.Expired, storedOrder.PaymentState);
+
+    var restoredOffer = await scope.Db.Offers
+      .AsNoTracking()
+      .FirstAsync(x => x.PharmacyId == setup.Pharmacy.Id && x.MedicineId == setup.Medicine.Id);
+    Assert.Equal(10, restoredOffer.StockQuantity);
+
+    var basketPosition = await scope.Db.BasketPositions
+      .AsNoTracking()
+      .FirstOrDefaultAsync(x => x.ClientId == setup.Client.Id && x.MedicineId == setup.Medicine.Id);
+    Assert.NotNull(basketPosition);
+    Assert.Equal(2, basketPosition!.Quantity);
+  }
+
+  [Fact]
   public async Task GetNewOrdersForWorkerAsync_ReturnsUnderReviewPreparingReady_OnlyOwnPharmacy()
   {
     using var scope = TestDbFactory.Create();
@@ -345,6 +405,7 @@ public class OrderServiceTests
       68.7870);
     deliveryData.SetDeliveryCost(15m, 2.4);
     scope.Db.Orders.Add(order);
+    scope.Db.Entry(order).Property(x => x.PublicId).CurrentValue = 53;
     scope.Db.DeliveryData.Add(deliveryData);
     await scope.Db.SaveChangesAsync();
 

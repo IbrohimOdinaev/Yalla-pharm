@@ -61,6 +61,7 @@ public sealed class ManualPaymentTimeoutHostedServiceTests
       expiresAtUtc: DateTime.UtcNow.AddMinutes(2));
 
     db.Orders.Add(order);
+    db.Entry(order).Property(x => x.PublicId).CurrentValue = 501;
     client.AddOrder(order);
     await db.SaveChangesAsync();
 
@@ -159,6 +160,7 @@ public sealed class ManualPaymentTimeoutHostedServiceTests
       expiresAtUtc: DateTime.UtcNow.AddMinutes(20));
 
     db.Orders.Add(order);
+    db.Entry(order).Property(x => x.PublicId).CurrentValue = 502;
     client.AddOrder(order);
     await db.SaveChangesAsync();
 
