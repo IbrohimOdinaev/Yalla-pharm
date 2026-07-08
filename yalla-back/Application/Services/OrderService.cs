@@ -3,7 +3,9 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Yalla.Application.Abstractions;
+using Yalla.Application.Common;
 using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Domain.Entities;
@@ -14,6 +16,7 @@ namespace Yalla.Application.Services;
 
 public sealed class OrderService : IOrderService
 {
+  private const int PickupPendingConfirmationTimeoutMinutes = 120;
   private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> DispatchLocks = new();
 
   private readonly IAppDbContext _dbContext;
@@ -22,6 +25,7 @@ public sealed class OrderService : IOrderService
   private readonly IJuraService? _juraService;
   private readonly IAuditLogger? _auditLogger;
   private readonly IStaffCompensationService? _staffCompensationService;
+  private readonly int _pendingConfirmationTimeoutMinutes;
 
   public OrderService(IAppDbContext dbContext)
     : this(dbContext, NullLogger<OrderService>.Instance, new NoOpRealtimeUpdatesPublisher(), null, null, null)
@@ -34,7 +38,8 @@ public sealed class OrderService : IOrderService
     IRealtimeUpdatesPublisher realtimeUpdatesPublisher,
     IJuraService? juraService = null,
     IAuditLogger? auditLogger = null,
-    IStaffCompensationService? staffCompensationService = null)
+    IStaffCompensationService? staffCompensationService = null,
+    IOptions<DushanbeCityPaymentOptions>? paymentOptions = null)
   {
     ArgumentNullException.ThrowIfNull(dbContext);
     ArgumentNullException.ThrowIfNull(logger);
@@ -48,6 +53,9 @@ public sealed class OrderService : IOrderService
     // supplies one.
     _auditLogger = auditLogger;
     _staffCompensationService = staffCompensationService;
+    _pendingConfirmationTimeoutMinutes = Math.Max(
+      1,
+      paymentOptions?.Value.PendingConfirmationTimeoutMinutes ?? new DushanbeCityPaymentOptions().PendingConfirmationTimeoutMinutes);
   }
 
   public async Task<GetAllOrdersResponse> GetAllOrdersAsync(
@@ -1784,6 +1792,8 @@ public sealed class OrderService : IOrderService
     CancellationToken cancellationToken)
   {
     var nowUtc = DateTime.UtcNow;
+    var deliveryFallbackCutoffUtc = nowUtc.AddMinutes(-_pendingConfirmationTimeoutMinutes);
+    var pickupFallbackCutoffUtc = nowUtc.AddMinutes(-PickupPendingConfirmationTimeoutMinutes);
 
     var query = _dbContext.Orders
       .AsTracking()
@@ -1792,8 +1802,10 @@ public sealed class OrderService : IOrderService
         x.ClientId == clientId
         && x.Status == Status.New
         && x.PaymentState == OrderPaymentState.PendingManualConfirmation
-        && x.PaymentExpiresAtUtc.HasValue
-        && x.PaymentExpiresAtUtc.Value <= nowUtc);
+        && (
+          (x.PaymentExpiresAtUtc.HasValue && x.PaymentExpiresAtUtc.Value <= nowUtc)
+          || (!x.PaymentExpiresAtUtc.HasValue && x.IsPickup && x.OrderPlacedAt <= pickupFallbackCutoffUtc)
+          || (!x.PaymentExpiresAtUtc.HasValue && !x.IsPickup && x.OrderPlacedAt <= deliveryFallbackCutoffUtc)));
 
     if (orderId.HasValue)
       query = query.Where(x => x.Id == orderId.Value);

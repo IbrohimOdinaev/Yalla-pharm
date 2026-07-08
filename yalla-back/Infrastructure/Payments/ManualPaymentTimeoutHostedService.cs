@@ -12,6 +12,7 @@ namespace Yalla.Infrastructure.Payments;
 public sealed class ManualPaymentTimeoutHostedService : BackgroundService
 {
   private const int BatchSize = 100;
+  private const int PickupPendingConfirmationTimeoutMinutes = 120;
 
   private readonly IServiceScopeFactory _scopeFactory;
   private readonly DushanbeCityPaymentOptions _options;
@@ -53,6 +54,8 @@ public sealed class ManualPaymentTimeoutHostedService : BackgroundService
     try
     {
       var nowUtc = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+      var deliveryFallbackCutoffUtc = nowUtc.AddMinutes(-Math.Max(1, _options.PendingConfirmationTimeoutMinutes));
+      var pickupFallbackCutoffUtc = nowUtc.AddMinutes(-PickupPendingConfirmationTimeoutMinutes);
 
       using var scope = _scopeFactory.CreateScope();
       var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -63,8 +66,10 @@ public sealed class ManualPaymentTimeoutHostedService : BackgroundService
         .Where(x =>
           x.Status == Status.New
           && x.PaymentState == OrderPaymentState.PendingManualConfirmation
-          && x.PaymentExpiresAtUtc.HasValue
-          && x.PaymentExpiresAtUtc.Value <= nowUtc)
+          && (
+            (x.PaymentExpiresAtUtc.HasValue && x.PaymentExpiresAtUtc.Value <= nowUtc)
+            || (!x.PaymentExpiresAtUtc.HasValue && x.IsPickup && x.OrderPlacedAt <= pickupFallbackCutoffUtc)
+            || (!x.PaymentExpiresAtUtc.HasValue && !x.IsPickup && x.OrderPlacedAt <= deliveryFallbackCutoffUtc)))
         .OrderBy(x => x.PaymentExpiresAtUtc)
         .Take(BatchSize)
         .ToListAsync(cancellationToken);

@@ -74,6 +74,54 @@ public class OrderServiceTests
   }
 
   [Fact]
+  public async Task GetClientOrderHistoryAsync_ExpiresLegacyManualPaymentOrderWithoutDeadline()
+  {
+    using var scope = TestDbFactory.Create();
+    var setup = await SeedWorkerSetup(scope);
+    var order = TestDbFactory.CreateOrder(
+      setup.Client.Id,
+      setup.Pharmacy.Id,
+      "Address",
+      (setup.Medicine, 10m, 1, false));
+
+    order.MarkManualPaymentPendingIndefinitely(
+      amount: order.Cost,
+      currency: "TJS",
+      provider: "DushanbeCityManualPhone",
+      receiverAccount: "9762000087892609",
+      paymentUrl: "http://pay.expresspay.tj/?A=9762000087892609&s=10.00&c=legacy",
+      paymentComment: "legacy");
+
+    scope.Db.Orders.Add(order);
+    scope.Db.Entry(order).Property(x => x.OrderPlacedAt).CurrentValue = DateTime.UtcNow.AddMinutes(-10);
+
+    var offer = await scope.Db.Offers
+      .FirstAsync(x => x.PharmacyId == setup.Pharmacy.Id && x.MedicineId == setup.Medicine.Id);
+    offer.SetStockQuantity(9);
+
+    await scope.Db.SaveChangesAsync();
+    scope.Db.ChangeTracker.Clear();
+
+    var service = new OrderService(scope.Db);
+    var response = await service.GetClientOrderHistoryAsync(new GetClientOrderHistoryRequest
+    {
+      ClientId = setup.Client.Id
+    });
+
+    var responseOrder = Assert.Single(response.Orders, x => x.OrderId == order.Id);
+    Assert.Equal(Status.Cancelled, responseOrder.Status);
+    Assert.Equal(OrderPaymentState.Expired, responseOrder.PaymentState);
+    Assert.NotNull(responseOrder.PaymentExpiresAtUtc);
+
+    var storedOrder = await scope.Db.Orders
+      .AsNoTracking()
+      .FirstAsync(x => x.Id == order.Id);
+    Assert.Equal(Status.Cancelled, storedOrder.Status);
+    Assert.Equal(OrderPaymentState.Expired, storedOrder.PaymentState);
+    Assert.NotNull(storedOrder.PaymentExpiresAtUtc);
+  }
+
+  [Fact]
   public async Task GetNewOrdersForWorkerAsync_ReturnsUnderReviewPreparingReady_OnlyOwnPharmacy()
   {
     using var scope = TestDbFactory.Create();
