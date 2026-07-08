@@ -107,7 +107,6 @@ export function PaymentMethodModal({ open, amount, methods, onSelect, onClose }:
             <PaymentQrPanel
               key={method.id}
               method={method}
-              amount={amount}
               onOpen={() => onSelect(method)}
             />
           ))}

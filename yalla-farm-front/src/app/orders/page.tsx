@@ -220,7 +220,6 @@ export default function OrdersPage() {
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings | null>(null);
   const [paymentPicker, setPaymentPicker] = useState<{ orderId: string; amount: number; methods: PaymentMethodOption[] } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const autoCancellingOrderIds = useRef(new Set<string>());
 
   // Resolve Plus-Code pharmacy addresses to human-readable Jura text.
   const pharmacyList = Object.values(pharmacyMap);
@@ -274,35 +273,6 @@ export default function OrdersPage() {
     // Refresh orders list
     loadAll();
   }, [token, loadAll, loadBasket]));
-
-  useEffect(() => {
-    if (!token || orders.length === 0) return;
-
-    for (const order of orders) {
-      const resolvedOrder = orderDetails[order.orderId] ?? order;
-      if (!isAwaitingPayment(resolvedOrder)) continue;
-      if (!autoCancellingOrderIds.current.has(resolvedOrder.orderId) && !returnedOrderIds.current.has(resolvedOrder.orderId)) {
-        const deadlineMs = getPaymentDeadlineMs(resolvedOrder);
-        if (deadlineMs !== null && deadlineMs <= nowMs) {
-          autoCancellingOrderIds.current.add(resolvedOrder.orderId);
-
-          void (async () => {
-            try {
-              const detail = orderDetails[resolvedOrder.orderId] ?? await getOrderById(token, resolvedOrder.orderId).catch(() => resolvedOrder);
-              await cancelOrder(token, resolvedOrder.orderId);
-              await returnPositionsToCart(detail);
-              returnedOrderIds.current.add(resolvedOrder.orderId);
-              await loadAll();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Не удалось автоматически отменить заказ.");
-            } finally {
-              autoCancellingOrderIds.current.delete(resolvedOrder.orderId);
-            }
-          })();
-        }
-      }
-    }
-  }, [token, orders, orderDetails, nowMs, loadAll]);
 
   // Auto-switch to history tab if no active orders
   const hasActive = orders.some((o) => isActiveOrder(orderDetails[o.orderId] ?? o));

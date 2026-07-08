@@ -37,14 +37,12 @@ describe("PaymentMethodModal", () => {
       />,
     );
 
-    const card = screen.getByText("Эсхата").closest("div");
-    expect(card).not.toBeNull();
     expect(screen.getByRole("img", { name: "Эсхата" })).toHaveAttribute(
       "src",
       "/payment-logos/eskhata.svg",
     );
     expect(screen.queryByTitle("Эсхата: QR для оплаты")).not.toBeInTheDocument();
-    expect(screen.getAllByText("120.00 TJS").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("120.00 TJS")).toHaveLength(1);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -68,7 +66,6 @@ describe("PaymentMethodModal", () => {
       />,
     );
 
-    expect(screen.getByText("Alif Mobi")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Alif Mobi" })).toHaveAttribute(
       "src",
       "/payment-logos/alif.svg",

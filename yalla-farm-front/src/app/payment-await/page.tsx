@@ -187,7 +187,6 @@ function PaymentAwaitContent() {
               <PaymentQrPanel
                 key={method.id}
                 method={method}
-                amount={amount}
                 onOpen={() => openPaymentForCurrentDevice({
                   url: method.url,
                   title: method.title,
