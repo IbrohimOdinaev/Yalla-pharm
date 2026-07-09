@@ -324,6 +324,8 @@ if (!skipMigrationManagement)
             if (applyMigrationsOnStartup)
             {
                 await db.Database.MigrateAsync();
+                await db.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS has_delivery boolean NOT NULL DEFAULT false;");
                 var stillPending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
                 if (stillPending.Length > 0)
                 {
