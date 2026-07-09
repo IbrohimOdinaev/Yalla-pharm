@@ -333,6 +333,23 @@ export default function CheckoutPage() {
     try {
       const idempotencyKey = buildCheckoutIdempotencyKey();
       const effectiveTitle = localAddressTitle ?? savedAddressTitle;
+      const deliveryInfo = isPickup
+        ? {
+            deliveryAddress: "",
+            deliveryAddressTitle: null as string | null,
+            deliveryLatitude: null as number | null,
+            deliveryLongitude: null as number | null,
+            deliveryAddressId: null as number | null,
+          }
+        : {
+            deliveryAddress: effectiveAddress,
+            // Pass the user-chosen label when available (so it's persisted on the
+            // ClientAddress record); otherwise fall back to the raw address — the
+            // backend uses this for delivery API title and admin display.
+            deliveryAddressTitle: effectiveTitle ?? effectiveAddress,
+            deliveryLatitude: effectiveCoords?.lat ?? null,
+            deliveryLongitude: effectiveCoords?.lng ?? null,
+          };
       // Prescription-checkout flow: don't consume basket positions and tag
       // the source with prescriptionId so the backend transitions the
       // prescription Decoded → OrderPlaced atomically with the order.
@@ -340,13 +357,7 @@ export default function CheckoutPage() {
       const payload = {
         pharmacyId,
         isPickup,
-        deliveryAddress: effectiveAddress,
-        // Pass the user-chosen label when available (so it's persisted on the
-        // ClientAddress record); otherwise fall back to the raw address — the
-        // backend uses this for delivery API title and admin display.
-        deliveryAddressTitle: effectiveTitle ?? effectiveAddress,
-        deliveryLatitude: effectiveCoords?.lat ?? null,
-        deliveryLongitude: effectiveCoords?.lng ?? null,
+        ...deliveryInfo,
         idempotencyKey,
         ignoredPositionIds: [] as string[],
         comment: comment.trim() ? comment.trim() : null,
