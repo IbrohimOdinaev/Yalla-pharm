@@ -4,6 +4,7 @@ import type { ApiMedicine, ApiPaginated, ApiSearchByPharmacyResponse } from "@/s
 
 const medicineCache = new Map<string, ApiMedicine>();
 export const DEFAULT_MEDICINE_IMAGE_URL = "/box-yalla-for-website-1.webp";
+const MEDICINE_BATCH_LOOKUP_LIMIT = 200;
 
 export function showDefaultMedicineImage(img: HTMLImageElement): void {
   if (img.getAttribute("src") === DEFAULT_MEDICINE_IMAGE_URL) return;
@@ -57,11 +58,17 @@ export async function getMedicineById(id: string): Promise<ApiMedicine> {
 export async function getMedicinesByIds(ids: string[]): Promise<ApiMedicine[]> {
   const filtered = Array.from(new Set(ids.filter((id) => !!id)));
   if (filtered.length === 0) return [];
-  const response = await apiFetch<{ medicines?: ApiMedicine[] }>(
-    "/api/medicines/by-ids",
-    { method: "POST", body: { ids: filtered } },
-  );
-  const medicines = Array.isArray(response?.medicines) ? response.medicines : [];
+  const medicines: ApiMedicine[] = [];
+
+  for (let i = 0; i < filtered.length; i += MEDICINE_BATCH_LOOKUP_LIMIT) {
+    const batch = filtered.slice(i, i + MEDICINE_BATCH_LOOKUP_LIMIT);
+    const response = await apiFetch<{ medicines?: ApiMedicine[] }>(
+      "/api/medicines/by-ids",
+      { method: "POST", body: { ids: batch } },
+    );
+    medicines.push(...(Array.isArray(response?.medicines) ? response.medicines : []));
+  }
+
   medicines.forEach(putMedicineInCache);
   return medicines;
 }

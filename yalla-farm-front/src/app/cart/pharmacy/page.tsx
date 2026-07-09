@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/shared/lib/useNavigationHistory";
-import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getMedicinesByIds, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getGuestBasketPreview } from "@/entities/basket/api";
 import {
   getMyPrescriptions,
@@ -263,13 +263,13 @@ function PharmacySelectPageInner() {
     const allIds = Array.from(new Set([...cartIds, ...pharmacyOptionIds]))
       .filter((id) => !medicineMap[id]);
     if (allIds.length === 0) return;
-    Promise.all(allIds.map((id) => getMedicineById(id).catch(() => null))).then((results) => {
+    getMedicinesByIds(allIds).then((results) => {
       const map: Record<string, ApiMedicine> = { ...medicineMap };
       for (const m of results) {
-        if (m?.id) map[m.id] = m;
+        map[m.id] = m;
       }
       setMedicineMap(map);
-    });
+    }).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartItems, prescriptionOptions]);
 

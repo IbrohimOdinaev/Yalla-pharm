@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, getCheapestPrice, getCatalogMedicinesPaginated, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { getMedicineDisplayName, resolveMedicineImageUrl, getCheapestPrice, getCatalogMedicinesPaginated, showDefaultMedicineImage, getMedicinesByIds } from "@/entities/medicine/api";
 import type { ApiMedicine } from "@/shared/types/api";
 import { formatMoney } from "@/shared/lib/format";
 import { useAppSelector } from "@/shared/lib/redux";
@@ -29,6 +29,7 @@ export default function CartPage() {
   const [clearing, setClearing] = useState(false);
 
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
+  const [missingMedicineIds, setMissingMedicineIds] = useState<Set<string>>(() => new Set());
   const [recommendations, setRecommendations] = useState<ApiMedicine[]>([]);
   const [clientReady, setClientReady] = useState(false);
   const [isNavigatingToPharmacy, setIsNavigatingToPharmacy] = useState(false);
@@ -55,14 +56,29 @@ export default function CartPage() {
     const serverIds = (basket.positions ?? []).map((item) => item.medicineId);
     const guestIds = isGuest ? guestItems.map((item) => item.medicineId) : [];
     const ids = [...new Set([...serverIds, ...guestIds])];
-    if (!ids.length) { setMedicineMap({}); return; }
-    Promise.all(ids.map((id) => getMedicineById(id).then((m) => [id, m] as const).catch(() => [id, null] as const)))
-      .then((entries) => {
+    if (!ids.length) {
+      setMedicineMap({});
+      setMissingMedicineIds(new Set());
+      return;
+    }
+
+    let cancelled = false;
+    getMedicinesByIds(ids)
+      .then((medicines) => {
+        if (cancelled) return;
         const next: Record<string, ApiMedicine> = {};
-        for (const [id, m] of entries) { if (m) next[id] = m; }
+        for (const m of medicines) next[m.id] = m;
+        const returnedIds = new Set(medicines.map((m) => m.id));
         setMedicineMap(next);
+        setMissingMedicineIds(new Set(ids.filter((id) => !returnedIds.has(id))));
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (cancelled) return;
+        setMedicineMap({});
+        setMissingMedicineIds(new Set(ids));
+      });
+
+    return () => { cancelled = true; };
   }, [basket.positions, guestItems, isGuest]);
 
   const cartItems = useMemo(() => {
@@ -82,9 +98,10 @@ export default function CartPage() {
   // we'd silently undercount a freshly-added item while its medicine is still
   // being fetched.
   const allMedicinesLoaded = useMemo(
-    () => cartItems.every((item) => medicineMap[item.medicineId] !== undefined),
-    [cartItems, medicineMap],
+    () => cartItems.every((item) => medicineMap[item.medicineId] !== undefined || missingMedicineIds.has(item.medicineId)),
+    [cartItems, medicineMap, missingMedicineIds],
   );
+  const hasMissingMedicines = missingMedicineIds.size > 0;
 
   const bestPrice = useMemo(() => {
     // Prefer client-side compute (positions × cheapest offer per pharmacy) so
@@ -146,7 +163,10 @@ export default function CartPage() {
     }
     // Wait for medicineMap to hydrate — until we know at least one
     // cart item's category we can't fetch recommendations.
-    if (cartItems.length > 0 && categories.size === 0) return;
+    if (cartItems.length > 0 && categories.size === 0) {
+      if (allMedicinesLoaded) setIsLoadingRecommendations(false);
+      return;
+    }
     if (cartItems.length === 0) {
       // Empty cart — there's nothing to recommend FROM. Drop skeletons.
       setIsLoadingRecommendations(false);
@@ -161,7 +181,7 @@ export default function CartPage() {
       })
       .catch(() => undefined)
       .finally(() => setIsLoadingRecommendations(false));
-  }, [cartItems, medicineMap]);
+  }, [cartItems, medicineMap, allMedicinesLoaded]);
 
   const onDecrement = useCallback((itemId: string, medicineId: string, qty: number) => {
     if (qty <= 1) {
@@ -287,6 +307,12 @@ export default function CartPage() {
         <div className="mb-3 rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
       ) : null}
 
+      {hasMissingMedicines ? (
+        <div className="mb-3 rounded-2xl bg-warning-soft p-3 text-sm font-semibold text-warning">
+          Некоторые товары больше недоступны. Удалите их из корзины, чтобы продолжить оформление.
+        </div>
+      ) : null}
+
       {/* Two-column shell on lg+ : positions on the left, receipt on
           the right. Below lg the right column hides; the receipt
           reappears as a fixed-to-viewport bar at the bottom of the
@@ -326,6 +352,35 @@ export default function CartPage() {
               ? Array.from({ length: 3 }).map((_, i) => <CartItemSkeleton key={`sk-${i}`} />)
               : cartItems.map((item) => {
               const medicine = medicineMap[item.medicineId];
+              if (missingMedicineIds.has(item.medicineId)) {
+                return (
+                  <li
+                    key={item.id}
+                    className="relative flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 pr-10 shadow-card xs:p-3.5 xs:pr-11 sm:p-4 sm:pr-12"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onRemove(item.id, item.medicineId)}
+                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-on-surface-variant/70 transition hover:bg-secondary-soft hover:text-secondary active:scale-95"
+                      aria-label="Удалить"
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container-high text-on-surface-variant">
+                      <Icon name="bag" size={20} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-on-surface">Товар недоступен</p>
+                      <p className="mt-0.5 text-xs text-on-surface-variant">
+                        Этой позиции больше нет в каталоге. Удалите её из корзины.
+                      </p>
+                    </div>
+                    <span className="mr-3 flex-shrink-0 text-xs font-extrabold tabular-nums text-on-surface-variant">
+                      {item.quantity} шт.
+                    </span>
+                  </li>
+                );
+              }
               // Per-row skeleton while the medicine record hydrates — covers
               // the brief gap after an optimistic add when positions are in
               // state but `medicineMap[item.medicineId]` hasn't arrived yet,
@@ -472,7 +527,7 @@ export default function CartPage() {
               fullWidth
               rightIcon="arrow-right"
               onClick={onCheckout}
-              disabled={cartItems.length === 0 || isInitialLoading}
+              disabled={cartItems.length === 0 || isInitialLoading || hasMissingMedicines}
               loading={isNavigatingToPharmacy}
               className="mt-5 xl:mt-6"
             >
@@ -540,7 +595,7 @@ export default function CartPage() {
             size="lg"
             rightIcon="arrow-right"
             onClick={onCheckout}
-            disabled={cartItems.length === 0 || isInitialLoading}
+            disabled={cartItems.length === 0 || isInitialLoading || hasMissingMedicines}
             loading={isNavigatingToPharmacy}
           >
             <span className="xs:hidden">Оформить</span>
