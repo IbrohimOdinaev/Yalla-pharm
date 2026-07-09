@@ -1068,7 +1068,13 @@ public sealed class ClientService : IClientService
 
         var lookupOverrides = unitItems
           .Where(i => i.LookupRequestId.HasValue && !i.MedicineId.HasValue)
-          .ToDictionary(i => i.LookupRequestId!.Value, i => (i.UnitCount, i.UnitTotalPrice));
+          .GroupBy(i => i.LookupRequestId!.Value)
+          .ToDictionary(
+            i => i.Key,
+            i => i
+              .OrderByDescending(x => x.UnitTotalPrice)
+              .Select(x => (x.UnitCount, x.UnitTotalPrice))
+              .First());
 
         if (lookupOverrides.Count > 0)
         {

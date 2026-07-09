@@ -6,6 +6,7 @@ using Yalla.Application.DTO.Request;
 using Yalla.Application.DTO.Response;
 using Yalla.Application.Services;
 using Yalla.Application.UnitTests.TestInfrastructure;
+using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
 
 namespace Yalla.Application.UnitTests.Services;
@@ -61,6 +62,80 @@ public sealed class ClientServiceCheckoutTests
     Assert.False(position.IsRejected);
     Assert.Equal(10, position.FoundQuantity);
     Assert.Equal(8m, position.Price);
+  }
+
+  [Fact]
+  public async Task PreviewCheckoutAsync_HandlesDuplicateUnitOverridesForSameLookupRequest()
+  {
+    using var scope = TestDbFactory.Create();
+    var db = scope.Db;
+
+    await db.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ix_prescription_checklist_items_lookup_request_id;");
+
+    var client = TestDbFactory.CreateClient("Client", "900400003");
+    var admin = TestDbFactory.CreateUser("Admin", "900400004", Role.Admin);
+    var pharmacy = TestDbFactory.CreatePharmacy("P-2", "Pickup address", admin.Id);
+    var lookupRequestId = Guid.NewGuid();
+    var shadowMedicine = Medicine.ForManualLookup(
+      "Manual medicine",
+      $"manual-{Guid.NewGuid():N}",
+      lookupRequestId,
+      Guid.NewGuid());
+    var prescription = new Prescription(
+      client.Id,
+      patientAge: 30,
+      clientComment: null,
+      images: [new PrescriptionImage("rx-key", 0)]);
+    typeof(Prescription)
+      .GetProperty(nameof(Prescription.PublicId))!
+      .SetValue(prescription, 4001);
+    prescription.MoveToAwaitingConfirmation();
+    prescription.MoveToQueue();
+    prescription.TakeIntoReview(admin.Id);
+
+    var lowOverride = PrescriptionChecklistItem.Manual("Manual low", 1, null);
+    lowOverride.AttachLookupRequest(lookupRequestId);
+    lowOverride.SetUnitOverride(1, 10m);
+    var highOverride = PrescriptionChecklistItem.Manual("Manual high", 1, null);
+    highOverride.AttachLookupRequest(lookupRequestId);
+    highOverride.SetUnitOverride(2, 25m);
+    prescription.SubmitChecklist(null, [lowOverride, highOverride]);
+
+    db.Users.Add(admin);
+    db.Clients.Add(client);
+    db.Pharmacies.Add(pharmacy);
+    db.Prescriptions.Add(prescription);
+    db.Medicines.Add(shadowMedicine);
+    db.Offers.Add(TestDbFactory.CreateOffer(shadowMedicine.Id, pharmacy.Id, stock: 3, price: 8m));
+    await db.SaveChangesAsync();
+
+    var service = CreateService(scope);
+    var response = await service.PreviewCheckoutAsync(new CheckoutBasketRequest
+    {
+      ClientId = client.Id,
+      PharmacyId = pharmacy.Id,
+      IsPickup = true,
+      Source = new CheckoutSourceRequest
+      {
+        Kind = CheckoutSourceKind.Explicit,
+        PrescriptionId = prescription.Id,
+        Positions =
+        [
+          new CheckoutPositionDraftRequest
+          {
+            MedicineId = shadowMedicine.Id,
+            Quantity = 1
+          }
+        ]
+      }
+    });
+
+    Assert.True(response.CanCheckout);
+    Assert.Equal(25m, response.Cost);
+    var position = Assert.Single(response.Positions);
+    Assert.True(position.UseUnitMode);
+    Assert.Equal(2, position.UnitCount);
+    Assert.Equal(25m, position.UnitTotalPrice);
   }
 
   private static ClientService CreateService(TestDbScope scope)
