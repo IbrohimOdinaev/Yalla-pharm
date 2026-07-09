@@ -1150,7 +1150,7 @@ public sealed class ClientService : IClientService
           .Select(x => new PaymentIntentPosition(
             medicineId: x.Draft.MedicineId,
             offerPharmacyId: request.PharmacyId,
-            offerPrice: x.Price ?? 0m,
+            offerPrice: ResolvePaymentIntentOfferPrice(x, unitOverrides),
             quantity: x.Draft.Quantity))
           .ToList();
 
@@ -1301,6 +1301,21 @@ public sealed class ClientService : IClientService
             paymentIntent.Id, paymentIntent.ClientId, paymentIntent.State, order.Id, cancellationToken);
 
         return ToCheckoutPaymentIntentResponse(paymentIntent, deliveryCost, order.PublicId, order.PaymentExpiresAtUtc);
+    }
+
+    private static decimal ResolvePaymentIntentOfferPrice(
+      CheckoutEvaluationPosition position,
+      IReadOnlyDictionary<Guid, (int UnitCount, decimal UnitTotalPrice)> unitOverrides)
+    {
+        var offerPrice = position.Price ?? 0m;
+        if (offerPrice > 0m)
+            return offerPrice;
+
+        if (unitOverrides.TryGetValue(position.Draft.MedicineId, out var unitOverride)
+          && position.Draft.Quantity > 0)
+            return unitOverride.UnitTotalPrice / position.Draft.Quantity;
+
+        return 0m;
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(

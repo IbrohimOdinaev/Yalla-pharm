@@ -138,6 +138,77 @@ public sealed class ClientServiceCheckoutTests
     Assert.Equal(25m, position.UnitTotalPrice);
   }
 
+  [Fact]
+  public async Task CheckoutBasketAsync_AllowsUnitModePaymentIntentWhenOfferPriceIsZero()
+  {
+    using var scope = TestDbFactory.Create();
+    var db = scope.Db;
+
+    var client = TestDbFactory.CreateClient("Client", "900400005");
+    var admin = TestDbFactory.CreateUser("Admin", "900400006", Role.Admin);
+    var pharmacy = TestDbFactory.CreatePharmacy("P-3", "Pickup address", admin.Id);
+    var lookupRequestId = Guid.NewGuid();
+    var shadowMedicine = Medicine.ForManualLookup(
+      "Manual medicine",
+      $"manual-{Guid.NewGuid():N}",
+      lookupRequestId,
+      Guid.NewGuid());
+    var prescription = new Prescription(
+      client.Id,
+      patientAge: 30,
+      clientComment: null,
+      images: [new PrescriptionImage("rx-key", 0)]);
+    typeof(Prescription)
+      .GetProperty(nameof(Prescription.PublicId))!
+      .SetValue(prescription, 4002);
+    prescription.MoveToAwaitingConfirmation();
+    prescription.MoveToQueue();
+    prescription.TakeIntoReview(admin.Id);
+
+    var item = PrescriptionChecklistItem.Manual("Manual", 1, null);
+    item.AttachLookupRequest(lookupRequestId);
+    item.SetUnitOverride(2, 25m);
+    prescription.SubmitChecklist(null, [item]);
+
+    db.Users.Add(admin);
+    db.Clients.Add(client);
+    db.Pharmacies.Add(pharmacy);
+    db.Prescriptions.Add(prescription);
+    db.Medicines.Add(shadowMedicine);
+    db.Offers.Add(TestDbFactory.CreateOffer(shadowMedicine.Id, pharmacy.Id, stock: 3, price: 0m));
+    await db.SaveChangesAsync();
+
+    var service = CreateService(scope);
+    var response = await service.CheckoutBasketAsync(new CheckoutBasketRequest
+    {
+      ClientId = client.Id,
+      PharmacyId = pharmacy.Id,
+      IsPickup = true,
+      IdempotencyKey = $"test-{Guid.NewGuid():N}",
+      Source = new CheckoutSourceRequest
+      {
+        Kind = CheckoutSourceKind.Explicit,
+        PrescriptionId = prescription.Id,
+        Positions =
+        [
+          new CheckoutPositionDraftRequest
+          {
+            MedicineId = shadowMedicine.Id,
+            Quantity = 1
+          }
+        ]
+      }
+    });
+
+    Assert.Equal(25m, response.Cost);
+    var intent = await db.PaymentIntents
+      .AsNoTracking()
+      .Include(x => x.Positions)
+      .SingleAsync(x => x.ReservedOrderId == response.ReservedOrderId);
+    var position = Assert.Single(intent.Positions);
+    Assert.Equal(25m, position.OfferPrice);
+  }
+
   private static ClientService CreateService(TestDbScope scope)
   {
     var logger = LoggerFactory.Create(_ => { }).CreateLogger<ClientService>();
