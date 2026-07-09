@@ -213,26 +213,10 @@ public sealed class ClientsController : ControllerBase
     CancellationToken cancellationToken)
   {
     var currentUserId = User.GetRequiredUserId();
-    var scopedRequest = new CheckoutBasketRequest
-    {
-      ClientId = currentUserId,
-      PharmacyId = request.PharmacyId,
-      IsPickup = request.IsPickup,
-      DeliveryAddress = request.DeliveryAddress,
-      DeliveryAddressId = request.DeliveryAddressId,
-      DeliveryAddressTitle = request.DeliveryAddressTitle,
-      DeliveryLatitude = request.DeliveryLatitude,
-      DeliveryLongitude = request.DeliveryLongitude,
-      IdempotencyKey = request.IdempotencyKey,
-      IgnoredPositionIds = request.IgnoredPositionIds,
-      Comment = request.Comment,
-      DeliverToDoor = request.DeliverToDoor,
-      CourierDetails = request.CourierDetails,
-      Entrance = request.Entrance,
-      Floor = request.Floor,
-      Apartment = request.Apartment,
-      Source = request.Source
-    };
+    var scopedRequest = BuildScopedCheckoutRequest(
+      request,
+      currentUserId,
+      request.IdempotencyKey);
 
     var response = await _clientService.PreviewCheckoutAsync(scopedRequest, cancellationToken);
     return Ok(response);
@@ -260,40 +244,24 @@ public sealed class ClientsController : ControllerBase
     }
 
     var currentUserId = User.GetRequiredUserId();
-    var scopedRequest = new CheckoutBasketRequest
-    {
-      ClientId = currentUserId,
-      PharmacyId = request.PharmacyId,
-      IsPickup = request.IsPickup,
-      DeliveryAddress = request.DeliveryAddress,
-      DeliveryAddressId = request.DeliveryAddressId,
-      DeliveryAddressTitle = request.DeliveryAddressTitle,
-      DeliveryLatitude = request.DeliveryLatitude,
-      DeliveryLongitude = request.DeliveryLongitude,
-      IdempotencyKey = idempotencyKey,
-      IgnoredPositionIds = request.IgnoredPositionIds,
-      Comment = request.Comment,
-      DeliverToDoor = request.DeliverToDoor,
-      CourierDetails = request.CourierDetails,
-      Entrance = request.Entrance,
-      Floor = request.Floor,
-      Apartment = request.Apartment,
-      Source = request.Source
-    };
+    var scopedRequest = BuildScopedCheckoutRequest(
+      request,
+      currentUserId,
+      idempotencyKey);
 
     var response = await _clientService.CheckoutBasketAsync(scopedRequest, cancellationToken);
 
     // Auto-record delivery address to client's address history (non-pickup only).
-    if (!request.IsPickup
-        && request.DeliveryLatitude.HasValue
-        && request.DeliveryLongitude.HasValue
-        && !string.IsNullOrWhiteSpace(request.DeliveryAddress))
+    if (!scopedRequest.IsPickup
+        && scopedRequest.DeliveryLatitude.HasValue
+        && scopedRequest.DeliveryLongitude.HasValue
+        && !string.IsNullOrWhiteSpace(scopedRequest.DeliveryAddress))
     {
       await _addressService.RecordUsageAsync(
         currentUserId,
-        request.DeliveryAddress,
-        request.DeliveryLatitude.Value,
-        request.DeliveryLongitude.Value,
+        scopedRequest.DeliveryAddress,
+        scopedRequest.DeliveryLatitude.Value,
+        scopedRequest.DeliveryLongitude.Value,
         cancellationToken);
     }
 
@@ -436,5 +404,56 @@ public sealed class ClientsController : ControllerBase
     var clientId = User.GetRequiredUserId();
     var status = await _privacyPolicyService.GetStatusForClientAsync(clientId, cancellationToken);
     return Ok(status);
+  }
+
+  private static CheckoutBasketRequest BuildScopedCheckoutRequest(
+    CheckoutBasketRequest request,
+    Guid clientId,
+    string idempotencyKey)
+  {
+    if (request.IsPickup)
+    {
+      return new CheckoutBasketRequest
+      {
+        ClientId = clientId,
+        PharmacyId = request.PharmacyId,
+        IsPickup = true,
+        DeliveryAddress = string.Empty,
+        DeliveryAddressId = null,
+        DeliveryAddressTitle = null,
+        DeliveryLatitude = null,
+        DeliveryLongitude = null,
+        IdempotencyKey = idempotencyKey,
+        IgnoredPositionIds = request.IgnoredPositionIds,
+        Comment = request.Comment,
+        DeliverToDoor = false,
+        CourierDetails = request.CourierDetails,
+        Entrance = request.Entrance,
+        Floor = request.Floor,
+        Apartment = request.Apartment,
+        Source = request.Source
+      };
+    }
+
+    return new CheckoutBasketRequest
+    {
+      ClientId = clientId,
+      PharmacyId = request.PharmacyId,
+      IsPickup = false,
+      DeliveryAddress = request.DeliveryAddress,
+      DeliveryAddressId = request.DeliveryAddressId,
+      DeliveryAddressTitle = request.DeliveryAddressTitle,
+      DeliveryLatitude = request.DeliveryLatitude,
+      DeliveryLongitude = request.DeliveryLongitude,
+      IdempotencyKey = idempotencyKey,
+      IgnoredPositionIds = request.IgnoredPositionIds,
+      Comment = request.Comment,
+      DeliverToDoor = request.DeliverToDoor,
+      CourierDetails = request.CourierDetails,
+      Entrance = request.Entrance,
+      Floor = request.Floor,
+      Apartment = request.Apartment,
+      Source = request.Source
+    };
   }
 }
