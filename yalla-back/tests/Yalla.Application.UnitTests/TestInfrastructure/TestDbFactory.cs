@@ -1,12 +1,12 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Yalla.Application.Abstractions;
 using Yalla.Application.Services;
 using Yalla.Domain.Entities;
 using Yalla.Domain.Enums;
 using Yalla.Domain.ValueObjects;
 using Yalla.Infrastructure;
+using Yalla.Tests.Shared.TestInfrastructure;
 
 namespace Yalla.Application.UnitTests.TestInfrastructure;
 
@@ -56,7 +56,7 @@ internal static class TestDbFactory
 
     var options = new DbContextOptionsBuilder<AppDbContext>()
       .UseSqlite(connection)
-      .AddInterceptors(new TestOrderPublicIdInterceptor())
+      .AddInterceptors(new TestPublicIdInterceptor())
       .EnableSensitiveDataLogging()
       .Options;
 
@@ -151,44 +151,6 @@ internal static class TestDbFactory
       .GetProperty(nameof(Order.PublicId))!
       .SetValue(order, Interlocked.Increment(ref _nextOrderPublicId));
     return order;
-  }
-}
-
-internal sealed class TestOrderPublicIdInterceptor : SaveChangesInterceptor
-{
-  private static int _nextOrderPublicId = 10_000;
-
-  public override InterceptionResult<int> SavingChanges(
-    DbContextEventData eventData,
-    InterceptionResult<int> result)
-  {
-    AssignPublicIds(eventData.Context);
-    return base.SavingChanges(eventData, result);
-  }
-
-  public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
-    DbContextEventData eventData,
-    InterceptionResult<int> result,
-    CancellationToken cancellationToken = default)
-  {
-    AssignPublicIds(eventData.Context);
-    return base.SavingChangesAsync(eventData, result, cancellationToken);
-  }
-
-  private static void AssignPublicIds(DbContext? context)
-  {
-    if (context is null)
-      return;
-
-    foreach (var entry in context.ChangeTracker.Entries<Order>())
-    {
-      if (entry.State != EntityState.Added || entry.Entity.PublicId != 0)
-        continue;
-
-      typeof(Order)
-        .GetProperty(nameof(Order.PublicId))!
-        .SetValue(entry.Entity, Interlocked.Increment(ref _nextOrderPublicId));
-    }
   }
 }
 

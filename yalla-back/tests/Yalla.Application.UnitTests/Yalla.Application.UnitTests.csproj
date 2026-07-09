@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\TestInfrastructure\TestPublicIdInterceptor.cs" Link="TestInfrastructure\TestPublicIdInterceptor.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

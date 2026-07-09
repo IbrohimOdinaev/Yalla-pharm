@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Yalla.Application.Abstractions;
+using Yalla.Tests.Shared.TestInfrastructure;
 
 namespace Yalla.Api.IntegrationTests.TestInfrastructure;
 
@@ -129,7 +130,9 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
       services.RemoveAll<IMedicineImageStorage>();
 
       services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseSqlite(_connectionString));
+        options
+          .UseSqlite(_connectionString)
+          .AddInterceptors(new TestPublicIdInterceptor()));
 
       services.AddScoped<IAppDbContext>(provider =>
         provider.GetRequiredService<ApplicationDbContext>());
