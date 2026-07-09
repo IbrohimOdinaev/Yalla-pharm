@@ -13,8 +13,9 @@ import { rememberOrderPaymentMethod } from "@/shared/lib/paymentMethodMemory";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
+import { buildCheckoutExplicitPositions, countSelectedAvailableMedicines } from "@/features/checkout/lib/checkoutPositions";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
-import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineById, getMedicineDisplayName, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
+import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getMedicinesByIds, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getMyProfile } from "@/entities/client/api";
 import { removeFromBasket } from "@/entities/basket/api";
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
@@ -106,6 +107,7 @@ export default function CheckoutPage() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [medicineMap, setMedicineMap] = useState<Record<string, ApiMedicine>>({});
+  const [missingMedicineIds, setMissingMedicineIds] = useState<Set<string>>(() => new Set());
   const [profile, setProfile] = useState<ApiClient | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [selectedMedIds, setSelectedMedIds] = useState<Set<string>>(new Set());
@@ -144,6 +146,10 @@ export default function CheckoutPage() {
   }, []);
 
   const checkoutItems = selectedPharmacyItems;
+  const checkoutMedicineIdsKey = useMemo(
+    () => Array.from(new Set(checkoutItems.map((i) => i.medicineId))).sort().join("|"),
+    [checkoutItems],
+  );
 
   useEffect(() => {
     if (selectionInited || checkoutItems.length === 0) return;
@@ -159,6 +165,7 @@ export default function CheckoutPage() {
   }, [checkoutItems, selectionInited]);
 
   function toggleSelection(medicineId: string) {
+    if (missingMedicineIds.has(medicineId)) return;
     // Out-of-stock items must never join the order — ignore any attempt to
     // check them (defensive against clicks leaking through a disabled input).
     const item = checkoutItems.find((i) => i.medicineId === medicineId);
@@ -174,7 +181,7 @@ export default function CheckoutPage() {
 
   const itemsAmount = useMemo(() => {
     return checkoutItems
-      .filter((i) => selectedMedIds.has(i.medicineId))
+      .filter((i) => selectedMedIds.has(i.medicineId) && !missingMedicineIds.has(i.medicineId))
       .reduce((sum, i) => {
         // Unit-mode rows contribute the pharmacist's flat total directly,
         // bypassing the price × quantity formula.
@@ -182,9 +189,13 @@ export default function CheckoutPage() {
         const qty = Math.min(i.foundQuantity, i.requestedQuantity);
         return sum + (i.price ?? 0) * qty;
       }, 0);
-  }, [checkoutItems, selectedMedIds]);
+  }, [checkoutItems, selectedMedIds, missingMedicineIds]);
 
-  const selectedCount = selectedMedIds.size;
+  const selectedCount = useMemo(
+    () => countSelectedAvailableMedicines(selectedMedIds, missingMedicineIds),
+    [selectedMedIds, missingMedicineIds],
+  );
+  const hasMissingMedicines = missingMedicineIds.size > 0;
 
   const profilePhone = profile?.phoneNumber ?? "";
   const phoneLinked = !!profilePhone && !profilePhone.startsWith("tg_");
@@ -192,15 +203,39 @@ export default function CheckoutPage() {
   const hasContact = phoneLinked || telegramLinked;
 
   useEffect(() => {
-    const ids = checkoutItems.map((i) => i.medicineId).filter((id) => !medicineMap[id]);
+    const checkoutMedicineIds = checkoutMedicineIdsKey ? checkoutMedicineIdsKey.split("|") : [];
+    const ids = checkoutMedicineIds
+      .filter((id) => !medicineMap[id] && !missingMedicineIds.has(id));
     if (ids.length === 0) return;
-    Promise.all(ids.map((id) => getMedicineById(id).catch(() => null))).then((results) => {
+    let cancelled = false;
+    getMedicinesByIds(ids).then((results) => {
+      if (cancelled) return;
       const map: Record<string, ApiMedicine> = { ...medicineMap };
-      for (const m of results) { if (m?.id) map[m.id] = m; }
+      for (const m of results) map[m.id] = m;
+      const returnedIds = new Set(results.map((m) => m.id));
       setMedicineMap(map);
+      setMissingMedicineIds((prev) => {
+        const next = new Set(Array.from(prev).filter((id) => checkoutItems.some((item) => item.medicineId === id)));
+        for (const id of ids) {
+          if (!returnedIds.has(id)) next.add(id);
+        }
+        return next;
+      });
+    }).catch(() => {
+      if (cancelled) return;
+      setMissingMedicineIds((prev) => new Set([...prev, ...ids]));
     });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkoutItems]);
+  }, [checkoutMedicineIdsKey]);
+
+  useEffect(() => {
+    if (missingMedicineIds.size === 0) return;
+    setSelectedMedIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => !missingMedicineIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [missingMedicineIds]);
 
   const doCalculateDelivery = useCallback(async (coords: GeoPoint, address: string) => {
     if (!pharmacyId || isPickup) return;
@@ -280,13 +315,7 @@ export default function CheckoutPage() {
     // medicine left from a prior session that the chosen pharmacy doesn't sell).
     // `consumeFromBasket: true` tells the backend to drop matching basket rows
     // after the order is created.
-    const explicitPositions = checkoutItems
-      .filter((i) => selectedMedIds.has(i.medicineId))
-      .map((i) => ({
-        medicineId: i.medicineId,
-        quantity: Math.min(i.foundQuantity, i.requestedQuantity),
-      }))
-      .filter((p) => p.quantity > 0);
+    const explicitPositions = buildCheckoutExplicitPositions(checkoutItems, selectedMedIds, missingMedicineIds);
 
     // Positions the user unchecked on this screen — they chose to skip them for
     // this order, so clean them out of the basket too (mirrors the prior UX).
@@ -425,6 +454,12 @@ export default function CheckoutPage() {
 
         {error ? (
           <div className="rounded-2xl bg-secondary/10 p-3 text-sm font-semibold text-secondary">{error}</div>
+        ) : null}
+
+        {hasMissingMedicines ? (
+          <div className="rounded-2xl bg-warning-soft p-3 text-sm font-semibold text-warning">
+            Некоторые товары больше недоступны. Они не будут добавлены в заказ.
+          </div>
         ) : null}
 
         {/* Pharmacy card */}
@@ -601,11 +636,12 @@ export default function CheckoutPage() {
           <ul className="space-y-2">
             {checkoutItems.map((item) => {
               const med = medicineMap[item.medicineId];
-              const name = med ? getMedicineDisplayName(med) : item.medicineId;
+              const unavailableMedicine = missingMedicineIds.has(item.medicineId);
+              const name = med ? getMedicineDisplayName(med) : (unavailableMedicine ? "Товар недоступен" : item.medicineId);
               const imgUrl = med ? resolveMedicineImageUrl(med, 240) : DEFAULT_MEDICINE_IMAGE_URL;
               const enough = item.hasEnoughQuantity;
               const partial = item.isFound && !enough && item.foundQuantity > 0;
-              const missing = !item.isFound || item.foundQuantity <= 0;
+              const missing = unavailableMedicine || !item.isFound || item.foundQuantity <= 0;
               const checked = selectedMedIds.has(item.medicineId);
               const cappedFound = Math.min(item.foundQuantity, item.requestedQuantity);
 
@@ -647,7 +683,9 @@ export default function CheckoutPage() {
                         </span>
                       ) : null}
                     </p>
-                    {missing ? (
+                    {unavailableMedicine ? (
+                      <Chip tone="danger" asButton={false} size="sm">Больше недоступен</Chip>
+                    ) : missing ? (
                       <Chip tone="danger" asButton={false} size="sm">В этой аптеке нет</Chip>
                     ) : partial ? (
                       <Chip tone="warning" asButton={false} size="sm">
