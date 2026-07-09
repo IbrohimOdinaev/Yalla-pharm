@@ -1769,7 +1769,14 @@ public sealed class ClientService : IClientService
           .Where(x => x.PharmacyId == pharmacyId && medicineIds.Contains(x.MedicineId))
           .ToListAsync(cancellationToken);
 
-        var liveOffersByMedicineId = liveOffers.ToDictionary(x => x.MedicineId, x => x);
+        var liveOffersByMedicineId = liveOffers
+          .GroupBy(x => x.MedicineId)
+          .ToDictionary(
+            x => x.Key,
+            x => x
+              .OrderByDescending(offer => offer.StockQuantity)
+              .ThenBy(offer => offer.Price)
+              .First());
         var positions = new List<CheckoutEvaluationPosition>(drafts.Count);
         var canCheckout = true;
 
@@ -1949,9 +1956,14 @@ public sealed class ClientService : IClientService
             x.StockQuantity))
           .ToListAsync(cancellationToken);
 
-        var offerLookup = offers.ToDictionary(
-          x => (x.PharmacyId, x.MedicineId),
-          x => x);
+        var offerLookup = offers
+          .GroupBy(x => (x.PharmacyId, x.MedicineId))
+          .ToDictionary(
+            x => x.Key,
+            x => x
+              .OrderByDescending(offer => offer.StockQuantity)
+              .ThenBy(offer => offer.Price)
+              .First());
 
         var options = new List<BasketPharmacyOptionResponse>(pharmacies.Count);
         var totalMedicinesCount = positions.Count;
