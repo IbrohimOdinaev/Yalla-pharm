@@ -695,10 +695,10 @@ function HomeFallback() {
   return (
     <AppShell>
       <div className="space-y-6 sm:space-y-8">
-        <div className="flex gap-3 overflow-hidden">
+        <div className="flex gap-4 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex flex-col items-center gap-2">
-              <div className="h-[129px] w-[110px] animate-pulse rounded-2xl bg-surface-container-high sm:h-[152px] sm:w-[124px] lg:h-[175px] lg:w-[143px]" />
+              <div className="h-[142px] w-[121px] animate-pulse rounded-2xl bg-category-image-backdrop sm:h-[167px] sm:w-[136px] lg:h-[193px] lg:w-[157px]" />
             </div>
           ))}
         </div>
@@ -1416,8 +1416,11 @@ function HomeContent() {
       <div className="space-y-6 sm:space-y-8 overflow-x-clip">
 
           {/* Quick categories — Yandex-style horizontal rail */}
-          <section className="home-reveal">
-            <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
+          <section className="home-reveal space-y-3">
+            <h2 className="px-0.5 font-display text-lg font-extrabold text-on-surface sm:text-xl">
+              Категории товаров
+            </h2>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide scroll-touch pb-1 sm:gap-5">
               {QUICK_CATEGORIES.map((cat) => (
                 <div key={cat.label} className="flex-shrink-0">
                   <CategoryTile

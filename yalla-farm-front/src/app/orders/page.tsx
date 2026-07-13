@@ -503,8 +503,7 @@ export default function OrdersPage() {
                 className="flex w-full items-start justify-between gap-3 p-4 text-left"
                 onClick={() => onToggleExpand(order.orderId)}
               >
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant/70">{getOrderDisplayId(d)}</p>
+                <div className="flex min-w-0 flex-1 flex-col space-y-1">
                   <div className="flex items-center gap-2">
                     <p className="font-display text-xl font-extrabold text-primary">{originalPaid > 0 ? formatMoney(originalPaid, d.currency) : "—"}</p>
                     {refundAmount > 0 ? (
@@ -532,6 +531,7 @@ export default function OrdersPage() {
                       {new Date(order.createdAtUtc).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
                     </p>
                   ) : null}
+                  <p className="pt-1 font-mono text-[10px] uppercase tracking-wider text-on-surface-variant/70">{getOrderDisplayId(d)}</p>
                 </div>
                 <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
                   {awaiting ? (

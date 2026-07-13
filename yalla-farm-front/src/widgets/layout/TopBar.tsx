@@ -401,7 +401,7 @@ export function TopBar({
       </>
     );
     const desktopSearchClass =
-      "ml-4 flex h-12 min-w-[286px] flex-[1.3_1_0%] items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:ml-6 xl:min-w-[468px] 2xl:max-w-[936px]";
+      "-ml-6 flex h-12 min-w-[286px] flex-[1.3_1_0%] items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:-ml-5 xl:min-w-[468px] 2xl:max-w-[936px]";
 
     // Desktop search flexes inside the single-line header. A minimum width
     // keeps the input readable while letting the action buttons stay inline
@@ -784,8 +784,6 @@ const ACTIVE_ORDER_STATUSES: ReadonlySet<string> = new Set([
   "Ready",
   "DriverArrived",
   "OnTheWay",
-  "Delivered",
-  "PickedUp",
 ]);
 
 const ACTIVE_MENU_ORDER_STATUSES: ReadonlySet<string> = new Set([

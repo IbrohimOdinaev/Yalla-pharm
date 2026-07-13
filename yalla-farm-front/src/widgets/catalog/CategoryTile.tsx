@@ -63,7 +63,7 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
             label at the BOTTOM (mirror of the photographic tiles' layout)
             to keep the rail visually balanced when this card sits next
             to image-led tiles. */}
-        <span className="flex h-[129px] w-[110px] flex-col justify-between overflow-hidden rounded-2xl bg-image-backdrop p-3 transition group-hover:bg-surface-container-high sm:h-[152px] sm:w-[124px] sm:p-4 lg:h-[175px] lg:w-[143px]">
+        <span className="flex h-[142px] w-[121px] flex-col justify-between overflow-hidden rounded-2xl bg-category-image-backdrop p-3 transition group-hover:bg-category-image-backdrop-active group-active:bg-category-image-backdrop-active sm:h-[167px] sm:w-[136px] sm:p-4 lg:h-[193px] lg:w-[157px]">
           <span className="flex justify-end">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-on-surface shadow-card transition group-hover:bg-on-surface group-hover:text-surface sm:h-10 sm:w-10">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -81,12 +81,12 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
   }
 
   const tileSurface = image
-    ? "bg-image-backdrop"
+    ? "bg-category-image-backdrop"
     : `${p.bg} ${p.fg}`;
   // Hover: darken to surface-container-high for image tiles (warm-grey
   // matches the backdrop family); for icon-only pastel tiles the pastel
   // already reads as a hovered surface, so no extra change needed.
-  const hoverSurface = image ? "group-hover:bg-surface-container-high" : "";
+  const hoverSurface = image ? "group-hover:bg-category-image-backdrop-active group-active:bg-category-image-backdrop-active" : "";
   return (
     <button
       type="button"
@@ -94,7 +94,7 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
       className="group transition active:scale-95"
     >
       <span
-        className={`flex h-[129px] w-[110px] flex-col overflow-hidden rounded-2xl ${tileSurface} ${hoverSurface} transition sm:h-[152px] sm:w-[124px] lg:h-[175px] lg:w-[143px]`}
+        className={`flex h-[142px] w-[121px] flex-col overflow-hidden rounded-2xl ${tileSurface} ${hoverSurface} transition sm:h-[167px] sm:w-[136px] lg:h-[193px] lg:w-[157px]`}
       >
         {/* Image area — takes the upper ~70% of the tile, centered with
             generous padding so the artwork has room to breathe (Yandex
