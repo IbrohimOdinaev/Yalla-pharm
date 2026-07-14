@@ -109,10 +109,6 @@ function rememberAddressPromptDismissal() {
 }
 
 const QUICK_CATEGORIES: QuickCategory[] = [
-  // "Все категории" first — anchors the rail with the catch-all so users
-  // who don't see their target among the quick tiles immediately know
-  // where to look.
-  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/hd/all.png" },
   { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/hd/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
   { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/hd/allergy.png", keywords: ["аллерг", "антигистамин"] },
   { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/hd/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
@@ -121,6 +117,7 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/hd/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
   { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/hd/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
   { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/hd/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/hd/all.png" },
 ];
 
 export default function HomePage() {

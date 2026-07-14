@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -27,6 +28,7 @@ type MedicineCardProps = {
 
 // Yandex-Apteka style: flat white card, thin border, red cart button.
 export function MedicineCard({ medicine, hideCart, compact, footerAction, readOnlyPrice, readOnlyPricePrefix }: MedicineCardProps) {
+  const router = useRouter();
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
   const addItem = useCartStore((state) => state.addItem);
@@ -178,13 +180,30 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
   // Prefer the human-readable slug and fall back to the GUID.
   // /product/[id] resolves either.
   const productKey = medicine.slug || medicine.id;
-  const productHref = `/product/${productKey}`;
+
+  const openProduct = useCallback(() => {
+    const currentPath = typeof window !== "undefined" ? window.location.pathname : "/";
+    const currentSearch = typeof window !== "undefined" ? window.location.search : "";
+    const params = new URLSearchParams(currentSearch);
+    params.set("product", productKey);
+    const qs = params.toString();
+    router.push(qs ? `${currentPath}?${qs}` : currentPath, { scroll: false });
+  }, [productKey, router]);
+
+  function onCardKeyDown(e: React.KeyboardEvent<HTMLElement>) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    openProduct();
+  }
 
   return (
-    // eslint-disable-next-line @next/next/no-html-link-for-pages
-    <a
-      href={productHref}
-      className="group block h-full"
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={openProduct}
+      onKeyDown={onCardKeyDown}
+      className="group block h-full cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      aria-label={name}
     >
       {/* Frame moved from inner image to outer card: a thin border outlines
           the whole card, and the image area now sits flush with the card
@@ -194,7 +213,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
           via `has-[button:active]`. The stepper/pill buttons themselves
           stay fixed in size — the user sees the card expand around the
           control without the price/qty text reflowing under their finger. */}
-      <article className="flex h-full flex-col rounded-2xl bg-surface-container-lowest transition has-[button:active]:scale-[1.02]">
+      <div className="flex h-full flex-col rounded-2xl bg-surface-container-lowest transition has-[button:active]:scale-[1.02]">
         {/* Image */}
         <div
           className="relative aspect-square overflow-hidden rounded-2xl bg-product-image-backdrop transition group-active:bg-product-image-backdrop-active"
@@ -233,13 +252,6 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
           {offersCount > 1 ? (
             <span className="absolute left-2 top-2 rounded-full bg-surface-container-lowest/95 px-2 py-0.5 text-[10px] font-bold text-on-surface shadow-card">
               в {offersCount} {offersCount < 5 ? "аптеках" : "аптеках"}
-            </span>
-          ) : null}
-
-          {/* Quantity badge when in cart — light-blue pill, top-right. */}
-          {cartState.inCart ? (
-            <span className="absolute right-2 top-2 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-extrabold text-on-primary shadow-card">
-              {cartState.quantity}
             </span>
           ) : null}
 
@@ -329,7 +341,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
             </div>
           ) : null}
         </div>
-      </article>
-    </a>
+      </div>
+    </article>
   );
 }
