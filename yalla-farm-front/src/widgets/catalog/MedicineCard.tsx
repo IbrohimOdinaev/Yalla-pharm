@@ -170,6 +170,11 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
   }
 
   const name = getMedicineDisplayName(medicine);
+  const priceLabel = displayReadOnlyPrice
+    ? `${displayReadOnlyPrefix}${formatMoney(displayReadOnlyPrice)}`
+    : hideCart
+      ? "Нет офферов"
+      : "—";
   // Prefer the human-readable slug and fall back to the GUID.
   // /product/[id] resolves either.
   const productKey = medicine.slug || medicine.id;
@@ -304,7 +309,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
               compact ? "text-base xs:text-lg" : "text-lg xs:text-xl"
             }`}
           >
-            {displayReadOnlyPrice ? `${displayReadOnlyPrefix}${formatMoney(displayReadOnlyPrice)}` : "—"}
+            {priceLabel}
           </p>
 
           {/* Title — compact Yandex-style text block under the price. */}
