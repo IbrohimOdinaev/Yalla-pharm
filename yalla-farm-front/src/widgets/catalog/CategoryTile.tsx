@@ -72,7 +72,7 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
               </svg>
             </span>
           </span>
-          <span className="text-left text-[12px] font-extrabold leading-tight text-on-surface sm:text-sm lg:text-[15px]">
+          <span className="flex min-h-[2.1rem] items-end text-left text-[12px] font-extrabold leading-tight text-on-surface sm:min-h-[2.4rem] sm:text-sm lg:text-[15px]">
             {label}
           </span>
         </span>
@@ -99,7 +99,7 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
         {/* Image area — takes the upper ~70% of the tile, centered with
             generous padding so the artwork has room to breathe (Yandex
             keeps the actual product photo small relative to the card). */}
-        <span className={`flex flex-1 items-center justify-center ${image ? "p-3 sm:p-4" : "p-2 sm:p-3"}`}>
+        <span className={`flex min-h-0 flex-1 items-center justify-center ${image ? "p-3 pb-1.5 sm:p-4 sm:pb-2 lg:pb-2.5" : "p-2 pb-1.5 sm:p-3 sm:pb-2"}`}>
           {image ? (
             <Image
               src={image}
@@ -116,7 +116,7 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
         </span>
         {/* Label sits flush to the bottom edge inside the card — separate
             from the image area but still part of the same rounded box. */}
-        <span className="block px-2.5 pb-2.5 text-left text-[11px] font-bold leading-tight text-on-surface sm:px-3 sm:pb-3 sm:text-xs lg:text-[13px]">
+        <span className="flex min-h-[2.35rem] items-end px-2.5 pb-2.5 text-left text-[11px] font-bold leading-tight text-on-surface sm:min-h-[2.6rem] sm:px-3 sm:pb-3 sm:text-xs lg:min-h-[2.9rem] lg:text-[13px]">
           {label}
         </span>
       </span>

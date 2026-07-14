@@ -1092,7 +1092,7 @@ function HomeContent() {
     return (
       <div
         key={spec.id}
-        className={`home-reveal home-reveal-delay-${Math.min(revealDelay, 5)}`}
+        className={`home-reveal scroll-safe-top home-reveal-delay-${Math.min(revealDelay, 5)}`}
       >
         <MedicineRail
           title={spec.title}
@@ -1416,11 +1416,11 @@ function HomeContent() {
       <div className="space-y-6 sm:space-y-8 overflow-x-clip">
 
           {/* Quick categories — Yandex-style horizontal rail */}
-          <section className="home-reveal space-y-3">
+          <section className="home-reveal scroll-safe-top space-y-3">
             <h2 className="px-0.5 font-display text-lg font-extrabold text-on-surface sm:text-xl">
               Категории товаров
             </h2>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide scroll-touch pb-1 sm:gap-5">
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide scroll-touch pb-3 sm:gap-5">
               {QUICK_CATEGORIES.map((cat) => (
                 <div key={cat.label} className="flex-shrink-0">
                   <CategoryTile
