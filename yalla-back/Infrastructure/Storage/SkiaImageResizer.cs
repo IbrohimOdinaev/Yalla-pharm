@@ -10,7 +10,7 @@ public sealed class SkiaImageResizer : IImageResizer
     // neighbour, which produces visibly blocky thumbnails on retina screens.
     private static readonly SKSamplingOptions Sampling = new(SKCubicResampler.Mitchell);
 
-    public byte[]? ResizeToWebp(ReadOnlySpan<byte> source, int targetWidth, int quality = 92)
+    public byte[]? ResizeToWebp(ReadOnlySpan<byte> source, int targetWidth, int quality = 100)
     {
         if (source.IsEmpty || targetWidth <= 0)
             return null;
@@ -20,9 +20,8 @@ public sealed class SkiaImageResizer : IImageResizer
         if (bitmap is null) return null;
 
         // Don't upscale: if the source is already smaller than the requested
-        // width, just re-encode at the original resolution. Re-encoding is
-        // still worth it (WebP is ~30% smaller than the JPEG/PNG most images
-        // are stored as).
+        // width, just re-encode at the original resolution. Keep WebP quality
+        // maxed so product and pharmacy images stay crisp on retina screens.
         var width = Math.Min(targetWidth, bitmap.Width);
         var height = (int)Math.Round(bitmap.Height * ((double)width / bitmap.Width));
 

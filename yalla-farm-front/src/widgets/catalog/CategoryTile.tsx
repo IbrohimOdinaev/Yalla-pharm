@@ -107,6 +107,7 @@ export function CategoryTile({ icon, palette, label, image, variant = "default",
               width={528}
               height={448}
               sizes="(min-width: 1024px) 111px, (min-width: 640px) 96px, 88px"
+              unoptimized
               className="h-full w-full object-contain mix-blend-multiply"
             />
           ) : (
