@@ -191,7 +191,7 @@ export default function PharmaciesPage() {
                     key={pharmacy.id}
                     type="button"
                     onClick={() => setSelectedPharmacyId(pharmacy.id)}
-                    className="grid w-full gap-3 px-3 py-3 text-left transition hover:bg-primary-soft/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 md:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_120px_120px] md:items-center md:px-4"
+                    className="grid w-full gap-2 px-3 py-3 text-left transition hover:bg-primary-soft/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 md:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_120px_120px] md:items-center md:gap-3 md:px-4"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       {pharmacy.source === "admin" ? (
@@ -202,11 +202,11 @@ export default function PharmaciesPage() {
                         </span>
                       )}
                       <div className="min-w-0">
-                        <h2 className="truncate text-sm font-black text-on-surface">{pharmacy.title}</h2>
+                        <h2 className="line-clamp-2 text-sm font-black leading-tight text-on-surface md:truncate">{pharmacy.title}</h2>
                         <p className="mt-1 text-[11px] font-bold text-primary md:hidden">{pharmacyHoursLabel(pharmacy)}</p>
                       </div>
                     </div>
-                    <p className="min-w-0 truncate text-xs font-semibold text-on-surface-variant md:text-sm">{pharmacy.address}</p>
+                    <p className="min-w-0 line-clamp-2 text-xs font-semibold leading-snug text-on-surface-variant md:truncate md:text-sm">{pharmacy.address}</p>
                     <span className="hidden text-sm font-black text-primary md:block">{pharmacyHoursLabel(pharmacy)}</span>
                     <span className={`w-max rounded-full px-3 py-1 text-xs font-black ${
                       pharmacy.hasDelivery ? "bg-emerald-50 text-emerald-600" : "bg-surface-container-low text-on-surface-variant"

@@ -163,6 +163,8 @@ export function TopBar({
     pathname === "/cart" ||
     pathname === "/cart/pharmacy" ||
     pathname === "/checkout" ||
+    pathname === "/pharmacies" ||
+    pathname === "/pharmacies/map" ||
     pathname === "/login" ||
     pathname === "/login/admin" ||
     pathname === "/register" ||

@@ -717,11 +717,6 @@ function HomeContent() {
   const isStaff = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin" || role === "Pharmacist";
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
-  // Legacy picker trigger. Existing UI calls `openPicker()` from the store;
-  // on the home page that now means "open the full city pharmacies map"
-  // directly, without the old intermediate picker modal.
-  const isPickerOpen = usePharmacyStore((s) => s.isPickerOpen);
-  const closePicker = usePharmacyStore((s) => s.closePicker);
   const searchParams = useSearchParams();
   const navRouter = useRouter();
 
@@ -759,12 +754,6 @@ function HomeContent() {
   const [showDushanbeMapModal, setShowDushanbeMapModal] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const addressChecked = useRef(false);
-
-  useEffect(() => {
-    if (!isPickerOpen) return;
-    closePicker();
-    navRouter.push("/pharmacies");
-  }, [isPickerOpen, closePicker, navRouter]);
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
 
