@@ -258,8 +258,8 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
           {!hideCart ? (
             cartState.inCart ? (
               <div
-                className={`absolute bottom-2 right-2 flex items-center justify-between rounded-full bg-surface/95 text-on-surface shadow-card backdrop-blur-sm ${
-                  compact ? "h-9 w-[94px] px-1" : "h-11 w-[112px] px-1.5"
+                className={`absolute inset-x-2 bottom-2 flex items-center justify-between rounded-full bg-surface/95 text-on-surface shadow-card backdrop-blur-sm ${
+                  compact ? "h-10 px-2" : "h-11 px-2.5"
                 }`}
                 onClick={(e) => e.stopPropagation()}
               >

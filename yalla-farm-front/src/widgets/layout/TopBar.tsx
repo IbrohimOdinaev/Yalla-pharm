@@ -167,64 +167,12 @@ export function TopBar({
     pathname === "/login/admin" ||
     pathname === "/register" ||
     pathname.startsWith("/product/");
-  const floatingCartRef = useRef<HTMLAnchorElement>(null);
   const floatingCartLabel = bestPrice
     ? `от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
     : cartDisplayPrice != null
       ? `от ${formatMoney(cartDisplayPrice)}`
       : `${cartCount}`;
   const displayAddressText = formatAddressDisplay(addressText);
-
-  useEffect(() => {
-    if (onCartRoute || cartCount <= 0) return;
-
-    const button = floatingCartRef.current;
-    const currentViewport = window.visualViewport;
-    if (!button || !currentViewport) return;
-    const buttonElement: HTMLAnchorElement = button;
-    const viewport: VisualViewport = currentViewport;
-
-    let frame = 0;
-    const isIosChrome = /\bCriOS\//i.test(navigator.userAgent);
-    const safeAreaProbe = document.createElement("div");
-    safeAreaProbe.style.cssText =
-      "position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom);";
-    document.body.appendChild(safeAreaProbe);
-
-    function readSafeAreaBottom() {
-      const value = Number.parseFloat(getComputedStyle(safeAreaProbe).height);
-      return Number.isFinite(value) ? value : 0;
-    }
-
-    function updatePosition() {
-      frame = 0;
-      const safeAreaBottom = readSafeAreaBottom();
-      const floatingGap = isIosChrome ? 72 : 88;
-      const nextTop =
-        viewport.offsetTop + viewport.height - floatingGap - safeAreaBottom;
-
-      buttonElement.style.setProperty("--floating-cart-top", `${nextTop}px`);
-      buttonElement.style.setProperty("--floating-cart-duration", "0ms");
-    }
-
-    function scheduleUpdate() {
-      if (frame) return;
-      frame = window.requestAnimationFrame(updatePosition);
-    }
-
-    updatePosition();
-    viewport.addEventListener("resize", scheduleUpdate);
-    viewport.addEventListener("scroll", scheduleUpdate);
-    window.addEventListener("orientationchange", scheduleUpdate);
-
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      viewport.removeEventListener("resize", scheduleUpdate);
-      viewport.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("orientationchange", scheduleUpdate);
-      safeAreaProbe.remove();
-    };
-  }, [onCartRoute, cartCount]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -656,11 +604,10 @@ export function TopBar({
       {/* Floating cart — mobile/tablet only (lg:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
           Size the pill from the icon+label group and keep that whole group
-          centered. iOS browser toolbars move the visual viewport, so JS keeps
-          a constant gap from the visible viewport bottom. */}
+          centered. CSS bottom anchoring avoids the iOS visualViewport jump
+          that made the pill drift upward while browser chrome changed. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
-          ref={floatingCartRef}
           href="/cart"
           aria-label={
             bestPrice
@@ -669,12 +616,8 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
-          style={{
-            top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
-            transitionDuration: "var(--floating-cart-duration, 220ms)",
-            transform: "translate3d(0,0,0)",
-          }}
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[background-color,transform] ease-out hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
+          style={{ transform: "translate3d(0,0,0)" }}
         >
           <span
             aria-hidden="true"

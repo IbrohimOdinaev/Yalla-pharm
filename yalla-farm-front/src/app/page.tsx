@@ -1438,38 +1438,7 @@ function HomeContent() {
             </div>
           </section>
 
-          {/* Prescription-decoding CTA for tablet/desktop below xl. At xl+
-              the same action lives inline in the header. */}
-          {!isAdminOrSA ? (
-            <Link
-              href="/prescriptions/new"
-              className="home-reveal home-reveal-delay-2 hidden items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:flex sm:p-4 xl:hidden"
-            >
-              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card sm:h-12 sm:w-12">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="9" y1="14" x2="15" y2="14" />
-                  <line x1="12" y1="11" x2="12" y2="17" />
-                </svg>
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-on-surface sm:text-base">Загрузите рецепт от врача</p>
-                <p className="text-[11px] text-on-surface-variant sm:text-xs">
-                  Фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS
-                </p>
-              </div>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-primary" aria-hidden="true">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </Link>
-          ) : null}
-
-          {/* Popular products first — this is the primary shopping block after
-              category shortcuts. */}
-          {renderHomeRail(HOME_RAILS[0], 2)}
-
-          {/* Phone actions — after popular products on small screens. */}
+          {/* Phone actions — immediately after quick categories on small screens. */}
           {!isAdminOrSA ? (
             <div className="home-reveal home-reveal-delay-2 grid grid-cols-2 gap-2 sm:hidden">
               <Link
@@ -1507,6 +1476,37 @@ function HomeContent() {
               </Link>
             </div>
           ) : null}
+
+          {/* Prescription-decoding CTA for tablet/desktop below xl. At xl+
+              the same action lives inline in the header. */}
+          {!isAdminOrSA ? (
+            <Link
+              href="/prescriptions/new"
+              className="home-reveal home-reveal-delay-2 hidden items-center gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-3 transition active:scale-95 hover:bg-primary/15 sm:flex sm:p-4 xl:hidden"
+            >
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card sm:h-12 sm:w-12">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="9" y1="14" x2="15" y2="14" />
+                  <line x1="12" y1="11" x2="12" y2="17" />
+                </svg>
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-on-surface sm:text-base">Загрузите рецепт от врача</p>
+                <p className="text-[11px] text-on-surface-variant sm:text-xs">
+                  Фармацевт расшифрует и пришлёт готовый список лекарств · 3 TJS
+                </p>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-primary" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </Link>
+          ) : null}
+
+          {/* Popular products first — this is the primary shopping block after
+              category shortcuts. */}
+          {renderHomeRail(HOME_RAILS[0], 2)}
 
           <div className="home-reveal home-reveal-delay-2">
             <PharmacyIntegrationBanner />
