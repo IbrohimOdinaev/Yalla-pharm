@@ -727,6 +727,10 @@ function HomeContent() {
     else if (role === "Pharmacist") navRouter.replace("/pharmacist");
   }, [role, navRouter]);
 
+  useEffect(() => {
+    navRouter.prefetch("/pharmacies");
+  }, [navRouter]);
+
   // Restore view & query from URL params on mount
   const urlSearch = searchParams.get("search") ?? "";
   const urlPharmacy = searchParams.get("pharmacy") ?? "";
@@ -1057,6 +1061,14 @@ function HomeContent() {
     });
     if (match) navRouter.push(`/catalog/${match.slug}`);
     else navRouter.push("/catalog");
+  }
+
+  function openPharmaciesNow() {
+    if (typeof window !== "undefined") {
+      window.location.assign("/pharmacies");
+      return;
+    }
+    navRouter.push("/pharmacies");
   }
 
   // Staff guard — renders nothing while the auth-redirect effect above hops
@@ -1448,8 +1460,10 @@ function HomeContent() {
                 </span>
               </Link>
 
-              <Link
-                href="/pharmacies"
+              <button
+                type="button"
+                onClick={openPharmaciesNow}
+                onPointerDown={() => navRouter.prefetch("/pharmacies")}
                 className="flex min-h-[74px] min-w-0 items-center gap-2 rounded-2xl bg-primary-soft p-2.5 text-left text-primary shadow-card transition active:scale-95 hover:bg-primary/15"
               >
                 <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
@@ -1462,7 +1476,7 @@ function HomeContent() {
                   <span className="block truncate text-sm font-bold leading-tight">Все аптеки</span>
                   <span className="mt-1 block truncate text-[11px] font-semibold leading-tight text-primary/80">Аптеки на карте</span>
                 </span>
-              </Link>
+              </button>
             </div>
           ) : null}
 

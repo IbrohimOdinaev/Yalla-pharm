@@ -178,7 +178,49 @@ export default function PharmaciesPage() {
               По выбранному фильтру аптек нет.
             </div>
           ) : (
-            <section className="overflow-hidden rounded-3xl border border-outline/60 bg-surface shadow-card">
+            <>
+            <section className="space-y-2 md:hidden">
+              {visiblePharmacies.map((pharmacy) => (
+                <button
+                  key={pharmacy.id}
+                  type="button"
+                  onClick={() => setSelectedPharmacyId(pharmacy.id)}
+                  className="w-full rounded-2xl border border-outline/60 bg-surface-container-lowest p-3 text-left shadow-card transition active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <PharmacyAvatar pharmacy={pharmacy} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <h2 className="min-w-0 flex-1 text-[15px] font-black leading-snug text-on-surface">
+                          {pharmacy.title}
+                        </h2>
+                        <span className="flex-shrink-0 rounded-full bg-primary-soft px-2 py-1 text-[11px] font-black leading-none text-primary">
+                          {pharmacyHoursLabel(pharmacy)}
+                        </span>
+                      </div>
+                      <p className="mt-2 flex min-w-0 items-start gap-1.5 text-[12px] font-semibold leading-snug text-on-surface-variant">
+                        <Icon name="pin" size={13} className="mt-0.5 flex-shrink-0 text-primary/70" />
+                        <span className="min-w-0">{pharmacy.address}</span>
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${
+                          pharmacy.hasDelivery ? "bg-emerald-50 text-emerald-600" : "bg-surface-container-low text-on-surface-variant"
+                        }`}>
+                          Доставка: {pharmacy.hasDelivery ? "есть" : "нет"}
+                        </span>
+                        {pharmacy.regionName ? (
+                          <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-[11px] font-bold text-on-surface-variant">
+                            {pharmacy.regionName}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </section>
+
+            <section className="hidden overflow-hidden rounded-3xl border border-outline/60 bg-surface shadow-card md:block">
               <div className="hidden grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_120px_120px] gap-3 border-b border-outline/60 bg-surface-container-low px-4 py-3 text-xs font-black uppercase text-on-surface-variant md:grid">
                 <span>Аптека</span>
                 <span>Адрес</span>
@@ -194,13 +236,7 @@ export default function PharmaciesPage() {
                     className="grid w-full gap-2 px-3 py-3 text-left transition hover:bg-primary-soft/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 md:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_120px_120px] md:items-center md:gap-3 md:px-4"
                   >
                     <div className="flex min-w-0 items-center gap-3">
-                      {pharmacy.source === "admin" ? (
-                        <PharmacyLogo pharmacyId={pharmacy.id.replace(/^admin-/, "")} iconUrl={pharmacy.iconUrl} size={42} className="flex-shrink-0" />
-                      ) : (
-                        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                          <Icon name="pharmacy" size={22} />
-                        </span>
-                      )}
+                      <PharmacyAvatar pharmacy={pharmacy} />
                       <div className="min-w-0">
                         <h2 className="line-clamp-2 text-sm font-black leading-tight text-on-surface md:truncate">{pharmacy.title}</h2>
                         <p className="mt-1 text-[11px] font-bold text-primary md:hidden">{pharmacyHoursLabel(pharmacy)}</p>
@@ -217,6 +253,7 @@ export default function PharmaciesPage() {
                 ))}
               </div>
             </section>
+            </>
           )
         ) : (
           <section className="overflow-hidden rounded-3xl bg-surface-container-low shadow-card">
@@ -290,5 +327,24 @@ function InfoBlock({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
       <p className="mt-1 text-sm font-semibold leading-relaxed text-on-surface">{value}</p>
     </div>
+  );
+}
+
+function PharmacyAvatar({ pharmacy }: { pharmacy: CityPharmacy }) {
+  if (pharmacy.source === "admin") {
+    return (
+      <PharmacyLogo
+        pharmacyId={pharmacy.id.replace(/^admin-/, "")}
+        iconUrl={pharmacy.iconUrl}
+        size={44}
+        className="flex-shrink-0"
+      />
+    );
+  }
+
+  return (
+    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <Icon name="pharmacy" size={22} />
+    </span>
   );
 }
