@@ -729,6 +729,26 @@ public class OrderServiceTests
       return Task.FromResult(new List<JuraTariff>());
     }
 
+    public Task<List<JuraCity>> GetCitiesAsync(CancellationToken ct)
+    {
+      return Task.FromResult(new List<JuraCity>());
+    }
+
+    public Task<List<JuraActiveOrder>> GetActiveOrdersAsync(string clientPhone, CancellationToken ct)
+    {
+      return Task.FromResult(new List<JuraActiveOrder>());
+    }
+
+    public Task<List<JuraPayType>> GetPayTypesAsync(CancellationToken ct)
+    {
+      return Task.FromResult(new List<JuraPayType>());
+    }
+
+    public Task<List<JuraAllowance>> GetAllowancesAsync(int? tariffId, CancellationToken ct)
+    {
+      return Task.FromResult(new List<JuraAllowance>());
+    }
+
     public Task<string?> GetReceiptCodeAsync(long juraOrderId, CancellationToken ct)
     {
       return Task.FromResult<string?>("1234");

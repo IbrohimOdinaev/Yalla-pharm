@@ -194,6 +194,57 @@ public sealed class JuraServiceTests
   }
 
   [Fact]
+  public async Task CreateDeliveryOrderAsync_UsesCompanyBalancePayType_FromNewPostmanResultShape()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.OK, """
+      {
+        "success": true,
+        "code": 200,
+        "message": "ok",
+        "result": [
+          {
+            "id": 212605,
+            "type": "ClientBalance",
+            "text": "Лицевой счет",
+            "col_type": true
+          },
+          {
+            "id": 243115,
+            "type": "CompanyBalance",
+            "text": "",
+            "col_type": false
+          }
+        ]
+      }
+      """),
+      Json(HttpStatusCode.OK, """
+      {
+        "success": true,
+        "code": 200,
+        "message": "ok",
+        "result": {
+          "id": 42106901,
+          "status": "Поступило",
+          "status_id": 1
+        }
+      }
+      """));
+    var service = CreateService(handler);
+
+    await service.CreateDeliveryOrderAsync(
+      Address("A", 38.573255, 68.786378),
+      Address("B", 38.580832, 68.786342),
+      tariffId: null,
+      clientPhone: "000000003",
+      CancellationToken.None);
+
+    using var body = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
+    Assert.Equal(243115, body.RootElement.GetProperty("pay_type_id").GetInt64());
+  }
+
+  [Fact]
   public async Task CreateDeliveryOrderAsync_WhenPayTypeIsInvalid_RetriesWithRefreshedCorporatePayType()
   {
     var handler = new SequenceMessageHandler(
@@ -263,6 +314,182 @@ public sealed class JuraServiceTests
 
     Assert.Equal("9300", result);
     Assert.Equal("/api/v2/external-api/orders/receipt-code?order_id=20619905", handler.Requests[1].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task GetPayTypesAsync_ParsesNewResultWrapper()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.OK, """
+      {
+        "success": true,
+        "code": 200,
+        "message": "ok",
+        "result": [
+          {
+            "id": 212605,
+            "type": "ClientBalance",
+            "text": "Лицевой счет",
+            "col_type": true
+          },
+          {
+            "id": 243115,
+            "type": "CompanyBalance",
+            "text": "",
+            "col_type": false
+          }
+        ]
+      }
+      """));
+    var service = CreateService(handler);
+
+    var result = await service.GetPayTypesAsync(CancellationToken.None);
+
+    Assert.Equal(2, result.Count);
+    Assert.Equal(212605, result[0].Id);
+    Assert.Equal("ClientBalance", result[0].Type);
+    Assert.Equal("Лицевой счет", result[0].Text);
+    Assert.True(result[0].ColType);
+    Assert.Equal(243115, result[1].Id);
+    Assert.Equal("CompanyBalance", result[1].Type);
+    Assert.False(result[1].ColType);
+    Assert.Equal("/api/v2/external-api/orders/pay-types", handler.Requests[1].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task GetAllowancesAsync_UsesExternalApiAllowancesEndpoint()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.OK, """
+      [
+        {
+          "allowance_id": 10,
+          "price": 0.8,
+          "type": "minute",
+          "is_fix_price": 0,
+          "name": "Ожидание",
+          "icon": "https://api-3taxi.gram.tj/storage/allowances/wait.png"
+        },
+        {
+          "allowance_id": 20,
+          "price": 5,
+          "type": "fix",
+          "is_fix_price": 1,
+          "name": "Буксировочный ключ",
+          "icon": "https://api-3taxi.gram.tj/storage/allowances/key.png"
+        }
+      ]
+      """));
+    var service = CreateService(handler);
+
+    var result = await service.GetAllowancesAsync(49, CancellationToken.None);
+
+    Assert.Equal(2, result.Count);
+    Assert.Equal(10, result[0].AllowanceId);
+    Assert.Equal(0.8m, result[0].Price);
+    Assert.Equal("minute", result[0].Type);
+    Assert.False(result[0].IsFixPrice);
+    Assert.Equal(20, result[1].AllowanceId);
+    Assert.Equal(5m, result[1].Price);
+    Assert.True(result[1].IsFixPrice);
+    Assert.Equal("/api/v2/external-api/orders/allowances?tariff_id=49", handler.Requests[1].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task GetActiveOrdersAsync_ParsesNewResultWrapper()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.OK, """
+      {
+        "success": true,
+        "code": 200,
+        "message": "ok",
+        "result": [
+          {
+            "id": 20620358,
+            "division_id": 6,
+            "status": "Поступило",
+            "status_id": 1,
+            "client_status": 0,
+            "tariff": "Курьер на авто",
+            "tariff_id": 37,
+            "distance": 309.92,
+            "prices": {
+              "amount": 1222
+            },
+            "recipient_code": "7479",
+            "performer": {
+              "traccar_device_id": 5483
+            }
+          }
+        ]
+      }
+      """));
+    var service = CreateService(handler);
+
+    var result = await service.GetActiveOrdersAsync("927782615", CancellationToken.None);
+
+    var order = Assert.Single(result);
+    Assert.Equal(20620358, order.OrderId);
+    Assert.Equal(6, order.DivisionId);
+    Assert.Equal(1, order.StatusId);
+    Assert.Equal("Поступило", order.Status);
+    Assert.Equal(0, order.ClientStatus);
+    Assert.Equal(37, order.TariffId);
+    Assert.Equal("Курьер на авто", order.Tariff);
+    Assert.Equal(309.92, order.Distance);
+    Assert.Equal(1222m, order.Amount);
+    Assert.Equal("7479", order.RecipientCode);
+    Assert.Equal(5483, order.PerformerDeviceId);
+    Assert.Equal("/api/v2/external-api/orders/active-order?phone=992927782615", handler.Requests[1].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task GetActiveOrdersAsync_ReturnsEmptyList_WhenJuraReturnsNotFound()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.NotFound, """{"success":false,"message":"Client not found","data":null}"""));
+    var service = CreateService(handler);
+
+    var result = await service.GetActiveOrdersAsync("992920000000", CancellationToken.None);
+
+    Assert.Empty(result);
+    Assert.Equal("/api/v2/external-api/orders/active-order?phone=992920000000", handler.Requests[1].PathAndQuery);
+  }
+
+  [Fact]
+  public async Task GetCitiesAsync_ParsesExternalApiCities()
+  {
+    var handler = new SequenceMessageHandler(
+      Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
+      Json(HttpStatusCode.OK, """
+      [
+        {
+          "id": 6,
+          "baseId": "9D301000000000000",
+          "name": "Душанбе",
+          "region": "район республиканского подчинения",
+          "lng": 68.762734,
+          "lat": 38.557282
+        }
+      ]
+      """));
+    var service = CreateService(handler);
+
+    var result = await service.GetCitiesAsync(CancellationToken.None);
+
+    var city = Assert.Single(result);
+    Assert.Equal(6, city.Id);
+    Assert.Equal("9D301000000000000", city.BaseId);
+    Assert.Equal("Душанбе", city.Name);
+    Assert.Equal("район республиканского подчинения", city.Region);
+    Assert.Equal(38.557282, city.Lat);
+    Assert.Equal(68.762734, city.Lng);
+    Assert.Equal("/api/v2/external-api/orders/get-cities", handler.Requests[1].PathAndQuery);
   }
 
   private static JuraService CreateService(HttpMessageHandler handler, IJuraHealthState? health = null)

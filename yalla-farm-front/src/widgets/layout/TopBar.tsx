@@ -563,7 +563,7 @@ export function TopBar({
 
     return (
       <>
-      <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-xl">
+      <header className="sticky top-0 z-[70] isolate border-b border-outline/40 bg-surface backdrop-blur-xl supports-[backdrop-filter]:bg-surface/90">
         <div className="w-full px-3 sm:px-6 lg:px-12">
           {/* DESKTOP (lg+): single row. Order requested:
               logo / search / address + prescription / … / cart / profile.
@@ -600,7 +600,6 @@ export function TopBar({
             ) : null}
           </div>
         </div>
-        <div className="hair-divider" />
       </header>
 
       {/* Floating cart — mobile/tablet only (lg:hidden), shown when basket has
@@ -618,8 +617,11 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[background-color,transform] ease-out hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
-          style={{ transform: "translate3d(0,0,0)" }}
+          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[background-color,transform] ease-out will-change-transform hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
+          style={{
+            top: "calc(100svh - 7.3rem - env(safe-area-inset-bottom, 0px))",
+            transform: "translate3d(0,0,0)",
+          }}
         >
           <span
             aria-hidden="true"
@@ -642,7 +644,7 @@ export function TopBar({
 
   // ── DEFAULT MODE: back + title ───────────────────────────────────
   return (
-    <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xl">
+    <header className="sticky top-0 z-[60] isolate border-b border-outline/40 bg-surface backdrop-blur-xl supports-[backdrop-filter]:bg-surface/90">
       <div className="flex h-14 w-full items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           {backHref ? (
@@ -682,7 +684,6 @@ export function TopBar({
           </button>
         ) : null}
       </div>
-      <div className="hair-divider" />
     </header>
   );
 }

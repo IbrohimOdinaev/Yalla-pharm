@@ -67,7 +67,7 @@ function openTelegramAuthLink(
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<AppShell hideFooter top={<TopBar title="Вход" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
+    <Suspense fallback={<AppShell hideFooter top={<TopBar title="Назад" backHref="back" />}><div className="stitch-card p-6 text-sm">Загрузка...</div></AppShell>}>
       <LoginContent />
     </Suspense>
   );
@@ -333,7 +333,7 @@ function LoginContent() {
   }, [tgSession]);
 
   return (
-    <AppShell hideFooter top={<TopBar title="Вход" backHref="back" />}>
+    <AppShell hideFooter top={<TopBar title="Назад" backHref="back" />}>
       <div className="mx-auto max-w-md">
         {/* Hero illustration */}
         <div className="mb-6 flex flex-col items-center gap-4 pt-2">
