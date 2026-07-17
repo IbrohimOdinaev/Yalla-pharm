@@ -604,9 +604,8 @@ export function TopBar({
 
       {/* Floating cart — mobile/tablet only (lg:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
-          Size the pill from the icon+label group and keep that whole group
-          centered. CSS bottom anchoring avoids the iOS visualViewport jump
-          that made the pill drift upward while browser chrome changed. */}
+          Keep it anchored from the visible viewport bottom so iOS Safari /
+          Chrome move it with their collapsing bottom browser bars. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
           href="/cart"
@@ -617,9 +616,8 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[background-color,transform] ease-out will-change-transform hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
+          className="fixed bottom-[calc(2.25rem+env(safe-area-inset-bottom,0px))] right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[background-color,transform] ease-out will-change-transform hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
           style={{
-            top: "calc(100svh - 7.3rem - env(safe-area-inset-bottom, 0px))",
             transform: "translate3d(0,0,0)",
           }}
         >
