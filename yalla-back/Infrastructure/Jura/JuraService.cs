@@ -283,16 +283,22 @@ public sealed class JuraService : IJuraService
 
   private async Task<long?> ResolveCorporatePayTypeIdAsync(CancellationToken ct, bool forceRefresh = false)
   {
+    var fallbackPayTypeId = _options.DefaultPayTypeId > 0 ? _options.DefaultPayTypeId : (long?)null;
+    if (!forceRefresh && fallbackPayTypeId.HasValue)
+      return fallbackPayTypeId;
+
     if (!forceRefresh && _corporatePayTypeId.HasValue)
       return _corporatePayTypeId;
 
     await _payTypeLock.WaitAsync(ct);
     try
     {
+      if (!forceRefresh && fallbackPayTypeId.HasValue)
+        return fallbackPayTypeId;
+
       if (!forceRefresh && _corporatePayTypeId.HasValue)
         return _corporatePayTypeId;
 
-      var fallbackPayTypeId = _options.DefaultPayTypeId > 0 ? _options.DefaultPayTypeId : (long?)null;
       var response = await SendWithAuthAsync(
         HttpMethod.Get,
         $"{ExternalOrdersBasePath}/pay-types",

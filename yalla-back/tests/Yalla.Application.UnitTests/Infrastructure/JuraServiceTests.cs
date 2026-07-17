@@ -93,7 +93,6 @@ public sealed class JuraServiceTests
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Json(HttpStatusCode.OK, """{"success":true,"data":[{"id":243138,"name":"Корпоративный баланс"}]}"""),
       Json(HttpStatusCode.OK, """
       {
         "message": "Заказ успешно создан",
@@ -119,14 +118,13 @@ public sealed class JuraServiceTests
     Assert.Equal(1, result.StatusId);
     Assert.Equal("Поступило", result.Status);
     Assert.Equal("1074", result.RecipientCode);
-    Assert.Equal("/api/v2/external-api/orders/pay-types", handler.Requests[1].PathAndQuery);
-    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[2].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[1].PathAndQuery);
 
-    using var body = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
+    using var body = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
     Assert.Equal(6, body.RootElement.GetProperty("division_id").GetInt32());
     Assert.Equal(37, body.RootElement.GetProperty("tariff_id").GetInt32());
     Assert.Equal("992000000003", body.RootElement.GetProperty("phone").GetString());
-    Assert.Equal(243138, body.RootElement.GetProperty("pay_type_id").GetInt64());
+    Assert.Equal(29185, body.RootElement.GetProperty("pay_type_id").GetInt64());
     Assert.True(body.RootElement.TryGetProperty("to_address", out _));
     Assert.False(body.RootElement.TryGetProperty("to_addresses", out _));
   }
@@ -136,7 +134,6 @@ public sealed class JuraServiceTests
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Json(HttpStatusCode.OK, """{"success":true,"data":[{"id":243138,"name":"Корпоративный баланс"}]}"""),
       Json(HttpStatusCode.OK, """
       {
         "message": "Заказ успешно создан",
@@ -156,7 +153,7 @@ public sealed class JuraServiceTests
       clientPhone: null,
       CancellationToken.None);
 
-    using var body = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
+    using var body = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
     Assert.Equal("992000000000", body.RootElement.GetProperty("phone").GetString());
   }
 
@@ -165,7 +162,6 @@ public sealed class JuraServiceTests
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Json(HttpStatusCode.OK, """{"success":true,"data":[{"id":243138,"name":"Корпоративный баланс"}]}"""),
       Json(HttpStatusCode.OK, """
       {
         "message": "Заказ успешно создан",
@@ -186,7 +182,7 @@ public sealed class JuraServiceTests
       CancellationToken.None,
       deliverToDoor: true);
 
-    using var body = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
+    using var body = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
     var allowance = body.RootElement.GetProperty("allowances")[0];
     Assert.Equal(17, allowance.GetProperty("id").GetInt32());
     Assert.Equal(1m, allowance.GetProperty("price").GetDecimal());
@@ -194,31 +190,10 @@ public sealed class JuraServiceTests
   }
 
   [Fact]
-  public async Task CreateDeliveryOrderAsync_UsesCompanyBalancePayType_FromNewPostmanResultShape()
+  public async Task CreateDeliveryOrderAsync_UsesConfiguredPayTypeBeforeFetchingPayTypes()
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Json(HttpStatusCode.OK, """
-      {
-        "success": true,
-        "code": 200,
-        "message": "ok",
-        "result": [
-          {
-            "id": 212605,
-            "type": "ClientBalance",
-            "text": "Лицевой счет",
-            "col_type": true
-          },
-          {
-            "id": 243115,
-            "type": "CompanyBalance",
-            "text": "",
-            "col_type": false
-          }
-        ]
-      }
-      """),
       Json(HttpStatusCode.OK, """
       {
         "success": true,
@@ -240,8 +215,10 @@ public sealed class JuraServiceTests
       clientPhone: "000000003",
       CancellationToken.None);
 
-    using var body = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
-    Assert.Equal(243115, body.RootElement.GetProperty("pay_type_id").GetInt64());
+    Assert.Equal(2, handler.Requests.Count);
+    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[1].PathAndQuery);
+    using var body = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
+    Assert.Equal(29185, body.RootElement.GetProperty("pay_type_id").GetInt64());
   }
 
   [Fact]
@@ -249,7 +226,6 @@ public sealed class JuraServiceTests
   {
     var handler = new SequenceMessageHandler(
       Json(HttpStatusCode.OK, """{"success":true,"token":"test-token"}"""),
-      Json(HttpStatusCode.OK, """{"success":true,"data":[{"id":243115,"name":"Корпоративный баланс"}]}"""),
       Json(HttpStatusCode.UnprocessableEntity, """
       {"status":422,"message":"Validation error","errors":{"pay_type_id":["Указанный тип оплаты не найден или не является корпоративным балансом."]}}
       """),
@@ -274,14 +250,13 @@ public sealed class JuraServiceTests
       CancellationToken.None);
 
     Assert.Equal(42106902, result.OrderId);
-    Assert.Equal(5, handler.Requests.Count);
-    Assert.Equal("/api/v2/external-api/orders/pay-types", handler.Requests[1].PathAndQuery);
-    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[2].PathAndQuery);
-    Assert.Equal("/api/v2/external-api/orders/pay-types", handler.Requests[3].PathAndQuery);
-    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[4].PathAndQuery);
-    using var firstBody = JsonDocument.Parse(handler.Bodies[2] ?? "{}");
-    using var secondBody = JsonDocument.Parse(handler.Bodies[4] ?? "{}");
-    Assert.Equal(243115, firstBody.RootElement.GetProperty("pay_type_id").GetInt64());
+    Assert.Equal(4, handler.Requests.Count);
+    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[1].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/orders/pay-types", handler.Requests[2].PathAndQuery);
+    Assert.Equal("/api/v2/external-api/orders/create", handler.Requests[3].PathAndQuery);
+    using var firstBody = JsonDocument.Parse(handler.Bodies[1] ?? "{}");
+    using var secondBody = JsonDocument.Parse(handler.Bodies[3] ?? "{}");
+    Assert.Equal(29185, firstBody.RootElement.GetProperty("pay_type_id").GetInt64());
     Assert.Equal(243138, secondBody.RootElement.GetProperty("pay_type_id").GetInt64());
     Assert.Equal("992000000003", secondBody.RootElement.GetProperty("phone").GetString());
   }
