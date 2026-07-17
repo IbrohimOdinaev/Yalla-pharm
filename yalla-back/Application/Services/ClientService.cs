@@ -1157,7 +1157,7 @@ public sealed class ClientService : IClientService
         if (snapshotPositions.Count == 0)
             throw new InvalidOperationException("At least one accepted position is required to create payment intent.");
 
-        if (snapshotPositions.Any(x => x.OfferPrice <= 0m))
+        if (snapshotPositions.Any(x => x.OfferPrice < 0m))
             throw new InvalidOperationException("Payment intent snapshot contains invalid offer price.");
 
         var nowUtc = DateTime.UtcNow;
