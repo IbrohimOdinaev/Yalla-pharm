@@ -40,6 +40,31 @@ public sealed class StubPaymentServiceTests
     Assert.Equal("133", query["f1"]);
   }
 
+  [Fact]
+  public async Task PayForOrderAsync_WhenPaymentUrlIsDisabled_ShouldStillReturnPendingManualPayment()
+  {
+    var service = new StubPaymentService(
+      Options.Create(new DushanbeCityPaymentOptions { BaseUrl = string.Empty }),
+      new FakePaymentSettingsService(string.Empty));
+
+    var response = await service.PayForOrderAsync(new PayForOrderRequest
+    {
+      OrderId = Guid.NewGuid(),
+      ClientId = Guid.NewGuid(),
+      ClientPhoneNumber = string.Empty,
+      PharmacyId = Guid.NewGuid(),
+      Amount = 42m,
+      Currency = "TJS",
+      IdempotencyKey = "checkout-key-no-dc"
+    });
+
+    Assert.True(response.IsPaid);
+    Assert.Equal("PendingManualConfirmation", response.Status);
+    Assert.Null(response.PaymentUrl);
+    Assert.Equal(string.Empty, response.ReceiverAccount);
+    Assert.Contains("ClientNumber: unknown", response.PaymentComment);
+  }
+
   private static Dictionary<string, string> ParseQuery(string query)
   {
     var source = query.StartsWith('?') ? query[1..] : query;

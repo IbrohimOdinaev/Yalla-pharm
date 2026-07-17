@@ -100,7 +100,7 @@ public sealed class PaymentIntent
     var normalizedDeliveryAddress = NormalizeRequired(deliveryAddress, 500, nameof(DeliveryAddress));
     var normalizedCurrency = NormalizeRequired(currency, 8, nameof(Currency));
     var normalizedProvider = NormalizeRequired(paymentProvider, 64, nameof(PaymentProvider));
-    var normalizedReceiverAccount = NormalizeRequired(paymentReceiverAccount, 128, nameof(PaymentReceiverAccount));
+    var normalizedReceiverAccount = NormalizeOptional(paymentReceiverAccount, 128, nameof(PaymentReceiverAccount)) ?? string.Empty;
     var normalizedIdempotencyKey = NormalizeRequired(idempotencyKey, 128, nameof(IdempotencyKey));
     var normalizedPaymentUrl = NormalizeOptional(paymentUrl, 2048, nameof(PaymentUrl));
     var normalizedPaymentComment = NormalizeOptional(paymentComment, 512, nameof(PaymentComment));

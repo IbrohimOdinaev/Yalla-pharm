@@ -80,6 +80,57 @@ public sealed class PaymentIntentServiceTests
   }
 
   [Fact]
+  public async Task ConfirmBySuperAdmin_WhenReceiverAccountIsEmpty_ShouldCreateOrderAndPaymentHistory()
+  {
+    using var scope = TestDbFactory.Create();
+    var db = scope.Db;
+
+    var client = TestDbFactory.CreateClient("ClientNoReceiver", "911000011");
+    var superAdmin = TestDbFactory.CreateUser("SuperAdminNoReceiver", "911000012", Role.SuperAdmin);
+    var pharmacy = TestDbFactory.CreatePharmacy("Ph-NoReceiver", "Addr-NoReceiver", superAdmin.Id);
+    var medicine = TestDbFactory.CreateMedicine("Med-NoReceiver", "ART-NoReceiver");
+    var offer = TestDbFactory.CreateOffer(medicine.Id, pharmacy.Id, stock: 10, price: 12m);
+
+    db.Clients.Add(client);
+    db.Users.Add(superAdmin);
+    db.Pharmacies.Add(pharmacy);
+    db.Medicines.Add(medicine);
+    db.Offers.Add(offer);
+    await db.SaveChangesAsync();
+
+    var reservedOrderId = Guid.NewGuid();
+    var intent = BuildPaymentIntent(
+      reservedOrderId: reservedOrderId,
+      client: client,
+      pharmacyId: pharmacy.Id,
+      medicineId: medicine.Id,
+      price: 12m,
+      quantity: 1,
+      idempotencyKey: "intent-confirm-empty-receiver",
+      receiverAccount: string.Empty,
+      paymentUrl: null);
+    db.PaymentIntents.Add(intent);
+    await db.SaveChangesAsync();
+
+    var service = CreateService(db);
+    var response = await service.ConfirmBySuperAdminAsync(new ConfirmPaymentIntentBySuperAdminRequest
+    {
+      SuperAdminId = superAdmin.Id,
+      PaymentIntentId = intent.Id
+    });
+
+    Assert.True(response.OrderCreated);
+    Assert.Equal(PaymentIntentState.Confirmed, response.PaymentIntentState);
+
+    var order = await db.Orders.AsNoTracking().FirstAsync(x => x.Id == reservedOrderId);
+    Assert.Equal(OrderPaymentState.Confirmed, order.PaymentState);
+    Assert.Equal(string.Empty, order.PaymentReceiverAccount);
+
+    var paymentHistory = await db.PaymentHistories.AsNoTracking().FirstAsync(x => x.OrderId == reservedOrderId);
+    Assert.Equal(string.Empty, paymentHistory.ReceiverAccount);
+  }
+
+  [Fact]
   public async Task ConfirmBySuperAdmin_WithInsufficientStock_ShouldSetNeedsResolution_AndNotCreateOrder()
   {
     using var scope = TestDbFactory.Create();
@@ -235,7 +286,9 @@ public sealed class PaymentIntentServiceTests
     Guid medicineId,
     decimal price,
     int quantity,
-    string idempotencyKey)
+    string idempotencyKey,
+    string receiverAccount = "9762000087892609",
+    string? paymentUrl = "http://pay.expresspay.tj/?A=9762000087892609&s=10&c=test")
   {
     return new PaymentIntent(
       reservedOrderId: reservedOrderId,
@@ -247,8 +300,8 @@ public sealed class PaymentIntentServiceTests
       amount: price * quantity,
       currency: "TJS",
       paymentProvider: "DushanbeCityManualPhone",
-      paymentReceiverAccount: "9762000087892609",
-      paymentUrl: "http://pay.expresspay.tj/?A=9762000087892609&s=10&c=test",
+      paymentReceiverAccount: receiverAccount,
+      paymentUrl: paymentUrl,
       paymentComment: $"ClientNumber: {client.PhoneNumber} & OrderId: {reservedOrderId}",
       idempotencyKey: idempotencyKey,
       positions:
