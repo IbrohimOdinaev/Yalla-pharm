@@ -11,6 +11,14 @@ namespace Yalla.Application.UnitTests.Infrastructure;
 public sealed class JuraServiceTests
 {
   [Fact]
+  public void NormalizeBaseUrl_ReplacesLegacyJuraHost()
+  {
+    Assert.Equal(JuraOptions.DefaultBaseUrl, JuraOptions.NormalizeBaseUrl("https://test-admin.gram.tj"));
+    Assert.Equal(JuraOptions.DefaultBaseUrl, JuraOptions.NormalizeBaseUrl(" https://api-3taxi.gram.tj/ "));
+    Assert.Equal(string.Empty, JuraOptions.NormalizeBaseUrl(""));
+  }
+
+  [Fact]
   public async Task CalculateDeliveryAsync_UsesExternalApiCalculateEndpoint()
   {
     var handler = new SequenceMessageHandler(
@@ -471,14 +479,14 @@ public sealed class JuraServiceTests
   {
     var http = new HttpClient(handler)
     {
-      BaseAddress = new Uri("https://test-admin.gram.tj")
+      BaseAddress = new Uri(JuraOptions.DefaultBaseUrl)
     };
 
     return new JuraService(
       http,
       Options.Create(new JuraOptions
       {
-        BaseUrl = "https://test-admin.gram.tj",
+        BaseUrl = JuraOptions.DefaultBaseUrl,
         Login = "120674",
         Password = "secret",
         DivisionId = 6,
