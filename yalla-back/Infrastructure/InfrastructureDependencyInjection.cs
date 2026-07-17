@@ -465,7 +465,7 @@ public static class DependencyInjection
     return (cleanUrl, user, pass);
   }
 
-  private static string? NormalizeConnectionString(string? connectionString, IConfiguration config)
+  internal static string? NormalizeConnectionString(string? connectionString, IConfiguration config)
   {
     if (string.IsNullOrWhiteSpace(connectionString))
       return connectionString;
@@ -482,25 +482,39 @@ public static class DependencyInjection
       builder.SearchPath = "public";
 
     var connectionTimeoutSeconds = config.GetValue<int?>("Database:ConnectionTimeoutSeconds");
-    if (connectionTimeoutSeconds is > 0 && !HasConnectionTimeout(connectionString))
+    if (connectionTimeoutSeconds is > 0 && !HasConnectionStringKey(connectionString, "Timeout", "Connection Timeout", "Connect Timeout"))
       builder.Timeout = connectionTimeoutSeconds.Value;
+
+    var maxPoolSize = config.GetValue<int?>("Database:MaxPoolSize");
+    if (maxPoolSize is > 0 && !HasConnectionStringKey(connectionString, "MaxPoolSize", "Max Pool Size", "Maximum Pool Size"))
+      builder.MaxPoolSize = maxPoolSize.Value;
+
+    var connectionIdleLifetimeSeconds = config.GetValue<int?>("Database:ConnectionIdleLifetimeSeconds");
+    if (connectionIdleLifetimeSeconds is > 0 && !HasConnectionStringKey(connectionString, "Connection Idle Lifetime"))
+      builder.ConnectionIdleLifetime = connectionIdleLifetimeSeconds.Value;
 
     return builder.ConnectionString;
   }
 
-  private static bool HasConnectionTimeout(string connectionString) =>
-    connectionString
+  private static bool HasConnectionStringKey(string connectionString, params string[] keys)
+  {
+    var normalizedKeys = keys
+      .Select(NormalizeConnectionStringKey)
+      .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    return connectionString
       .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
       .Any(part =>
       {
         var separatorIndex = part.IndexOf('=');
         if (separatorIndex <= 0) return false;
 
-        var key = part[..separatorIndex].Trim();
-        return key.Equals("Timeout", StringComparison.OrdinalIgnoreCase)
-          || key.Equals("Connection Timeout", StringComparison.OrdinalIgnoreCase)
-          || key.Equals("Connect Timeout", StringComparison.OrdinalIgnoreCase);
+        return normalizedKeys.Contains(NormalizeConnectionStringKey(part[..separatorIndex]));
       });
+  }
+
+  private static string NormalizeConnectionStringKey(string key) =>
+    key.Replace(" ", string.Empty, StringComparison.Ordinal).Trim();
 
   private static string NormalizeMinIoEndpointForContainer(string endpoint, IConfiguration config)
   {

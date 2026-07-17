@@ -58,6 +58,8 @@ services:
       # is incomplete — never use these values for anything real.
       Jwt__Key: ${JWT_KEY:-staging-jwt-key-not-for-production-32chars!}
       ConnectionStrings__Default: ${DB_CONNECTION_STRING:-Host=postgres-staging;Username=postgres;Password=staging}
+      Database__MaxPoolSize: ${DATABASE_MAX_POOL_SIZE:-8}
+      Database__ConnectionIdleLifetimeSeconds: ${DATABASE_CONNECTION_IDLE_LIFETIME_SECONDS:-30}
       Elasticsearch__Url: ${ELASTICSEARCH_URL:-http://opensearch:9200}
       Elasticsearch__MedicineIndex: ${ELASTICSEARCH_INDEX:-medicines}
       SmsVerification__WebOtpOrigin: ${SMS_VERIFICATION_WEB_OTP_ORIGIN:-dev-pharm.yalla.tj}
