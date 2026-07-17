@@ -13,7 +13,12 @@ import { rememberOrderPaymentMethod } from "@/shared/lib/paymentMethodMemory";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useCheckoutDraftStore } from "@/features/checkout/model/checkoutDraftStore";
-import { buildCheckoutExplicitPositions, countSelectedAvailableMedicines } from "@/features/checkout/lib/checkoutPositions";
+import {
+  adjustExplicitPositionsFromPreview,
+  buildCheckoutExplicitPositions,
+  buildPreviewErrorMessage,
+  countSelectedAvailableMedicines,
+} from "@/features/checkout/lib/checkoutPositions";
 import { useDeliveryAddressStore } from "@/features/delivery/model/deliveryAddressStore";
 import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getMedicinesByIds, resolveMedicineImageUrl, showDefaultMedicineImage } from "@/entities/medicine/api";
 import { getMyProfile } from "@/entities/client/api";
@@ -80,47 +85,6 @@ function buildCheckoutPaymentMethods(
   }
 
   return methods;
-}
-
-function buildPreviewErrorMessage(preview: ApiCheckoutPreviewResponse): string {
-  const rejected = preview.positions?.find((position) => position.isRejected);
-  if (!rejected) return "Состав заказа изменился. Обновите корзину и попробуйте снова.";
-
-  if (rejected.reason === "InsufficientStock") {
-    return "Количество одного из товаров изменилось. Обновите корзину и попробуйте снова.";
-  }
-
-  if (rejected.reason === "OfferNotFound") {
-    return "Один из выбранных товаров больше недоступен в этой аптеке.";
-  }
-
-  if (rejected.reason === "MedicineInactive") {
-    return "Один из выбранных товаров больше недоступен.";
-  }
-
-  return "Состав заказа изменился. Обновите корзину и попробуйте снова.";
-}
-
-function adjustExplicitPositionsFromPreview(
-  positions: ReturnType<typeof buildCheckoutExplicitPositions>,
-  preview: ApiCheckoutPreviewResponse,
-): ReturnType<typeof buildCheckoutExplicitPositions> | null {
-  const previewByMedicine = new Map(
-    (preview.positions ?? []).map((position) => [position.medicineId, position]),
-  );
-  let changed = false;
-
-  const adjusted = positions
-    .map((position) => {
-      const previewPosition = previewByMedicine.get(position.medicineId);
-      if (!previewPosition || previewPosition.reason !== "InsufficientStock") return position;
-      const nextQuantity = Math.min(position.quantity, Math.max(0, previewPosition.foundQuantity));
-      if (nextQuantity !== position.quantity) changed = true;
-      return { ...position, quantity: nextQuantity };
-    })
-    .filter((position) => position.quantity > 0);
-
-  return changed && adjusted.length > 0 ? adjusted : null;
 }
 
 export default function CheckoutPage() {

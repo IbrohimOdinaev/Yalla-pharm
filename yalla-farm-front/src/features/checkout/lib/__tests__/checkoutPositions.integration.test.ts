@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildCheckoutExplicitPositions, countSelectedAvailableMedicines } from "@/features/checkout/lib/checkoutPositions";
-import type { ApiBasketPharmacyItem } from "@/shared/types/api";
+import {
+  adjustExplicitPositionsFromPreview,
+  buildCheckoutExplicitPositions,
+  countSelectedAvailableMedicines,
+} from "@/features/checkout/lib/checkoutPositions";
+import type { ApiBasketPharmacyItem, ApiCheckoutPreviewResponse } from "@/shared/types/api";
 
 describe("checkout position helpers", () => {
   it("excludes medicines missing from catalog from explicit checkout payload", () => {
@@ -31,5 +35,109 @@ describe("checkout position helpers", () => {
       { medicineId: validMedicineId, quantity: 1 },
     ]);
     expect(countSelectedAvailableMedicines(selected, missing)).toBe(1);
+  });
+
+  it("reduces selected quantity when checkout preview reports lower stock", () => {
+    const positions = [
+      { medicineId: "limited-med", quantity: 2 },
+      { medicineId: "ok-med", quantity: 1 },
+    ];
+    const preview: ApiCheckoutPreviewResponse = {
+      canCheckout: false,
+      acceptedPositionsCount: 1,
+      rejectedPositionsCount: 1,
+      totalPositions: 2,
+      positions: [
+        {
+          medicineId: "limited-med",
+          quantity: 2,
+          isRejected: true,
+          foundQuantity: 1,
+          reason: "InsufficientStock",
+        },
+        {
+          medicineId: "ok-med",
+          quantity: 1,
+          isRejected: false,
+          foundQuantity: 1,
+          reason: "",
+        },
+      ],
+    };
+
+    expect(adjustExplicitPositionsFromPreview(positions, preview)).toEqual([
+      { medicineId: "limited-med", quantity: 1 },
+      { medicineId: "ok-med", quantity: 1 },
+    ]);
+  });
+
+  it("drops unavailable medicines from explicit checkout payload", () => {
+    const positions = [
+      { medicineId: "missing-offer", quantity: 1 },
+      { medicineId: "inactive-med", quantity: 1 },
+      { medicineId: "zero-stock", quantity: 3 },
+      { medicineId: "ok-med", quantity: 1 },
+    ];
+    const preview: ApiCheckoutPreviewResponse = {
+      canCheckout: false,
+      acceptedPositionsCount: 1,
+      rejectedPositionsCount: 3,
+      totalPositions: 4,
+      positions: [
+        {
+          medicineId: "missing-offer",
+          quantity: 1,
+          isRejected: true,
+          foundQuantity: 0,
+          reason: "OfferNotFound",
+        },
+        {
+          medicineId: "inactive-med",
+          quantity: 1,
+          isRejected: true,
+          foundQuantity: 0,
+          reason: "MedicineInactive",
+        },
+        {
+          medicineId: "zero-stock",
+          quantity: 3,
+          isRejected: true,
+          foundQuantity: 0,
+          reason: "InsufficientStock",
+        },
+        {
+          medicineId: "ok-med",
+          quantity: 1,
+          isRejected: false,
+          foundQuantity: 1,
+          reason: "",
+        },
+      ],
+    };
+
+    expect(adjustExplicitPositionsFromPreview(positions, preview)).toEqual([
+      { medicineId: "ok-med", quantity: 1 },
+    ]);
+  });
+
+  it("does not adjust when checkout preview has no recoverable changes", () => {
+    const positions = [{ medicineId: "ok-med", quantity: 1 }];
+    const preview: ApiCheckoutPreviewResponse = {
+      canCheckout: false,
+      acceptedPositionsCount: 0,
+      rejectedPositionsCount: 1,
+      totalPositions: 1,
+      positions: [
+        {
+          medicineId: "ok-med",
+          quantity: 1,
+          isRejected: true,
+          foundQuantity: 1,
+          reason: "Unknown",
+        },
+      ],
+    };
+
+    expect(adjustExplicitPositionsFromPreview(positions, preview)).toBeNull();
   });
 });
