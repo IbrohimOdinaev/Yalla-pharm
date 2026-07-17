@@ -19,7 +19,7 @@ import { DEFAULT_MEDICINE_IMAGE_URL, getMedicineDisplayName, getMedicinesByIds, 
 import { getMyProfile } from "@/entities/client/api";
 import { removeFromBasket } from "@/entities/basket/api";
 import { getPublicPaymentSettings, type PublicPaymentSettings } from "@/entities/payment-settings/api";
-import type { ApiMedicine, ApiCheckoutResponse, ApiClient } from "@/shared/types/api";
+import type { ApiMedicine, ApiCheckoutResponse, ApiCheckoutPreviewResponse, ApiClient } from "@/shared/types/api";
 import { preparePaymentWindow } from "@/shared/lib/paymentWindow";
 import { AppShell } from "@/widgets/layout/AppShell";
 import { TopBar } from "@/widgets/layout/TopBar";
@@ -80,6 +80,47 @@ function buildCheckoutPaymentMethods(
   }
 
   return methods;
+}
+
+function buildPreviewErrorMessage(preview: ApiCheckoutPreviewResponse): string {
+  const rejected = preview.positions?.find((position) => position.isRejected);
+  if (!rejected) return "Состав заказа изменился. Обновите корзину и попробуйте снова.";
+
+  if (rejected.reason === "InsufficientStock") {
+    return "Количество одного из товаров изменилось. Обновите корзину и попробуйте снова.";
+  }
+
+  if (rejected.reason === "OfferNotFound") {
+    return "Один из выбранных товаров больше недоступен в этой аптеке.";
+  }
+
+  if (rejected.reason === "MedicineInactive") {
+    return "Один из выбранных товаров больше недоступен.";
+  }
+
+  return "Состав заказа изменился. Обновите корзину и попробуйте снова.";
+}
+
+function adjustExplicitPositionsFromPreview(
+  positions: ReturnType<typeof buildCheckoutExplicitPositions>,
+  preview: ApiCheckoutPreviewResponse,
+): ReturnType<typeof buildCheckoutExplicitPositions> | null {
+  const previewByMedicine = new Map(
+    (preview.positions ?? []).map((position) => [position.medicineId, position]),
+  );
+  let changed = false;
+
+  const adjusted = positions
+    .map((position) => {
+      const previewPosition = previewByMedicine.get(position.medicineId);
+      if (!previewPosition || previewPosition.reason !== "InsufficientStock") return position;
+      const nextQuantity = Math.min(position.quantity, Math.max(0, previewPosition.foundQuantity));
+      if (nextQuantity !== position.quantity) changed = true;
+      return { ...position, quantity: nextQuantity };
+    })
+    .filter((position) => position.quantity > 0);
+
+  return changed && adjusted.length > 0 ? adjusted : null;
 }
 
 export default function CheckoutPage() {
@@ -376,8 +417,37 @@ export default function CheckoutPage() {
         },
       };
 
-      await apiFetch("/api/clients/checkout/preview", { method: "POST", token, body: payload });
-      const checkout = await apiFetch<ApiCheckoutResponse>("/api/clients/checkout", { method: "POST", token, body: payload });
+      let checkoutPayload = payload;
+      let preview = await apiFetch<ApiCheckoutPreviewResponse>("/api/clients/checkout/preview", {
+        method: "POST",
+        token,
+        body: checkoutPayload,
+      });
+
+      if (!preview.canCheckout) {
+        const adjustedPositions = adjustExplicitPositionsFromPreview(explicitPositions, preview);
+        if (adjustedPositions) {
+          checkoutPayload = {
+            ...payload,
+            source: {
+              ...payload.source,
+              positions: adjustedPositions,
+            },
+          };
+          preview = await apiFetch<ApiCheckoutPreviewResponse>("/api/clients/checkout/preview", {
+            method: "POST",
+            token,
+            body: checkoutPayload,
+          });
+        }
+      }
+
+      if (!preview.canCheckout) {
+        loadBasket(token).catch(() => undefined);
+        throw new Error(buildPreviewErrorMessage(preview));
+      }
+
+      const checkout = await apiFetch<ApiCheckoutResponse>("/api/clients/checkout", { method: "POST", token, body: checkoutPayload });
 
       if (uncheckedBasketPositionIds.length > 0) {
         await Promise.all(

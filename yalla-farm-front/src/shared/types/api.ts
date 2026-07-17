@@ -119,6 +119,27 @@ export type ApiCheckoutResponse = {
   paymentState?: number;
 };
 
+export type ApiCheckoutPreviewPosition = {
+  positionId?: string;
+  medicineId: string;
+  quantity: number;
+  isRejected: boolean;
+  foundQuantity: number;
+  price?: number | null;
+  reason: string;
+};
+
+export type ApiCheckoutPreviewResponse = {
+  canCheckout: boolean;
+  acceptedPositionsCount: number;
+  rejectedPositionsCount: number;
+  totalPositions: number;
+  cost?: number;
+  deliveryCost?: number;
+  totalCost?: number;
+  positions?: ApiCheckoutPreviewPosition[];
+};
+
 export type ApiPaymentIntentByIdResponse = {
   orderId?: string | null;
   paymentIntent?: {
