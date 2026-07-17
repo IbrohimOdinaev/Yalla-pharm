@@ -109,10 +109,6 @@ function rememberAddressPromptDismissal() {
 }
 
 const QUICK_CATEGORIES: QuickCategory[] = [
-  // "Все категории" first — anchors the rail with the catch-all so users
-  // who don't see their target among the quick tiles immediately know
-  // where to look.
-  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/hd/all.png" },
   { icon: "thermometer", palette: "coral", label: "Боль и жар", image: "/categories/hd/pain.png", keywords: ["боль", "жар", "температур", "обезболив", "анальг"] },
   { icon: "allergy", palette: "rose", label: "Аллергия", image: "/categories/hd/allergy.png", keywords: ["аллерг", "антигистамин"] },
   { icon: "lungs", palette: "sky", label: "Дыхание", image: "/categories/hd/respiratory.png", keywords: ["дыхат", "респират", "кашел", "бронх", "лёгк", "легк", "горл"] },
@@ -121,6 +117,7 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   { icon: "eye", palette: "sky", label: "Глаза", image: "/categories/hd/eyes.png", keywords: ["глаз", "зрени", "офтальм", "капли"] },
   { icon: "moon", palette: "lilac", label: "Нервы и сон", image: "/categories/hd/sleep.png", keywords: ["невр", "психи", "нерв", "сон", "снотв", "успок", "стресс", "антидепресс", "седат"] },
   { icon: "shield", palette: "sage", label: "Иммунитет", image: "/categories/hd/immunity.png", keywords: ["иммун", "противовирус", "интерферон", "защит"] },
+  { icon: "grid", palette: "mint", label: "Все категории", image: "/categories/hd/all.png" },
 ];
 
 export default function HomePage() {
@@ -695,10 +692,10 @@ function HomeFallback() {
   return (
     <AppShell>
       <div className="space-y-6 sm:space-y-8">
-        <div className="flex gap-3 overflow-hidden">
+        <div className="flex gap-4 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex flex-col items-center gap-2">
-              <div className="h-[129px] w-[110px] animate-pulse rounded-2xl bg-surface-container-high sm:h-[152px] sm:w-[124px] lg:h-[175px] lg:w-[143px]" />
+              <div className="h-[142px] w-[121px] animate-pulse rounded-2xl bg-category-image-backdrop sm:h-[167px] sm:w-[136px] lg:h-[193px] lg:w-[157px]" />
             </div>
           ))}
         </div>
@@ -720,11 +717,6 @@ function HomeContent() {
   const isStaff = role === "Admin" || role === "PharmacyAccount" || role === "SuperAdmin" || role === "Pharmacist";
   const loadDeliveryAddress = useDeliveryAddressStore((s) => s.load);
   const selectedPharmacy = usePharmacyStore((s) => s.selectedPharmacy);
-  // Legacy picker trigger. Existing UI calls `openPicker()` from the store;
-  // on the home page that now means "open the full city pharmacies map"
-  // directly, without the old intermediate picker modal.
-  const isPickerOpen = usePharmacyStore((s) => s.isPickerOpen);
-  const closePicker = usePharmacyStore((s) => s.closePicker);
   const searchParams = useSearchParams();
   const navRouter = useRouter();
 
@@ -734,6 +726,10 @@ function HomeContent() {
     else if (role === "SuperAdmin") navRouter.replace("/superadmin");
     else if (role === "Pharmacist") navRouter.replace("/pharmacist");
   }, [role, navRouter]);
+
+  useEffect(() => {
+    navRouter.prefetch("/pharmacies");
+  }, [navRouter]);
 
   // Restore view & query from URL params on mount
   const urlSearch = searchParams.get("search") ?? "";
@@ -762,12 +758,6 @@ function HomeContent() {
   const [showDushanbeMapModal, setShowDushanbeMapModal] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const addressChecked = useRef(false);
-
-  useEffect(() => {
-    if (!isPickerOpen) return;
-    closePicker();
-    navRouter.push("/pharmacies");
-  }, [isPickerOpen, closePicker, navRouter]);
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
 
@@ -1073,6 +1063,14 @@ function HomeContent() {
     else navRouter.push("/catalog");
   }
 
+  function openPharmaciesNow() {
+    if (typeof window !== "undefined") {
+      window.location.assign("/pharmacies");
+      return;
+    }
+    navRouter.push("/pharmacies");
+  }
+
   // Staff guard — renders nothing while the auth-redirect effect above hops
   // them to /workspace / /superadmin / /pharmacist. Without this the client
   // home page (catalog + categories + popular rails) flashes for one frame
@@ -1092,7 +1090,7 @@ function HomeContent() {
     return (
       <div
         key={spec.id}
-        className={`home-reveal home-reveal-delay-${Math.min(revealDelay, 5)}`}
+        className={`home-reveal scroll-safe-top home-reveal-delay-${Math.min(revealDelay, 5)}`}
       >
         <MedicineRail
           title={spec.title}
@@ -1416,8 +1414,11 @@ function HomeContent() {
       <div className="space-y-6 sm:space-y-8 overflow-x-clip">
 
           {/* Quick categories — Yandex-style horizontal rail */}
-          <section className="home-reveal">
-            <div className="flex gap-3 overflow-x-auto scrollbar-hide scroll-touch -mx-3 px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-1">
+          <section className="home-reveal scroll-safe-top space-y-3">
+            <h2 className="px-0.5 font-display text-lg font-extrabold text-on-surface sm:text-xl">
+              Категории товаров
+            </h2>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide scroll-touch pb-3 sm:gap-5">
               {QUICK_CATEGORIES.map((cat) => (
                 <div key={cat.label} className="flex-shrink-0">
                   <CategoryTile
@@ -1437,6 +1438,47 @@ function HomeContent() {
               ))}
             </div>
           </section>
+
+          {/* Phone actions — immediately after quick categories on small screens. */}
+          {!isAdminOrSA ? (
+            <div className="home-reveal home-reveal-delay-2 grid grid-cols-2 gap-2 sm:hidden">
+              <Link
+                href="/prescriptions/new"
+                className="flex min-h-[74px] min-w-0 items-center gap-2 rounded-2xl border border-primary/20 bg-primary-soft p-2.5 text-left transition active:scale-95 hover:bg-primary/15"
+              >
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="9" y1="14" x2="15" y2="14" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                  </svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold leading-tight text-on-surface">Загрузите рецепт</span>
+                  <span className="mt-1 block truncate text-[11px] leading-tight text-on-surface-variant">Расшифровка · 3 TJS</span>
+                </span>
+              </Link>
+
+              <button
+                type="button"
+                onClick={openPharmaciesNow}
+                onPointerDown={() => navRouter.prefetch("/pharmacies")}
+                className="flex min-h-[74px] min-w-0 items-center gap-2 rounded-2xl bg-primary-soft p-2.5 text-left text-primary shadow-card transition active:scale-95 hover:bg-primary/15"
+              >
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M20 10c0 4.5-5.5 10-8 12C9.5 20 4 14.5 4 10a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold leading-tight">Все аптеки</span>
+                  <span className="mt-1 block truncate text-[11px] font-semibold leading-tight text-primary/80">Аптеки на карте</span>
+                </span>
+              </button>
+            </div>
+          ) : null}
 
           {/* Prescription-decoding CTA for tablet/desktop below xl. At xl+
               the same action lives inline in the header. */}
@@ -1468,45 +1510,6 @@ function HomeContent() {
           {/* Popular products first — this is the primary shopping block after
               category shortcuts. */}
           {renderHomeRail(HOME_RAILS[0], 2)}
-
-          {/* Phone actions — after popular products on small screens. */}
-          {!isAdminOrSA ? (
-            <div className="home-reveal home-reveal-delay-2 grid grid-cols-2 gap-2 sm:hidden">
-              <Link
-                href="/prescriptions/new"
-                className="flex min-h-[74px] min-w-0 items-center gap-2 rounded-2xl border border-primary/20 bg-primary-soft p-2.5 text-left transition active:scale-95 hover:bg-primary/15"
-              >
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-card">
-                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="9" y1="14" x2="15" y2="14" />
-                    <line x1="12" y1="11" x2="12" y2="17" />
-                  </svg>
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold leading-tight text-on-surface">Загрузите рецепт</span>
-                  <span className="mt-1 block truncate text-[11px] leading-tight text-on-surface-variant">Расшифровка · 3 TJS</span>
-                </span>
-              </Link>
-
-              <Link
-                href="/pharmacies"
-                className="flex min-h-[74px] min-w-0 items-center gap-2 rounded-2xl bg-primary-soft p-2.5 text-left text-primary shadow-card transition active:scale-95 hover:bg-primary/15"
-              >
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M20 10c0 4.5-5.5 10-8 12C9.5 20 4 14.5 4 10a8 8 0 0 1 16 0Z" />
-                    <circle cx="12" cy="10" r="2.5" />
-                  </svg>
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold leading-tight">Все аптеки</span>
-                  <span className="mt-1 block truncate text-[11px] font-semibold leading-tight text-primary/80">Аптеки на карте</span>
-                </span>
-              </Link>
-            </div>
-          ) : null}
 
           <div className="home-reveal home-reveal-delay-2">
             <PharmacyIntegrationBanner />

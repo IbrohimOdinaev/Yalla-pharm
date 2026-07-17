@@ -101,7 +101,7 @@ services:
       - Jura__BaseUrl=${JURA_BASE_URL}
       - Jura__Login=${JURA_LOGIN}
       - Jura__Password=${JURA_PASSWORD}
-      - Jura__DefaultPayTypeId=${JURA_DEFAULT_PAY_TYPE_ID:-243138}
+      - Jura__DefaultPayTypeId=${JURA_DEFAULT_PAY_TYPE_ID:-29185}
       - Cors__AllowedOrigins__0=${CORS_ORIGIN_0:-http://localhost:3000}
       - Cors__AllowedOrigins__1=${CORS_ORIGIN_1:-http://127.0.0.1:3000}
     networks:

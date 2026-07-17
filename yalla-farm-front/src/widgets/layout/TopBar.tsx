@@ -163,68 +163,18 @@ export function TopBar({
     pathname === "/cart" ||
     pathname === "/cart/pharmacy" ||
     pathname === "/checkout" ||
+    pathname === "/pharmacies" ||
+    pathname === "/pharmacies/map" ||
     pathname === "/login" ||
     pathname === "/login/admin" ||
     pathname === "/register" ||
     pathname.startsWith("/product/");
-  const floatingCartRef = useRef<HTMLAnchorElement>(null);
   const floatingCartLabel = bestPrice
     ? `от ${formatMoney(cartDisplayPrice ?? bestPrice.price)}`
     : cartDisplayPrice != null
       ? `от ${formatMoney(cartDisplayPrice)}`
       : `${cartCount}`;
   const displayAddressText = formatAddressDisplay(addressText);
-
-  useEffect(() => {
-    if (onCartRoute || cartCount <= 0) return;
-
-    const button = floatingCartRef.current;
-    const currentViewport = window.visualViewport;
-    if (!button || !currentViewport) return;
-    const buttonElement: HTMLAnchorElement = button;
-    const viewport: VisualViewport = currentViewport;
-
-    let frame = 0;
-    const isIosChrome = /\bCriOS\//i.test(navigator.userAgent);
-    const safeAreaProbe = document.createElement("div");
-    safeAreaProbe.style.cssText =
-      "position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom);";
-    document.body.appendChild(safeAreaProbe);
-
-    function readSafeAreaBottom() {
-      const value = Number.parseFloat(getComputedStyle(safeAreaProbe).height);
-      return Number.isFinite(value) ? value : 0;
-    }
-
-    function updatePosition() {
-      frame = 0;
-      const safeAreaBottom = readSafeAreaBottom();
-      const floatingGap = isIosChrome ? 72 : 88;
-      const nextTop =
-        viewport.offsetTop + viewport.height - floatingGap - safeAreaBottom;
-
-      buttonElement.style.setProperty("--floating-cart-top", `${nextTop}px`);
-      buttonElement.style.setProperty("--floating-cart-duration", "0ms");
-    }
-
-    function scheduleUpdate() {
-      if (frame) return;
-      frame = window.requestAnimationFrame(updatePosition);
-    }
-
-    updatePosition();
-    viewport.addEventListener("resize", scheduleUpdate);
-    viewport.addEventListener("scroll", scheduleUpdate);
-    window.addEventListener("orientationchange", scheduleUpdate);
-
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      viewport.removeEventListener("resize", scheduleUpdate);
-      viewport.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("orientationchange", scheduleUpdate);
-      safeAreaProbe.remove();
-    };
-  }, [onCartRoute, cartCount]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -401,7 +351,7 @@ export function TopBar({
       </>
     );
     const desktopSearchClass =
-      "ml-4 flex h-12 min-w-[286px] flex-[1.3_1_0%] items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:ml-6 xl:min-w-[468px] 2xl:max-w-[936px]";
+      "-ml-6 flex h-12 min-w-[286px] flex-[1.3_1_0%] items-center gap-3 rounded-full bg-surface-container-high px-5 text-left transition active:scale-95 hover:bg-surface-container-highest xl:-ml-5 xl:min-w-[468px] 2xl:max-w-[936px]";
 
     // Desktop search flexes inside the single-line header. A minimum width
     // keeps the input readable while letting the action buttons stay inline
@@ -613,7 +563,7 @@ export function TopBar({
 
     return (
       <>
-      <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-xl">
+      <header className="sticky top-0 z-[70] isolate border-b border-outline/40 bg-surface backdrop-blur-xl supports-[backdrop-filter]:bg-surface/90">
         <div className="w-full px-3 sm:px-6 lg:px-12">
           {/* DESKTOP (lg+): single row. Order requested:
               logo / search / address + prescription / … / cart / profile.
@@ -650,17 +600,14 @@ export function TopBar({
             ) : null}
           </div>
         </div>
-        <div className="hair-divider" />
       </header>
 
       {/* Floating cart — mobile/tablet only (lg:hidden), shown when basket has
           items and the user isn't already on /cart or /checkout.
-          Size the pill from the icon+label group and keep that whole group
-          centered. iOS browser toolbars move the visual viewport, so JS keeps
-          a constant gap from the visible viewport bottom. */}
+          Keep it anchored from the visible viewport bottom so iOS Safari /
+          Chrome move it with their collapsing bottom browser bars. */}
       {!onCartRoute && cartCount > 0 ? (
         <Link
-          ref={floatingCartRef}
           href="/cart"
           aria-label={
             bestPrice
@@ -669,10 +616,8 @@ export function TopBar({
                 ? `Корзина, от ${formatMoney(cartDisplayPrice)}`
               : `Корзина, ${cartCount} товаров`
           }
-          className="fixed right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[top,width,background-color,transform] ease-out hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
+          className="fixed bottom-[calc(2.25rem+env(safe-area-inset-bottom,0px))] right-3 z-40 inline-grid h-14 min-w-[176px] max-w-[calc(100vw-1.5rem)] place-items-center overflow-hidden rounded-full bg-[#D4484C] px-7 py-0 text-white shadow-card transition-[background-color,transform] ease-out will-change-transform hover:bg-[#C13D42] active:bg-[#D4484C] active:scale-[0.98] lg:hidden"
           style={{
-            top: "var(--floating-cart-top, calc(100dvh - 5.5rem - env(safe-area-inset-bottom)))",
-            transitionDuration: "var(--floating-cart-duration, 220ms)",
             transform: "translate3d(0,0,0)",
           }}
         >
@@ -697,7 +642,7 @@ export function TopBar({
 
   // ── DEFAULT MODE: back + title ───────────────────────────────────
   return (
-    <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xl">
+    <header className="sticky top-0 z-[60] isolate border-b border-outline/40 bg-surface backdrop-blur-xl supports-[backdrop-filter]:bg-surface/90">
       <div className="flex h-14 w-full items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           {backHref ? (
@@ -737,7 +682,6 @@ export function TopBar({
           </button>
         ) : null}
       </div>
-      <div className="hair-divider" />
     </header>
   );
 }
@@ -784,8 +728,6 @@ const ACTIVE_ORDER_STATUSES: ReadonlySet<string> = new Set([
   "Ready",
   "DriverArrived",
   "OnTheWay",
-  "Delivered",
-  "PickedUp",
 ]);
 
 const ACTIVE_MENU_ORDER_STATUSES: ReadonlySet<string> = new Set([

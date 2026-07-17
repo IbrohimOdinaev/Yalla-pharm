@@ -369,7 +369,7 @@ public static class DependencyInjection
         : 37;
       options.DefaultPayTypeId = long.TryParse(config[$"{JuraOptions.SectionName}:DefaultPayTypeId"], out var payTypeId)
         ? payTypeId
-        : 243138;
+        : 29185;
     });
     services.AddSingleton<IJuraHealthState, JuraHealthState>();
     services.AddHttpClient<JuraService>((provider, client) =>

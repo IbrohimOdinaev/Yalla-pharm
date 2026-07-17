@@ -26,6 +26,7 @@ function GlobalTopBarFallback() {
       homeMode
       addressText=""
       addressTitle=""
+      hideMobileSearch
     />
   );
 }
@@ -45,7 +46,11 @@ function GlobalTopBarInner() {
   // The page's own on-page search UI is active while `?search=…` is in the URL.
   // Hide the top-bar search pill so only one search input is visible at a time.
   const hideSearch = searchParams.has("search");
-  const hideMobileSearch = pathname === "/prescriptions/new";
+  const hideMobileSearch =
+    pathname === "/login" ||
+    pathname === "/login/admin" ||
+    pathname === "/register" ||
+    pathname === "/prescriptions/new";
 
   // Hide the prescription CTA for staff — they don't shop. Same condition the
   // home-page banner uses, so the in-header pill and the page banner share

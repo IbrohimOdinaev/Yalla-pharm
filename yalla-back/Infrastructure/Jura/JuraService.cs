@@ -73,6 +73,27 @@ public sealed class JuraService : IJuraService
     }).ToList();
   }
 
+  // ─── Cities ───
+
+  public async Task<List<JuraCity>> GetCitiesAsync(CancellationToken ct)
+  {
+    var response = await SendWithAuthAsync(HttpMethod.Get,
+      $"{ExternalOrdersBasePath}/get-cities",
+      null,
+      ct);
+
+    var result = await ReadJuraListAsync<JuraCityData>(response, ct);
+    return result.Select(c => new JuraCity
+    {
+      Id = c.Id,
+      BaseId = c.BaseId ?? string.Empty,
+      Name = c.Name ?? string.Empty,
+      Region = c.Region ?? string.Empty,
+      Lat = c.Lat,
+      Lng = c.Lng
+    }).ToList();
+  }
+
   // ─── Calculate Delivery ───
 
   public async Task<JuraCalculateResult> CalculateDeliveryAsync(
@@ -222,18 +243,62 @@ public sealed class JuraService : IJuraService
       allowances = BuildCreateAllowancesPayload(deliverToDoor)
     };
 
+  // ─── Active Orders ───
+
+  public async Task<List<JuraActiveOrder>> GetActiveOrdersAsync(string clientPhone, CancellationToken ct)
+  {
+    var normalizedPhone = NormalizeJuraPhone(clientPhone);
+    if (string.IsNullOrEmpty(normalizedPhone))
+      return [];
+
+    var response = await SendWithAuthAsync(
+      HttpMethod.Get,
+      $"{ExternalOrdersBasePath}/active-order?phone={Uri.EscapeDataString(normalizedPhone)}",
+      null,
+      ct,
+      ensureSuccess: false,
+      ignoreNotFoundFailure: true);
+
+    if (response.StatusCode == HttpStatusCode.NotFound)
+      return [];
+
+    response.EnsureSuccessStatusCode();
+
+    var result = await ReadJuraListAsync<JuraActiveOrderData>(response, ct);
+    return result.Select(o => new JuraActiveOrder
+    {
+      OrderId = o.Id != 0 ? o.Id : o.OrderId,
+      DivisionId = o.DivisionId,
+      StatusId = o.StatusId,
+      Status = o.Status ?? string.Empty,
+      ClientStatus = o.ClientStatus,
+      TariffId = o.TariffId,
+      Tariff = o.Tariff ?? string.Empty,
+      Distance = o.Distance,
+      Amount = o.Prices?.Amount ?? 0,
+      RecipientCode = o.RecipientCode,
+      PerformerDeviceId = o.Performer?.TraccarDeviceId
+    }).ToList();
+  }
+
   private async Task<long?> ResolveCorporatePayTypeIdAsync(CancellationToken ct, bool forceRefresh = false)
   {
+    var fallbackPayTypeId = _options.DefaultPayTypeId > 0 ? _options.DefaultPayTypeId : (long?)null;
+    if (!forceRefresh && fallbackPayTypeId.HasValue)
+      return fallbackPayTypeId;
+
     if (!forceRefresh && _corporatePayTypeId.HasValue)
       return _corporatePayTypeId;
 
     await _payTypeLock.WaitAsync(ct);
     try
     {
+      if (!forceRefresh && fallbackPayTypeId.HasValue)
+        return fallbackPayTypeId;
+
       if (!forceRefresh && _corporatePayTypeId.HasValue)
         return _corporatePayTypeId;
 
-      var fallbackPayTypeId = _options.DefaultPayTypeId > 0 ? _options.DefaultPayTypeId : (long?)null;
       var response = await SendWithAuthAsync(
         HttpMethod.Get,
         $"{ExternalOrdersBasePath}/pay-types",
@@ -255,7 +320,8 @@ public sealed class JuraService : IJuraService
       var responseText = await response.Content.ReadAsStringAsync(ct);
       try
       {
-        _corporatePayTypeId = FindCorporatePayTypeId(responseText) ?? fallbackPayTypeId;
+        var payTypes = DeserializeJuraList<JuraPayTypeData>(responseText);
+        _corporatePayTypeId = FindCorporatePayTypeId(payTypes) ?? fallbackPayTypeId;
       }
       catch (JsonException ex)
       {
@@ -275,89 +341,110 @@ public sealed class JuraService : IJuraService
     }
   }
 
-  private static long? FindCorporatePayTypeId(string responseText)
-  {
-    if (string.IsNullOrWhiteSpace(responseText))
-      return null;
+  // ─── Pay Types ───
 
-    using var document = JsonDocument.Parse(responseText);
-    return FindCorporatePayTypeId(document.RootElement);
+  public async Task<List<JuraPayType>> GetPayTypesAsync(CancellationToken ct)
+  {
+    var response = await SendWithAuthAsync(
+      HttpMethod.Get,
+      $"{ExternalOrdersBasePath}/pay-types",
+      null,
+      ct);
+
+    var result = await ReadJuraListAsync<JuraPayTypeData>(response, ct);
+    return result.Select(p => new JuraPayType
+    {
+      Id = p.Id != 0 ? p.Id : p.PayTypeId,
+      Type = p.Type ?? string.Empty,
+      Text = p.Text ?? p.Name ?? string.Empty,
+      ColType = p.ColType
+    }).ToList();
   }
 
-  private static long? FindCorporatePayTypeId(JsonElement element)
+  private static long? FindCorporatePayTypeId(List<JuraPayTypeData> payTypes)
   {
-    if (element.ValueKind == JsonValueKind.Object)
+    foreach (var payType in payTypes)
     {
-      if (TryReadLongProperty(element, "id", out var id)
-          && IsCorporatePayType(element))
-        return id;
-
-      if (TryReadLongProperty(element, "pay_type_id", out var payTypeId)
-          && IsCorporatePayType(element))
-        return payTypeId;
-
-      foreach (var property in element.EnumerateObject())
-      {
-        var found = FindCorporatePayTypeId(property.Value);
-        if (found.HasValue)
-          return found;
-      }
+      if (IsCompanyBalancePayType(payType))
+        return payType.Id != 0 ? payType.Id : payType.PayTypeId;
     }
 
-    if (element.ValueKind == JsonValueKind.Array)
+    foreach (var payType in payTypes)
     {
-      foreach (var item in element.EnumerateArray())
-      {
-        var found = FindCorporatePayTypeId(item);
-        if (found.HasValue)
-          return found;
-      }
+      if (IsCorporatePayType(payType))
+        return payType.Id != 0 ? payType.Id : payType.PayTypeId;
     }
 
     return null;
   }
 
-  private static bool IsCorporatePayType(JsonElement element)
+  private static bool IsCompanyBalancePayType(JuraPayTypeData payType)
   {
-    var text = new System.Text.StringBuilder();
-    foreach (var property in element.EnumerateObject())
-    {
-      var propertyName = property.Name.ToLowerInvariant();
-      if (property.Value.ValueKind == JsonValueKind.True
-          && (propertyName.Contains("corporate", StringComparison.Ordinal)
-              || propertyName.Contains("corp", StringComparison.Ordinal)
-              || propertyName.Contains("balance", StringComparison.Ordinal)))
-      {
-        return true;
-      }
-
-      if (property.Value.ValueKind == JsonValueKind.String)
-        text.Append(' ').Append(propertyName).Append(' ').Append(property.Value.GetString());
-    }
-
-    var candidate = text.ToString().ToLowerInvariant();
-    return candidate.Contains("corporate", StringComparison.Ordinal)
-           || candidate.Contains("corp", StringComparison.Ordinal)
-           || candidate.Contains("корпоратив", StringComparison.Ordinal)
-           || candidate.Contains("корп.", StringComparison.Ordinal)
-           || ((candidate.Contains("balance", StringComparison.Ordinal)
-                || candidate.Contains("баланс", StringComparison.Ordinal))
-               && !candidate.Contains("cash", StringComparison.Ordinal)
-               && !candidate.Contains("налич", StringComparison.Ordinal));
+    return string.Equals(payType.Type, "CompanyBalance", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(payType.Name, "CompanyBalance", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(payType.Text, "CompanyBalance", StringComparison.OrdinalIgnoreCase);
   }
 
-  private static bool TryReadLongProperty(JsonElement element, string propertyName, out long value)
+  private static bool IsCorporatePayType(JuraPayTypeData payType)
   {
-    value = 0;
-    if (!element.TryGetProperty(propertyName, out var property))
-      return false;
+    var candidate = string.Join(' ', payType.Type, payType.Name, payType.Text).ToLowerInvariant();
+    return candidate.Contains("companybalance", StringComparison.Ordinal)
+           || candidate.Contains("company balance", StringComparison.Ordinal)
+           || candidate.Contains("corporate", StringComparison.Ordinal)
+           || candidate.Contains("corp", StringComparison.Ordinal)
+           || candidate.Contains("корпоратив", StringComparison.Ordinal)
+           || candidate.Contains("корп.", StringComparison.Ordinal);
+  }
 
-    return property.ValueKind switch
+  // ─── Allowances ───
+
+  public async Task<List<JuraAllowance>> GetAllowancesAsync(int? tariffId, CancellationToken ct)
+  {
+    var effectiveTariffId = tariffId ?? _options.DefaultTariffId;
+    var response = await SendWithAuthAsync(
+      HttpMethod.Get,
+      $"{ExternalOrdersBasePath}/allowances?tariff_id={effectiveTariffId}",
+      null,
+      ct);
+
+    var result = await ReadJuraListAsync<JuraAllowanceData>(response, ct);
+    return result.Select(a => new JuraAllowance
     {
-      JsonValueKind.Number => property.TryGetInt64(out value),
-      JsonValueKind.String => long.TryParse(property.GetString(), out value),
-      _ => false
-    };
+      AllowanceId = a.AllowanceId,
+      Price = a.Price,
+      Type = a.Type ?? string.Empty,
+      IsFixPrice = a.IsFixPrice == 1,
+      Name = a.Name ?? string.Empty,
+      Icon = a.Icon ?? string.Empty
+    }).ToList();
+  }
+
+  private static async Task<List<T>> ReadJuraListAsync<T>(HttpResponseMessage response, CancellationToken ct)
+  {
+    var responseText = await response.Content.ReadAsStringAsync(ct);
+    return DeserializeJuraList<T>(responseText);
+  }
+
+  private static List<T> DeserializeJuraList<T>(string responseText)
+  {
+    if (string.IsNullOrWhiteSpace(responseText))
+      return [];
+
+    using var document = JsonDocument.Parse(responseText);
+    var listElement = document.RootElement;
+
+    if (document.RootElement.ValueKind == JsonValueKind.Object)
+    {
+      if (document.RootElement.TryGetProperty("result", out var result))
+        listElement = result;
+      else if (document.RootElement.TryGetProperty("data", out var data))
+        listElement = data;
+    }
+
+    if (listElement.ValueKind != JsonValueKind.Array)
+      return [];
+
+    return JsonSerializer.Deserialize<List<T>>(listElement.GetRawText(), JsonOptions) ?? [];
   }
 
   private static async Task<bool> HasValidationErrorAsync(
@@ -614,6 +701,17 @@ public sealed class JuraService : IJuraService
     public double Lng { get; set; }
   }
 
+  private sealed class JuraCityData
+  {
+    public int Id { get; set; }
+    [JsonPropertyName("baseId")]
+    public string? BaseId { get; set; }
+    public string? Name { get; set; }
+    public string? Region { get; set; }
+    public double Lat { get; set; }
+    public double Lng { get; set; }
+  }
+
   private sealed class JuraCalculateResponse
   {
     public bool Success { get; set; }
@@ -645,6 +743,27 @@ public sealed class JuraService : IJuraService
     public string? Phone { get; set; }
   }
 
+  private sealed class JuraActiveOrderData
+  {
+    public long Id { get; set; }
+    public long OrderId { get; set; }
+    public int DivisionId { get; set; }
+    public int StatusId { get; set; }
+    public string? Status { get; set; }
+    public int? ClientStatus { get; set; }
+    public int TariffId { get; set; }
+    public string? Tariff { get; set; }
+    public double Distance { get; set; }
+    public string? RecipientCode { get; set; }
+    public JuraPriceData? Prices { get; set; }
+    public JuraPerformerData? Performer { get; set; }
+  }
+
+  private sealed class JuraPriceData
+  {
+    public decimal Amount { get; set; }
+  }
+
   private sealed class JuraOrderStatusData
   {
     public long OrderId { get; set; }
@@ -671,6 +790,26 @@ public sealed class JuraService : IJuraService
     public int Id { get; set; }
     public string? Name { get; set; }
     public int DivisionId { get; set; }
+  }
+
+  private sealed class JuraPayTypeData
+  {
+    public long Id { get; set; }
+    public long PayTypeId { get; set; }
+    public string? Type { get; set; }
+    public string? Name { get; set; }
+    public string? Text { get; set; }
+    public bool ColType { get; set; }
+  }
+
+  private sealed class JuraAllowanceData
+  {
+    public int AllowanceId { get; set; }
+    public decimal Price { get; set; }
+    public string? Type { get; set; }
+    public int IsFixPrice { get; set; }
+    public string? Name { get; set; }
+    public string? Icon { get; set; }
   }
 
   private sealed class JuraReceiptCodeResponse

@@ -500,7 +500,7 @@ function PharmacySelectPageInner() {
       <GlobalTopBar />
 
       {/* Sub-header: back + title + delivery/pickup tabs */}
-      <div className="flex items-center gap-3 px-4 sm:px-6 py-3 shadow-glass bg-surface flex-shrink-0">
+      <div className="relative z-[60] flex flex-shrink-0 items-center gap-3 border-b border-outline/40 bg-surface px-4 py-3 shadow-glass backdrop-blur-xl supports-[backdrop-filter]:bg-surface/90 sm:px-6">
         <IconButton
           icon="back"
           variant="neutral"
@@ -758,7 +758,7 @@ function PharmacySelectPageInner() {
                               onClick={() => onSelectPharmacy(option as ApiBasketPharmacyOption)}
                               className="inline-flex h-12 min-w-[104px] flex-shrink-0 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-bold text-on-primary transition hover:bg-primary-container active:scale-[0.98]"
                             >
-                              {pickup ? pickup.buttonText : "Выбрать"}
+                              {pickup ? pickup.buttonText : "Заказать"}
                             </button>
                           </div>
                         </div>

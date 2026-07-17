@@ -21,7 +21,7 @@ export function AppShell({ top, children, hideGlobalNav, hideFooter, narrow }: A
       {!hideGlobalNav ? <GlobalTopBar /> : null}
       {top}
       <main
-        className={`page-reveal mx-auto w-full flex-1 px-3 pb-24 pt-3 xs:pt-4 sm:px-6 sm:pt-6 lg:px-8 overflow-x-clip ${
+        className={`page-reveal mx-auto w-full flex-1 px-3 pb-24 pt-5 xs:pt-5 sm:px-6 sm:pt-6 lg:px-8 overflow-x-clip ${
           narrow ? "max-w-3xl" : "max-w-[1440px]"
         }`}
       >

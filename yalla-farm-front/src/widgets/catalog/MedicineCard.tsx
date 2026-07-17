@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/shared/lib/redux";
 import { useCartStore } from "@/features/cart/model/cartStore";
 import { useGuestCartStore } from "@/features/cart/model/guestCartStore";
@@ -27,6 +28,7 @@ type MedicineCardProps = {
 
 // Yandex-Apteka style: flat white card, thin border, red cart button.
 export function MedicineCard({ medicine, hideCart, compact, footerAction, readOnlyPrice, readOnlyPricePrefix }: MedicineCardProps) {
+  const router = useRouter();
   const token = useAppSelector((state) => state.auth.token);
   const role = useAppSelector((state) => state.auth.role);
   const addItem = useCartStore((state) => state.addItem);
@@ -170,16 +172,38 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
   }
 
   const name = getMedicineDisplayName(medicine);
+  const priceLabel = displayReadOnlyPrice
+    ? `${displayReadOnlyPrefix}${formatMoney(displayReadOnlyPrice)}`
+    : hideCart
+      ? "Нет офферов"
+      : "—";
   // Prefer the human-readable slug and fall back to the GUID.
   // /product/[id] resolves either.
   const productKey = medicine.slug || medicine.id;
-  const productHref = `/product/${productKey}`;
+
+  const openProduct = useCallback(() => {
+    const currentPath = typeof window !== "undefined" ? window.location.pathname : "/";
+    const currentSearch = typeof window !== "undefined" ? window.location.search : "";
+    const params = new URLSearchParams(currentSearch);
+    params.set("product", productKey);
+    const qs = params.toString();
+    router.push(qs ? `${currentPath}?${qs}` : currentPath, { scroll: false });
+  }, [productKey, router]);
+
+  function onCardKeyDown(e: React.KeyboardEvent<HTMLElement>) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    openProduct();
+  }
 
   return (
-    // eslint-disable-next-line @next/next/no-html-link-for-pages
-    <a
-      href={productHref}
-      className="group block h-full"
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={openProduct}
+      onKeyDown={onCardKeyDown}
+      className="group block h-full cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      aria-label={name}
     >
       {/* Frame moved from inner image to outer card: a thin border outlines
           the whole card, and the image area now sits flush with the card
@@ -189,10 +213,10 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
           via `has-[button:active]`. The stepper/pill buttons themselves
           stay fixed in size — the user sees the card expand around the
           control without the price/qty text reflowing under their finger. */}
-      <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest transition has-[button:active]:scale-[1.02] hover:border-on-surface/30 hover:shadow-card">
+      <div className="flex h-full flex-col rounded-2xl bg-surface-container-lowest transition has-[button:active]:scale-[1.02]">
         {/* Image */}
         <div
-          className="relative aspect-square overflow-hidden bg-image-backdrop"
+          className="relative aspect-square overflow-hidden rounded-2xl bg-product-image-backdrop transition group-active:bg-product-image-backdrop-active"
           onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
           onTouchEnd={onSwipe}
         >
@@ -216,7 +240,7 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
               // legible after the browser downscales the 600/1200 px source
               // into the ~150–220 px card cell.
               style={{ imageRendering: "-webkit-optimize-contrast" }}
-              className="h-full w-full object-contain p-2 mix-blend-multiply transition group-hover:scale-[1.03]"
+              className="h-full w-full object-contain p-3 mix-blend-multiply transition group-hover:scale-[1.03]"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-on-surface-variant/40">
@@ -231,11 +255,50 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
             </span>
           ) : null}
 
-          {/* Quantity badge when in cart — light-blue pill, top-right. */}
-          {cartState.inCart ? (
-            <span className="absolute right-2 top-2 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-extrabold text-on-primary shadow-card">
-              {cartState.quantity}
-            </span>
+          {!hideCart ? (
+            cartState.inCart ? (
+              <div
+                className={`absolute inset-x-2 bottom-2 flex items-center justify-between rounded-full bg-surface/95 text-on-surface shadow-card backdrop-blur-sm ${
+                  compact ? "h-10 px-2" : "h-11 px-2.5"
+                }`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={onDecrement}
+                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-product-image-backdrop-active ${
+                    compact ? "h-7 w-7" : "h-8 w-8"
+                  }`}
+                  aria-label="Уменьшить"
+                >
+                  <Icon name="minus" size={14} strokeWidth={2.4} />
+                </button>
+                <span className="min-w-0 px-1 text-center font-display text-sm font-extrabold tabular-nums">
+                  {cartState.quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={onIncrement}
+                  className={`flex shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition hover:bg-primary-container ${
+                    compact ? "h-7 w-7" : "h-8 w-8"
+                  }`}
+                  aria-label="Увеличить"
+                >
+                  <Icon name="plus" size={14} strokeWidth={2.4} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onAdd}
+                className={`absolute bottom-3 right-3 flex items-center justify-center rounded-full bg-surface text-on-surface shadow-card transition hover:bg-product-image-backdrop-active active:scale-95 ${
+                  compact ? "h-10 w-10" : "h-12 w-12"
+                }`}
+                aria-label="В корзину"
+              >
+                <Icon name="plus" size={compact ? 22 : 26} strokeWidth={2.3} />
+              </button>
+            )
           ) : null}
 
           {/* Image dots */}
@@ -252,108 +315,33 @@ export function MedicineCard({ medicine, hideCart, compact, footerAction, readOn
         </div>
 
         {/* Info */}
-        <div className={`flex flex-1 flex-col ${compact ? "gap-1.5 p-2.5" : "gap-2 p-3"}`}>
-          {/* Category hint (non-compact wide layouts only) */}
-          {medicine.categoryName && !compact ? (
-            <p className="hidden truncate text-[10px] font-semibold text-on-surface-variant sm:block">
-              {medicine.categoryName}
-            </p>
-          ) : null}
+        <div className={`flex flex-1 flex-col ${compact ? "gap-1 p-2.5" : "gap-1.5 p-3"}`}>
+          <p
+            className={`font-display font-black leading-none text-on-surface ${
+              compact ? "text-base xs:text-lg" : "text-lg xs:text-xl"
+            }`}
+          >
+            {priceLabel}
+          </p>
 
-          {/* Title — wider card on 2-col phone layout fits 3 lines on the
-              non-compact variant; compact (search-result fixed-width cards)
-              still clamps to 2 since their column is narrower. min-h locks
-              the row height so prices align across cards regardless of how
-              many lines a title actually wraps to. */}
+          {/* Title — compact Yandex-style text block under the price. */}
           <h3
             className={`font-semibold leading-tight text-on-surface ${
               compact
                 ? "line-clamp-2 text-[11px] min-h-[2rem] xs:text-xs"
-                : "line-clamp-3 text-[13px] min-h-[3.6rem] xs:text-sm xs:min-h-[3.8rem]"
+                : "line-clamp-3 text-[13px] min-h-[3.15rem] xs:text-sm xs:min-h-[3.35rem]"
             }`}
           >
             {name}
           </h3>
 
-          {/* Cart control — price lives inside the pill. Default state: light-blue
-              pill with "{price} TJS  +"; in-cart state: yellow pill with
-              "−  {price} TJS  +". Admin-side cards (hideCart) get a static
-              read-only price strip. */}
-          <div className="mt-auto">
-            {hideCart ? (
-              <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-center rounded-full bg-surface-container py-2">
-                  <span className="text-xs font-bold text-on-surface">
-                    {displayReadOnlyPrice ? `${displayReadOnlyPrefix}${formatMoney(displayReadOnlyPrice)}` : "Нет офферов"}
-                  </span>
-                </div>
-                {footerAction}
-              </div>
-            ) : cartState.inCart ? (
-              // Selected pill — kept the same height + full-width as
-              // the blue add pill below so toggling between states doesn't
-              // jiggle the card row. Heights / breakpoints mirror the blue
-              // variant exactly.
-              <div
-                className={`flex w-full items-center justify-between gap-0.5 rounded-full bg-[#E9F1F3] px-1 text-on-surface shadow-card xs:gap-1 xs:px-1.5 ${
-                  compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
-                }`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={onDecrement}
-                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 ${
-                    compact ? "h-6 w-6 xs:h-7 xs:w-7" : "h-7 w-7 xs:h-8 xs:w-8"
-                  }`}
-                  aria-label="Уменьшить"
-                >
-                  <Icon name="minus" size={14} strokeWidth={2.4} />
-                </button>
-                <span
-                  className={`min-w-0 flex-1 overflow-hidden text-center font-display font-extrabold tabular-nums whitespace-nowrap leading-none ${
-                    compact
-                      ? "text-[10px] xs:text-[11px] sm:text-xs"
-                      : "text-[11px] xs:text-xs sm:text-sm"
-                  }`}
-                >
-                  {price ? `от ${formatMoney(price)}` : `×${cartState.quantity}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={onIncrement}
-                  className={`flex shrink-0 items-center justify-center rounded-full transition hover:bg-on-surface/10 ${
-                    compact ? "h-6 w-6 xs:h-7 xs:w-7" : "h-7 w-7 xs:h-8 xs:w-8"
-                  }`}
-                  aria-label="Увеличить"
-                >
-                  <Icon name="plus" size={14} strokeWidth={2.4} />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={onAdd}
-                className={`flex w-full items-center justify-center gap-1.5 rounded-full bg-primary px-2 font-display text-on-primary shadow-card transition hover:bg-primary-container xs:gap-2 xs:px-3 ${
-                  compact ? "h-8 xs:h-9" : "h-9 xs:h-10"
-                }`}
-                aria-label="В корзину"
-              >
-                <span
-                  className={`font-extrabold tabular-nums whitespace-nowrap leading-none ${
-                    compact
-                      ? "text-[9px] xs:text-[10px] sm:text-[11px]"
-                      : "text-[10px] xs:text-[11px] sm:text-xs md:text-sm"
-                  }`}
-                >
-                  {price ? `от ${formatMoney(price)}` : "—"}
-                </span>
-                <Icon name="plus" size={14} strokeWidth={2.4} />
-              </button>
-            )}
-          </div>
+          {hideCart && footerAction ? (
+            <div className="mt-auto pt-1" onClick={(e) => e.stopPropagation()}>
+              {footerAction}
+            </div>
+          ) : null}
         </div>
-      </article>
-    </a>
+      </div>
+    </article>
   );
 }

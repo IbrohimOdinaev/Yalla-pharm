@@ -15,6 +15,7 @@
    unaffected either way. Has to live on the *root* element. */
 html {
   scrollbar-gutter: stable;
+  scroll-padding-top: 9.75rem;
 }
 
 body {
@@ -156,6 +157,20 @@ button {
 }
 
 .scroll-touch { -webkit-overflow-scrolling: touch; }
+
+.scroll-safe-top {
+  scroll-margin-top: 9.75rem;
+}
+
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-top: 5.25rem;
+  }
+
+  .scroll-safe-top {
+    scroll-margin-top: 5.25rem;
+  }
+}
 
 /* Modal viewport heights. iOS Safari recalculates `vh` every time the
    bottom toolbar shows/hides, which makes any modal sized with
