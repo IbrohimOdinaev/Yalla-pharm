@@ -358,7 +358,7 @@ public static class DependencyInjection
     // Jura delivery service
     services.Configure<JuraOptions>(options =>
     {
-      options.BaseUrl = config[$"{JuraOptions.SectionName}:BaseUrl"] ?? string.Empty;
+      options.BaseUrl = JuraOptions.NormalizeBaseUrl(config[$"{JuraOptions.SectionName}:BaseUrl"]);
       options.Login = config[$"{JuraOptions.SectionName}:Login"] ?? string.Empty;
       options.Password = config[$"{JuraOptions.SectionName}:Password"] ?? string.Empty;
       options.DivisionId = int.TryParse(config[$"{JuraOptions.SectionName}:DivisionId"], out var divisionId)
