@@ -27,8 +27,8 @@ public sealed class PaymentIntentPosition
     if (offerPharmacyId == Guid.Empty)
       throw new DomainArgumentException("OfferPharmacyId can't be empty.");
 
-    if (offerPrice <= 0m)
-      throw new DomainArgumentException("OfferPrice must be greater than zero.");
+    if (offerPrice < 0m)
+      throw new DomainArgumentException("OfferPrice can't be negative.");
 
     if (quantity <= 0)
       throw new DomainArgumentException("Quantity must be greater than zero.");

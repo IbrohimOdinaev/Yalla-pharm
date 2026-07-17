@@ -165,13 +165,14 @@ public sealed class ExceptionHandlingMiddleware
     }
 
     _logger.LogWarning(
-      "Handled exception for {Method} {Path}. TraceId: {TraceId}. StatusCode: {StatusCode}. ErrorCode: {ErrorCode}. ExceptionType: {ExceptionType}",
+      "Handled exception for {Method} {Path}. TraceId: {TraceId}. StatusCode: {StatusCode}. ErrorCode: {ErrorCode}. ExceptionType: {ExceptionType}. Message: {ExceptionMessage}",
       context.Request.Method,
       context.Request.Path,
       context.TraceIdentifier,
       error.StatusCode,
       error.Code,
-      exception.GetType().Name);
+      exception.GetType().Name,
+      exception.Message);
   }
 
   private sealed record ErrorPayload(
