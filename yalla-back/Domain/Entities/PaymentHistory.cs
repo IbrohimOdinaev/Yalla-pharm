@@ -47,7 +47,7 @@ public sealed class PaymentHistory
 
     var normalizedCurrency = NormalizeRequired(currency, 8, "Currency");
     var normalizedProvider = NormalizeRequired(provider, 64, "Provider");
-    var normalizedReceiverAccount = NormalizeRequired(receiverAccount, 128, "ReceiverAccount");
+    var normalizedReceiverAccount = NormalizeOptional(receiverAccount, 128, "ReceiverAccount") ?? string.Empty;
     var normalizedUserPhoneNumber = NormalizePhoneNumber(userPhoneNumber, "UserPhoneNumber");
     var normalizedConfirmedByPhoneNumber = NormalizePhoneNumber(confirmedByPhoneNumber, "ConfirmedByPhoneNumber");
     var normalizedPaymentUrl = NormalizeOptional(paymentUrl, 2048, "PaymentUrl");

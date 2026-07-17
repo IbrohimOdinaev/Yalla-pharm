@@ -333,7 +333,7 @@ public class Order
         PaymentAmount = amount;
         PaymentCurrency = NormalizeRequiredString(currency, 8, "PaymentCurrency").ToUpperInvariant();
         PaymentProvider = NormalizeRequiredString(provider, 64, "PaymentProvider");
-        PaymentReceiverAccount = NormalizeRequiredString(receiverAccount, 128, "PaymentReceiverAccount");
+        PaymentReceiverAccount = NormalizeOptionalString(receiverAccount, 128, "PaymentReceiverAccount") ?? string.Empty;
         PaymentUrl = NormalizeOptionalString(paymentUrl, 2048, "PaymentUrl");
         PaymentComment = NormalizeOptionalString(paymentComment, 512, "PaymentComment");
         PaymentState = OrderPaymentState.PendingManualConfirmation;
@@ -356,7 +356,7 @@ public class Order
         PaymentAmount = amount;
         PaymentCurrency = NormalizeRequiredString(currency, 8, "PaymentCurrency").ToUpperInvariant();
         PaymentProvider = NormalizeRequiredString(provider, 64, "PaymentProvider");
-        PaymentReceiverAccount = NormalizeRequiredString(receiverAccount, 128, "PaymentReceiverAccount");
+        PaymentReceiverAccount = NormalizeOptionalString(receiverAccount, 128, "PaymentReceiverAccount") ?? string.Empty;
         PaymentUrl = NormalizeOptionalString(paymentUrl, 2048, "PaymentUrl");
         PaymentComment = NormalizeOptionalString(paymentComment, 512, "PaymentComment");
         PaymentState = OrderPaymentState.PendingManualConfirmation;
@@ -412,7 +412,7 @@ public class Order
         PaymentAmount = amount;
         PaymentCurrency = NormalizeRequiredString(currency, 8, "PaymentCurrency").ToUpperInvariant();
         PaymentProvider = NormalizeRequiredString(provider, 64, "PaymentProvider");
-        PaymentReceiverAccount = NormalizeRequiredString(receiverAccount, 128, "PaymentReceiverAccount");
+        PaymentReceiverAccount = NormalizeOptionalString(receiverAccount, 128, "PaymentReceiverAccount") ?? string.Empty;
         PaymentUrl = NormalizeOptionalString(paymentUrl, 2048, "PaymentUrl");
         PaymentComment = NormalizeOptionalString(paymentComment, 512, "PaymentComment");
         PaymentState = OrderPaymentState.Confirmed;
